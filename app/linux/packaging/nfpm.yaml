@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Builds the .deb and .rpm of the Linux client with nfpm (https://nfpm.goreleaser.com).
+# Run by scripts/package-app.sh from the app/ folder; VERSION and ARCH come from the environment
+# (ARCH is the Debian name: amd64 or arm64; nfpm maps it for the rpm).
+name: psalm
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+section: sound
+priority: optional
+maintainer: Joerg Bernau <Joerg@bernau.family>
+description: |
+  Psalm, the audiobook and music player of the family.
+  Plays what a David server offers, with a profile for every family member.
+vendor: Joerg Bernau
+homepage: https://github.com/Beerlesklopfer/Psalms-Of-David
+license: AGPL-3.0-or-later
+
+contents:
+  # The Flutter bundle (program, lib/, data/) lives in /opt/psalm; the program finds its
+  # libraries next to its real path, so /usr/bin/psalm is a link.
+  - src: build/linux/x64/release/bundle/
+    dst: /opt/psalm/
+    type: tree
+    file_info: { mode: 0755 }
+  - src: /opt/psalm/psalm
+    dst: /usr/bin/psalm
+    type: symlink
+  - src: linux/io.onesimus.psalm.desktop
+    dst: /usr/share/applications/io.onesimus.psalm.desktop
+    file_info: { mode: 0644 }
+  - src: linux/icons/
+    dst: /usr/share/icons/
+    type: tree
+  - src: ../LICENSE
+    dst: /usr/share/doc/psalm/LICENSE
+    file_info: { mode: 0644 }
+
+overrides:
+  deb:
+    depends: [libgtk-3-0, libpipewire-0.3-0]
+  rpm:
+    depends: [gtk3, pipewire-libs]

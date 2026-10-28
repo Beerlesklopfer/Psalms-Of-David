@@ -1,0 +1,9 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}<section class="card pairing-result">
+  <h3>{{ t("pairing.result") }}</h3>
+  <p>{{ t("pairing.for") }} <strong>{{ user_name }}</strong>, {{ t("pairing.valid") }}: {{ minutes }}</p>
+  <div class="qr" role="img" aria-label="{{ t('pairing.result') }}">{{ qr }}</div>
+  <p>{{ t("pairing.text") }}:</p>
+  <p><code>{{ uri }}</code></p>
+</section>{% if in_window %}
+<div id="pair-foot" class="window-foot" hx-swap-oob="true"><a class="btn" href="/admin/pairing">{{ t("ui.close") }}</a></div>{% endif %}

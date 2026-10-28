@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+[package]
+name = "psalm-audio"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/Beerlesklopfer/Psalms-Of-David"
+
+[lib]
+# rlib for Rust users, cdylib for Flutter (dart:ffi) and any other C caller.
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+pipewire = { version = "0.10", features = ["v0_3_50"] }
+rtrb = "0.4.1"
+symphonia = { version = "0.6", default-features = false, features = ["mp3"] }

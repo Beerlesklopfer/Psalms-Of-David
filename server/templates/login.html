@@ -1,0 +1,15 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}
+
+{% block title %}{{ t("login.title") }}{% endblock %}
+
+{% block content %}
+<h1 class="login-title">{{ t("login.title") }}</h1>
+<form class="card login" method="post" action="/admin/login">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label class="field"><span>{{ t("login.name") }}</span> <input type="text" name="name" required maxlength="80" autofocus autocomplete="username" autocapitalize="words" spellcheck="false"></label>
+  <label class="field"><span>{{ t("login.pin") }}</span> <input type="password" name="pin" required maxlength="64" autocomplete="current-password"></label>
+  <label class="check"><input type="checkbox" name="remember" value="1"> <span>{{ t("login.remember") }}</span></label>
+  <button type="submit">{{ t("login.submit") }}</button>
+</form>
+{% endblock %}

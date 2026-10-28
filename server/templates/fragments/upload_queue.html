@@ -1,0 +1,19 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}<div id="upload-queue"{% if busy %} hx-get="/admin/rpc/upload.list" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
+  {% if jobs %}
+  <table class="queue">
+    <thead><tr><th>{{ t("upload.file") }}</th><th>{{ t("upload.size") }}</th><th>{{ t("upload.state") }}</th></tr></thead>
+    <tbody>
+    {% for job in jobs %}
+    <tr>
+      <td><strong>{{ job.name }}</strong>{% if job.message %}<br><small>{{ job.message }}</small>{% endif %}</td>
+      <td data-label="{{ t('upload.size') }}">{{ (job.size_bytes / 1048576) | round(1) }} MB</td>
+      <td data-label="{{ t('upload.state') }}"><span class="badge {% if job.state == 'done' %}ok{% elif job.state == 'failed' %}muted{% endif %}">{{ t("upload.state." ~ job.state) }}</span></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="hint">{{ t("upload.none") }}</p>
+  {% endif %}
+</div>

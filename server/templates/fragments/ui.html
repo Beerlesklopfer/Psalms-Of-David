@@ -1,0 +1,69 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}
+{#- Building blocks for pages: icons and popup menus. A distribution can replace this file
+    to change them everywhere. -#}
+
+{% macro icon(name) -%}
+<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+  {% if name == "users" %}
+    <circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18 14.3c2.2.6 3.5 2.4 3.5 5.7"/>
+  {% elif name == "books" %}
+    <path d="M12 6.5C10.2 5 7.6 4.5 4 4.5v14c3.6 0 6.2.5 8 2 1.8-1.5 4.4-2 8-2v-14c-3.6 0-6.2.5-8 2z"/><path d="M12 6.5v14"/>
+  {% elif name == "music" %}
+    <path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>
+  {% elif name == "video" %}
+    <rect x="3" y="6" width="14" height="12" rx="2"/><path d="m17 10.5 4-2.5v8l-4-2.5"/>
+  {% elif name == "media" %}
+    <path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5" opacity=".0"/>
+  {% elif name == "pairing" %}
+    <rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 18.5h3"/><path d="M9.5 7.5h2v2h-2zM12.5 7.5h2v2h-2zM9.5 10.5h2v2h-2z"/>
+  {% elif name == "import" %}
+    <path d="M12 3.5v11"/><path d="m7.5 10 4.5 4.5 4.5-4.5"/><path d="M4 16.5v2A2 2 0 0 0 6 20.5h12a2 2 0 0 0 2-2v-2"/>
+  {% elif name == "settings" %}
+    <path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>
+  {% elif name == "profile" %}
+    <circle cx="12" cy="8" r="3.8"/><path d="M4.5 20c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"/>
+  {% elif name == "logout" %}
+    <path d="M9 4.5H6A2 2 0 0 0 4 6.5v11a2 2 0 0 0 2 2h3"/><path d="M16 8l4 4-4 4M20 12H9"/>
+  {% elif name == "calendar" %}
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>
+  {% elif name == "edit" %}
+    <path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>
+  {% elif name == "close" %}
+    <path d="M6 6l12 12M18 6L6 18"/>
+  {% elif name == "plus" %}
+    <path d="M12 5v14M5 12h14"/>
+  {% elif name == "tag" %}
+    <path d="M3.5 12.2V5a1.5 1.5 0 0 1 1.5-1.5h7.2a1.5 1.5 0 0 1 1.06.44l7.3 7.3a1.5 1.5 0 0 1 0 2.12l-6.7 6.7a1.5 1.5 0 0 1-2.12 0l-7.3-7.3a1.5 1.5 0 0 1-.44-1.06z"/><circle cx="8" cy="8" r="1.3"/>
+  {% elif name == "folder" %}
+    <path d="M3.5 7.5A2 2 0 0 1 5.5 5.5h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>
+  {% elif name == "lock" %}
+    <rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>
+  {% elif name == "unlock" %}
+    <rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 7.5-1.9"/>
+  {% elif name == "check" %}
+    <path d="m5 12.5 4.5 4.5L19 7.5"/>
+  {% elif name == "chevron" %}
+    <path d="m6 9 6 6 6-6"/>
+  {% endif %}
+</svg>
+{%- endmacro %}
+
+{#- A popup menu: a button that opens a list of items below it. It is a <details> element,
+    so it opens and closes without JavaScript; `ui.js` adds closing on a click elsewhere and
+    on Escape, and keeps one popup open at a time. The items are the body of the call:
+
+      {% call popup("media", "media", t("nav.media")) %}
+        <a role="menuitem" href="...">...</a>
+      {% endcall %}
+
+    `id` names the popup, `icon_name` its icon; `current` marks the trigger as the current
+    page; `extra` adds classes (`end` opens it towards the right edge, `up` upwards). -#}
+{% macro popup(id, icon_name, label, current=false, extra="") -%}
+<details class="popup {{ extra }}" id="popup-{{ id }}">
+  <summary class="popup-trigger{% if current %} current{% endif %}"{% if current %} aria-current="page"{% endif %} aria-haspopup="menu">
+    {{ icon(icon_name) }}<span>{{ label }}</span>{{ icon("chevron") }}
+  </summary>
+  <div class="popup-menu" role="menu" aria-label="{{ label }}">{{ caller() }}</div>
+</details>
+{%- endmacro %}

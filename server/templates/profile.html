@@ -1,0 +1,82 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "profile" %}
+
+{% block title %}{{ t("profile.title") }}{% endblock %}
+
+{% from "fragments/avatar.html" import avatar %}{% block content %}
+<h1>{{ t("profile.title") }}</h1>
+
+{#- Who you are, in one strip: picture, name, role and what limits you. Nothing that does not apply is shown. -#}
+<section class="card profile-head">
+  {{ avatar(me, "big") }}
+  <div class="who">
+    <h2>{{ me.name }}</h2>
+    {% if dash.first_name or dash.last_name %}<p class="full-name">{% if dash.first_name %}{{ dash.first_name }}{% endif %}{% if dash.first_name and dash.last_name %} {% endif %}{% if dash.last_name %}{{ dash.last_name }}{% endif %}</p>{% endif %}
+    <p class="badges">
+      <span class="badge">{{ t("role." ~ dash.role) }}</span>
+      {% if dash.role == "child" and dash.age_limit is not none %}<span class="badge">{{ t("users.age_limit") }} {{ dash.age_limit }}</span>{% endif %}
+      {% if dash.role == "child" and dash.hours %}<span class="badge{% if dash.hours.allowed_now %} ok{% endif %}">{{ dash.hours.per_week }} {{ t("profile.hours_short") }} &middot; {% if dash.hours.allowed_now %}{{ t("profile.allowed_now_short") }}{% else %}{{ t("profile.not_allowed_now_short") }}{% endif %}</span>{% endif %}
+      <span class="badge">{{ t("users.devices") }} {{ dash.device_count }} / {{ dash.device_limit }}</span>
+    </p>
+    {% if me.role == "admin" %}<p class="head-link"><a href="/admin/pairing">{{ t("profile.manage_devices") }}</a></p>{% endif %}
+  </div>
+</section>
+
+{#- One form, one Save: picture, names, language and PIN or password are saved together. -#}
+<form class="card profile-form" method="post" action="/profile?csrf={{ csrf }}" enctype="multipart/form-data" autocomplete="off">
+  <div class="picture-row">
+    <div class="picture-controls">
+      <label class="file"><span>{{ t("profile.picture") }}</span><input type="file" name="avatar" accept="image/png,image/jpeg,image/webp"></label>
+      <small>{{ t("profile.picture_hint")|replace("{max}", max_kib|string) }}</small>
+      {% if me.has_avatar %}<label class="check"><input type="checkbox" name="remove_avatar" value="1"> <span>{{ t("profile.remove") }}</span></label>{% endif %}
+    </div>
+  </div>
+
+  <div class="dialog-form">
+    <label class="field"><input type="text" name="nickname" required maxlength="80" value="{{ me.name }}" placeholder=" " autocomplete="nickname"><span>{{ t("users.nickname") }}</span></label>
+    <label class="field"><input type="text" name="first_name" maxlength="80"{% if dash.first_name %} value="{{ dash.first_name }}"{% endif %} placeholder=" " autocomplete="given-name"><span>{{ t("users.first_name") }}</span></label>
+    <label class="field"><input type="text" name="last_name" maxlength="80"{% if dash.last_name %} value="{{ dash.last_name }}"{% endif %} placeholder=" " autocomplete="family-name"><span>{{ t("users.last_name") }}</span></label>
+    <label class="field"><select name="language">
+      <option value=""{% if not dash.language %} selected{% endif %}>{{ t("profile.language_auto") }}</option>
+      <option value="en"{% if dash.language == "en" %} selected{% endif %}>English</option>
+      <option value="de"{% if dash.language == "de" %} selected{% endif %}>Deutsch</option>
+    </select><span class="raised">{{ t("profile.language") }}</span></label>
+    <small class="span-all">{{ t("profile.names_hint") }}</small>
+
+    <label class="field"><input type="password" name="current" maxlength="64" placeholder=" " autocomplete="current-password"><span>{{ t("profile.pin_current") }}</span></label>
+    <label class="field"><input type="password" name="new" maxlength="64" placeholder=" " autocomplete="new-password"><span>{{ t("profile.pin_new") }}</span></label>
+    <label class="field"><input type="password" name="repeat" maxlength="64" placeholder=" " autocomplete="new-password"><span>{{ t("profile.pin_repeat") }}</span></label>
+    <small class="span-all">{{ t("profile.pin_hint") }}</small>
+  </div>
+
+  <div class="form-foot">
+    <a class="btn outline" href="/profile">{{ t("ui.cancel") }}</a>
+    <button type="submit" class="btn">{{ t("ui.save") }}</button>
+  </div>
+</form>
+
+{% if dash.listening or dash.devices %}
+<div class="profile-grid">
+  {% if dash.listening %}
+  <section class="card">
+    <h3>{{ t("profile.listening") }}</h3>
+    <ul class="plain">
+      {% for b in dash.listening %}
+      <li class="progress-row"><div><strong>{{ b.title }}</strong><br><small>{{ b.author }} &middot; {{ b.last }}</small></div><div class="bar" role="img" aria-label="{{ b.percent }}%"><span class="bar-fill w-{{ (b.percent // 5) * 5 }}"></span></div><small>{{ b.percent }}%</small></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+  {% if dash.devices %}
+  <section class="card">
+    <h3>{{ t("profile.my_devices") }}</h3>
+    <ul class="plain">
+      {% for d in dash.devices %}
+      <li><strong>{{ d.name }}</strong>{% if d.shared %} <small class="badge">{{ t("profile.shared") }}</small>{% endif %}<br><small>{{ t("profile.last_seen") }}: {% if d.last_seen %}{{ d.last_seen }}{% else %}{{ t("profile.never") }}{% endif %}</small></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

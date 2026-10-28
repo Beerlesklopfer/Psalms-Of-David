@@ -1,0 +1,46 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<tr id="user-{{ user.id }}">
+  <td><strong>{{ user.name }}</strong>{% if user.first_name or user.last_name %}<br><small>{% if user.first_name %}{{ user.first_name }}{% endif %}{% if user.first_name and user.last_name %} {% endif %}{% if user.last_name %}{{ user.last_name }}{% endif %}</small>{% endif %}</td>
+  <td data-label="{{ t('users.role') }}">{{ t("role." ~ user.role) }}</td>
+  <td data-label="{{ t('users.age_limit') }}">{% if user.max_age is none %}&ndash;{% else %}{{ user.max_age }}{% endif %}{% if user.birth_date %}<br><small>{{ user.birth_date }}</small>{% endif %}</td>
+  <td data-label="{{ t('users.devices') }}">{{ user.devices }}</td>
+  <td class="actions">
+    <div class="row-actions">
+      {#- Two buttons, each opening a window. Without JavaScript the planner is a link to its page and the edit window is shown in place. -#}
+      <a class="btn outline" href="/admin/schedule?user={{ user.id }}" data-planner="{{ user.id }}" data-url="/admin/fragments/schedule?user={{ user.id }}">{{ icon("calendar") }}<span>{{ t("users.planner") }}</span></a>
+      <button type="button" class="btn outline" data-dialog="dlg-edit-{{ user.id }}">{{ icon("edit") }}<span>{{ t("users.edit") }}</span></button>
+    </div>
+
+    <dialog id="dlg-planner-{{ user.id }}" class="window planner-window" aria-labelledby="dlg-planner-title-{{ user.id }}">
+      <div class="window-head"><h3 id="dlg-planner-title-{{ user.id }}">{{ t("users.planner") }}: {{ user.name }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+      <div class="window-body" id="dlg-planner-body-{{ user.id }}"></div>
+    </dialog>
+
+    <dialog id="dlg-edit-{{ user.id }}" class="window edit-window" aria-labelledby="dlg-edit-title-{{ user.id }}">
+      <div class="window-head"><h3 id="dlg-edit-title-{{ user.id }}">{{ t("users.edit") }}: {{ user.name }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+      <div class="window-body">
+        <form id="user-form-{{ user.id }}" class="dialog-form" method="post" action="/admin/rpc/user.update" hx-post="/admin/rpc/user.update" hx-target="#user-{{ user.id }}" hx-swap="outerHTML" hx-disabled-elt="find button" data-close-window>
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ user.id }}">
+          <label class="field"><input type="text" name="name" required maxlength="80" value="{{ user.name }}" placeholder=" "><span>{{ t("users.nickname") }}</span></label>
+          <label class="field"><input type="text" name="first_name" maxlength="80"{% if user.first_name %} value="{{ user.first_name }}"{% endif %} placeholder=" "><span>{{ t("users.first_name") }}</span></label>
+          <label class="field"><input type="text" name="last_name" maxlength="80"{% if user.last_name %} value="{{ user.last_name }}"{% endif %} placeholder=" "><span>{{ t("users.last_name") }}</span></label>
+
+          <label class="field"><select name="role">{% for r in ["admin", "member", "child", "guest"] %}<option value="{{ r }}"{% if r == user.role %} selected{% endif %}>{{ t("role." ~ r) }}</option>{% endfor %}</select><span class="raised">{{ t("users.role") }}</span></label>
+          <label class="field"><input type="date" name="birth_date" min="1900-01-01"{% if user.birth_date %} value="{{ user.birth_date }}"{% endif %}><span class="raised">{{ t("users.birthday") }}</span></label>
+          <label class="field"><input type="number" name="max_devices" min="0" max="50"{% if user.max_devices is not none %} value="{{ user.max_devices }}"{% endif %} placeholder=" "><span>{{ t("users.device_limit") }}</span></label>
+          <label class="field"><input type="password" name="pin" maxlength="64" autocomplete="new-password" placeholder=" "><span>{{ t("users.new_pin") }}</span></label>
+          <small class="span-all">{% if user.birth_date %}{{ t("users.age_from_birthday") }}: {{ user.max_age }}.{% endif %}</small>
+          <div class="form-error span-all" role="alert"></div>
+        </form>
+      </div>
+      <div class="window-foot">
+        <form method="post" action="/admin/rpc/user.delete" hx-post="/admin/rpc/user.delete" hx-target="#user-{{ user.id }}" hx-swap="outerHTML" hx-confirm="{{ t('users.confirm_delete') }}" class="foot-left">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ user.id }}">
+          <button type="submit" class="link-danger">{{ t("users.delete") }}</button>
+        </form>
+        <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+        <button type="submit" class="btn" form="user-form-{{ user.id }}">{{ t("ui.save") }}</button>
+      </div>
+    </dialog>
+  </td>
+</tr>

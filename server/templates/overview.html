@@ -1,0 +1,19 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "overview" %}
+
+{% block title %}{{ t("overview.title") }}{% endblock %}
+
+{% block content %}
+<h1>{{ t("overview.title") }}</h1>
+<dl class="stats">
+  <div class="stat"><dt>{{ t("overview.unreleased") }}</dt><dd>{{ data.unreleased_books }}</dd></div>
+
+  <div class="stat"><dt>{{ t("overview.unconfirmed") }}</dt><dd>{{ data.unconfirmed_defaults }}</dd></div>
+
+  <div class="stat"><dt>{{ t("overview.import") }}</dt><dd>{% if data.import_enabled %}{{ t("overview.import.unlocked") }}{% else %}{{ t("overview.import.locked") }}{% endif %}</dd></div>
+
+  <div class="stat"><dt>{{ t("overview.users") }}</dt><dd>{{ data.users }}</dd></div>
+
+  <div class="stat"><dt>{{ t("overview.server_id") }}</dt><dd><code>{{ data.server_id }}</code></dd></div>
+</dl>
+{% endblock %}

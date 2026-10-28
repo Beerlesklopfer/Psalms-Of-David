@@ -1,0 +1,10 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "users" %}
+
+{% block title %}{{ t("schedule.title") }}{% endblock %}
+
+{% block content %}
+<h1>{{ t("schedule.title") }}</h1>
+{% include "fragments/schedule_panel.html" %}
+<p><a href="/admin/users">{{ t("schedule.back") }}</a></p>
+{% endblock %}

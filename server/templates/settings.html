@@ -1,0 +1,16 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "settings" %}
+
+{% block title %}{{ t("settings.title") }}{% endblock %}
+
+{% block content %}
+<h1>{{ t("settings.title") }}</h1>
+<nav class="tabs" aria-label="{{ t('settings.title') }}">
+  {% for id in ["import", "roles", "values"] %}
+  <a class="tab" href="/admin/settings?tab={{ id }}"{% if tab == id %} aria-current="page"{% endif %}>{{ t("settings.tab." ~ id) }}</a>
+  {% endfor %}
+</nav>
+{% if tab == "roles" %}{% include "fragments/settings_roles.html" %}
+{% elif tab == "values" %}{% include "fragments/settings_values.html" %}
+{% else %}{% include "fragments/import_settings.html" %}{% endif %}
+{% endblock %}

@@ -1,0 +1,213 @@
+{
+  "@@locale": "en",
+  "appTitle": "Psalm",
+  "navHome": "Home",
+  "navSearch": "Search",
+  "navLibrary": "Library",
+  "greetingMorning": "Good morning",
+  "greetingDay": "Good afternoon",
+  "greetingEvening": "Good evening",
+  "sectionContinue": "Continue listening",
+  "sectionYourBooks": "Your audiobooks",
+  "sectionAuthors": "Authors",
+  "sectionChapters": "Chapters",
+  "discLabel": "CD {number}",
+  "@discLabel": {
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "discTrack": "CD {disc} · {title}",
+  "@discTrack": {
+    "placeholders": {
+      "disc": {
+        "type": "int"
+      },
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "bookMeta": "{discs, plural, =1{1 CD} other{{discs} CDs}} · {tracks, plural, =1{1 track} other{{tracks} tracks}} · {duration}",
+  "@bookMeta": {
+    "placeholders": {
+      "discs": {
+        "type": "int"
+      },
+      "tracks": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "durationHoursMinutes": "{hours} h {minutes} min",
+  "@durationHoursMinutes": {
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "durationMinutes": "{minutes} min",
+  "@durationMinutes": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "percentListened": "{percent}% listened",
+  "@percentListened": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "actionListen": "Listen",
+  "actionContinue": "Continue",
+  "tooltipPlay": "Play",
+  "tooltipPause": "Pause",
+  "tooltipClose": "Close",
+  "tooltipClear": "Clear",
+  "tooltipPrevious": "Previous track",
+  "tooltipNext": "Next track",
+  "tooltipBack10": "Back 10 seconds",
+  "tooltipForward30": "Forward 30 seconds",
+  "tooltipDownloadUnavailable": "Download (not available yet)",
+  "nothingSelected": "Nothing selected",
+  "searchHint": "Title or author",
+  "nothingFound": "Nothing found",
+  "filterBooks": "Audiobooks",
+  "filterMusic": "Music",
+  "noMusicYet": "No music in the library yet",
+  "connectTitle": "Connect to your server",
+  "connectIntro": "Open the administration page of your server, create a pairing code and paste the address below it here.",
+  "pairingAddressLabel": "Pairing address",
+  "deviceNameLabel": "Name of this device",
+  "connectButton": "Connect",
+  "retryButton": "Try again",
+  "useDemoButton": "Try with demo data",
+  "connectErrorAddress": "This is not a pairing address.",
+  "connectErrorCode": "The code is invalid, used or expired. Create a new one.",
+  "connectErrorLimit": "This user has reached the limit of devices.",
+  "connectErrorNetwork": "The server cannot be reached.",
+  "connectErrorCertificate": "The server shows a different certificate than the one in the code.",
+  "connectErrorOther": "Connecting failed.",
+  "openPassage": "Open passage “{text}”",
+  "@openPassage": {
+    "placeholders": {
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "passageNotFound": "No recording has this passage for you right now.",
+  "loadingFile": "Loading…",
+  "pasteButton": "Paste",
+  "qrButton": "Read QR code from a picture",
+  "qrNotFound": "No QR code found in this picture. Try a sharper or larger one.",
+  "qrChooseTitle": "Choose a picture of the QR code",
+  "bookPlayed": "Book: {time} played",
+  "@bookPlayed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "bookTotal": "of {time}",
+  "@bookTotal": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "navSettings": "Settings",
+  "navAbout": "About",
+  "settingsServer": "Server",
+  "settingsDemo": "This is the demo library. No server is connected.",
+  "settingsAddress": "Address",
+  "settingsDevice": "This device",
+  "settingsDisconnect": "Disconnect",
+  "settingsDisconnectHint": "Forgets the pairing with the server on this device. To connect again you need a new pairing code.",
+  "cancel": "Cancel",
+  "aboutVersion": "Version {version}",
+  "aboutDescription": "Psalm plays audiobooks, music and more from your own David server, for the whole family.",
+  "aboutLicense": "Free software under the GNU Affero General Public License, version 3 or later.",
+  "aboutLicenses": "Open-source licences",
+  "@aboutVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "tooltipSpeed": "Playback speed",
+  "aboutLicenseTitle": "License",
+  "aboutScripture": "Scripture",
+  "aboutFamily": "Family",
+  "connectNeedsDavid": "Psalm is only the player. It needs a David server, which holds your audiobooks, music and the family's profiles. Without one, Psalm has nothing to play.",
+  "aboutDavidTitle": "Psalm needs a David server",
+  "aboutDavidText": "Psalm does not come with any content. It plays what a David server offers: audiobooks, music and more from your own library, with a profile for each family member. David is free software that you run yourself, on a home server or a small computer. Whoever runs it creates a pairing code on its admin page; you enter that code here once. Without a David server you can only try the demo data.",
+  "aboutDavidSteps": "1. Run a David server.  2. Open its admin page and choose Pair a device.  3. Scan or paste the code in Psalm.",
+  "tooltipRefresh": "Refresh the library",
+  "tooltipDownload": "Download for listening without the server",
+  "tooltipDownloadCancel": "Stop the download",
+  "tooltipDownloaded": "On this device. Tap to remove.",
+  "downloadedCount": "{done} of {total}",
+  "downloadRemoveTitle": "Remove the download?",
+  "downloadRemoveText": "The files are deleted from this device. The book stays on the server and can be downloaded again.",
+  "downloadRemove": "Remove",
+  "@downloadedCount": {
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "aboutStorage": "Storage on this device",
+  "aboutStorageNone": "No downloads",
+  "aboutStorageUsed": "{size} in {count} downloaded parts",
+  "aboutStorageRemoveTitle": "Remove all downloads?",
+  "@aboutStorageUsed": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "craTitle": "Security information (EU Cyber Resilience Act)",
+  "craManufacturer": "Manufacturer",
+  "craVersion": "Version and licence",
+  "craContact": "Report a security problem to",
+  "craSupport": "Security updates",
+  "craSupportOpen": "Given with new versions. The end of the support period has not been set yet.",
+  "craSupportUntil": "Until {date}",
+  "craData": "Data and network",
+  "craDataText": "Psalm talks only to the David server you paired it with, over a connection that checks the server's certificate. It has no analytics and no advertising. The pairing and the downloaded files stay on this device.",
+  "craComponents": "Software components",
+  "craComponentsText": "The list of all components with their licences.",
+  "@craSupportUntil": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "aboutSource": "Source code"
+}
