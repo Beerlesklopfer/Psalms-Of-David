@@ -60,6 +60,8 @@ pub struct ScanReport {
     pub tracks_removed: usize,
     /// Books released by the rating rule "recommendation".
     pub books_released: usize,
+    /// Albums that could not be imported (they are logged and skipped).
+    pub books_failed: usize,
     /// What the library holds after the run (not what changed): audiobooks, their authors,
     /// albums, their artists and all tracks.
     pub audiobooks: usize,
@@ -77,6 +79,7 @@ impl ScanReport {
         self.tracks_unchanged += other.tracks_unchanged;
         self.tracks_removed += other.tracks_removed;
         self.books_released += other.books_released;
+        self.books_failed += other.books_failed;
         // The totals describe the library, not one folder: the last one to speak wins.
         if other.tracks_total > 0 {
             self.audiobooks = other.audiobooks;
@@ -110,52 +113,112 @@ impl Store {
     pub async fn import_books(&self, books: Vec<FoundBook>) -> Result<ScanReport> {
         let mut report = ScanReport::default();
         for found in books {
-            let book_id = {
-                let txn = self.db.writer.begin().await?;
-                let author_id = upsert_author(&txn, &found.author).await?;
-                let book_id = upsert_book(&txn, author_id, &found).await?;
-                txn.commit().await?;
-                book_id
-            };
-            report.books += 1;
-
-            let existing = existing_tracks(&self.db.reader, book_id).await?;
-            let present: HashSet<&str> = found.tracks.iter().map(|t| t.file.as_str()).collect();
-
-            for chunk in found.tracks.chunks(TRACK_CHUNK) {
-                let txn = self.db.writer.begin().await?;
-                for t in chunk {
-                    match existing.get(&t.file) {
-                        Some(&(mtime, size)) if mtime == t.mtime && size == t.size_bytes => {
-                            report.tracks_unchanged += 1;
-                            continue;
-                        }
-                        Some(_) => report.tracks_updated += 1,
-                        None => report.tracks_added += 1,
-                    }
-                    upsert_track(&txn, book_id, t).await?;
+            // One album that cannot be imported (say, two files with the same track number) must not
+            // stop the others: it is logged, counted and skipped.
+            match self.import_book(&found, &mut report).await {
+                Ok(()) => {}
+                Err(e) => {
+                    tracing::warn!(book = %found.folder, error = %e, "this album could not be imported");
+                    report.books_failed += 1;
                 }
-                txn.commit().await?;
-            }
-
-            let gone: Vec<&String> = existing.keys().filter(|f| !present.contains(f.as_str())).collect();
-            if !gone.is_empty() {
-                let txn = self.db.writer.begin().await?;
-                for file in gone {
-                    let values: [Value; 2] = [book_id.into(), file.clone().into()];
-                    txn.execute_raw(Statement::from_sql_and_values(
-                        DbBackend::Sqlite,
-                        "DELETE FROM track WHERE book_id = ? AND file = ?",
-                        values,
-                    ))
-                    .await?;
-                    report.tracks_removed += 1;
-                }
-                txn.commit().await?;
             }
         }
         Ok(report)
     }
+
+    async fn import_book(&self, found: &FoundBook, report: &mut ScanReport) -> Result<()> {
+        let book_id = {
+            let txn = self.db.writer.begin().await?;
+            let author_id = upsert_author(&txn, &found.author).await?;
+            let book_id = upsert_book(&txn, author_id, found).await?;
+            txn.commit().await?;
+            book_id
+        };
+        report.books += 1;
+
+        let existing = existing_tracks(&self.db.reader, book_id).await?;
+        let present: HashSet<&str> = found.tracks.iter().map(|t| t.file.as_str()).collect();
+        // Rows of files that are no longer there, by (disc, number): a file that was renamed shows up as
+        // a new name for the same track, and its row (with the listening progress on it) is kept.
+        let mut gone: HashMap<(i64, i64), String> = existing_numbers(&self.db.reader, book_id)
+            .await?
+            .into_iter()
+            .filter(|(_, file)| !present.contains(file.as_str()))
+            .collect();
+
+        for chunk in found.tracks.chunks(TRACK_CHUNK) {
+            let txn = self.db.writer.begin().await?;
+            for t in chunk {
+                match existing.get(&t.file) {
+                    Some(&(mtime, size)) if mtime == t.mtime && size == t.size_bytes => {
+                        report.tracks_unchanged += 1;
+                        continue;
+                    }
+                    Some(_) => report.tracks_updated += 1,
+                    None => match gone.remove(&(t.disc, t.number)) {
+                        Some(old_file) => {
+                            rename_track(&txn, book_id, &old_file, t).await?;
+                            report.tracks_updated += 1;
+                            continue;
+                        }
+                        None => report.tracks_added += 1,
+                    },
+                }
+                upsert_track(&txn, book_id, t).await?;
+            }
+            txn.commit().await?;
+        }
+
+        if !gone.is_empty() {
+            let txn = self.db.writer.begin().await?;
+            for file in gone.values() {
+                let values: [Value; 2] = [book_id.into(), file.clone().into()];
+                txn.execute_raw(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    "DELETE FROM track WHERE book_id = ? AND file = ?",
+                    values,
+                ))
+                .await?;
+                report.tracks_removed += 1;
+            }
+            txn.commit().await?;
+        }
+        Ok(())
+    }
+
+}
+
+/// (disc, number) and file of the tracks the database holds for a book.
+async fn existing_numbers(conn: &impl ConnectionTrait, book_id: i64) -> Result<Vec<((i64, i64), String)>> {
+    let values: [Value; 1] = [book_id.into()];
+    let rows = conn
+        .query_all_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT disc, number, file FROM track WHERE book_id = ?",
+            values,
+        ))
+        .await?;
+    rows.iter().map(|r| Ok(((r.try_get_by_index(0)?, r.try_get_by_index(1)?), r.try_get_by_index(2)?))).collect()
+}
+
+/// The file of a track was renamed: the row stays, with its id and the progress that points at it.
+async fn rename_track(conn: &impl ConnectionTrait, book_id: i64, old_file: &str, t: &FoundTrack) -> Result<()> {
+    let values: [Value; 7] = [
+        t.file.clone().into(),
+        t.title.clone().into(),
+        t.duration_ms.into(),
+        t.size_bytes.into(),
+        t.mtime.into(),
+        book_id.into(),
+        old_file.to_owned().into(),
+    ];
+    conn.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE track SET file = ?, title = ?, duration_ms = ?, size_bytes = ?, mtime = ? WHERE book_id = ? AND file = ?",
+        values,
+    ))
+    .await?;
+    Ok(())
 }
 
 async fn existing_tracks(

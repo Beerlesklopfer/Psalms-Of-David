@@ -16,9 +16,17 @@ DynamicUser=yes
 Restart=on-failure
 RestartSec=5
 
-# The library must be readable by the dynamic user (world-readable, or a group
-# added with SupplementaryGroups=). It is only read, never written.
+# The library is read, and written too: uploads are put into it, tags and covers are written
+# into its files and deleted books lose their files. So the dynamic user needs write permission
+# on the folders (an owning group added with SupplementaryGroups=, or an ACL), and the sandbox
+# below must let it through: ProtectSystem=strict makes everything but the state directory
+# read-only. The default library folder is open; for every other folder of the import settings
+# (and for a library below /home) add a drop-in with `systemctl edit david`:
+#   [Service]
+#   ReadWritePaths=/srv/music /home/you/Hörbücher
+#   ProtectHome=false      # only if a folder is below /home
 ProtectSystem=strict
+ReadWritePaths=-/srv/david
 ProtectHome=read-only
 PrivateTmp=yes
 NoNewPrivileges=yes

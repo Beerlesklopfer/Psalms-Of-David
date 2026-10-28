@@ -73,6 +73,11 @@ assets = [
     ["target/release/david", "usr/bin/david", "755"],
     ["packaging/david-deb.service", "usr/lib/systemd/system/david.service", "644"],
     ["../LICENSE", "usr/share/doc/david-server/LICENSE", "644"],
+    ["packaging/io.onesimus.david-admin.desktop", "usr/share/applications/io.onesimus.david-admin.desktop", "644"],
+    ["packaging/icons/hicolor/scalable/apps/io.onesimus.david.svg", "usr/share/icons/hicolor/scalable/apps/io.onesimus.david.svg", "644"],
+    ["packaging/icons/hicolor/48x48/apps/io.onesimus.david.png", "usr/share/icons/hicolor/48x48/apps/io.onesimus.david.png", "644"],
+    ["packaging/icons/hicolor/128x128/apps/io.onesimus.david.png", "usr/share/icons/hicolor/128x128/apps/io.onesimus.david.png", "644"],
+    ["packaging/icons/hicolor/256x256/apps/io.onesimus.david.png", "usr/share/icons/hicolor/256x256/apps/io.onesimus.david.png", "644"],
 ]
 
 # RPM package: `cargo generate-rpm` (see scripts/package.sh).
@@ -84,4 +89,9 @@ assets = [
     { source = "target/release/david", dest = "/usr/bin/david", mode = "755" },
     { source = "packaging/david-deb.service", dest = "/usr/lib/systemd/system/david.service", mode = "644" },
     { source = "../LICENSE", dest = "/usr/share/licenses/david-server/LICENSE", mode = "644", doc = false },
+    { source = "packaging/io.onesimus.david-admin.desktop", dest = "/usr/share/applications/io.onesimus.david-admin.desktop", mode = "644" },
+    { source = "packaging/icons/hicolor/scalable/apps/io.onesimus.david.svg", dest = "/usr/share/icons/hicolor/scalable/apps/io.onesimus.david.svg", mode = "644" },
+    { source = "packaging/icons/hicolor/48x48/apps/io.onesimus.david.png", dest = "/usr/share/icons/hicolor/48x48/apps/io.onesimus.david.png", mode = "644" },
+    { source = "packaging/icons/hicolor/128x128/apps/io.onesimus.david.png", dest = "/usr/share/icons/hicolor/128x128/apps/io.onesimus.david.png", mode = "644" },
+    { source = "packaging/icons/hicolor/256x256/apps/io.onesimus.david.png", dest = "/usr/share/icons/hicolor/256x256/apps/io.onesimus.david.png", mode = "644" },
 ]

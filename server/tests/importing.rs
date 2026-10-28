@@ -176,3 +176,35 @@ async fn a_root_that_has_gone_missing_is_skipped() {
     let report = store.run_import().await.expect("one missing disk must not stop the import");
     assert_eq!(report.books, 1);
 }
+
+#[tokio::test]
+async fn a_renamed_file_keeps_its_track_and_one_bad_album_does_not_stop_the_rest() {
+    let (_dir, store) = open().await;
+    let first = common::book("Ken Follett", "Winter der Welt", &[3]);
+    store.import_books(vec![first.clone()]).await.unwrap();
+    let book = store.find_book("Ken Follett/Winter der Welt").await.unwrap().unwrap();
+    let before: Vec<(i64, String)> = store.tracks_of(book.id).await.unwrap().into_iter().map(|t| (t.id, t.file)).collect();
+    assert_eq!(before.len(), 3);
+
+    // The files are renamed (the same discs and numbers under other names), as after fixing a typo.
+    let mut renamed = first.clone();
+    for t in &mut renamed.tracks {
+        t.file = t.file.replace("Winter der Welt", "Winter der Weld");
+        t.mtime += 1;
+    }
+    let report = store.import_books(vec![renamed]).await.unwrap();
+    assert_eq!((report.tracks_added, report.tracks_removed, report.books_failed), (0, 0, 0), "{report:?}");
+    assert_eq!(report.tracks_updated, 3);
+    let after: Vec<(i64, String)> = store.tracks_of(book.id).await.unwrap().into_iter().map(|t| (t.id, t.file)).collect();
+    assert_eq!(after.iter().map(|(id, _)| *id).collect::<Vec<_>>(), before.iter().map(|(id, _)| *id).collect::<Vec<_>>(), "the rows stay");
+    assert!(after.iter().all(|(_, f)| f.contains("Weld")));
+
+    // An album with two files of the same number cannot be imported; the next one still is.
+    let mut broken = common::book("Dania König", "Versprochen", &[2]);
+    broken.tracks[1].number = broken.tracks[0].number;
+    let good = common::book("Ken Follett", "Kinder der Freiheit", &[2]);
+    let report = store.import_books(vec![broken, good]).await.unwrap();
+    assert_eq!(report.books_failed, 1);
+    assert!(store.find_book("Ken Follett/Kinder der Freiheit").await.unwrap().is_some());
+    assert_eq!(store.tracks_of(store.find_book("Ken Follett/Kinder der Freiheit").await.unwrap().unwrap().id).await.unwrap().len(), 2);
+}

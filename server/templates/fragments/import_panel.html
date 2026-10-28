@@ -39,6 +39,7 @@
     <div class="stat"><dt>{{ t("import.report.removed") }}</dt><dd>{{ report.tracks_removed }}</dd></div>
     <div class="stat"><dt>{{ t("import.report.released") }}</dt><dd>{{ report.books_released }}</dd></div>
   </dl>
+  {% if report.books_failed %}<p class="message error">{{ t("import.report.failed") }}: {{ report.books_failed }}</p>{% endif %}
   <p><a class="btn outline" href="/admin/books">{{ icon("books") }}<span>{{ t("import.to_books") }}</span></a></p>
   {% endif %}
 </section>

@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Opens the administration pages of the David server of this machine in the browser. The server
+# listens on 127.0.0.1:8484 unless it was started with another --listen address.
+[Desktop Entry]
+Type=Application
+Name=David Administration
+Name[de]=David Verwaltung
+GenericName=Audiobook and music server
+Comment=Opens the administration pages of the David server in the browser
+Comment[de]=Öffnet die Verwaltungsseiten des David-Servers im Browser
+Exec=xdg-open http://127.0.0.1:8484/admin/
+Icon=io.onesimus.david
+Terminal=false
+Categories=Settings;
+Keywords=david;audiobook;hörbuch;server;admin;

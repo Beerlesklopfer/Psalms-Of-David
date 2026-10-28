@@ -36,3 +36,19 @@ Nothing is signed unless the secrets exist; the build then still works and says 
 
 Not verified here: the workflow has not run on GitHub; the Linux client packages need `nfpm` (downloaded in
 CI), which could not be tried on this machine.
+
+## The David service and its folders
+
+The packaged unit (`server/packaging/david-deb.service`) runs David as a dynamic user in a sandbox
+(`ProtectSystem=strict`, `ProtectHome=read-only`). David writes into the library: uploads are put there, tags and
+covers are written into the files, deleted books lose their files. Two things must then be true for every library
+folder: the dynamic user has write permission on it (an owning group added with `SupplementaryGroups=`, or an ACL),
+and the sandbox lets the write through. The unit opens `/srv/david` (`ReadWritePaths=-/srv/david`); for other
+folders, and for a library below `/home` (add `ProtectHome=false`), use a drop-in: `systemctl edit david`.
+
+## Desktop entries
+
+- `app/linux/io.onesimus.psalm.desktop`: the Psalm launcher; also registers the `david://` links. Shipped in the bundle
+  and in the `.deb`; `install-desktop-entry.sh` registers it for the current user.
+- `server/packaging/io.onesimus.david-admin.desktop`: "David Administration", opens `http://127.0.0.1:8484/admin/` in
+  the browser (change `Exec=` if the server listens elsewhere). Shipped in David's `.deb` and `.rpm` with its icons.
