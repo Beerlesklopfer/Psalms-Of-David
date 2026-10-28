@@ -514,6 +514,8 @@ impl AdminUi {
                 users => Serde(users),
                 devices => Serde(devices),
                 address => default_address,
+                // Only an address a device cannot reach (127.0.0.1) needs the warning.
+                loopback => default_address.parse::<std::net::SocketAddr>().is_ok_and(|a| a.ip().is_loopback()),
                 tls => tls,
                 // Our own fragment, already escaped where it needs to be.
                 result => minijinja::Value::from_safe_string(result.unwrap_or_default()),

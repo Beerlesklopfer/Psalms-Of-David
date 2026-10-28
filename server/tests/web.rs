@@ -1832,6 +1832,7 @@ async fn the_pairing_page_has_a_window_for_new_codes_and_a_tidy_device_list() {
     let o = Opts { cookie: Some(&cookie), ..Default::default() };
 
     let page = send(&a, get("/admin/pairing", &o)).await.body;
+    assert!(page.contains("cannot reach 127.0.0.1"), "a loopback address gets the warning");
     assert!(page.contains("<h1>Pair a device</h1>") && page.contains("data-dialog=\"dlg-pair\"") && page.contains("<dialog id=\"dlg-pair\""));
     assert!(page.contains("data-close>Cancel</button>") && page.contains("form=\"pair-form\">Create code</button>") && page.contains("id=\"pair-body\"") && page.contains("id=\"pair-foot\"") && !page.contains("data-close-window"), "the code replaces the form inside the same window");
     assert!(page.contains("<strong>Annas Phone</strong>") && page.contains("badge\">shared") && page.contains("badge ok\">Active"));
@@ -1928,8 +1929,16 @@ async fn the_tags_window_writes_the_album_tags_and_the_cover_into_every_file() {
 }
 
 fn upload_request(csrf: &str, cookie: &str, file_name: &str, bytes: &[u8]) -> Request<Body> {
+    upload_request_of(csrf, cookie, file_name, bytes, None)
+}
+
+/// Like `upload_request`, with the choice "audiobooks or music" (a field before the file, as the form sends it).
+fn upload_request_of(csrf: &str, cookie: &str, file_name: &str, bytes: &[u8], kind: Option<&str>) -> Request<Body> {
     let boundary = "XBOUNDARYX";
     let mut body = Vec::new();
+    if let Some(kind) = kind {
+        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"kind\"\r\n\r\n{kind}\r\n").as_bytes());
+    }
     body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"archive\"; filename=\"{file_name}\"\r\nContent-Type: application/octet-stream\r\n\r\n").as_bytes());
     body.extend_from_slice(bytes);
     body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
@@ -2150,4 +2159,190 @@ async fn music_and_narrators_are_imported_and_shown() {
     assert!(w.contains("name=\"narrator\"") && w.contains("value=\"Reinhard Kuhnert\"") && w.contains(">Author<"));
     let w = send(&a, get(&format!("/admin/rpc/book.tags_form?id={}", album.id), &o)).await.body;
     assert!(!w.contains("name=\"narrator\"") && w.contains(">Artist<"));
+}
+
+#[tokio::test]
+async fn an_archive_of_music_goes_into_the_music_folder_and_the_import_page_lists_it() {
+    let tools = ["7z", "zip"].iter().all(|t| std::process::Command::new(t).arg("--help").output().is_ok());
+    if !tools || !common::audio::ffmpeg_available() {
+        eprintln!("skipped: 7z, zip or ffmpeg is missing");
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let books = tempfile::TempDir::new().unwrap();
+    let music = tempfile::TempDir::new().unwrap();
+    let (b, m) = (std::fs::canonicalize(books.path()).unwrap().to_string_lossy().into_owned(), std::fs::canonicalize(music.path()).unwrap().to_string_lossy().into_owned());
+
+    // Only an audiobook folder so far: a music archive has nowhere to go and says so.
+    send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &b), ("rule", "manual")]), &o)).await;
+    send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
+    let work = tempfile::TempDir::new().unwrap();
+    let album = work.path().join("x");
+    common::audio::make_mp3(&album.join("01 Pläne.mp3"), &[("artist", "Dania König"), ("album", "Versprochen")]);
+    common::audio::make_mp3(&album.join("02 Ewig.mp3"), &[("artist", "Dania König"), ("album", "Versprochen")]);
+    assert!(std::process::Command::new("zip").current_dir(work.path()).args(["-qr", "v.zip", "x"]).status().unwrap().success());
+    let bytes = std::fs::read(work.path().join("v.zip")).unwrap();
+    let r = send(&a, upload_request_of(&csrf, &cookie, "v.zip", &bytes, Some("music"))).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let jobs = wait_for_uploads(&a).await;
+    assert_eq!(jobs[0].state, "failed");
+    assert!(jobs[0].message.contains("no music folder"), "{}", jobs[0].message);
+    assert_eq!(jobs[0].kind, "music");
+
+    // With a music folder it is unpacked there, by the artist and album of the tags, and imported as music.
+    send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &b), ("music_roots", &m), ("rule", "manual")]), &o)).await;
+    let r = send(&a, upload_request_of(&csrf, &cookie, "v.zip", &bytes, Some("music"))).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let jobs = loop {
+        let jobs = wait_for_uploads(&a).await;
+        if jobs.len() == 2 {
+            break jobs;
+        }
+    };
+    assert_eq!(jobs[0].state, "done", "{}", jobs[0].message);
+    assert!(music.path().join("Dania König/Versprochen/01 Pläne.mp3").is_file());
+    assert!(!books.path().join("Dania König").exists(), "nothing went into the audiobook folder");
+    let rows = a.store.admin_book_rows().await.unwrap();
+    assert!(rows.iter().any(|r| r.title == "Versprochen" && r.kind == "music" && r.tracks == 2), "{rows:?}");
+
+    // The import page lists both kinds of folder; the upload window asks which one.
+    let page = send(&a, get("/admin/import", &Opts { cookie: Some(&cookie), ..Default::default() })).await.body;
+    let leaf = music.path().file_name().unwrap().to_string_lossy().into_owned();
+    assert!(page.contains("Music folders") && page.contains(&leaf), "the music folder is on the import page");
+    assert!(page.contains("name=\"kind\"") && page.contains("value=\"music\""));
+}
+
+#[tokio::test]
+async fn nested_import_folders_and_an_unreadable_folder_do_not_stop_the_import() {
+    if !common::audio::ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    use std::os::unix::fs::PermissionsExt;
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+
+    // The layout of a real server: the audiobooks lie inside the music folder (/srv/Musik/Audiobooks).
+    let music = tempfile::TempDir::new().unwrap();
+    let books = music.path().join("Audiobooks");
+    common::audio::make_mp3(&books.join("Ken Follett/Winter der Welt/a1.mp3"), &[]);
+    common::audio::make_mp3(&music.path().join("Dania König/Versprochen/01.mp3"), &[("album", "Versprochen")]);
+    // A folder the service may not read.
+    let locked = music.path().join("Locked Artist");
+    std::fs::create_dir_all(locked.join("Album")).unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    let canon = |p: &std::path::Path| std::fs::canonicalize(p).unwrap().to_string_lossy().into_owned();
+    let (b, m) = (canon(&books), canon(music.path()));
+    // The audiobooks inside the music folder are named as a left-out folder, as in the settings: `!/path`.
+    let r = send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &b), ("music_roots", &format!("{m}\n!{b}")), ("rule", "manual")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
+    let r = send(&a, post("/admin/rpc/import.run", "", &o)).await;
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(r.status, StatusCode::OK, "an unreadable place is no reason for an error page: {}", r.body);
+
+    let rows = a.store.admin_book_rows().await.unwrap();
+    let audiobook = rows.iter().find(|b| b.title == "Winter der Welt").expect("the audiobook is imported");
+    assert_eq!(audiobook.kind, "audiobook", "it is not taken for music because it lies inside the music folder");
+    let album = rows.iter().find(|b| b.title == "Versprochen").expect("the album is imported");
+    assert_eq!(album.kind, "music");
+    assert!(!rows.iter().any(|b| b.author == "Audiobooks"), "the audiobook folder is not read as an artist: {rows:?}");
+
+    // What could not be read is told, with the reason (not when the tests run as root, which can read it).
+    if !running_as_root() {
+        assert!(r.body.contains("Locked Artist") && r.body.contains("no permission to read it"), "{}", r.body);
+    }
+}
+
+fn running_as_root() -> bool {
+    std::fs::read_dir("/root").is_ok()
+}
+
+#[tokio::test]
+async fn named_folders_are_left_out_of_the_import() {
+    if !common::audio::ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let lib = tempfile::TempDir::new().unwrap();
+    common::audio::make_mp3(&lib.path().join("Ken Follett/Winter der Welt/a1.mp3"), &[]);
+    common::audio::make_mp3(&lib.path().join("Trash/Old Album/a1.mp3"), &[]);
+    common::audio::make_mp3(&lib.path().join("Ken Follett/Not Mine/a1.mp3"), &[]);
+    let root = std::fs::canonicalize(lib.path()).unwrap().to_string_lossy().into_owned();
+    let (trash, notmine) = (format!("{root}/Trash"), format!("{root}/Ken Follett/Not Mine"));
+
+    // Relative paths are refused; absolute ones, also of folders at the book level, are kept.
+    let r = send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &format!("{root}\n!Trash")), ("rule", "manual")]), &o)).await;
+    assert!(r.status == StatusCode::UNPROCESSABLE_ENTITY || r.status == StatusCode::CONFLICT, "{}", r.status);
+    let r = send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &format!("{root}\n!{trash}\n!{notmine}\n")), ("rule", "manual")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(r.body.contains("left out") && r.body.contains("Trash") && r.body.contains("Not Mine"));
+    assert!(r.body.contains("One folder per line") && r.body.contains("a ! in front"), "the syntax is written into the window");
+    assert!(r.body.contains("!{trash}".replace("{trash}", &trash.replace('/', "&#x2f;")).as_str()), "the dialog shows them again as ! lines");
+
+    send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
+    send(&a, post("/admin/rpc/import.run", "", &o)).await;
+    let titles: Vec<String> = a.store.admin_book_rows().await.unwrap().into_iter().map(|b| b.title).collect();
+    assert_eq!(titles, vec!["Winter der Welt".to_owned()], "only what is not left out");
+
+    // Taking the entries away brings them back at the next import.
+    send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &root), ("rule", "manual")]), &o)).await;
+    send(&a, post("/admin/rpc/import.run", "", &o)).await;
+    assert_eq!(a.store.admin_book_rows().await.unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn albums_are_found_at_any_depth_with_disc_folders_and_without_hidden_ones() {
+    if !common::audio::ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let lib = tempfile::TempDir::new().unwrap();
+    let mp3 = |path: &str| common::audio::make_mp3(&lib.path().join(path), &[]);
+    mp3("Ken Follett/Winter der Welt/01.mp3"); // two levels, as ever
+    mp3("JÖRG/Dania König/Versprochen/01.mp3"); // sorted by owner: three levels
+    mp3("JÖRG/Dania König/Versprochen/02.mp3");
+    mp3("Musik/Rock/1998/Band/Album/01.mp3"); // sorted by genre and year: five levels
+    mp3("Opera/Aida/CD 1/01.mp3"); // a disc folder per CD, no audio files in Aida itself
+    mp3("Opera/Aida/CD 2/01.mp3");
+    mp3("Loose Folder/01.mp3"); // directly below the import folder: no folder above it
+    mp3(".recyclebin/Gone/Old/01.mp3"); // hidden: never read
+    mp3("Ken Follett/@eaDir/Thumbs/01.mp3"); // NAS bookkeeping: never read
+    std::fs::create_dir_all(lib.path().join("Empty Folder")).unwrap();
+    let root = std::fs::canonicalize(lib.path()).unwrap().to_string_lossy().into_owned();
+    send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &root), ("rule", "manual")]), &o)).await;
+    send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
+    let r = send(&a, post("/admin/rpc/import.run", "", &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+
+    let rows = a.store.admin_book_rows().await.unwrap();
+    let find = |title: &str| rows.iter().find(|b| b.title == title).unwrap_or_else(|| panic!("{title} missing in {rows:?}"));
+    // Title: the folder; author: the folder above it.
+    assert_eq!((find("Winter der Welt").author.as_str(), find("Winter der Welt").tracks), ("Ken Follett", 1));
+    assert_eq!((find("Versprochen").author.as_str(), find("Versprochen").tracks), ("Dania König", 2));
+    assert_eq!(find("Album").author, "Band");
+    // Disc folders make one book with two discs.
+    let aida = find("Aida");
+    assert_eq!((aida.author.as_str(), aida.tracks, aida.discs), ("Opera", 2, 2));
+    // A folder right below the import folder has no folder above: the artist comes from the tags, else it is unknown.
+    assert_eq!(find("Loose Folder").author, "Unknown");
+    assert!(!rows.iter().any(|b| b.title == "Old" || b.title == "Thumbs"), "hidden and NAS folders are not read: {rows:?}");
+
+    // The identity of a book is its path, so files are found again by it (the tags window finds the files).
+    let id = find("Versprochen").id;
+    let w = send(&a, get(&format!("/admin/rpc/book.tags_form?id={id}"), &o)).await;
+    assert_eq!(w.status, StatusCode::OK, "the files of a deep album are found: {}", w.body);
+
+    // A folder with nothing to import says so, with the reason.
+    assert!(r.body.contains("Empty Folder") && r.body.contains("nothing to import here"), "{}", r.body);
 }

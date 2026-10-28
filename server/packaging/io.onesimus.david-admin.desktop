@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Opens the administration pages of the David server of this machine in the browser. The server
-# listens on 127.0.0.1:8484 unless it was started with another --listen address.
+# Opens the administration pages of the David server of this machine in the browser. The service
+# listens on every interface and speaks TLS with its own certificate (the browser warns once);
+# change the address here if the server was set up differently.
 [Desktop Entry]
 Type=Application
 Name=David Administration
@@ -9,7 +10,7 @@ Name[de]=David Verwaltung
 GenericName=Audiobook and music server
 Comment=Opens the administration pages of the David server in the browser
 Comment[de]=Öffnet die Verwaltungsseiten des David-Servers im Browser
-Exec=xdg-open http://127.0.0.1:8484/admin/
+Exec=xdg-open https://localhost:8484/admin/
 Icon=io.onesimus.david
 Terminal=false
 Categories=Settings;

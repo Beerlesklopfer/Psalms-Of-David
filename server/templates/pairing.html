@@ -19,10 +19,10 @@
     <form id="pair-form" class="dialog-form" method="post" action="/admin/rpc/pairing.create"
           hx-post="/admin/rpc/pairing.create" hx-target="#pair-body" hx-swap="innerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <label class="field"><select name="id" required>{% for user in users %}<option value="{{ user.id }}">{{ user.name }} ({{ t("role." ~ user.role) }})</option>{% endfor %}</select><span class="raised">{{ t("pairing.user") }}</span></label>
-      <label class="field"><input type="text" name="address" required maxlength="255" value="{{ address }}" placeholder=" "><span>{{ t("pairing.address") }}</span></label>
+      <label class="field span-all"><select name="id" required>{% for user in users %}<option value="{{ user.id }}">{{ user.name }} ({{ t("role." ~ user.role) }})</option>{% endfor %}</select><span class="raised">{{ t("pairing.user") }}</span></label>
+      <label class="field span-all"><input type="text" name="address" required maxlength="255" value="{{ address }}" placeholder=" "><span>{{ t("pairing.address") }}</span></label>
       <label class="check span-all"><input type="checkbox" name="shared" value="1"> <span>{{ t("pairing.shared") }}</span></label>
-      <small class="span-all">{{ t("pairing.address_hint") }}</small>
+      {% if loopback %}<small class="span-all warn">{{ t("pairing.address_hint") }}</small>{% else %}<small class="span-all">{{ t("pairing.address_ok") }}</small>{% endif %}
       <div class="form-error span-all" role="alert"></div>
     </form>
   </div>

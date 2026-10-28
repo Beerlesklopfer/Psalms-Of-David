@@ -113,6 +113,8 @@ pub struct AdminBookRow {
 pub struct UploadJob {
     pub id: i64,
     pub name: String,
+    /// `audiobook` or `music`.
+    pub kind: String,
     pub size_bytes: i64,
     /// `queued`, `working`, `done` or `failed`.
     pub state: String,
@@ -658,16 +660,25 @@ impl Store {
         Ok(res.rows_affected() > 0)
     }
 
+    /// Ends every session of a user (web and devices stay paired, only the sign-ins end).
+    pub async fn end_sessions_of(&self, user_id: i64) -> Result<()> {
+        self.db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "DELETE FROM session WHERE user_id = ?", [Value::from(user_id)]))
+            .await?;
+        Ok(())
+    }
+
     // Upload queue
 
-    pub async fn create_upload_job(&self, name: &str, user_id: i64) -> Result<i64> {
+    pub async fn create_upload_job(&self, name: &str, user_id: i64, kind: &str) -> Result<i64> {
         let row = self
             .db
             .writer
             .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
-                "INSERT INTO upload_job (name, created_by, created_at) VALUES (?, ?, ?) RETURNING id",
-                [Value::from(name.to_owned()), Value::from(user_id), Value::from(now_ms())],
+                "INSERT INTO upload_job (name, created_by, created_at, kind) VALUES (?, ?, ?, ?) RETURNING id",
+                [Value::from(name.to_owned()), Value::from(user_id), Value::from(now_ms()), Value::from(kind.to_owned())],
             ))
             .await?
             .ok_or_else(|| Error::WriteFailed("upload insert returned no row".into()))?;
@@ -704,10 +715,19 @@ impl Store {
     pub async fn upload_jobs(&self, limit: u64) -> Result<Vec<UploadJob>> {
         let stmt = Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "SELECT id, name, size_bytes, state, message, created_at FROM upload_job ORDER BY id DESC LIMIT ?",
+            "SELECT id, name, kind, size_bytes, state, message, created_at FROM upload_job ORDER BY id DESC LIMIT ?",
             [Value::from(limit as i64)],
         );
         Ok(UploadJob::find_by_statement(stmt).all(&self.db.reader).await?)
+    }
+
+    pub async fn upload_kind(&self, id: i64) -> Result<String> {
+        let row = self
+            .db
+            .reader
+            .query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT kind FROM upload_job WHERE id = ?", [Value::from(id)]))
+            .await?;
+        Ok(row.map(|r| r.try_get_by_index::<String>(0)).transpose()?.unwrap_or_else(|| "audiobook".to_owned()))
     }
 
     /// After a restart: jobs that were being worked on start again; returns all that wait, oldest first.

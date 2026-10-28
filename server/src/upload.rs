@@ -97,13 +97,19 @@ async fn process(store: &Store, dir: &Path, id: i64) -> Result<String, String> {
         .ok_or_else(|| "the uploaded file is gone".to_owned())?;
 
     let state = store.import_state().await.map_err(|e| e.to_string())?;
-    let target_root = state.roots.iter().map(PathBuf::from).find(|p| p.is_dir()).unwrap_or_default();
-    let root = state
-        .roots
+    let target_root = if store.upload_kind(id).await.map_err(|e| e.to_string())? == "music" { &state.music_roots } else { &state.roots }
         .iter()
         .map(PathBuf::from)
         .find(|p| p.is_dir())
-        .ok_or_else(|| "there is no import folder; set one in the settings first".to_owned())?;
+        .unwrap_or_default();
+    // Audiobooks go into the first audiobook folder, music into the first music folder.
+    let music = store.upload_kind(id).await.map_err(|e| e.to_string())? == "music";
+    let (folders, what) = if music { (&state.music_roots, "music folder") } else { (&state.roots, "import folder") };
+    let root = folders
+        .iter()
+        .map(PathBuf::from)
+        .find(|p| p.is_dir())
+        .ok_or_else(|| format!("there is no {what}; set one in the settings first"))?;
 
     let unpacked = job_dir.join("unpacked");
     // Unpacking needs room next to the archive, and the albums need room in the import folder

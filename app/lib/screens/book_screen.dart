@@ -45,6 +45,10 @@ class BookScreen extends StatelessWidget {
                 book.author,
                 style: text.titleMedium?.copyWith(color: cs.primary),
               ),
+              if (book.narrator != null && book.narrator!.trim().isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(book.kind == 'music' ? l.artistLabel(book.narrator!) : l.readBy(book.narrator!), style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+              ],
               const SizedBox(height: 4),
               Text(
                 l.bookMeta(book.discs, book.tracks.length, formatTotal(l, book.total)),

@@ -703,6 +703,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Source code'**
   String get aboutSource;
+
+  /// No description provided for @filterVideos.
+  ///
+  /// In en, this message translates to:
+  /// **'Videos'**
+  String get filterVideos;
+
+  /// No description provided for @filterEbooks.
+  ///
+  /// In en, this message translates to:
+  /// **'E-Books'**
+  String get filterEbooks;
+
+  /// No description provided for @comingSoonTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available yet'**
+  String get comingSoonTitle;
+
+  /// No description provided for @comingSoonVideos.
+  ///
+  /// In en, this message translates to:
+  /// **'Videos are planned. David does not manage them yet, so there is nothing to show here.'**
+  String get comingSoonVideos;
+
+  /// No description provided for @comingSoonEbooks.
+  ///
+  /// In en, this message translates to:
+  /// **'E-books and PDF files are planned. David does not manage them yet, so there is nothing to show here.'**
+  String get comingSoonEbooks;
+
+  /// No description provided for @noAudiobooksYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No audiobooks in the library yet'**
+  String get noAudiobooksYet;
+
+  /// No description provided for @readBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Read by {name}'**
+  String readBy(String name);
+
+  /// No description provided for @filterAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All'**
+  String get filterAll;
+
+  /// No description provided for @sectionArtists.
+  ///
+  /// In en, this message translates to:
+  /// **'Artists'**
+  String get sectionArtists;
+
+  /// No description provided for @sectionAuthorsAndArtists.
+  ///
+  /// In en, this message translates to:
+  /// **'Authors and artists'**
+  String get sectionAuthorsAndArtists;
+
+  /// No description provided for @artistLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Artist: {name}'**
+  String artistLabel(String name);
+
+  /// No description provided for @sectionYourMusic.
+  ///
+  /// In en, this message translates to:
+  /// **'Your music'**
+  String get sectionYourMusic;
+
+  /// No description provided for @craEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact'**
+  String get craEmail;
+
+  /// No description provided for @craWebsite.
+  ///
+  /// In en, this message translates to:
+  /// **'Website'**
+  String get craWebsite;
 }
 
 class _AppLocalizationsDelegate

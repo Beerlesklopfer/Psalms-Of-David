@@ -492,3 +492,14 @@ table.queue { width: 100%; }
 /* The line at the foot of every page: where the source code is (the AGPL asks for it) */
 .site-foot { text-align: center; color: var(--muted); font-size: .85rem; padding: 1.5rem 1rem 2rem; }
 .site-foot a { color: inherit; }
+
+ul.folders li.left-out { opacity: .75; border-style: dashed; }
+ul.folders li.left-out small { margin-left: auto; color: var(--muted); }
+
+/* The syntax help in the folders window */
+.syntax { border: 1px solid var(--line); border-radius: 8px; padding: .6rem .9rem; background: color-mix(in srgb, var(--fg) 4%, var(--bg)); }
+.syntax dl { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; margin: .4rem 0; }
+.syntax dt, .syntax dd { margin: 0; }
+.syntax small { color: var(--muted); }
+
+.dialog-form small.warn { color: var(--err); }

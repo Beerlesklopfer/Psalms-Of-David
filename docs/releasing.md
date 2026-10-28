@@ -43,8 +43,32 @@ The packaged unit (`server/packaging/david-deb.service`) runs David as a dynamic
 (`ProtectSystem=strict`, `ProtectHome=read-only`). David writes into the library: uploads are put there, tags and
 covers are written into the files, deleted books lose their files. Two things must then be true for every library
 folder: the dynamic user has write permission on it (an owning group added with `SupplementaryGroups=`, or an ACL),
-and the sandbox lets the write through. The unit opens `/srv/david` (`ReadWritePaths=-/srv/david`); for other
-folders, and for a library below `/home` (add `ProtectHome=false`), use a drop-in: `systemctl edit david`.
+and the sandbox lets the write through. The library lives in the service's state directory, `/var/lib/david/library` (`StateDirectory=david david/library`):
+it belongs to the service user and is writable, so nothing more is needed there; put albums into it with the
+upload page or `rsync` as root and set it as the import folder. For other folders, and for a library below `/home`
+(add `ProtectHome=false`), use a drop-in: `systemctl edit david`.
+
+### Network
+
+The packaged unit sets `DAVID_LISTEN=0.0.0.0:8484`: the server listens on every interface and speaks TLS with a
+certificate it makes itself (the pairing code carries the fingerprint, so the apps accept only this server; browsers
+warn once). Open port 8484 in the firewall. To keep it on the machine, for example behind nginx with a real
+certificate, set `DAVID_LISTEN=127.0.0.1:8484` in a drop-in. The pairing page offers the address of the machine in the
+network, not `0.0.0.0`. The "David Administration" menu entry opens `https://localhost:8484/admin/`.
+
+### First start
+
+`--library` exists only in development builds, so the unit starts plain `david run`; the folders to import are set in
+the admin pages (Settings, Import; `/var/lib/david/library` is the one the unit creates). Before the first start create the first administrator. With a dynamic user
+this has to happen in the service's state directory (not tried on a real machine yet):
+
+    sudo systemctl stop david
+    sudo DAVID_DATA_DIR=/var/lib/private/david /usr/bin/david init --name Papa     # asks for a PIN
+    sudo chown -R --reference=/var/lib/private/david /var/lib/private/david        # the files go to the service user
+    sudo systemctl start david
+
+A forgotten PIN or password is replaced with `david reset-pin --name <name>` (same data directory as above); the user
+is signed out everywhere and a lock after wrong attempts is lifted.
 
 ## Desktop entries
 

@@ -6,7 +6,7 @@
     <tbody>
     {% for job in jobs %}
     <tr>
-      <td><strong>{{ job.name }}</strong>{% if job.message %}<br><small>{{ job.message }}</small>{% endif %}</td>
+      <td><strong>{{ job.name }}</strong> <span class="badge">{{ t("upload.kind." ~ job.kind) }}</span>{% if job.message %}<br><small>{{ job.message }}</small>{% endif %}</td>
       <td data-label="{{ t('upload.size') }}">{{ (job.size_bytes / 1048576) | round(1) }} MB</td>
       <td data-label="{{ t('upload.state') }}"><span class="badge {% if job.state == 'done' %}ok{% elif job.state == 'failed' %}muted{% endif %}">{{ t("upload.state." ~ job.state) }}</span></td>
     </tr>

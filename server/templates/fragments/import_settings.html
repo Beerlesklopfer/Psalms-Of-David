@@ -17,6 +17,7 @@
   {% if state.roots %}
   <ul class="folders">
     {% for root in state.roots %}<li>{{ icon("folder") }}<code>{{ root }}</code></li>{% endfor %}
+    {% for e in state.excludes %}<li class="left-out">{{ icon("close") }}<code>{{ e }}</code><small>{{ t("import.left_out") }}</small></li>{% endfor %}
   </ul>
   <p class="hint">{{ t("import.roots_hint") }}</p>
   {% else %}
@@ -27,6 +28,7 @@
   {% if state.music_roots %}
   <ul class="folders">
     {% for root in state.music_roots %}<li>{{ icon("music") }}<code>{{ root }}</code></li>{% endfor %}
+    {% for e in state.music_excludes %}<li class="left-out">{{ icon("close") }}<code>{{ e }}</code><small>{{ t("import.left_out") }}</small></li>{% endfor %}
   </ul>
   {% else %}
   <p class="hint">{{ t("import.no_music_folders") }}</p>
@@ -54,10 +56,20 @@
       <form id="import-form" class="dialog-form" method="post" action="/admin/rpc/import.save_criteria"
             hx-post="/admin/rpc/import.save_criteria" hx-target="#import-settings" hx-swap="outerHTML" hx-disabled-elt="find button" data-close-window>
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        <label class="field span-all"><textarea name="roots" rows="4" spellcheck="false" placeholder=" ">{{ state.roots | join("\n") }}</textarea><span>{{ t("import.roots") }}</span></label>
+        <label class="field span-all"><textarea name="roots" rows="4" spellcheck="false" placeholder=" ">{{ state.roots | join("\n") }}{% for e in state.excludes %}
+!{{ e }}{% endfor %}</textarea><span>{{ t("import.roots") }}</span></label>
         <small class="span-all">{{ t("import.roots_hint") }}</small>
-        <label class="field span-all"><textarea name="music_roots" rows="3" spellcheck="false" placeholder=" ">{{ state.music_roots | join("\n") }}</textarea><span>{{ t("import.music_roots") }}</span></label>
+        <label class="field span-all"><textarea name="music_roots" rows="3" spellcheck="false" placeholder=" ">{{ state.music_roots | join("\n") }}{% for e in state.music_excludes %}
+!{{ e }}{% endfor %}</textarea><span>{{ t("import.music_roots") }}</span></label>
         <small class="span-all">{{ t("import.music_hint") }}</small>
+        <div class="syntax span-all">
+          <strong>{{ t("import.syntax") }}</strong>
+          <dl>
+            <dt><code>/srv/Musik</code></dt><dd>{{ t("import.syntax.folder") }}</dd>
+            <dt><code>!/srv/Musik/Audiobooks</code></dt><dd>{{ t("import.syntax.exclude") }}</dd>
+          </dl>
+          <small>{{ t("import.syntax.note") }}</small>
+        </div>
         <label class="field span-all"><select name="rule">
           <option value="manual"{% if state.rule == "manual" %} selected{% endif %}>{{ t("import.rule.manual") }}</option>
           <option value="recommendation"{% if state.rule == "recommendation" %} selected{% endif %}>{{ t("import.rule.recommendation") }}</option>

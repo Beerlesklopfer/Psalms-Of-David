@@ -109,9 +109,11 @@ void main() {
     await tester.tap(find.text('About'));
     await tester.pumpAndSettle();
     expect(find.text('Version $appVersion'), findsOneWidget);
-    await tester.ensureVisible(find.text(securityContact));
+    await tester.ensureVisible(find.text(securityContact).first);
     expect(find.textContaining('Cyber Resilience Act'), findsOneWidget);
     expect(find.text(manufacturerName), findsOneWidget);
+    expect(find.text(manufacturerWebsite), findsOneWidget);
+    expect(find.text(manufacturerEmail), findsNWidgets(2), reason: 'as the contact and as the address for security reports');
     expect(find.textContaining('has not been set yet'), findsOneWidget, reason: 'no invented support date');
     await tester.ensureVisible(find.text('License'));
     await tester.pumpAndSettle();

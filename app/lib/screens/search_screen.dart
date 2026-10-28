@@ -3,8 +3,10 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../models.dart';
 import '../player_controller.dart';
 import '../widgets.dart';
+import 'media_category.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -15,6 +17,7 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final _controller = TextEditingController();
+  MediaCategory _category = MediaCategory.all;
 
   @override
   void dispose() {
@@ -28,14 +31,16 @@ class _SearchScreenState extends State<SearchScreen> {
     final p = PlayerScope.of(context);
     final cs = Theme.of(context).colorScheme;
     final query = _controller.text.trim().toLowerCase();
-    final hits = p.library
+    // The books of the chosen media category; null for one David does not manage yet.
+    final pool = _category.pick(p.library);
+    final hits = (pool ?? const <Book>[])
         .where(
           (b) =>
               b.title.toLowerCase().contains(query) ||
               b.author.toLowerCase().contains(query),
         )
         .toList();
-    final authors = {for (final b in p.library) b.author}.toList()..sort();
+    final authors = {for (final b in pool ?? const <Book>[]) b.author}.toList()..sort();
 
     return CustomScrollView(
       slivers: [
@@ -70,6 +75,10 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           ),
         ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          sliver: SliverToBoxAdapter(child: CategoryChips(value: _category, withAll: true, onChanged: (c) => setState(() => _category = c))),
+        ),
         // With a server, the text may be a passage of an audio Bible ("Johannes 3,16").
         if (query.isNotEmpty && p.source != null)
           SliverToBoxAdapter(
@@ -83,8 +92,16 @@ class _SearchScreenState extends State<SearchScreen> {
               },
             ),
           ),
-        if (query.isEmpty) ...[
-          SliverToBoxAdapter(child: SectionHeader(l.sectionAuthors)),
+        if (pool == null)
+          SliverFillRemaining(hasScrollBody: false, child: ComingSoon(category: _category))
+        else if (query.isEmpty) ...[
+          SliverToBoxAdapter(
+            child: SectionHeader(switch (_category) {
+              MediaCategory.music => l.sectionArtists,
+              MediaCategory.audiobooks => l.sectionAuthors,
+              _ => l.sectionAuthorsAndArtists,
+            }),
+          ),
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             sliver: SliverGrid.extent(

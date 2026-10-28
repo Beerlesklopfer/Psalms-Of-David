@@ -209,5 +209,33 @@
       }
     }
   },
-  "aboutSource": "Source code"
+  "aboutSource": "Source code",
+  "filterVideos": "Videos",
+  "filterEbooks": "E-Books",
+  "comingSoonTitle": "Not available yet",
+  "comingSoonVideos": "Videos are planned. David does not manage them yet, so there is nothing to show here.",
+  "comingSoonEbooks": "E-books and PDF files are planned. David does not manage them yet, so there is nothing to show here.",
+  "noAudiobooksYet": "No audiobooks in the library yet",
+  "readBy": "Read by {name}",
+  "@readBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "filterAll": "All",
+  "sectionArtists": "Artists",
+  "sectionAuthorsAndArtists": "Authors and artists",
+  "artistLabel": "Artist: {name}",
+  "@artistLabel": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sectionYourMusic": "Your music",
+  "craEmail": "Contact",
+  "craWebsite": "Website"
 }

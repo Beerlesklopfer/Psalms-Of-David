@@ -3,10 +3,10 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import 'media_category.dart';
 import '../player_controller.dart';
 import '../widgets.dart';
 
-enum _Filter { books, music }
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -16,13 +16,15 @@ class LibraryScreen extends StatefulWidget {
 }
 
 class _LibraryScreenState extends State<LibraryScreen> {
-  _Filter _filter = _Filter.books;
+  MediaCategory _category = MediaCategory.audiobooks;
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final p = PlayerScope.of(context);
     final cs = Theme.of(context).colorScheme;
+    // The books of the chosen category; null for a category David does not manage yet.
+    final shown = _category.pick(p.library);
 
     return CustomScrollView(
       slivers: [
@@ -38,27 +40,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Wrap(
-              spacing: 8,
-              children: [
-                ChoiceChip(
-                  label: Text(l.filterBooks),
-                  selected: _filter == _Filter.books,
-                  onSelected: (_) => setState(() => _filter = _Filter.books),
-                ),
-                ChoiceChip(
-                  label: Text(l.filterMusic),
-                  selected: _filter == _Filter.music,
-                  onSelected: (_) => setState(() => _filter = _Filter.music),
-                ),
-              ],
-            ),
+            child: CategoryChips(value: _category, onChanged: (c) => setState(() => _category = c)),
           ),
         ),
-        if (_filter == _Filter.music)
+        if (shown == null)
+          SliverFillRemaining(hasScrollBody: false, child: ComingSoon(category: _category))
+        else if (shown.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
-            child: Center(child: Text(l.noMusicYet)),
+            child: Center(child: Text(_category == MediaCategory.music ? l.noMusicYet : l.noAudiobooksYet)),
           )
         else
           SliverPadding(
@@ -68,8 +58,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 maxCrossAxisExtent: 200,
                 childAspectRatio: 0.74,
               ),
-              itemCount: p.library.length,
-              itemBuilder: (_, i) => BookCard(book: p.library[i]),
+              itemCount: shown.length,
+              itemBuilder: (_, i) => BookCard(book: shown[i]),
             ),
           ),
       ],

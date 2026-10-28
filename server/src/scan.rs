@@ -7,7 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
@@ -62,6 +62,8 @@ pub struct ScanReport {
     pub books_released: usize,
     /// Albums that could not be imported (they are logged and skipped).
     pub books_failed: usize,
+    /// Places that could not be read, with the reason; the rest of the import went on without them.
+    pub problems: Vec<String>,
     /// What the library holds after the run (not what changed): audiobooks, their authors,
     /// albums, their artists and all tracks.
     pub audiobooks: usize,
@@ -80,6 +82,7 @@ impl ScanReport {
         self.tracks_removed += other.tracks_removed;
         self.books_released += other.books_released;
         self.books_failed += other.books_failed;
+        self.problems.extend(other.problems.iter().cloned());
         // The totals describe the library, not one folder: the last one to speak wins.
         if other.tracks_total > 0 {
             self.audiobooks = other.audiobooks;
@@ -100,9 +103,20 @@ impl Store {
 
     /// Like [`Store::scan`], for a folder of a given kind (`audiobook` or `music`).
     pub async fn scan_kind(&self, root: &Path, kind: &'static str) -> Result<ScanReport> {
-        let root = root.to_owned();
-        let found = tokio::task::spawn_blocking(move || collect(&root, kind)).await??;
-        self.import_books(found).await
+        self.scan_skipping(root, kind, &[]).await
+    }
+
+    /// Like [`Store::scan_kind`], leaving out `skip`: other import folders inside this one.
+    pub async fn scan_skipping(&self, root: &Path, kind: &'static str, skip: &[PathBuf]) -> Result<ScanReport> {
+        let (root, skip) = (root.to_owned(), skip.to_vec());
+        let (found, problems) = tokio::task::spawn_blocking(move || {
+            let mut problems = Vec::new();
+            collect(&root, kind, &skip, &mut problems).map(|books| (books, problems))
+        })
+        .await??;
+        let mut report = self.import_books(found).await?;
+        report.problems.extend(problems);
+        Ok(report)
     }
 
     /// Imports books and tracks. Existing rows are updated only if the file
@@ -309,41 +323,161 @@ async fn upsert_track(conn: &impl ConnectionTrait, book_id: i64, t: &FoundTrack)
     Ok(())
 }
 
-/// Walks `root/Author/Title/*` (blocking).
-fn collect(root: &Path, kind: &str) -> Result<Vec<FoundBook>> {
+/// How deep below an import folder the scan looks for albums.
+const MAX_DEPTH: usize = 8;
+
+/// Walks an import folder (blocking). **Every folder that directly holds audio files is a book or an
+/// album**, however deep it lies: `Follett/Winter der Welt`, `NORA/Thea`, or `JÖRG/Dania König/Versprochen`
+/// (families sort their music by owner, by genre, by year). Its title is the name of the folder and its
+/// author or artist the name of the folder above it; a folder directly below the import folder has no
+/// folder above and takes the artist from the tags. The identity of a book is its path below the import
+/// folder, so a two-level layout keeps the identity it always had.
+///
+/// Disc folders (`CD 1`, `Disc 2`, ...) of a folder that has no audio files of its own are part of
+/// that folder's book, with the disc number from the name. Hidden folders (`.recyclebin`) and the
+/// folders of the NAS systems (`@eaDir`, `lost+found`) are not read. What cannot be read is skipped
+/// and told in `problems`, so one bad place does not stop the rest. Folders in `skip` are other
+/// import folders that lie inside this one: they are scanned as roots of their own.
+fn collect(root: &Path, kind: &str, skip: &[PathBuf], problems: &mut Vec<String>) -> Result<Vec<FoundBook>> {
     let mut books = Vec::new();
-    for author_dir in sorted_dirs(root)? {
-        let author = file_name(&author_dir);
-        for book_dir in sorted_dirs(&author_dir)? {
-            let title = file_name(&book_dir);
-            let mut files: Vec<_> = fs::read_dir(&book_dir)?
-                .filter_map(|e| e.ok().map(|e| e.path()))
-                .filter(|p| p.is_file() && is_audio(p))
-                .collect();
-            files.sort();
-            if files.is_empty() {
-                continue;
-            }
-            let mut tracks = Vec::with_capacity(files.len());
-            for (i, path) in files.iter().enumerate() {
-                tracks.push(read_track(path, i as i64 + 1)?);
-            }
-            // The recommendation sits in the tags; the first track speaks for the book.
-            let first_tags = tags::read(&files[0]).ok();
-            let recommended_age = first_tags.as_ref().and_then(|t| t.age_recommendation).map(i64::from);
-            let narrator = first_tags.and_then(|t| t.narrator);
-            books.push(FoundBook {
-                kind: kind.to_owned(),
-                folder: format!("{author}/{title}"),
-                author: author.clone(),
-                title,
-                recommended_age,
-                narrator,
-                tracks,
+    for top in sorted_dirs(root)? {
+        if ignored(&top, skip) {
+            continue;
+        }
+        let (books_before, problems_before) = (books.len(), problems.len());
+        walk(root, &top, 1, kind, skip, problems, &mut books);
+        // A folder that gave nothing and was readable: say why, so that it is not a mystery.
+        if books.len() == books_before && problems.len() == problems_before {
+            problems.push(match first_audio_below(&top, MAX_DEPTH as u8) {
+                Some(example) => format!(
+                    "{}: no albums could be made from it, for example from {}",
+                    top.display(),
+                    example.strip_prefix(root).unwrap_or(&example).display()
+                ),
+                None => format!("{}: nothing to import here (no audio files found in it)", top.display()),
             });
         }
     }
     Ok(books)
+}
+
+/// Not read at all: other import folders, hidden folders and the folders of NAS systems.
+fn ignored(dir: &Path, skip: &[PathBuf]) -> bool {
+    let name = file_name(dir);
+    name.starts_with('.') || name == "@eaDir" || name == "lost+found" || dir.canonicalize().is_ok_and(|d| skip.contains(&d))
+}
+
+fn walk(root: &Path, dir: &Path, depth: usize, kind: &str, skip: &[PathBuf], problems: &mut Vec<String>, books: &mut Vec<FoundBook>) {
+    if depth > MAX_DEPTH {
+        return;
+    }
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            problems.push(format!("{}: {}", dir.display(), reason(&e)));
+            return;
+        }
+    };
+    let (mut files, mut subdirs): (Vec<PathBuf>, Vec<PathBuf>) = (Vec::new(), Vec::new());
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else { continue };
+        if file_type.is_dir() {
+            subdirs.push(path);
+        } else if path.is_file() && is_audio(&path) {
+            files.push(path);
+        }
+    }
+    files.sort();
+    subdirs.sort();
+
+    // Disc folders of a folder without audio files of its own belong to it.
+    let mut merged: Vec<PathBuf> = Vec::new();
+    let mut parts: Vec<(PathBuf, Option<i64>)> = files.iter().map(|f| (f.clone(), None)).collect();
+    if files.is_empty() {
+        for sub in &subdirs {
+            let Some(disc) = disc_number(&file_name(sub)) else { continue };
+            let Ok(inside) = fs::read_dir(sub) else { continue };
+            let mut disc_files: Vec<PathBuf> = inside.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_file() && is_audio(p)).collect();
+            disc_files.sort();
+            if !disc_files.is_empty() {
+                parts.extend(disc_files.into_iter().map(|f| (f, Some(disc))));
+                merged.push(sub.clone());
+            }
+        }
+    }
+
+    if !parts.is_empty() {
+        match book_of(root, dir, &parts, kind) {
+            Ok(book) => books.push(book),
+            Err(message) => problems.push(message),
+        }
+    }
+    for sub in subdirs {
+        if !merged.contains(&sub) && !ignored(&sub, skip) {
+            walk(root, &sub, depth + 1, kind, skip, problems, books);
+        }
+    }
+}
+
+/// `CD 1`, `Disc 02`, `Disk3`, `CD_4`: the number of a disc folder.
+fn disc_number(name: &str) -> Option<i64> {
+    let lower = name.to_lowercase();
+    let rest = ["cd", "disc", "disk", "teil"].iter().find_map(|p| lower.strip_prefix(p))?;
+    split_digits(rest.trim_start_matches([' ', '_', '-', '.']))?.0.into()
+}
+
+/// The book of a folder and its audio files; `Err` says what is wrong with it.
+fn book_of(root: &Path, dir: &Path, parts: &[(PathBuf, Option<i64>)], kind: &str) -> std::result::Result<FoundBook, String> {
+    let relative = dir.strip_prefix(root).unwrap_or(dir);
+    let names: Vec<String> = relative.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
+    let title = names.last().cloned().unwrap_or_default();
+    let mut tracks = Vec::with_capacity(parts.len());
+    for (i, (path, disc)) in parts.iter().enumerate() {
+        let file = path.strip_prefix(dir).unwrap_or(path).components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/");
+        tracks.push(read_track(path, &file, i as i64 + 1, *disc).map_err(|e| format!("{}: {e}", path.display()))?);
+    }
+    // The recommendation and the narrator sit in the tags; the first track speaks for the book.
+    let first_tags = tags::read(&parts[0].0).ok();
+    let recommended_age = first_tags.as_ref().and_then(|t| t.age_recommendation).map(i64::from);
+    let author = match names.len() {
+        0 | 1 => first_tags.as_ref().and_then(|t| t.album_artist.clone().or_else(|| t.artist.clone())).unwrap_or_else(|| "Unknown".to_owned()),
+        n => names[n - 2].clone(),
+    };
+    let narrator = first_tags.and_then(|t| t.narrator);
+    Ok(FoundBook { kind: kind.to_owned(), folder: names.join("/"), author, title, recommended_age, narrator, tracks })
+}
+
+/// The first audio file below `dir`, at most `depth` folders down; `None` if there is none (or it
+/// cannot be read).
+fn first_audio_below(dir: &Path, depth: u8) -> Option<PathBuf> {
+    if depth == 0 {
+        return None;
+    }
+    let mut subdirs = Vec::new();
+    for entry in fs::read_dir(dir).ok()?.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.is_file() && is_audio(&path) {
+            return Some(path);
+        }
+        if path.is_dir() {
+            subdirs.push(path);
+        }
+    }
+    subdirs.sort();
+    subdirs.iter().find_map(|d| first_audio_below(d, depth - 1))
+}
+
+/// What went wrong with a folder, in a few words for the report.
+fn reason(e: &impl std::fmt::Display) -> String {
+    let text = e.to_string();
+    if text.contains("Permission denied") || text.contains("os error 13") {
+        "no permission to read it (the service user needs read access)".to_owned()
+    } else if text.contains("No such file") || text.contains("os error 2") {
+        "not found".to_owned()
+    } else {
+        text
+    }
 }
 
 fn sorted_dirs(dir: &Path) -> Result<Vec<std::path::PathBuf>> {
@@ -365,8 +499,8 @@ fn is_audio(p: &Path) -> bool {
         .is_some_and(|e| AUDIO_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
 }
 
-fn read_track(path: &Path, ordinal: i64) -> Result<FoundTrack> {
-    let file = file_name(path);
+fn read_track(path: &Path, file: &str, ordinal: i64, disc_hint: Option<i64>) -> Result<FoundTrack> {
+    let file = file.to_owned();
     let tagged = lofty::read_from_path(path)
         .map_err(|e| Error::Tags { file: file.clone(), message: e.to_string() })?;
     let meta = fs::metadata(path)?;
@@ -381,7 +515,7 @@ fn read_track(path: &Path, ordinal: i64) -> Result<FoundTrack> {
     let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
 
     let (disc, number) = parse_disc_track(&stem).unwrap_or_else(|| {
-        let disc = tag.and_then(|t| t.disk()).map(i64::from).unwrap_or(1);
+        let disc = disc_hint.or_else(|| tag.and_then(|t| t.disk()).map(i64::from)).unwrap_or(1);
         let number = tag.and_then(|t| t.track()).map(i64::from).unwrap_or(ordinal);
         // The rips store disc and track as one number: 101 = disc 1, track 1.
         (disc, if number >= 100 { number % 100 } else { number })

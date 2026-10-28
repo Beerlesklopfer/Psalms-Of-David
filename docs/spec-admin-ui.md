@@ -228,3 +228,25 @@ The templates are meant to be adapted **per distribution** (and per machine). Th
   its announced size plus the reserve does not fit, and is stopped while it arrives if the disk runs below the
   reserve; unpacking checks the unpacked size on the staging disk (and on the import folder's disk if that is
   another one); writing a cover into every file of an album checks the bytes it adds.
+
+## Folders: music, left-out folders, tolerant import (2026-10-28)
+
+- **Two lists of folders** in "Folders and rule": audiobook folders (`Author/Title/files`) and music folders
+  (`Artist/Album/files`). A folder is one or the other.
+- **Left-out folders** are written into the list they belong to with a `!` in front, one per line
+  (`!/srv/Musik/Audiobooks`); the syntax is explained in the window. They are stored per list
+  (`import_excludes`, `music_excludes`), shown with a dashed "left out" line, and need to be absolute paths.
+  Another import folder that lies inside a folder is left out of that folder's scan automatically, so
+  `/srv/Musik` (music) with `/srv/Musik/Audiobooks` (audiobooks) needs no extra line, but the `!` line makes it explicit.
+- **The import does not stop at a bad place:** a folder without read permission or a file with broken tags is
+  skipped and listed in the report with the reason ("no permission to read it"); an album that cannot be stored
+  (two files with the same track number) is skipped and counted. A renamed file keeps its track.
+- **Upload** asks whether the archive holds audiobooks or music and unpacks it into the first folder of that kind.
+- **Any depth** (2026-10-28, "deeper hierarchies are wanted, especially in families"): every folder that directly holds
+  audio files is a book or an album, at any depth up to 8 levels: `Follett/Winter der Welt`, `NORA/Thea`,
+  `JÖRG/Dania König/Versprochen`, `Musik/Rock/1998/Band/Album`. Title = the name of the folder, author or artist = the
+  name of the folder above it; for a folder directly below the import folder the artist comes from the tags (else
+  "Unknown"). The identity of a book is its path below the import folder, so existing two-level libraries keep
+  their identities. Disc folders (`CD 1`, `Disc 2`, `Disk3`, `Teil 4`) of a folder without audio files of its own are
+  one book with those discs. Hidden folders (`.recyclebin`), `@eaDir` and `lost+found` are never read.
+

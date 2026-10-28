@@ -20,9 +20,20 @@
   {% if state.roots %}
   <ul class="folders">
     {% for root in state.roots %}<li>{{ icon("folder") }}<code>{{ root }}</code></li>{% endfor %}
+    {% for e in state.excludes %}<li class="left-out">{{ icon("close") }}<code>{{ e }}</code><small>{{ t("import.left_out") }}</small></li>{% endfor %}
   </ul>
   {% else %}
   <p class="message">{{ t("import.no_folders") }}</p>
+  {% endif %}
+
+  <h2>{{ t("import.music_folders") }}</h2>
+  {% if state.music_roots %}
+  <ul class="folders">
+    {% for root in state.music_roots %}<li>{{ icon("music") }}<code>{{ root }}</code></li>{% endfor %}
+    {% for e in state.music_excludes %}<li class="left-out">{{ icon("close") }}<code>{{ e }}</code><small>{{ t("import.left_out") }}</small></li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="hint">{{ t("import.no_music_folders") }} <a href="/admin/settings?tab=import">{{ t("import.to_settings") }}</a></p>
   {% endif %}
 
   {% if report %}
@@ -39,6 +50,7 @@
     <div class="stat"><dt>{{ t("import.report.removed") }}</dt><dd>{{ report.tracks_removed }}</dd></div>
     <div class="stat"><dt>{{ t("import.report.released") }}</dt><dd>{{ report.books_released }}</dd></div>
   </dl>
+  {% if report.problems %}<div class="message error"><strong>{{ t("import.report.problems") }}</strong><ul>{% for problem in report.problems %}<li><code>{{ problem }}</code></li>{% endfor %}</ul></div>{% endif %}
   {% if report.books_failed %}<p class="message error">{{ t("import.report.failed") }}: {{ report.books_failed }}</p>{% endif %}
   <p><a class="btn outline" href="/admin/books">{{ icon("books") }}<span>{{ t("import.to_books") }}</span></a></p>
   {% endif %}

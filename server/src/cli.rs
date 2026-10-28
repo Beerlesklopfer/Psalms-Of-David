@@ -11,6 +11,8 @@ Usage: david <command> [options]
 
 Commands:
   init        Create the first administrator (reads the PIN; use before the first start)
+  reset-pin   Set a new PIN or password for a user who forgot it (--name NAME is required);
+              the user is signed out everywhere and any lock is lifted
   run         Run in the foreground (Ctrl-C or SIGTERM stops it)
   service     Windows only: entry point used by the service manager
   install     Windows only: register the Windows service (needs an elevated prompt)
@@ -25,7 +27,7 @@ Options:
   --listen ADDR    Where the administration interface listens (env DAVID_LISTEN, default
                    127.0.0.1:8484). Anything but this machine has no TLS yet.
   --no-announce    Do not announce the server on the network (mDNS)
-  --name NAME      Name of the administrator for `init` (default: Papa)
+  --name NAME      Name of the administrator for `init` (default: Papa), or of the user for `reset-pin`
   --to DIR         Target folder of `export-templates`
 
 Environment: DAVID_LOG = error | warn | info | debug | trace
@@ -59,6 +61,8 @@ pub const DEFAULT_ADMIN_NAME: &str = "Papa";
 pub enum Command {
     /// Create the first administrator.
     Init { data_dir: PathBuf, name: String },
+    /// Sets a new PIN or password for an existing user (a forgotten one).
+    ResetPin { data_dir: PathBuf, name: String },
     Run(Config),
     Service(Config),
     Install(Config),
@@ -127,6 +131,10 @@ where
             data_dir: data_dir.clone().unwrap_or_else(Config::default_data_dir),
             name: name.clone().filter(|n| !n.trim().is_empty()).unwrap_or_else(|| DEFAULT_ADMIN_NAME.to_owned()),
         }),
+        "reset-pin" => Ok(Command::ResetPin {
+            data_dir: data_dir.clone().unwrap_or_else(Config::default_data_dir),
+            name: name.clone().filter(|n| !n.trim().is_empty()).ok_or("--name is required for reset-pin")?,
+        }),
         "run" => Ok(Command::Run(config()?)),
         "service" => Ok(Command::Service(config()?)),
         "install" => Ok(Command::Install(config()?)),
@@ -151,6 +159,9 @@ mod tests {
 
     #[test]
     fn the_first_administrator_is_called_papa_unless_told_otherwise() {
+        let Ok(Command::ResetPin { name, data_dir }) = parse(args("reset-pin --name Papa --data-dir /d"), no_env) else { panic!() };
+        assert_eq!((name.as_str(), data_dir.to_str()), ("Papa", Some("/d")));
+        assert!(parse(args("reset-pin"), no_env).is_err(), "the name is required");
         let Ok(Command::Init { name, .. }) = parse(args("init --data-dir /d"), no_env) else { panic!() };
         assert_eq!(name, "Papa");
         let Ok(Command::Init { name, .. }) = parse(args("init --name Mama"), no_env) else { panic!() };

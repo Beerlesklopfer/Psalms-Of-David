@@ -35,6 +35,8 @@ class Book {
     required this.tracks,
     this.cover,
     this.blurb,
+    this.kind = 'audiobook',
+    this.narrator,
   });
 
   final String id;
@@ -48,6 +50,12 @@ class Book {
 
   /// The blurb: the text of the back cover, written in the administration. Null if none.
   final String? blurb;
+
+  /// `audiobook` or `music` (later `video`, `ebook`): decides the category of the library.
+  final String kind;
+
+  /// Who reads an audiobook; null if the files do not say.
+  final String? narrator;
 
   Duration get total => tracks.fold(Duration.zero, (a, t) => a + t.length);
   int get discs => tracks.map((t) => t.disc).toSet().length;

@@ -129,6 +129,8 @@ class _AboutScreenState extends State<AboutScreen> {
                 ]),
               ),
               ListTile(dense: true, title: Text(l.craManufacturer), subtitle: const Text(manufacturerName)),
+              ListTile(dense: true, title: Text(l.craEmail), subtitle: const SelectableText(manufacturerEmail)),
+              ListTile(dense: true, title: Text(l.craWebsite), subtitle: const SelectableText(manufacturerWebsite)),
               ListTile(dense: true, title: Text(l.craVersion), subtitle: Text('$appVersion ($licenseName)')),
               ListTile(dense: true, title: Text(l.aboutSource), subtitle: const SelectableText(sourceUrl)),
               ListTile(dense: true, title: Text(l.craContact), subtitle: const SelectableText(securityContact)),

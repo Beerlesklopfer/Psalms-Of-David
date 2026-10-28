@@ -1,0 +1,130 @@
+// SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:psalm/l10n/app_localizations.dart';
+import 'package:psalm/models.dart';
+import 'package:psalm/player_controller.dart';
+import 'package:psalm/screens/book_screen.dart';
+import 'package:psalm/screens/home_screen.dart';
+import 'package:psalm/screens/library_screen.dart';
+import 'package:psalm/screens/search_screen.dart';
+
+Book _book(String id, String title, {String kind = 'audiobook', String? narrator}) => Book(
+      id: id,
+      title: title,
+      author: 'Author $id',
+      color: const Color(0xFF000000),
+      kind: kind,
+      narrator: narrator,
+      tracks: [Track(disc: 1, number: 1, title: 'T1', length: const Duration(minutes: 5), partId: int.parse(id))],
+    );
+
+Widget _app(PlayerController p, Widget home) => PlayerScope(
+      controller: p,
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: home),
+      ),
+    );
+
+void main() {
+  testWidgets('the library has music, audiobooks, videos and e-books; videos and e-books are a stub', (tester) async {
+    final p = PlayerController([_book('1', 'Winter der Welt'), _book('2', 'Versprochen', kind: 'music')]);
+    await tester.pumpWidget(_app(p, const LibraryScreen()));
+
+    for (final label in ['Music', 'Audiobooks', 'Videos', 'E-Books']) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+    // Audiobooks first: only the audiobook is there.
+    expect(find.text('Winter der Welt'), findsWidgets, reason: 'the cover and the caption both say it');
+    expect(find.text('Versprochen'), findsNothing);
+
+    await tester.tap(find.text('Music'));
+    await tester.pumpAndSettle();
+    expect(find.text('Versprochen'), findsWidgets);
+    expect(find.text('Winter der Welt'), findsNothing);
+
+    await tester.tap(find.text('Videos'));
+    await tester.pumpAndSettle();
+    expect(find.text('Not available yet'), findsOneWidget);
+    expect(find.textContaining('Videos are planned'), findsOneWidget);
+
+    await tester.tap(find.text('E-Books'));
+    await tester.pumpAndSettle();
+    expect(find.text('Not available yet'), findsOneWidget);
+    expect(find.textContaining('E-books and PDF files are planned'), findsOneWidget);
+    p.dispose();
+  });
+
+  testWidgets('an empty category says so', (tester) async {
+    final p = PlayerController([_book('1', 'Winter der Welt')]);
+    await tester.pumpWidget(_app(p, const LibraryScreen()));
+    await tester.tap(find.text('Music'));
+    await tester.pumpAndSettle();
+    expect(find.text('No music in the library yet'), findsOneWidget);
+    p.dispose();
+  });
+
+  testWidgets('the book page names the narrator', (tester) async {
+    final p = PlayerController([_book('1', 'Winter der Welt', narrator: 'Philipp Schepmann')]);
+    await tester.pumpWidget(_app(p, BookScreen(book: p.library.first)));
+    expect(find.text('Read by Philipp Schepmann'), findsOneWidget);
+    p.dispose();
+  });
+
+  testWidgets('the search has the same media filter, with All in front', (tester) async {
+    final p = PlayerController([_book('1', 'Winter der Welt'), _book('2', 'Versprochen', kind: 'music')]);
+    await tester.pumpWidget(_app(p, const SearchScreen()));
+    for (final label in ['All', 'Music', 'Audiobooks', 'Videos', 'E-Books']) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+    // All: authors and artists of everything.
+    expect(find.text('Authors and artists'), findsOneWidget);
+    expect(find.text('Author 1'), findsOneWidget);
+    expect(find.text('Author 2'), findsOneWidget);
+
+    await tester.tap(find.text('Music'));
+    await tester.pumpAndSettle();
+    expect(find.text('Artists'), findsOneWidget);
+    expect(find.text('Author 2'), findsOneWidget);
+    expect(find.text('Author 1'), findsNothing);
+
+    // A search is limited to the chosen kind.
+    await tester.enterText(find.byType(TextField), 'welt');
+    await tester.pumpAndSettle();
+    expect(find.text('Nothing found'), findsOneWidget, reason: 'the audiobook is not music');
+    await tester.tap(find.text('Audiobooks'));
+    await tester.pumpAndSettle();
+    expect(find.text('Winter der Welt'), findsWidgets);
+
+    await tester.tap(find.text('Videos'));
+    await tester.pumpAndSettle();
+    expect(find.text('Not available yet'), findsOneWidget);
+    p.dispose();
+  });
+
+  testWidgets('for music the extra line is the artist, not "read by"', (tester) async {
+    final p = PlayerController([_book('1', 'Thea', kind: 'music', narrator: 'Thea Eichholz-Müller')]);
+    await tester.pumpWidget(_app(p, BookScreen(book: p.library.first)));
+    expect(find.text('Artist: Thea Eichholz-Müller'), findsOneWidget);
+    expect(find.textContaining('Read by'), findsNothing);
+    p.dispose();
+  });
+
+  testWidgets('the home page has a strip for music and one for audiobooks, each only with its own', (tester) async {
+    final p = PlayerController([_book('1', 'Winter der Welt'), _book('2', 'Versprochen', kind: 'music')]);
+    await tester.pumpWidget(_app(p, const HomeScreen()));
+    expect(find.text('Your music'), findsOneWidget);
+    expect(find.text('Your audiobooks'), findsOneWidget);
+    p.dispose();
+
+    final onlyBooks = PlayerController([_book('1', 'Winter der Welt')]);
+    await tester.pumpWidget(_app(onlyBooks, const HomeScreen()));
+    await tester.pump();
+    expect(find.text('Your music'), findsNothing, reason: 'no music, no strip');
+    expect(find.text('Your audiobooks'), findsOneWidget);
+    onlyBooks.dispose();
+  });
+}

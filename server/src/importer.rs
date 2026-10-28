@@ -51,6 +51,12 @@ pub struct ImportState {
     pub roots: Vec<String>,
     /// Folders with music (`Artist/Album/*.mp3`), imported as albums of the kind `music`.
     pub music_roots: Vec<String>,
+    /// Folders inside the audiobook folders that are left out (absolute paths): another library
+    /// that lies below, a folder of something else, a trash folder. Written as `!/path` lines in
+    /// the list of folders.
+    pub excludes: Vec<String>,
+    /// The same for the music folders.
+    pub music_excludes: Vec<String>,
     pub rule: RatingRule,
     /// Both the roots and the rating rule have been saved by an administrator.
     pub criteria_defined: bool,
@@ -84,6 +90,8 @@ impl Store {
             .await?
             .and_then(|v| serde_json::from_str(&v).ok())
             .unwrap_or_default();
+        let excludes: Vec<String> = self.setting("import_excludes").await?.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or_default();
+        let music_excludes: Vec<String> = self.setting("music_excludes").await?.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or_default();
         let rule = self.setting("rating_rule").await?.and_then(|v| RatingRule::parse(&v)).unwrap_or(RatingRule::Manual);
         let rule_confirmed = self.setting_rows().await?.iter().any(|s| s.key == "rating_rule" && s.confirmed);
         let unlocked_by = self.setting("import_unlocked_by").await?;
@@ -93,6 +101,8 @@ impl Store {
             criteria_defined: !(roots.is_empty() && music_roots.is_empty()) && rule_confirmed,
             roots,
             music_roots,
+            excludes,
+            music_excludes,
             rule,
             unlocked_by,
             unlocked_at,
@@ -122,6 +132,25 @@ impl Store {
             }
         }
         Ok(canonical)
+    }
+
+    /// Saves the folders that are left out of the import. They need not exist (a mount point that is
+    /// not there yet is fine), but they must be absolute paths; the ones that exist are stored in
+    /// their canonical form so that a link or a `..` cannot get around them.
+    pub async fn save_import_excludes(&self, music: bool, excludes: &[String]) -> Result<()> {
+        let mut saved: Vec<String> = Vec::new();
+        for e in excludes.iter().map(|e| e.trim()).filter(|e| !e.is_empty()) {
+            let path = Path::new(e);
+            if !path.is_absolute() {
+                return Err(Error::InvalidImportRoot(format!("{e} is not an absolute path")));
+            }
+            let text = std::fs::canonicalize(path).map_or_else(|_| e.trim_end_matches('/').to_owned(), |p| p.to_string_lossy().into_owned());
+            if !saved.contains(&text) {
+                saved.push(text);
+            }
+        }
+        let key = if music { "music_excludes" } else { "import_excludes" };
+        self.set_setting(key, &serde_json::to_string(&saved).unwrap_or_else(|_| "[]".into()), true).await
     }
 
     /// Saves the folders with music. May be empty (no music).
@@ -211,21 +240,36 @@ impl Store {
             .transpose()?
             .unwrap_or(0);
         let mut total = ScanReport::default();
-        for root in &state.roots {
-            let path = PathBuf::from(root);
+        // Every folder, with the kind of what is in it. A folder that lies inside another one is left
+        // out of the scan of that one: it is scanned as a root of its own.
+        let roots: Vec<(PathBuf, &'static str)> = state
+            .roots
+            .iter()
+            .map(|r| (PathBuf::from(r), "audiobook"))
+            .chain(state.music_roots.iter().map(|r| (PathBuf::from(r), "music")))
+            .collect();
+        for (path, kind) in &roots {
             if !path.is_dir() {
-                tracing::warn!(root = %root, "import root is not available, skipped");
+                tracing::warn!(root = %path.display(), "import root is not available, skipped");
+                total.problems.push(format!("{}: not available", path.display()));
                 continue;
             }
-            total.merge(&self.scan(&path).await?);
-        }
-        for root in &state.music_roots {
-            let path = PathBuf::from(root);
-            if !path.is_dir() {
-                tracing::warn!(root = %root, "music folder is not available, skipped");
-                continue;
+            // Left out: the folders the administrator named, and other import folders inside this one.
+            let inside: Vec<PathBuf> = roots
+                .iter()
+                .filter(|(other, _)| other != path && other.starts_with(path))
+                .map(|(other, _)| other.clone())
+                .chain(if *kind == "music" { &state.music_excludes } else { &state.excludes }.iter().map(PathBuf::from))
+                .map(|p| p.canonicalize().unwrap_or(p))
+                .collect();
+            // A folder that cannot be read must not stop the others.
+            match self.scan_skipping(path, kind, &inside).await {
+                Ok(report) => total.merge(&report),
+                Err(e) => {
+                    tracing::warn!(root = %path.display(), error = %e, "this import folder could not be read");
+                    total.problems.push(format!("{}: {e}", path.display()));
+                }
             }
-            total.merge(&self.scan_kind(&path, "music").await?);
         }
         if state.rule == RatingRule::Recommendation {
             // Only books that arrived in this run: a book an administrator withdrew

@@ -375,7 +375,7 @@ pub async fn import_page(State(state): State<AppState>, s: AdminSession, Query(q
 }
 
 pub async fn pairing_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
-    render(state.ui.pairing(&state.store, view_for(&s, &q), &state.listen.to_string(), None, state.fingerprint.is_some()).await)
+    render(state.ui.pairing(&state.store, view_for(&s, &q), &reachable_address(state.listen), None, state.fingerprint.is_some()).await)
 }
 
 pub async fn settings_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
@@ -1051,14 +1051,29 @@ pub struct ImportCriteria {
     rule: String,
 }
 
+/// Splits the lines of a list of folders: `!/path` lines name folders to leave out, the others are
+/// import folders.
+fn folder_lines(text: &str) -> (Vec<String>, Vec<String>) {
+    let (mut folders, mut left_out) = (Vec::new(), Vec::new());
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        match line.strip_prefix('!') {
+            Some(path) => left_out.push(path.trim().to_owned()),
+            None => folders.push(line.to_owned()),
+        }
+    }
+    (folders, left_out)
+}
+
 pub async fn import_save(State(state): State<AppState>, s: AdminSession, Form(f): Form<ImportCriteria>) -> Response {
     let outcome = async {
         let rule = crate::importer::RatingRule::parse(&f.rule).ok_or_else(Failure::input)?;
-        let roots: Vec<String> = f.roots.lines().map(|l| l.trim().to_owned()).filter(|l| !l.is_empty()).collect();
+        let (roots, left_out) = folder_lines(&f.roots);
         state.store.save_import_criteria(&roots, rule).await?;
+        state.store.save_import_excludes(false, &left_out).await?;
         if let Some(text) = &f.music_roots {
-            let music: Vec<String> = text.lines().map(|l| l.trim().to_owned()).filter(|l| !l.is_empty()).collect();
+            let (music, music_left_out) = folder_lines(text);
             state.store.save_music_roots(&music).await?;
+            state.store.save_import_excludes(true, &music_left_out).await?;
         }
         import_settings(&state, &s).await
     }
@@ -1131,13 +1146,19 @@ pub async fn upload_create(State(state): State<AppState>, s: AdminSession, heade
         if !crate::diskspace::fits(&uploads_dir, announced.saturating_mul(2), reserve) {
             return Err(disk_full());
         }
+        // The kind comes before the file in the form, so it is known when the file starts.
+        let mut kind = "audiobook";
         while let Some(mut field) = form.next_field().await.map_err(|_| too_big())? {
+            if field.name() == Some("kind") {
+                kind = if field.text().await.unwrap_or_default().trim() == "music" { "music" } else { "audiobook" };
+                continue;
+            }
             if field.name() != Some("archive") {
                 continue;
             }
             let name = field.file_name().unwrap_or_default().to_owned();
             let ending = crate::upload::archive_ending(&name).ok_or_else(|| Failure::new(StatusCode::UNPROCESSABLE_ENTITY, "err.upload_type"))?;
-            let id = state.store.create_upload_job(&crate::upload::clean_name(&name, "archive"), s.user_id).await?;
+            let id = state.store.create_upload_job(&crate::upload::clean_name(&name, "archive"), s.user_id, kind).await?;
             let path = state.uploads.archive_path(id, &ending);
             let written = async {
                 tokio::fs::create_dir_all(path.parent().ok_or(std::io::ErrorKind::InvalidInput)?).await?;
@@ -1185,6 +1206,25 @@ pub async fn upload_create(State(state): State<AppState>, s: AdminSession, heade
     }
     .await;
     finish(&s, "/admin/import", outcome)
+}
+
+/// The address the pairing page offers for a device: the listen address, and when that is "every
+/// interface" (0.0.0.0), the address of this machine in the network (the one that leads to the
+/// default route), because a device cannot reach 0.0.0.0.
+pub(crate) fn reachable_address(listen: std::net::SocketAddr) -> String {
+    if !listen.ip().is_unspecified() {
+        return listen.to_string();
+    }
+    let local = std::net::UdpSocket::bind("0.0.0.0:0")
+        .and_then(|s| s.connect("192.0.2.1:9").map(|()| s))
+        .and_then(|s| s.local_addr())
+        .ok()
+        .map(|a| a.ip())
+        .filter(|ip| !ip.is_unspecified() && !ip.is_loopback());
+    match local {
+        Some(ip) => std::net::SocketAddr::new(ip, listen.port()).to_string(),
+        None => listen.to_string(),
+    }
 }
 
 // Weekly planner
@@ -1301,7 +1341,7 @@ pub async fn pairing_create(State(state): State<AppState>, s: AdminSession, Form
     match outcome {
         // Without JavaScript the code must be on the page that answers: it is shown only once.
         Ok(fragment) if !s.htmx => {
-            render(state.ui.pairing(&state.store, view(&s), &state.listen.to_string(), Some(fragment), state.fingerprint.is_some()).await)
+            render(state.ui.pairing(&state.store, view(&s), &reachable_address(state.listen), Some(fragment), state.fingerprint.is_some()).await)
         }
         other => finish(&s, "/admin/pairing", other),
     }
@@ -1547,5 +1587,20 @@ pub async fn profile_save(State(state): State<AppState>, s: Session, mut form: a
             tracing::error!(error = %e, "cannot save the profile");
             back_to_profile("err.server")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reachable_address;
+
+    #[test]
+    fn the_pairing_page_offers_an_address_a_device_can_reach() {
+        assert_eq!(reachable_address("192.168.24.250:8484".parse().unwrap()), "192.168.24.250:8484");
+        assert_eq!(reachable_address("127.0.0.1:8484".parse().unwrap()), "127.0.0.1:8484");
+        // "Every interface" becomes the address of this machine, if it has one, with the same port.
+        let any = reachable_address("0.0.0.0:8484".parse().unwrap());
+        assert!(any.ends_with(":8484"), "{any}");
+        assert!(any == "0.0.0.0:8484" || !any.starts_with("0.0.0.0"), "{any}");
     }
 }

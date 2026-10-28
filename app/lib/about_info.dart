@@ -10,6 +10,10 @@ const appVersion = '1.0.0';
 /// Who makes the app.
 const manufacturerName = 'Jörg Bernau';
 
+/// The manufacturer's website and email address (the contact for everything but security reports).
+const manufacturerWebsite = 'https://bernau.family';
+const manufacturerEmail = 'Joerg@bernau.family';
+
 /// Where to report a vulnerability (also the single point of contact for users).
 const securityContact = 'Joerg@bernau.family';
 

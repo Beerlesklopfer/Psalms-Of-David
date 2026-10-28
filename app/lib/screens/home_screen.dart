@@ -22,7 +22,10 @@ class HomeScreen extends StatelessWidget {
     final l = AppLocalizations.of(context);
     final p = PlayerScope.of(context);
     final wide = MediaQuery.sizeOf(context).width >= 800;
-    final books = p.library;
+    // One strip for each category that has something, in the order of the library: music, audiobooks
+    // (videos and e-books follow when David manages them). The shortcuts above are audiobooks.
+    final books = p.library.where((b) => b.kind == 'audiobook').toList();
+    final music = p.library.where((b) => b.kind == 'music').toList();
 
     return CustomScrollView(
       slivers: [
@@ -49,25 +52,30 @@ class HomeScreen extends StatelessWidget {
           SliverToBoxAdapter(child: SectionHeader(l.sectionContinue)),
           SliverToBoxAdapter(child: _Resume(book: p.book!)),
         ],
-        SliverToBoxAdapter(child: SectionHeader(l.sectionYourBooks)),
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: 230,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              itemCount: books.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 4),
-              itemBuilder: (_, i) =>
-                  SizedBox(width: 156, child: BookCard(book: books[i])),
-            ),
-          ),
-        ),
+        if (music.isNotEmpty) ..._strip(l.sectionYourMusic, music),
+        if (books.isNotEmpty || music.isEmpty) ..._strip(l.sectionYourBooks, books),
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],
     );
   }
 }
+
+/// A heading and a row of covers that scrolls sideways.
+List<Widget> _strip(String title, List<Book> books) => [
+      SliverToBoxAdapter(child: SectionHeader(title)),
+      SliverToBoxAdapter(
+        child: SizedBox(
+          height: 230,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            itemCount: books.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 4),
+            itemBuilder: (_, i) => SizedBox(width: 156, child: BookCard(book: books[i])),
+          ),
+        ),
+      ),
+    ];
 
 /// Tile with a small cover, like the quick-access shortcuts on Spotify.
 class _Shortcut extends StatelessWidget {

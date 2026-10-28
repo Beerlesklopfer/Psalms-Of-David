@@ -367,4 +367,52 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get aboutSource => 'Quellcode';
+
+  @override
+  String get filterVideos => 'Videos';
+
+  @override
+  String get filterEbooks => 'E-Books';
+
+  @override
+  String get comingSoonTitle => 'Noch nicht verfügbar';
+
+  @override
+  String get comingSoonVideos =>
+      'Videos sind geplant. David verwaltet sie noch nicht, deshalb gibt es hier nichts zu zeigen.';
+
+  @override
+  String get comingSoonEbooks =>
+      'E-Books und PDF-Dateien sind geplant. David verwaltet sie noch nicht, deshalb gibt es hier nichts zu zeigen.';
+
+  @override
+  String get noAudiobooksYet => 'Noch keine Hörbücher in der Bibliothek';
+
+  @override
+  String readBy(String name) {
+    return 'Gelesen von $name';
+  }
+
+  @override
+  String get filterAll => 'Alle';
+
+  @override
+  String get sectionArtists => 'Interpreten';
+
+  @override
+  String get sectionAuthorsAndArtists => 'Autoren und Interpreten';
+
+  @override
+  String artistLabel(String name) {
+    return 'Künstler: $name';
+  }
+
+  @override
+  String get sectionYourMusic => 'Deine Musik';
+
+  @override
+  String get craEmail => 'Kontakt';
+
+  @override
+  String get craWebsite => 'Webseite';
 }

@@ -365,4 +365,52 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aboutSource => 'Source code';
+
+  @override
+  String get filterVideos => 'Videos';
+
+  @override
+  String get filterEbooks => 'E-Books';
+
+  @override
+  String get comingSoonTitle => 'Not available yet';
+
+  @override
+  String get comingSoonVideos =>
+      'Videos are planned. David does not manage them yet, so there is nothing to show here.';
+
+  @override
+  String get comingSoonEbooks =>
+      'E-books and PDF files are planned. David does not manage them yet, so there is nothing to show here.';
+
+  @override
+  String get noAudiobooksYet => 'No audiobooks in the library yet';
+
+  @override
+  String readBy(String name) {
+    return 'Read by $name';
+  }
+
+  @override
+  String get filterAll => 'All';
+
+  @override
+  String get sectionArtists => 'Artists';
+
+  @override
+  String get sectionAuthorsAndArtists => 'Authors and artists';
+
+  @override
+  String artistLabel(String name) {
+    return 'Artist: $name';
+  }
+
+  @override
+  String get sectionYourMusic => 'Your music';
+
+  @override
+  String get craEmail => 'Contact';
+
+  @override
+  String get craWebsite => 'Website';
 }

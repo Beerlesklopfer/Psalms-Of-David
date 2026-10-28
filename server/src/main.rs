@@ -19,6 +19,7 @@ fn main() -> ExitCode {
             0
         }
         Command::Init { data_dir, name } => init(&data_dir, &name),
+        Command::ResetPin { data_dir, name } => reset_pin(&data_dir, &name),
         Command::Run(config) => platform::run_foreground(config),
         Command::Service(config) => platform::run_service(config),
         Command::Install(config) => platform::install(config),
@@ -37,9 +38,9 @@ fn main() -> ExitCode {
     ExitCode::from(code)
 }
 
-/// Asks for a PIN (twice, hidden, at a terminal; one line from standard input
-/// otherwise, so scripts can use it) and creates the first administrator.
-fn init(data_dir: &std::path::Path, name: &str) -> u8 {
+/// Asks for a PIN or password (twice, hidden, at a terminal; one line from standard input
+/// otherwise, so scripts can use it). `None` after saying why if it is refused.
+fn read_secret() -> Option<String> {
     use std::io::{BufRead, IsTerminal};
 
     let pin = if std::io::stdin().is_terminal() {
@@ -47,7 +48,7 @@ fn init(data_dir: &std::path::Path, name: &str) -> u8 {
         let second = rpassword::prompt_password("Again: ").unwrap_or_default();
         if first != second {
             eprintln!("david: the two PINs differ");
-            return 1;
+            return None;
         }
         first
     } else {
@@ -57,8 +58,36 @@ fn init(data_dir: &std::path::Path, name: &str) -> u8 {
     };
     if !david_server::auth::valid_secret(&pin) {
         eprintln!("david: a PIN has 4 to 12 digits; a password has 8 to 64 characters with letters and digits");
-        return 1;
+        return None;
     }
+    Some(pin)
+}
+
+/// Sets a new PIN or password for an existing user.
+fn reset_pin(data_dir: &std::path::Path, name: &str) -> u8 {
+    let Some(pin) = read_secret() else { return 1 };
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("david: {e}");
+            return 1;
+        }
+    };
+    match runtime.block_on(david_server::app::reset_pin(data_dir, name, &pin)) {
+        Ok(()) => {
+            println!("New PIN set for {name}; they are signed out everywhere and any lock is lifted.");
+            0
+        }
+        Err(e) => {
+            eprintln!("david: {e}");
+            1
+        }
+    }
+}
+
+/// Asks for a PIN and creates the first administrator.
+fn init(data_dir: &std::path::Path, name: &str) -> u8 {
+    let Some(pin) = read_secret() else { return 1 };
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
@@ -69,7 +98,7 @@ fn init(data_dir: &std::path::Path, name: &str) -> u8 {
     match runtime.block_on(david_server::app::init_admin(data_dir, name, &pin)) {
         Ok(()) => {
             println!("Administrator {name} created in {}.", data_dir.display());
-            println!("Start the server with `david run --library <folder>` and open http://127.0.0.1:8484/admin/");
+            println!("Start the server with `david run` and open http://127.0.0.1:8484/admin/");
             0
         }
         Err(e) => {

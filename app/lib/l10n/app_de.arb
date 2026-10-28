@@ -155,5 +155,33 @@
       }
     }
   },
-  "aboutSource": "Quellcode"
+  "aboutSource": "Quellcode",
+  "filterVideos": "Videos",
+  "filterEbooks": "E-Books",
+  "comingSoonTitle": "Noch nicht verfügbar",
+  "comingSoonVideos": "Videos sind geplant. David verwaltet sie noch nicht, deshalb gibt es hier nichts zu zeigen.",
+  "comingSoonEbooks": "E-Books und PDF-Dateien sind geplant. David verwaltet sie noch nicht, deshalb gibt es hier nichts zu zeigen.",
+  "noAudiobooksYet": "Noch keine Hörbücher in der Bibliothek",
+  "readBy": "Gelesen von {name}",
+  "@readBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "filterAll": "Alle",
+  "sectionArtists": "Interpreten",
+  "sectionAuthorsAndArtists": "Autoren und Interpreten",
+  "artistLabel": "Künstler: {name}",
+  "@artistLabel": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sectionYourMusic": "Deine Musik",
+  "craEmail": "Kontakt",
+  "craWebsite": "Webseite"
 }

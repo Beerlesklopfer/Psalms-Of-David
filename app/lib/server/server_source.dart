@@ -177,6 +177,8 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
       color: _palette[id % _palette.length],
       cover: coverOf[id],
       blurb: d['description'] as String?,
+      kind: d['kind'] as String? ?? 'audiobook',
+      narrator: d['narrator'] as String?,
       tracks: [
         for (final p in parts)
           Track(

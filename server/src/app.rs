@@ -242,6 +242,28 @@ pub async fn init_admin(data_dir: &std::path::Path, name: &str, pin: &str) -> Re
     Ok(())
 }
 
+/// Sets a new PIN or password for an existing user: for the one who forgot theirs. The user is
+/// signed out everywhere (their sessions end) and a lock after failed attempts is lifted.
+pub async fn reset_pin(data_dir: &std::path::Path, name: &str, pin: &str) -> Result<()> {
+    if !crate::auth::valid_secret(pin) {
+        return Err(Error::InvalidPin);
+    }
+    let db = data_dir.join("david.db");
+    if !db.is_file() {
+        return Err(Error::WriteFailed(format!("there is no database in {}", data_dir.display())));
+    }
+    let store = Store::open(&db).await?;
+    let user = store
+        .list_profiles()
+        .await?
+        .into_iter()
+        .find(|p| p.name == name)
+        .ok_or_else(|| Error::WriteFailed(format!("no user named {name}")))?;
+    store.set_pin(user.id, pin).await?;
+    store.end_sessions_of(user.id).await?;
+    Ok(())
+}
+
 /// Completes on Ctrl-C and, on Unix, on SIGTERM (what systemd sends).
 pub async fn shutdown_signal() {
     #[cfg(unix)]

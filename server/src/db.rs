@@ -25,6 +25,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0013_disk_reserve.sql"),
     include_str!("../migrations/0014_music.sql"),
     include_str!("../migrations/0015_narrator.sql"),
+    include_str!("../migrations/0016_upload_kind.sql"),
 ];
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
