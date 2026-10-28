@@ -114,6 +114,10 @@ void main() {
   });
 
   testWidgets('the home page has a strip for music and one for audiobooks, each only with its own', (tester) async {
+    // A tall window: the strips are lazy and the ones below the fold are not built.
+    tester.view.physicalSize = const Size(1000, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     final p = PlayerController([_book('1', 'Winter der Welt'), _book('2', 'Versprochen', kind: 'music')]);
     await tester.pumpWidget(_app(p, const HomeScreen()));
     expect(find.text('Your music'), findsOneWidget);
@@ -126,5 +130,48 @@ void main() {
     expect(find.text('Your music'), findsNothing, reason: 'no music, no strip');
     expect(find.text('Your audiobooks'), findsOneWidget);
     onlyBooks.dispose();
+  });
+
+  testWidgets('the home page greets the user by nickname and shows what was listened to last', (tester) async {
+    tester.view.physicalSize = const Size(1000, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final p = PlayerController([_book('1', 'First Book'), _book('2', 'Second Book'), _book('3', 'Third Book', kind: 'music')]);
+    p.recentIds.addAll(['3', '1']);
+    await tester.pumpWidget(_app(p, const HomeScreen()));
+    expect(find.text('Recently listened'), findsOneWidget);
+    expect(find.textContaining(', Papa'), findsNothing, reason: 'no name without a server');
+    expect(p.recentBooks().map((b) => b.id), ['3', '1'], reason: 'the latest first, any kind, only what exists');
+
+    // Opening a book puts it in front at once; at most six are shown.
+    p.open(p.library[1]);
+    expect(p.recentBooks().map((b) => b.id), ['2', '3', '1']);
+    p.userName = 'Papa';
+    p.notifyListeners();
+    await tester.pump();
+    expect(find.textContaining(', Papa'), findsOneWidget);
+    p.dispose();
+  });
+
+  testWidgets('without anything listened to there is no heading for recent books', (tester) async {
+    final p = PlayerController([_book('1', 'First Book')]);
+    await tester.pumpWidget(_app(p, const HomeScreen()));
+    expect(find.text('Recently listened'), findsNothing);
+    p.dispose();
+  });
+
+  testWidgets('"Continue listening" is the first thing on the home page, above the recent books', (tester) async {
+    tester.view.physicalSize = const Size(1000, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final p = PlayerController([_book('1', 'First Book'), _book('2', 'Second Book')]);
+    p.recentIds.addAll(['2', '1']);
+    await tester.pumpWidget(_app(p, const HomeScreen()));
+    final continueAt = tester.getTopLeft(find.text('Continue listening')).dy;
+    final recentAt = tester.getTopLeft(find.text('Recently listened')).dy;
+    final booksAt = tester.getTopLeft(find.text('Your audiobooks')).dy;
+    expect(continueAt, lessThan(recentAt));
+    expect(recentAt, lessThan(booksAt));
+    p.dispose();
   });
 }

@@ -183,5 +183,17 @@
   },
   "sectionYourMusic": "Deine Musik",
   "craEmail": "Kontakt",
-  "craWebsite": "Webseite"
+  "craWebsite": "Webseite",
+  "greetingNamed": "{greeting}, {name}",
+  "@greetingNamed": {
+    "placeholders": {
+      "greeting": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sectionRecent": "Zuletzt gehört"
 }

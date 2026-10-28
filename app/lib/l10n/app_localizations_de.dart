@@ -415,4 +415,12 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get craWebsite => 'Webseite';
+
+  @override
+  String greetingNamed(String greeting, String name) {
+    return '$greeting, $name';
+  }
+
+  @override
+  String get sectionRecent => 'Zuletzt gehört';
 }

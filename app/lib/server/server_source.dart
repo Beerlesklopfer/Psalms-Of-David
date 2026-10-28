@@ -128,11 +128,17 @@ class ServerSource implements MediaSource {
 
 /// The library of the signed-in user as the app's models, and where to resume.
 class LoadedLibrary {
-  LoadedLibrary(this.books, this.resume, {this.lastBookId, this.lastAt = 0});
+  LoadedLibrary(this.books, this.resume, {this.lastBookId, this.lastAt = 0, this.userName, this.recent = const []});
+
+  /// The ids of the books listened to, the latest first (what "continue listening" says), at most 20.
+
+  /// The nickname of the signed-in user, for the greeting; null if the server did not tell.
 
   /// The book the user listened to last on any device, and when (ms since 1970), from the server.
   final String? lastBookId;
   final int lastAt;
+  final String? userName;
+  final List<String> recent;
 
   final List<Book> books;
   final Map<String, ({int track, Duration position})> resume;
@@ -142,11 +148,19 @@ const _palette = [Color(0xFF6E1F2B), Color(0xFF1F2F4D), Color(0xFF2C4A3E), Color
 
 Future<LoadedLibrary> loadLibrary(ApiClient api) async {
   final items = await api.items();
+  String? userName;
+  try {
+    userName = (await api.me())['nickname'] as String?;
+  } on Object {
+    // the greeting works without a name
+  }
   // The most recently listened book first; a failure here only means no "last book" is known.
   String? lastBookId;
   var lastAt = 0;
+  var recentIds = <String>[];
   try {
     final recent = await api.continueListening();
+    recentIds = [for (final r in recent) '${r['item_id']}'];
     if (recent.isNotEmpty) {
       lastBookId = '${recent.first['item_id']}';
       lastAt = recent.first['updated_at'] as int;
@@ -198,7 +212,7 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
       }
     }
   }
-  return LoadedLibrary(books, resume, lastBookId: lastBookId, lastAt: lastAt);
+  return LoadedLibrary(books, resume, lastBookId: lastBookId, lastAt: lastAt, userName: userName, recent: recentIds);
 }
 
 extension on List<Map<String, dynamic>> {

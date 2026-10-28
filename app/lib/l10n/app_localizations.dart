@@ -787,6 +787,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Website'**
   String get craWebsite;
+
+  /// No description provided for @greetingNamed.
+  ///
+  /// In en, this message translates to:
+  /// **'{greeting}, {name}'**
+  String greetingNamed(String greeting, String name);
+
+  /// No description provided for @sectionRecent.
+  ///
+  /// In en, this message translates to:
+  /// **'Recently listened'**
+  String get sectionRecent;
 }
 
 class _AppLocalizationsDelegate

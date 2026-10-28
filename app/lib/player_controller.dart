@@ -190,6 +190,25 @@ class PlayerController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  /// The nickname of the signed-in user, for the greeting; null without a server.
+  String? userName;
+
+  /// The ids of the books listened to, the latest first. Comes from the server and is kept up to
+  /// date here, so the home page shows a book at once when it is opened.
+  final List<String> recentIds = [];
+
+  void _touchRecent(Book b) {
+    recentIds
+      ..remove(b.id)
+      ..insert(0, b.id);
+  }
+
+  /// The books listened to last, the latest first, at most [count].
+  List<Book> recentBooks([int count = 6]) => [
+        for (final id in recentIds)
+          for (final b in library.where((b) => b.id == id).take(1)) b,
+      ].take(count).toList();
+
   /// Set by the app when there is a server: loads the library again. Null without a server.
   Future<void> Function()? refresher;
 
@@ -215,6 +234,12 @@ class PlayerController extends ChangeNotifier {
   /// Puts a reloaded library in place without interrupting what plays: the open book stays,
   /// with its track and position, if it is still there; otherwise the player stops.
   void updateLibrary(LoadedLibrary loaded) {
+    userName = loaded.userName ?? userName;
+    if (loaded.recent.isNotEmpty) {
+      recentIds
+        ..clear()
+        ..addAll(loaded.recent);
+    }
     final openId = book?.id;
     library = loaded.books;
     for (final e in loaded.resume.entries) {
@@ -251,6 +276,10 @@ class PlayerController extends ChangeNotifier {
     _resume
       ..clear()
       ..addAll(loaded.resume);
+    userName = loaded.userName;
+    recentIds
+      ..clear()
+      ..addAll(loaded.recent);
     _openWhereLeftOff(loaded);
     notifyListeners();
   }
@@ -390,6 +419,7 @@ class PlayerController extends ChangeNotifier {
     _report();
     _saveResume();
     book = b;
+    _touchRecent(b);
     if (track != null) {
       trackIndex = track;
       position = Duration.zero;

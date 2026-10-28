@@ -237,5 +237,17 @@
   },
   "sectionYourMusic": "Your music",
   "craEmail": "Contact",
-  "craWebsite": "Website"
+  "craWebsite": "Website",
+  "greetingNamed": "{greeting}, {name}",
+  "@greetingNamed": {
+    "placeholders": {
+      "greeting": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sectionRecent": "Recently listened"
 }

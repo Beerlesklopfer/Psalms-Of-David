@@ -23,9 +23,11 @@ class HomeScreen extends StatelessWidget {
     final p = PlayerScope.of(context);
     final wide = MediaQuery.sizeOf(context).width >= 800;
     // One strip for each category that has something, in the order of the library: music, audiobooks
-    // (videos and e-books follow when David manages them). The shortcuts above are audiobooks.
+    // (videos and e-books follow when David manages them).
     final books = p.library.where((b) => b.kind == 'audiobook').toList();
     final music = p.library.where((b) => b.kind == 'music').toList();
+    // The shortcuts are the books listened to last, whatever their kind, the latest first.
+    final recent = p.recentBooks();
 
     return CustomScrollView(
       slivers: [
@@ -33,11 +35,16 @@ class HomeScreen extends StatelessWidget {
           floating: true,
           backgroundColor: Theme.of(context).colorScheme.surface,
           title: Text(
-            _greeting(l),
+            p.userName == null || p.userName!.trim().isEmpty ? _greeting(l) : l.greetingNamed(_greeting(l), p.userName!),
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           actions: [RefreshButton()],
         ),
+        if (p.book != null) ...[
+          SliverToBoxAdapter(child: SectionHeader(l.sectionContinue)),
+          SliverToBoxAdapter(child: _Resume(book: p.book!)),
+        ],
+        if (recent.isNotEmpty) SliverToBoxAdapter(child: SectionHeader(l.sectionRecent)),
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           sliver: SliverGrid.count(
@@ -45,13 +52,9 @@ class HomeScreen extends StatelessWidget {
             mainAxisSpacing: 8,
             crossAxisSpacing: 8,
             childAspectRatio: wide ? 5 : 3.2,
-            children: [for (final b in books.take(6)) _Shortcut(book: b)],
+            children: [for (final b in recent) _Shortcut(book: b)],
           ),
         ),
-        if (p.book != null) ...[
-          SliverToBoxAdapter(child: SectionHeader(l.sectionContinue)),
-          SliverToBoxAdapter(child: _Resume(book: p.book!)),
-        ],
         if (music.isNotEmpty) ..._strip(l.sectionYourMusic, music),
         if (books.isNotEmpty || music.isEmpty) ..._strip(l.sectionYourBooks, books),
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
