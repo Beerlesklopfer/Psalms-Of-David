@@ -16,7 +16,35 @@ export ARCH=$arch
 (cd audio && cargo build --release --locked)
 (cd app && flutter pub get && flutter build linux --release --build-name "$VERSION")
 
-(cd app && nfpm package --config linux/packaging/nfpm.yaml --packager deb --target "$dist/psalm_${VERSION}_${arch}.deb" \
-    && nfpm package --config linux/packaging/nfpm.yaml --packager rpm --target "$dist/psalm-${VERSION}.rpm")
+if command -v nfpm >/dev/null; then
+    (cd app && nfpm package --config linux/packaging/nfpm.yaml --packager deb --target "$dist/psalm_${VERSION}_${arch}.deb" \
+        && nfpm package --config linux/packaging/nfpm.yaml --packager rpm --target "$dist/psalm-${VERSION}.rpm")
+else
+    # Without nfpm only the .deb can be made, with dpkg-deb; the .rpm needs nfpm (or rpmbuild).
+    echo "nfpm not found: building the .deb with dpkg-deb, no .rpm" >&2
+    stage=$(mktemp -d) && trap 'rm -rf "$stage"' EXIT
+    mkdir -p "$stage/opt" "$stage/usr/bin" "$stage/usr/share/applications" "$stage/usr/share/doc/psalm" "$stage/DEBIAN"
+    cp -r app/build/linux/x64/release/bundle "$stage/opt/psalm"
+    rm -f "$stage/opt/psalm/install-desktop-entry.sh"
+    ln -s /opt/psalm/psalm "$stage/usr/bin/psalm"
+    cp app/linux/io.onesimus.psalm.desktop "$stage/usr/share/applications/"
+    cp -r app/linux/icons "$stage/usr/share/icons"
+    cp LICENSE "$stage/usr/share/doc/psalm/"
+    size=$(du -sk "$stage" | cut -f1)
+    cat > "$stage/DEBIAN/control" <<CONTROL
+Package: psalm
+Version: $VERSION
+Architecture: $arch
+Maintainer: Joerg Bernau <Joerg@bernau.family>
+Installed-Size: $size
+Depends: libgtk-3-0, libpipewire-0.3-0
+Section: sound
+Priority: optional
+Homepage: https://github.com/Beerlesklopfer/Psalms-Of-David
+Description: Psalm, the audiobook and music player of the family
+ Plays what a David server offers, with a profile for every family member.
+CONTROL
+    dpkg-deb --root-owner-group --build "$stage" "$dist/psalm_${VERSION}_${arch}.deb" >/dev/null
+fi
 tar -C app/build/linux/x64/release -czf "$dist/psalm-linux-$arch.tar.gz" bundle
 ls -l "$dist"

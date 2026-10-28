@@ -6,16 +6,23 @@ und Desktop.
 - **David** ist der Server (Bibliothek, Profile, Hörfortschritt).
 - **Psalm** ist die App. Zusammen sind sie das Paar aus dem Namen: David und seine Psalmen.
 
-Status: früh. Die App ist eine Oberfläche mit Platzhalterdaten und spielt noch
-keinen Ton. Der Server hat Datenbank mit Rollen, Altersfreigabe, Geräte-Grenzen und Wochenplan,
-Bibliotheksscan, Dienstbetrieb und eine Verwaltungsoberfläche im Browser (Anmeldung mit PIN,
-Benutzer, Bücher freigeben, Einstellungen), aber noch keine Schnittstelle für die App.
+Status: früh, aber benutzbar auf Linux und im Android-Emulator.
+
+- **David (Server):** Rollen, Altersfreigabe, Geräte-Grenzen und Wochenplan; Hörbücher und Musik
+  (Autor und Sprecher, Interpret und Album); Import mit automatischer Suche nach neuen Dateien, Upload von
+  ZIP/TAR/RAR/7z mit Warteschlange, Tags und Cover im Browser bearbeiten, Löschen; Kopplung der Apps per Code/QR,
+  TLS mit festgehaltenem Fingerabdruck, Ankündigung per mDNS; Verwaltungsoberfläche im Browser (Deutsch/Englisch).
+- **Psalm (App):** Bibliothek, Kopplung (Code einfügen, QR aus Bild), Wiedergabe mit Tempo ohne Tonhöhenänderung,
+  Download für Hören ohne Server, Fortschritt (wird beim Start wieder aufgenommen), Aktualisierung der Bibliothek.
+  Ton über PipeWire (Linux) und `just_audio` (Android).
+- **Offen:** Offline-Start der App ohne Server (die Bibliothek wird noch nicht lokal gespeichert), Musik in der App,
+  Hintergrundwiedergabe und Sperrbildschirm, iPhone, Windows, signierte Pakete (siehe `docs/releasing.md`).
 
 ## Ziel
 
-- Eigene Bibliothek (zunächst Hörbücher, später Musik) auf eigenem Server
+- Eigene Bibliothek (Hörbücher und Musik) auf eigenem Server
 - Apps für Android und iPhone, dazu Desktop (Linux, Windows)
-- Hörposition je Titel merken, Offline-Download, Hintergrundwiedergabe, Sperrbildschirm
+- Hörposition je Titel merken, Download, Hintergrundwiedergabe, Sperrbildschirm
 - Keine Abhängigkeit von einem Anbieter-Konto
 
 ## Geplante Architektur
@@ -46,12 +53,12 @@ Navidrome für Musik.
 
 ## Plattformen
 
-**Zuerst Linux.** Android ist zurückgestellt, iPhone und Windows folgen später.
+**Zuerst Linux**, dann Android. iPhone und Windows folgen später.
 
 | Plattform | Stand |
 |---|---|
 | Linux (Desktop, Server) | Ton über PipeWire (`audio/`), Server `david` läuft; hier wird zuerst gebaut |
-| Android | zurückgestellt (kein Android-SDK, kein Test); vorgesehen: `just_audio` hinter einer gemeinsamen Schnittstelle |
+| Android | läuft im Emulator (Debug- und Release-APK, `just_audio` hinter der gemeinsamen Schnittstelle `AudioBackend`); noch nicht auf einem echten Telefon, nicht veröffentlicht |
 | iPhone | später (AirPlay und CarPlay kommen vom System) |
 | Windows | später; der Dienstcode des Servers ist geschrieben, aber nicht auf dem Zielsystem geprüft, nur gebaut und getestet |
 
@@ -59,10 +66,12 @@ Navidrome für Musik.
 
 | Ordner | Inhalt |
 |---|---|
-| `app/` | Flutter-App (Oberfläche mit Platzhalterdaten, noch ohne Ton) |
+| `app/` | Psalm, die Flutter-App (Linux, Android) |
 | `audio/` | Ton unter Linux: Rust-Engine über PipeWire (Laden, Abspielen, Pause, Springen, Lautstärke, Position), C-Schnittstelle für Flutter, Prüfskripte gegen eine virtuelle Senke |
 | `server/` | David, der Server (Programm `david`): SQLite mit SeaORM, Profile, Fortschritt, Bibliotheksscan, Dienstbetrieb (systemd, Windows-Dienst), Tests und Zapp-Test |
-| `docs/` | Specs auf Englisch: Datenmodell, Nebenläufigkeit, Audio (PipeWire), Entdeckung/Profile/Rollen, Verwaltungsoberfläche |
+| `docs/` | Specs auf Englisch: Datenmodell, Nebenläufigkeit, Audio (PipeWire), Entdeckung/Profile/Rollen, Verwaltungsoberfläche, App-Schnittstelle, Bibel, Veröffentlichen |
+| `scripts/` | Pakete bauen (`package.sh`, `package-app.sh`), Prüfsummen (`checksums.sh`) |
+| `.github/workflows/` | CI: Tests und Pakete (.deb, .rpm, .apk), siehe `docs/releasing.md` |
 
 Kommentare im Quellcode sind immer englisch.
 
@@ -80,8 +89,9 @@ Plurale laufen über ICU-Syntax in der ARB-Datei, nicht über Stringbau im Code.
 ## Entwicklung
 
 - Flutter ist systemweit installiert (`/opt/flutter`, Kanal stable).
-- Linux-Desktop ist als Ziel eingerichtet, Android-SDK fehlt noch, iOS-Builds
-  gehen nur auf einem Mac.
+- iOS-Builds gehen nur auf einem Mac.
+- Für den Emulator zeigt `adb reverse tcp:8484 tcp:8484` den Server-Port des Rechners auf `127.0.0.1` im Emulator.
+- Pakete und Veröffentlichung: `docs/releasing.md`.
 
 ## Namenswahl
 
