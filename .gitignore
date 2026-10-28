@@ -1,0 +1,37 @@
+# Audiodateien und Rip-Zwischenstände gehören nicht ins Repository
+*.mp3
+*.wav
+*.flac
+*.opus
+abcde.*/
+
+# Flutter / Dart / Android: build output of every kind
+.dart_tool/
+**/build/
+.gradle/
+**/.cxx/
+**/local.properties
+.flutter-plugins*
+*.iml
+.idea/
+
+# Rust: every target folder, whatever the crate (server/, audio/, later ones)
+**/target/
+
+# Sonstiges
+*.log
+.env
+dist/
+
+# Gebaute Pakete und Schlüssel gehören nie ins Repository
+*.deb
+*.rpm
+*.apk
+*.aab
+*.tar.gz
+key.properties
+*.jks
+*.keystore
+*.pem
+*.asc
+!docs/**/*.asc

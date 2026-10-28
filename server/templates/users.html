@@ -1,0 +1,37 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "users" %}
+
+{% block title %}{{ t("users.title") }}{% endblock %}
+
+{% block content %}
+{% from "fragments/ui.html" import icon %}
+<div class="page-head">
+  <h1>{{ t("users.title") }}</h1>
+  <button type="button" class="btn" data-dialog="dlg-new-user">{{ icon("plus") }}<span>{{ t("users.new") }}</span></button>
+</div>
+
+<dialog id="dlg-new-user" class="window edit-window" aria-labelledby="dlg-new-user-title">
+  <div class="window-head"><h3 id="dlg-new-user-title">{{ t("users.new") }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+  <div class="window-body">
+    <form id="new-user-form" class="dialog-form" method="post" action="/admin/rpc/user.create"
+          hx-post="/admin/rpc/user.create" hx-target="#user-list" hx-swap="outerHTML" hx-disabled-elt="find button" data-close-window data-reset>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field"><input type="text" name="name" required maxlength="80" autocomplete="off" placeholder=" "><span>{{ t("users.nickname") }}</span></label>
+      <label class="field"><input type="text" name="first_name" maxlength="80" placeholder=" "><span>{{ t("users.first_name") }}</span></label>
+      <label class="field"><input type="text" name="last_name" maxlength="80" placeholder=" "><span>{{ t("users.last_name") }}</span></label>
+
+      <label class="field"><select name="role">{% for r in ["member", "child", "guest", "admin"] %}<option value="{{ r }}">{{ t("role." ~ r) }}</option>{% endfor %}</select><span class="raised">{{ t("users.role") }}</span></label>
+      <label class="field"><input type="date" name="birth_date" min="1900-01-01"><span class="raised">{{ t("users.birthday") }}</span></label>
+      <label class="field"><input type="password" name="pin" maxlength="64" autocomplete="new-password" placeholder=" "><span>{{ t("users.pin_optional") }}</span></label>
+      <small class="span-all">{{ t("users.child_hint") }}</small>
+      <div class="form-error span-all" role="alert"></div>
+    </form>
+  </div>
+  <div class="window-foot">
+    <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+    <button type="submit" class="btn" form="new-user-form">{{ t("users.create") }}</button>
+  </div>
+</dialog>
+
+{% include "fragments/user_list.html" %}
+{% endblock %}

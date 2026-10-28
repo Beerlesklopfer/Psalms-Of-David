@@ -1,0 +1,22 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% if books %}
+<table id="book-list" class="stack books">
+  <thead>
+    <tr>
+      <th><span class="sr-only">{{ t("books.cover") }}</span></th>
+      <th>{{ t("books.book") }}</th>
+      <th>{{ t("books.state") }}</th>
+      <th>{{ t("books.content") }}</th>
+      <th>{{ t("books.recommended") }}</th>
+      <th><span class="sr-only">{{ t("users.actions") }}</span></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for book in books %}
+    {% include "fragments/book_row.html" %}
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p id="book-list">{{ t("books.none") }}</p>
+{% endif %}

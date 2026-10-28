@@ -1,0 +1,73 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<section id="import-settings">
+  <p class="lead">{{ t("settings.import_intro") }}</p>
+  <dl class="stats">
+    <div class="stat">
+      <dt>{{ t("import.state") }}</dt>
+      <dd class="state {% if state.enabled %}open{% else %}shut{% endif %}">{{ icon("unlock" if state.enabled else "lock") }}{% if state.enabled %}{{ t("import.unlocked") }}{% else %}{{ t("import.locked_short") }}{% endif %}</dd>
+      {% if state.enabled %}{% if state.unlocked_by %}<small>{{ t("import.unlocked_by") }} {{ state.unlocked_by }}</small>{% endif %}{% else %}<small>{{ t("import.locked") }}</small>{% endif %}
+    </div>
+    <div class="stat">
+      <dt>{{ t("import.rule") }}</dt>
+      <dd class="small">{{ t("import.rule." ~ state.rule) }}</dd>
+    </div>
+  </dl>
+
+  <h2>{{ t("import.folders") }}</h2>
+  {% if state.roots %}
+  <ul class="folders">
+    {% for root in state.roots %}<li>{{ icon("folder") }}<code>{{ root }}</code></li>{% endfor %}
+  </ul>
+  <p class="hint">{{ t("import.roots_hint") }}</p>
+  {% else %}
+  <p class="message">{{ t("import.no_folders") }}</p>
+  {% endif %}
+
+  <h2>{{ t("import.music_folders") }}</h2>
+  {% if state.music_roots %}
+  <ul class="folders">
+    {% for root in state.music_roots %}<li>{{ icon("music") }}<code>{{ root }}</code></li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="hint">{{ t("import.no_music_folders") }}</p>
+  {% endif %}
+
+  <div class="gate">
+    <button type="button" class="btn outline" data-dialog="dlg-import">{{ icon("edit") }}<span>{{ t("import.edit") }}</span></button>
+    {% if state.enabled %}
+    <form method="post" action="/admin/rpc/import.lock" hx-post="/admin/rpc/import.lock" hx-target="#import-settings" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="btn outline">{{ icon("lock") }}<span>{{ t("import.lock") }}</span></button>
+    </form>
+    {% else %}
+    <form method="post" action="/admin/rpc/import.unlock" hx-post="/admin/rpc/import.unlock" hx-target="#import-settings" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="btn"{% if not state.criteria_defined %} disabled{% endif %}>{{ icon("unlock") }}<span>{{ t("import.unlock") }}</span></button>
+      {% if not state.criteria_defined %}<small>{{ t("import.needs_criteria") }}</small>{% endif %}
+    </form>
+    {% endif %}
+  </div>
+
+  <dialog id="dlg-import" class="window edit-window" aria-labelledby="dlg-import-title">
+    <div class="window-head"><h3 id="dlg-import-title">{{ t("import.edit") }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+    <div class="window-body">
+      <form id="import-form" class="dialog-form" method="post" action="/admin/rpc/import.save_criteria"
+            hx-post="/admin/rpc/import.save_criteria" hx-target="#import-settings" hx-swap="outerHTML" hx-disabled-elt="find button" data-close-window>
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="field span-all"><textarea name="roots" rows="4" spellcheck="false" placeholder=" ">{{ state.roots | join("\n") }}</textarea><span>{{ t("import.roots") }}</span></label>
+        <small class="span-all">{{ t("import.roots_hint") }}</small>
+        <label class="field span-all"><textarea name="music_roots" rows="3" spellcheck="false" placeholder=" ">{{ state.music_roots | join("\n") }}</textarea><span>{{ t("import.music_roots") }}</span></label>
+        <small class="span-all">{{ t("import.music_hint") }}</small>
+        <label class="field span-all"><select name="rule">
+          <option value="manual"{% if state.rule == "manual" %} selected{% endif %}>{{ t("import.rule.manual") }}</option>
+          <option value="recommendation"{% if state.rule == "recommendation" %} selected{% endif %}>{{ t("import.rule.recommendation") }}</option>
+        </select><span class="raised">{{ t("import.rule") }}</span></label>
+        <div class="form-error span-all" role="alert"></div>
+      </form>
+    </div>
+    <div class="window-foot">
+      <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+      <button type="submit" class="btn" form="import-form">{{ t("import.save") }}</button>
+    </div>
+  </dialog>
+</section>

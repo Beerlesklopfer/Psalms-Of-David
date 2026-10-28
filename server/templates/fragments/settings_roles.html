@@ -1,0 +1,22 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<form id="roles-form" class="settings-form" method="post" action="/admin/rpc/policies.save"
+      hx-post="/admin/rpc/policies.save" hx-target="#roles-form" hx-swap="outerHTML" hx-disabled-elt="find button">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <p class="lead">{{ t("settings.roles_intro") }}</p>
+  <fieldset class="line-group">
+    <legend>{{ t("settings.policy") }}</legend>
+    {% for policy in policies %}
+    <div class="line role-line">
+      <span class="line-label">{{ t("role." ~ policy.role) }}</span>
+      <label class="line-field"><input name="devices_{{ policy.role }}" value="{{ policy.max_devices }}" required inputmode="numeric" pattern="[0-9]+" size="4"><span class="unit">{{ t("settings.max_devices") }}</span></label>
+      <label class="line-field"><input name="days_{{ policy.role }}" value="{{ policy.days }}" required inputmode="numeric" pattern="[0-9]+" size="5"><span class="unit">{{ t("settings.session_days") }}</span></label>
+    </div>
+    {% endfor %}
+  </fieldset>
+  <div class="form-error" role="alert"></div>
+  <div class="form-foot">
+    {% if saved %}<span class="saved">{{ icon("check") }}{{ t("ok.saved") }}</span>{% endif %}
+    <a class="btn outline" href="/admin/settings?tab=roles">{{ t("ui.cancel") }}</a>
+    <button type="submit" class="btn">{{ t("ui.save") }}</button>
+  </div>
+</form>

@@ -1,0 +1,44 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<section id="import-panel">
+  <div class="page-head">
+    <h1>{{ t("import.title") }}</h1>
+    <div class="row-actions">
+      <a class="btn outline" href="/admin/settings?tab=import">{{ icon("settings") }}<span>{{ t("import.to_settings") }}</span></a>
+      {% if state.enabled %}
+      <form method="post" action="/admin/rpc/import.run" hx-post="/admin/rpc/import.run" hx-target="#import-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="btn">{{ icon("import") }}<span>{{ t("import.run") }}</span></button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <p class="lead">{{ t("import.intro") }}</p>
+  {% if not state.enabled %}<p class="message error">{{ t("import.locked") }} <a href="/admin/settings?tab=import">{{ t("import.to_settings") }}</a></p>{% endif %}
+
+  <h2>{{ t("import.folders") }}</h2>
+  {% if state.roots %}
+  <ul class="folders">
+    {% for root in state.roots %}<li>{{ icon("folder") }}<code>{{ root }}</code></li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="message">{{ t("import.no_folders") }}</p>
+  {% endif %}
+
+  {% if report %}
+  <h2>{{ t("import.report") }}</h2>
+  <dl class="stats">
+    <div class="stat"><dt>{{ t("import.report.audiobooks") }}</dt><dd>{{ report.audiobooks }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.authors") }}</dt><dd>{{ report.authors }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.albums") }}</dt><dd>{{ report.albums }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.artists") }}</dt><dd>{{ report.artists }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.tracks_total") }}</dt><dd>{{ report.tracks_total }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.added") }}</dt><dd>{{ report.tracks_added }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.updated") }}</dt><dd>{{ report.tracks_updated }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.unchanged") }}</dt><dd>{{ report.tracks_unchanged }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.removed") }}</dt><dd>{{ report.tracks_removed }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.released") }}</dt><dd>{{ report.books_released }}</dd></div>
+  </dl>
+  <p><a class="btn outline" href="/admin/books">{{ icon("books") }}<span>{{ t("import.to_books") }}</span></a></p>
+  {% endif %}
+</section>

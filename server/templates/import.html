@@ -1,0 +1,9 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "import" %}
+
+{% block title %}{{ t("import.title") }}{% endblock %}
+
+{% block content %}
+{% include "fragments/import_panel.html" %}
+{% include "fragments/upload_section.html" %}
+{% endblock %}

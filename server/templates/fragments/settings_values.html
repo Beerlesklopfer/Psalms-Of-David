@@ -1,0 +1,30 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<form id="values-form" class="settings-form" method="post" action="/admin/rpc/settings.save"
+      hx-post="/admin/rpc/settings.save" hx-target="#values-form" hx-swap="outerHTML" hx-disabled-elt="find button">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% for group in ["library", "signin", "pairing", "guests", "general"] %}
+  <fieldset class="line-group">
+    <legend>{{ t("settings.group." ~ group) }}</legend>
+    {% for setting in settings if setting.group == group %}
+    <label class="line">
+      <span class="line-label">{{ t("setting." ~ setting.key) }}</span>
+      <span class="line-field">
+        {% if setting.key == "time_zone" %}
+        <input name="time_zone" value="{{ setting.shown }}" required list="zone-list" autocomplete="off" spellcheck="false" size="28" maxlength="64" placeholder="{{ t('settings.zone_search') }}">
+        <datalist id="zone-list">{% for zone in zones %}<option value="{{ zone }}">{% endfor %}</datalist>
+        {% else %}
+        <input name="{{ setting.key }}" value="{{ setting.shown }}" required inputmode="numeric" pattern="[0-9]+" size="6">
+        {% endif %}
+        {% if setting.unit %}<span class="unit">{{ t(setting.unit) }}</span>{% endif %}
+      </span>
+    </label>
+    {% endfor %}
+  </fieldset>
+  {% endfor %}
+  <div class="form-error" role="alert"></div>
+  <div class="form-foot">
+    {% if saved %}<span class="saved">{{ icon("check") }}{{ t("ok.saved") }}</span>{% endif %}
+    <a class="btn outline" href="/admin/settings?tab=values">{{ t("ui.cancel") }}</a>
+    <button type="submit" class="btn">{{ t("ui.save") }}</button>
+  </div>
+</form>

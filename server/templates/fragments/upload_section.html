@@ -1,0 +1,30 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<section id="upload-section">
+  <div class="page-head">
+    <h2>{{ t("upload.title") }}</h2>
+    <button type="button" class="btn" data-dialog="dlg-upload">{{ icon("import") }}<span>{{ t("upload.button") }}</span></button>
+  </div>
+  <p class="lead">{{ t("upload.intro") }}</p>
+  {% include "fragments/upload_queue.html" %}
+
+  <dialog id="dlg-upload" class="window edit-window" aria-labelledby="dlg-upload-title">
+    <div class="window-head"><h3 id="dlg-upload-title">{{ t("upload.button") }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+    <div class="window-body">
+      <form id="upload-form" class="dialog-form" method="post" enctype="multipart/form-data" action="/admin/rpc/upload.create?csrf={{ csrf }}"
+            hx-post="/admin/rpc/upload.create?csrf={{ csrf }}" hx-encoding="multipart/form-data" hx-target="#upload-queue" hx-swap="outerHTML" hx-disabled-elt="find button" data-close-window data-reset>
+        <label class="field span-all"><input type="file" name="archive" required accept=".zip,.tar,.gz,.tgz,.bz2,.tbz2,.xz,.txz,.rar,.7z"><span class="raised">{{ t("upload.file") }}</span></label>
+        <small class="span-all">{{ t("upload.hint") }}</small>
+        <div class="span-all upload-progress" hidden data-progress-for="upload-form">
+          <span class="progress-label">{{ t("upload.progress") }} <b class="progress-percent">0%</b></span>
+          <progress max="100" value="0"></progress>
+          <small>{{ t("upload.stay") }}</small>
+        </div>
+        <div class="form-error span-all" role="alert"></div>
+      </form>
+    </div>
+    <div class="window-foot">
+      <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+      <button type="submit" class="btn" form="upload-form">{{ t("upload.send") }}</button>
+    </div>
+  </dialog>
+</section>

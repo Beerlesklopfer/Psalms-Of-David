@@ -1,0 +1,54 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{#- A page says which menu item it belongs to with `{% set active = "..." %}`; without it nothing is marked. -#}{% set page = active if active is defined else "" %}{% from "fragments/ui.html" import icon, popup %}{% from "fragments/avatar.html" import avatar %}<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true}]}'>
+  <title>{% block title %}{{ t("app.name") }}{% endblock %} - {{ t("app.name") }}</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/static/favicon.svg">
+  <link rel="stylesheet" href="/admin/static/admin.css">
+  <script src="/admin/static/htmx.min.js" defer></script>
+  <script src="/admin/static/ui.js" defer></script>
+</head>
+<body{% if csrf %} hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'{% endif %}>
+  <div class="frame">
+    <header class="top">
+      <a class="brand" href="{% if me and me.role == "admin" %}/admin/{% elif me %}/profile{% else %}/admin/login{% endif %}"{% if me and me.role == "admin" %} title="{{ t("nav.overview") }}"{% endif %}{% if page == "overview" %} aria-current="page"{% endif %}><img class="logo" src="/admin/static/logo.svg" alt="{{ t("app.name") }}"></a>
+      {% if me %}
+      {% if me.role == "admin" %}
+      <nav class="menu" aria-label="Menu">
+        <a href="/admin/users"{% if page == "users" %} aria-current="page"{% endif %}>{{ icon("users") }}<span>{{ t("nav.users") }}</span></a>
+        {% call popup("media", "media", t("nav.media"), page == "books" or page == "music", "up") %}
+          <a role="menuitem" href="/admin/books"{% if page == "books" %} aria-current="page"{% endif %}>{{ icon("books") }}<span>{{ t("nav.books") }}</span></a>
+          <a role="menuitem" href="/admin/music"{% if page == "music" %} aria-current="page"{% endif %}>{{ icon("music") }}<span>{{ t("nav.music") }}</span></a>
+          <span role="menuitem" class="menu-item disabled" aria-disabled="true">{{ icon("video") }}<span>{{ t("nav.videos") }}</span><small class="badge">{{ t("nav.soon") }}</small></span>
+        {% endcall %}
+        <a href="/admin/pairing"{% if page == "pairing" %} aria-current="page"{% endif %}>{{ icon("pairing") }}<span>{{ t("nav.pairing") }}</span></a>
+        <a href="/admin/import"{% if page == "import" %} aria-current="page"{% endif %}>{{ icon("import") }}<span>{{ t("nav.import") }}</span></a>
+        <a href="/admin/settings"{% if page == "settings" %} aria-current="page"{% endif %}>{{ icon("settings") }}<span>{{ t("nav.settings") }}</span></a>
+      </nav>
+      {% endif %}
+      <details class="popup user end" id="popup-user">
+        <summary class="chip{% if page == "profile" %} current{% endif %}" aria-haspopup="menu" title="{{ me.name }}">
+          {{ avatar(me) }}<span class="chip-name">{{ me.name }}</span>{{ icon("chevron") }}
+        </summary>
+        <div class="popup-menu" role="menu" aria-label="{{ me.name }}">
+          <div class="menu-head">{{ avatar(me, "big") }}<div><strong>{{ me.name }}</strong><br><small>{{ t("role." ~ me.role) }}</small></div></div>
+          <a role="menuitem" href="/profile"{% if page == "profile" %} aria-current="page"{% endif %}>{{ icon("profile") }}<span>{{ t("nav.profile") }}</span></a>
+          <form method="post" action="/admin/logout" class="menu-form">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <button type="submit" role="menuitem" class="menu-item">{{ icon("logout") }}<span>{{ t("nav.logout") }}</span></button>
+          </form>
+        </div>
+      </details>
+      {% endif %}
+    </header>
+    <main>
+      <div id="messages" role="status">{% include "fragments/message.html" %}</div>
+      {% block content %}{% endblock %}
+    </main>
+    <footer class="site-foot"><a href="https://github.com/Beerlesklopfer/Psalms-Of-David" rel="noopener">{{ t("app.source") }}</a> &middot; AGPL-3.0-or-later</footer>
+  </div>
+</body>
+</html>

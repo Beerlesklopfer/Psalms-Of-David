@@ -1,0 +1,27 @@
+# systemd unit for the David server.
+# Install: copy to /etc/systemd/system/, adjust --library, then
+#   systemctl daemon-reload && systemctl enable --now david
+[Unit]
+Description=David server (audiobook and music library)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/david run --library /srv/david/library
+# The database lives in /var/lib/david (created and owned by the dynamic user).
+Environment=DAVID_DATA_DIR=/var/lib/david
+StateDirectory=david
+DynamicUser=yes
+Restart=on-failure
+RestartSec=5
+
+# The library must be readable by the dynamic user (world-readable, or a group
+# added with SupplementaryGroups=). It is only read, never written.
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

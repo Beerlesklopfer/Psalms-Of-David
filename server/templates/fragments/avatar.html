@@ -1,0 +1,10 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}
+{#- The picture of a user: their own, or an ancient lyre on a colour that follows the name. -#}
+{% macro avatar(me, size="") -%}
+{%- if me.has_avatar -%}
+<img class="avatar{% if size %} {{ size }}{% endif %}" src="/avatar/{{ me.id }}" alt="">
+{%- else -%}
+<span class="avatar{% if size %} {{ size }}{% endif %} tone-{{ me.tone }}" aria-hidden="true"><svg class="lyre" viewBox="0 0 24 24"><path d="M8 3.5C5.5 6 5 10.5 7.5 14.2c1.3 1.9 2.8 2.8 4.5 2.8s3.2-.9 4.5-2.8C19 10.5 18.5 6 16 3.5"/><path d="M7.2 6.2h9.6"/><path d="M10 6.4v8.6M12 6.4v10.6M14 6.4v8.6"/><path d="M9.5 20h5M12 17.2V20"/></svg></span>
+{%- endif -%}
+{%- endmacro %}

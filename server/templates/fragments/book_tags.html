@@ -1,0 +1,20 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}<form id="tags-form-{{ id }}" class="dialog-form" method="post" enctype="multipart/form-data" action="/admin/rpc/book.tags?csrf={{ csrf }}"
+      hx-post="/admin/rpc/book.tags?csrf={{ csrf }}" hx-encoding="multipart/form-data" hx-target="#book-{{ id }}" hx-swap="outerHTML" hx-disabled-elt="find button" data-close-window>
+  <input type="hidden" name="id" value="{{ id }}">
+  <div class="cover-edit span-all">
+    <img id="tags-preview-{{ id }}" class="cover-preview" src="/admin/cover/{{ id }}" alt="">
+    <div class="cover-actions">
+      <label class="btn outline file-pick"><span>{{ t("tags.choose") }}</span><input type="file" id="tags-cover-{{ id }}" name="cover" accept="image/png,image/jpeg,image/webp" data-image-input data-preview="tags-preview-{{ id }}"></label>
+      <button type="button" class="btn outline" data-paste-image="tags-cover-{{ id }}" data-hint="tags-hint-{{ id }}" data-none="{{ t('tags.paste_none') }}" data-denied="{{ t('tags.paste_denied') }}">{{ t("tags.paste") }}</button>
+      <small id="tags-hint-{{ id }}" class="cover-hint">{{ t("tags.paste_hint") }}</small>
+    </div>
+  </div>
+  <label class="field span-all"><input type="text" name="album" maxlength="200" placeholder=" " value="{{ album }}"><span>{{ t("tags.album") }}</span></label>
+  <label class="field span-all"><input type="text" name="artist" maxlength="200" placeholder=" " value="{{ artist }}"><span>{{ t("tags.author") if kind == "audiobook" else t("tags.artist") }}</span></label>
+  {% if kind == "audiobook" %}<label class="field span-all"><input type="text" name="narrator" maxlength="200" placeholder=" " value="{{ narrator }}"><span>{{ t("tags.narrator") }}</span></label>{% endif %}
+  <label class="field"><input type="text" name="year" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder=" " value="{{ year }}"><span>{{ t("tags.year") }}</span></label>
+  <label class="field"><input type="text" name="genre" maxlength="200" placeholder=" " value="{{ genre }}"><span>{{ t("tags.genre") }}</span></label>
+  <small class="span-all">{{ t("tags.hint") }}</small>
+  <div class="form-error span-all" role="alert"></div>
+</form>

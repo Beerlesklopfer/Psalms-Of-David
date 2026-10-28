@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[Desktop Entry]
+Type=Application
+Name=Psalm
+GenericName=Audiobook player
+Comment=Plays audiobooks and music from your David server
+Comment[de]=Spielt Hörbücher und Musik von deinem David-Server
+Exec=psalm %U
+Icon=io.onesimus.psalm
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=audiobook;hörbuch;music;podcast;
+StartupWMClass=io.onesimus.psalm
+MimeType=x-scheme-handler/david;

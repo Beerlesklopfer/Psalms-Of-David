@@ -1,0 +1,21 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% if users %}
+<table class="stack" id="user-list">
+  <thead>
+    <tr>
+      <th>{{ t("users.name") }}</th>
+      <th>{{ t("users.role") }}</th>
+      <th>{{ t("users.age_limit") }}</th>
+      <th>{{ t("users.devices") }}</th>
+      <th><span class="sr-only">{{ t("users.actions") }}</span></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for user in users %}
+    {% include "fragments/user_row.html" %}
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p id="user-list">{{ t("users.none") }}</p>
+{% endif %}

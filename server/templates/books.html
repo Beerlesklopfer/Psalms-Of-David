@@ -1,0 +1,11 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "music" if kind == "music" else "books" %}
+
+{% block title %}{{ t("music.title") if kind == "music" else t("books.title") }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>{{ t("music.title") if kind == "music" else t("books.title") }}</h1>
+</div>
+{% include "fragments/book_list.html" %}
+{% endblock %}

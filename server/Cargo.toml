@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+[package]
+name = "david-server"
+version = "0.1.0"
+edition = "2024"
+description = "David: library, profiles and listening progress for the family"
+publish = false
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/Beerlesklopfer/Psalms-Of-David"
+homepage = "https://github.com/Beerlesklopfer/Psalms-Of-David"
+
+[dependencies]
+sea-orm = { version = "2.0", default-features = false, features = [
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "signal"] }
+lofty = "0.25"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+uuid = { version = "1", features = ["v4"] }
+minijinja = { version = "3.0.4", features = ["serde"] }
+serde = { version = "1.0.229", features = ["derive"] }
+axum = { version = "0.8.9", features = ["multipart"] }
+argon2 = "0.6.0"
+sha2 = "0.11.1"
+serde_urlencoded = "0.7.1"
+mdns-sd = "0.21.6"
+qrcode = "0.14.1"
+rpassword = "7.5.4"
+serde_json = "1.0.154"
+axum-server = { version = "0.8.0", default-features = false, features = ["tls-rustls-no-provider"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+rcgen = "0.14.10"
+time = "0.3.55"
+jiff = "0.2"
+tower = { version = "0.5.3", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs"] }
+fs4 = "1.1.0"
+
+[[bin]]
+name = "david"
+path = "src/main.rs"
+
+# Platform specific: the Windows service API on Windows, systemd notification on Unix.
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.8"
+
+[target.'cfg(unix)'.dependencies]
+sd-notify = "0.5"
+
+[dev-dependencies]
+if-addrs = "0.15.0"
+image = { version = "0.25.10", default-features = false }
+rqrr = "0.11.0"
+tempfile = "3"
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
+
+# Debian package: `cargo deb` (see .github/workflows/ci.yml).
+[package.metadata.deb]
+name = "david-server"
+maintainer = "Joerg Bernau <Joerg@bernau.family>"
+section = "sound"
+priority = "optional"
+depends = "$auto"
+recommends = "7zip | p7zip-full"
+extended-description = "Self-hosted audiobook and music server for the family (David). Runs as a systemd service with a dynamic user; the data lives in /var/lib/david."
+assets = [
+    ["target/release/david", "usr/bin/david", "755"],
+    ["packaging/david-deb.service", "usr/lib/systemd/system/david.service", "644"],
+    ["../LICENSE", "usr/share/doc/david-server/LICENSE", "644"],
+]
+
+# RPM package: `cargo generate-rpm` (see scripts/package.sh).
+[package.metadata.generate-rpm]
+name = "david-server"
+summary = "David: self-hosted audiobook and music server for the family"
+license = "AGPL-3.0-or-later"
+assets = [
+    { source = "target/release/david", dest = "/usr/bin/david", mode = "755" },
+    { source = "packaging/david-deb.service", dest = "/usr/lib/systemd/system/david.service", mode = "644" },
+    { source = "../LICENSE", dest = "/usr/share/licenses/david-server/LICENSE", mode = "644", doc = false },
+]

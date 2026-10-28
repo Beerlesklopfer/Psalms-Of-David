@@ -1,0 +1,51 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<tr id="book-{{ book.id }}">
+  <td class="cover-cell"><span class="thumb">{{ icon("books") }}<img src="/admin/cover/{{ book.id }}" alt="" loading="lazy"></span></td>
+  <td><strong>{{ book.title }}</strong><br><small>{{ book.author }}{% if book.narrator %} &middot; {{ t("books.read_by") }} {{ book.narrator }}{% endif %}</small></td>
+  <td data-label="{{ t('books.state') }}">
+    {% if book.released %}<span class="badge ok">{{ t("books.released_from") }} {{ book.min_age }}</span>{% else %}<span class="badge muted">{{ t("books.unreleased") }}</span>{% endif %}
+    {% if book.quota_exempt %}<span class="badge">{{ t("books.learning") }}</span>{% endif %}
+  </td>
+  <td data-label="{{ t('books.content') }}">{{ book.discs }} {{ t("books.discs") }} &middot; {{ book.tracks }} {{ t("books.tracks") }} &middot; {{ book.duration_ms // 3600000 }} h {{ (book.duration_ms // 60000) % 60 }} min</td>
+  <td data-label="{{ t('books.recommended') }}">{% if book.recommended_age is none %}&ndash;{% else %}{{ book.recommended_age }}{% endif %}</td>
+  <td class="actions">
+    <div class="row-actions">
+      <button type="button" class="btn outline" data-dialog="dlg-book-{{ book.id }}">{{ icon("edit") }}<span>{{ t("users.edit") }}</span></button>
+      <button type="button" class="btn outline" data-dialog="dlg-tags-{{ book.id }}" hx-get="/admin/rpc/book.tags_form?id={{ book.id }}" hx-target="#tags-body-{{ book.id }}" hx-swap="innerHTML">{{ icon("tag") }}<span>{{ t("tags.button") }}</span></button>
+    </div>
+    <dialog id="dlg-tags-{{ book.id }}" class="window edit-window tags-window" aria-labelledby="dlg-tags-title-{{ book.id }}">
+      <div class="window-head"><h3 id="dlg-tags-title-{{ book.id }}">{{ t("tags.title") }}: {{ book.title }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+      <div id="tags-body-{{ book.id }}" class="window-body"></div>
+      <div class="window-foot">
+        <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+        <button type="submit" class="btn" form="tags-form-{{ book.id }}">{{ t("ui.save") }}</button>
+      </div>
+    </dialog>
+    <dialog id="dlg-book-{{ book.id }}" class="window edit-window" aria-labelledby="dlg-book-title-{{ book.id }}">
+      <div class="window-head"><h3 id="dlg-book-title-{{ book.id }}">{{ book.title }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+      <div class="window-body">
+        <form id="book-form-{{ book.id }}" class="dialog-form" method="post" action="/admin/rpc/book.update" hx-post="/admin/rpc/book.update" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-disabled-elt="find button" data-close-window>
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}">
+          <label class="check span-all"><input type="checkbox" name="released" value="1"{% if book.released %} checked{% endif %}> <span>{{ t("books.released") }}</span></label>
+          <label class="field"><input type="number" name="min_age" min="0" max="21" placeholder=" " value="{% if book.min_age is not none %}{{ book.min_age }}{% elif book.recommended_age is not none %}{{ book.recommended_age }}{% else %}0{% endif %}"><span>{{ t("books.age") }}</span></label>
+          <label class="field span-all"><textarea name="description" rows="6" maxlength="4000" placeholder=" ">{% if book.description %}{{ book.description }}{% endif %}</textarea><span>{{ t("books.description") }}</span></label>
+          <label class="check span-all"><input type="checkbox" name="exempt" value="1"{% if book.quota_exempt %} checked{% endif %}> <span>{{ t("books.learning_hint") }}</span></label>
+          {% if book.recommended_age is not none %}
+          <small class="span-all">{{ t("books.recommended_by_medium") }}: {{ book.recommended_age }}</small>
+          <label class="check span-all"><input type="checkbox" name="confirm" value="1"> <span>{{ t("books.confirm_below") }}</span></label>
+          {% endif %}
+          <div class="form-error span-all" role="alert"></div>
+        </form>
+      </div>
+      <div class="window-foot">
+        <form method="post" action="/admin/rpc/book.delete" hx-post="/admin/rpc/book.delete" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-confirm="{{ t('books.confirm_delete') }}" class="foot-left">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}">
+          <label class="check"><input type="checkbox" name="files" value="1" checked> <span>{{ t("books.delete_files") }}</span></label>
+          <button type="submit" class="link-danger">{{ t("books.delete") }}</button>
+        </form>
+        <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+        <button type="submit" class="btn" form="book-form-{{ book.id }}">{{ t("ui.save") }}</button>
+      </div>
+    </dialog>
+  </td>
+</tr>

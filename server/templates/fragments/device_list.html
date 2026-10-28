@@ -1,0 +1,22 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% if devices %}
+<table id="device-list" class="stack devices">
+  <thead>
+    <tr>
+      <th>{{ t("devices.name") }}</th>
+      <th>{{ t("devices.owner") }}</th>
+      <th>{{ t("devices.state") }}</th>
+      <th>{{ t("devices.last_seen") }}</th>
+      <th>{{ t("devices.tunnel") }}</th>
+      <th><span class="sr-only">{{ t("users.actions") }}</span></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for device in devices %}
+    {% include "fragments/device_row.html" %}
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p id="device-list">{{ t("devices.none") }}</p>
+{% endif %}

@@ -1,0 +1,51 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}<section id="schedule-panel">
+  <h2 class="planner-title">{{ t("schedule.for") }} {{ s.name }} ({{ t("role." ~ s.role) }})</h2>
+  <p class="hint">{{ t("schedule.hint") }}</p>
+  <p>{% if s.has_schedule %}{{ t("schedule.hours") }}: <strong class="planner-total">{{ s.hours }}</strong>{% else %}{{ t("schedule.none") }}{% endif %}</p>
+
+  <form class="preset" method="post" action="/admin/rpc/schedule.preset" hx-post="/admin/rpc/schedule.preset" hx-target="#schedule-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ s.id }}">
+    <label>{{ t("schedule.preset") }} {{ t("users.hours_from") }} <input type="number" name="hours_from" min="0" max="23" value="7"></label>
+    <label>{{ t("users.hours_until") }} <input type="number" name="hours_until" min="1" max="24" value="19"></label>
+    <button type="submit">{{ t("schedule.apply") }}</button>
+  </form>
+
+  <form id="planner-form-{{ s.id }}" class="planner-form" method="post" action="/admin/rpc/schedule.save" hx-post="/admin/rpc/schedule.save" hx-target="#schedule-panel" hx-swap="outerHTML" data-close-window>
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ s.id }}">
+    <p class="planner-bar">
+      <span class="legend"><span class="swatch on"></span> {{ t("schedule.allowed") }}</span>
+      <span class="legend"><span class="swatch"></span> {{ t("schedule.blocked") }}</span>
+    </p>
+    <table class="planner">
+      <caption class="hint">{{ t("schedule.hint_drag") }}</caption>
+      <thead>
+        <tr>
+          <th class="corner" scope="col" title="{{ t('schedule.all') }}"><span class="sr-only">{{ t('schedule.all') }}</span></th>
+          {% for day in range(7) %}<th scope="col" data-day="{{ day }}" title="{{ t('schedule.whole_day') }}">{{ t("day." ~ day) }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in s.rows %}
+        <tr{% if row.index % 4 == 0 %} class="hour-start"{% endif %}>
+          {% if row.index % 4 == 0 %}<th class="hour" scope="row" rowspan="4" data-hour="{{ row.index // 4 }}" title="{{ t('schedule.whole_hour') }}">{{ row.label }}</th>{% endif %}
+          {% for allowed in row.days %}
+          <td class="slot{% if allowed %} on{% endif %}" data-day="{{ loop.index0 }}" data-slot="{{ row.index }}"><input type="checkbox" name="slot" value="{{ loop.index0 }}-{{ row.index }}"{% if allowed %} checked{% endif %} aria-label="{{ t('day.' ~ loop.index0) }} {{ '%02d' | format(row.index // 4) }}:{{ '%02d' | format((row.index % 4) * 15) }}"></td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </form>
+
+  <div class="form-error" role="alert"></div>
+
+  <div class="panel-foot">
+    <form method="post" action="/admin/rpc/schedule.remove" hx-post="/admin/rpc/schedule.remove" hx-target="#schedule-panel" hx-swap="outerHTML" hx-disabled-elt="find button" data-close-window class="foot-left">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ s.id }}">
+      <button type="submit" class="link-danger">{{ t("schedule.remove") }}</button>
+    </form>
+    <button type="button" class="btn outline only-window" data-close>{{ t("ui.cancel") }}</button>
+    <button type="submit" class="btn" form="planner-form-{{ s.id }}">{{ t("schedule.save") }}</button>
+  </div>
+</section>

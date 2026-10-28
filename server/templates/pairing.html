@@ -1,0 +1,39 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "pairing" %}
+
+{% block title %}{{ t("pairing.title") }}{% endblock %}
+
+{% block content %}
+{% from "fragments/ui.html" import icon %}
+<div class="page-head">
+  <h1>{{ t("pairing.title") }}</h1>
+  <button type="button" class="btn" data-dialog="dlg-pair">{{ icon("plus") }}<span>{{ t("pairing.new") }}</span></button>
+</div>
+
+<p class="lead">{{ t("pairing.intro") }}</p>
+{% if not tls %}<p class="message error">{{ t("pairing.no_tls") }}</p>{% else %}<p class="message">{{ t("pairing.tls") }}</p>{% endif %}
+
+<dialog id="dlg-pair" class="window edit-window" aria-labelledby="dlg-pair-title">
+  <div class="window-head"><h3 id="dlg-pair-title">{{ t("pairing.new") }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+  <div id="pair-body" class="window-body">
+    <form id="pair-form" class="dialog-form" method="post" action="/admin/rpc/pairing.create"
+          hx-post="/admin/rpc/pairing.create" hx-target="#pair-body" hx-swap="innerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field"><select name="id" required>{% for user in users %}<option value="{{ user.id }}">{{ user.name }} ({{ t("role." ~ user.role) }})</option>{% endfor %}</select><span class="raised">{{ t("pairing.user") }}</span></label>
+      <label class="field"><input type="text" name="address" required maxlength="255" value="{{ address }}" placeholder=" "><span>{{ t("pairing.address") }}</span></label>
+      <label class="check span-all"><input type="checkbox" name="shared" value="1"> <span>{{ t("pairing.shared") }}</span></label>
+      <small class="span-all">{{ t("pairing.address_hint") }}</small>
+      <div class="form-error span-all" role="alert"></div>
+    </form>
+  </div>
+  <div id="pair-foot" class="window-foot">
+    <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+    <button type="submit" class="btn" form="pair-form">{{ t("pairing.create") }}</button>
+  </div>
+</dialog>
+
+<div id="pairing-result">{{ result }}</div>
+
+<h2>{{ t("devices.title") }}</h2>
+{% include "fragments/device_list.html" %}
+{% endblock %}
