@@ -39,10 +39,10 @@ CI), which could not be tried on this machine.
 
 ## The David service and its folders
 
-The packaged unit (`server/packaging/david-deb.service`) runs David as a dynamic user in a sandbox
+The packaged unit (`server/packaging/david-deb.service`) runs David as the fixed system user `david` (created by the package via `sysusers.d` and the post-install script) in a sandbox
 (`ProtectSystem=strict`, `ProtectHome=read-only`). David writes into the library: uploads are put there, tags and
 covers are written into the files, deleted books lose their files. Two things must then be true for every library
-folder: the dynamic user has write permission on it (an owning group added with `SupplementaryGroups=`, or an ACL),
+folder: the user `david` has write permission on it (an ACL such as `setfacl -R -m u:david:rwX /srv/music` and a default ACL with `-d`, or an owning group added with `SupplementaryGroups=`),
 and the sandbox lets the write through. The library lives in the service's state directory, `/var/lib/david/library` (`StateDirectory=david david/library`):
 it belongs to the service user and is writable, so nothing more is needed there; put albums into it with the
 upload page or `rsync` as root and set it as the import folder. For other folders, and for a library below `/home`
@@ -56,15 +56,22 @@ warn once). Open port 8484 in the firewall. To keep it on the machine, for examp
 certificate, set `DAVID_LISTEN=127.0.0.1:8484` in a drop-in. The pairing page offers the address of the machine in the
 network, not `0.0.0.0`. The "David Administration" menu entry opens `https://localhost:8484/admin/`.
 
+### Health check
+
+`GET /healthz` needs no sign-in and sets no cookie. It answers `200 {"status":"ok","version":"…"}` when the database
+answers for reading and writing and `503 {"status":"unavailable",…}` otherwise, and tells nothing else (no library, no
+users, no folders). For a monitor, a load balancer or `curl -k https://<host>:8484/healthz`. The result of the last
+import, with the places that were skipped and why, stays on the Import page of the administration, so a folder without
+read permission can be seen without the server log.
+
 ### First start
 
 `--library` exists only in development builds, so the unit starts plain `david run`; the folders to import are set in
-the admin pages (Settings, Import; `/var/lib/david/library` is the one the unit creates). Before the first start create the first administrator. With a dynamic user
-this has to happen in the service's state directory (not tried on a real machine yet):
+the admin pages (Settings, Import; `/var/lib/david/library` is the one the unit creates). Before the first start create the first administrator. The state
+directory belongs to `david`, so run the command as that user:
 
     sudo systemctl stop david
-    sudo DAVID_DATA_DIR=/var/lib/private/david /usr/bin/david init --name Papa     # asks for a PIN
-    sudo chown -R --reference=/var/lib/private/david /var/lib/private/david        # the files go to the service user
+    sudo -u david env DAVID_DATA_DIR=/var/lib/david /usr/bin/david init --name Papa     # asks for a PIN
     sudo systemctl start david
 
 A forgotten PIN or password is replaced with `david reset-pin --name <name>` (same data directory as above); the user

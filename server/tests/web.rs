@@ -2346,3 +2346,45 @@ async fn albums_are_found_at_any_depth_with_disc_folders_and_without_hidden_ones
     // A folder with nothing to import says so, with the reason.
     assert!(r.body.contains("Empty Folder") && r.body.contains("nothing to import here"), "{}", r.body);
 }
+
+#[tokio::test]
+async fn healthz_answers_without_signing_in_and_says_only_the_state() {
+    let a = app().await;
+    let r = send(&a, get("/healthz", &Opts::default())).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(r.body.contains("\"status\":\"ok\"") && r.body.contains("\"version\""), "{}", r.body);
+    assert_eq!(r.header("cache-control"), Some("no-store"));
+    assert!(r.header("set-cookie").is_none(), "no cookie for a monitor");
+    // Nothing of the library, the users or the folders.
+    for secret in ["audiobook", "album", "folder", "Boss", "token"] {
+        assert!(!r.body.contains(secret), "{secret} in {}", r.body);
+    }
+}
+
+#[tokio::test]
+async fn the_last_import_stays_on_the_import_page_with_its_problems() {
+    if !common::audio::ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let ob = Opts { cookie: Some(&cookie), ..Default::default() };
+    let lib = tempfile::TempDir::new().unwrap();
+    common::audio::make_mp3(&lib.path().join("Ken Follett/Winter der Welt/01.mp3"), &[]);
+    std::fs::create_dir_all(lib.path().join("Empty Folder")).unwrap();
+    let root = std::fs::canonicalize(lib.path()).unwrap().to_string_lossy().into_owned();
+    send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &root), ("rule", "manual")]), &o)).await;
+    send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
+
+    // Before any run there is nothing to show.
+    assert!(!send(&a, get("/admin/import", &ob)).await.body.contains("Result of the last import"));
+    send(&a, post("/admin/rpc/import.run", "", &o)).await;
+
+    // The page, opened later, still tells the last result and what was skipped, with the time.
+    let page = send(&a, get("/admin/import", &ob)).await.body;
+    assert!(page.contains("Result of the last import") && page.contains("class=\"when\""), "{page}");
+    assert!(page.contains("Empty Folder") && page.contains("nothing to import here"), "the problems are kept too");
+    assert!(page.contains("<dt>Audiobooks</dt><dd>1</dd>"));
+}

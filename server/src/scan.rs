@@ -51,7 +51,8 @@ pub struct FoundBook {
     pub tracks: Vec<FoundTrack>,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct ScanReport {
     pub books: usize,
     pub tracks_added: usize,

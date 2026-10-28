@@ -68,10 +68,12 @@ section = "sound"
 priority = "optional"
 depends = "$auto"
 recommends = "7zip | p7zip-full"
-extended-description = "Self-hosted audiobook and music server for the family (David). Runs as a systemd service with a dynamic user; the data lives in /var/lib/david."
+maintainer-scripts = "packaging/scripts"
+extended-description = "Self-hosted audiobook and music server for the family (David). Runs as a systemd service as the system user david; the data lives in /var/lib/david."
 assets = [
     ["target/release/david", "usr/bin/david", "755"],
     ["packaging/david-deb.service", "usr/lib/systemd/system/david.service", "644"],
+    ["packaging/david.sysusers", "usr/lib/sysusers.d/david.conf", "644"],
     ["../LICENSE", "usr/share/doc/david-server/LICENSE", "644"],
     ["packaging/io.onesimus.david-admin.desktop", "usr/share/applications/io.onesimus.david-admin.desktop", "644"],
     ["packaging/icons/hicolor/scalable/apps/io.onesimus.david.svg", "usr/share/icons/hicolor/scalable/apps/io.onesimus.david.svg", "644"],
@@ -85,9 +87,11 @@ assets = [
 name = "david-server"
 summary = "David: self-hosted audiobook and music server for the family"
 license = "AGPL-3.0-or-later"
+post_install_script = "packaging/scripts/postinst"
 assets = [
     { source = "target/release/david", dest = "/usr/bin/david", mode = "755" },
     { source = "packaging/david-deb.service", dest = "/usr/lib/systemd/system/david.service", mode = "644" },
+    { source = "packaging/david.sysusers", dest = "/usr/lib/sysusers.d/david.conf", mode = "644" },
     { source = "../LICENSE", dest = "/usr/share/licenses/david-server/LICENSE", mode = "644", doc = false },
     { source = "packaging/io.onesimus.david-admin.desktop", dest = "/usr/share/applications/io.onesimus.david-admin.desktop", mode = "644" },
     { source = "packaging/icons/hicolor/scalable/apps/io.onesimus.david.svg", dest = "/usr/share/icons/hicolor/scalable/apps/io.onesimus.david.svg", mode = "644" },

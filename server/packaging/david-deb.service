@@ -10,7 +10,7 @@ Wants=network-online.target
 [Service]
 Type=notify
 ExecStart=/usr/bin/david run
-# The database lives in /var/lib/david (created and owned by the dynamic user).
+# The database lives in /var/lib/david (owned by the system user "david").
 Environment=DAVID_DATA_DIR=/var/lib/david
 # Listen on every interface: the apps of the family reach the server over the network. Anything
 # but this machine speaks TLS with a certificate David makes itself; the pairing code carries its
@@ -19,15 +19,18 @@ Environment=DAVID_DATA_DIR=/var/lib/david
 # drop-in (`systemctl edit david`). Port 8484 must be open in the firewall.
 Environment=DAVID_LISTEN=0.0.0.0:8484
 # The data lives in /var/lib/david, and the library in /var/lib/david/library: both belong to the
-# service user, so uploads, tag editing and deleting work without any permission work. Set
+# user david, so uploads, tag editing and deleting work without any permission work. Set
 # /var/lib/david/library as the import folder in the admin pages.
 StateDirectory=david david/library
-DynamicUser=yes
+# A fixed system user (created by the package, see david.sysusers): grant it access to the music
+# folders with file permissions or ACLs (`setfacl -R -m u:david:rwX /srv/music`).
+User=david
+Group=david
 Restart=on-failure
 RestartSec=5
 
 # The library is read, and written too: uploads are put into it, tags and covers are written
-# into its files and deleted books lose their files. So the dynamic user needs write permission
+# into its files and deleted books lose their files. So the user david needs write permission
 # on the folders (an owning group added with SupplementaryGroups=, or an ACL), and the sandbox
 # below must let it through: ProtectSystem=strict makes everything but the state directory
 # read-only. The default library (/var/lib/david/library) is open; for every other folder of the

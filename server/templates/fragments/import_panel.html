@@ -1,5 +1,5 @@
 {# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
-   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<section id="import-panel">
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}{% set shown = report if report else last_report %}<section id="import-panel">
   <div class="page-head">
     <h1>{{ t("import.title") }}</h1>
     <div class="row-actions">
@@ -36,22 +36,22 @@
   <p class="hint">{{ t("import.no_music_folders") }} <a href="/admin/settings?tab=import">{{ t("import.to_settings") }}</a></p>
   {% endif %}
 
-  {% if report %}
-  <h2>{{ t("import.report") }}</h2>
+  {% if shown %}
+  <h2>{{ t("import.report") }}{% if not report and last_at %} <small class="when">{{ last_at }}</small>{% endif %}</h2>
   <dl class="stats">
-    <div class="stat"><dt>{{ t("import.report.audiobooks") }}</dt><dd>{{ report.audiobooks }}</dd></div>
-    <div class="stat"><dt>{{ t("import.report.authors") }}</dt><dd>{{ report.authors }}</dd></div>
-    <div class="stat"><dt>{{ t("import.report.albums") }}</dt><dd>{{ report.albums }}</dd></div>
-    <div class="stat"><dt>{{ t("import.report.artists") }}</dt><dd>{{ report.artists }}</dd></div>
-    <div class="stat"><dt>{{ t("import.report.tracks_total") }}</dt><dd>{{ report.tracks_total }}</dd></div>
-    <div class="stat"><dt>{{ t("import.report.added") }}</dt><dd>{{ report.tracks_added }}</dd></div>
-    <div class="stat"><dt>{{ t("import.report.updated") }}</dt><dd>{{ report.tracks_updated }}</dd></div>
-    <div class="stat"><dt>{{ t("import.report.unchanged") }}</dt><dd>{{ report.tracks_unchanged }}</dd></div>
-    <div class="stat"><dt>{{ t("import.report.removed") }}</dt><dd>{{ report.tracks_removed }}</dd></div>
-    <div class="stat"><dt>{{ t("import.report.released") }}</dt><dd>{{ report.books_released }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.audiobooks") }}</dt><dd>{{ shown.audiobooks }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.authors") }}</dt><dd>{{ shown.authors }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.albums") }}</dt><dd>{{ shown.albums }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.artists") }}</dt><dd>{{ shown.artists }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.tracks_total") }}</dt><dd>{{ shown.tracks_total }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.added") }}</dt><dd>{{ shown.tracks_added }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.updated") }}</dt><dd>{{ shown.tracks_updated }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.unchanged") }}</dt><dd>{{ shown.tracks_unchanged }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.removed") }}</dt><dd>{{ shown.tracks_removed }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.released") }}</dt><dd>{{ shown.books_released }}</dd></div>
   </dl>
-  {% if report.problems %}<div class="message error"><strong>{{ t("import.report.problems") }}</strong><ul>{% for problem in report.problems %}<li><code>{{ problem }}</code></li>{% endfor %}</ul></div>{% endif %}
-  {% if report.books_failed %}<p class="message error">{{ t("import.report.failed") }}: {{ report.books_failed }}</p>{% endif %}
+  {% if shown.problems %}<div class="message error"><strong>{{ t("import.report.problems") }}</strong><ul>{% for problem in shown.problems %}<li><code>{{ problem }}</code></li>{% endfor %}</ul></div>{% endif %}
+  {% if shown.books_failed %}<p class="message error">{{ t("import.report.failed") }}: {{ shown.books_failed }}</p>{% endif %}
   <p><a class="btn outline" href="/admin/books">{{ icon("books") }}<span>{{ t("import.to_books") }}</span></a></p>
   {% endif %}
 </section>

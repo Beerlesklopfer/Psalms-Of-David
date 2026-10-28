@@ -575,11 +575,21 @@ impl AdminUi {
     /// The import page.
     pub async fn import<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
         let state = store.import_state().await?;
+        let zone = store.setting("time_zone").await?;
+        let last = store.last_import().await;
         let jobs = store.upload_jobs(15).await?;
         let busy = jobs.iter().any(|j| j.state == "queued" || j.state == "working");
         self.render(
             "import.html",
-            context! { state => Serde(state), report => Option::<Serde<ScanReport>>::None, jobs => Serde(jobs), busy => busy, ..view.into().context() },
+            context! {
+                state => Serde(state),
+                report => Option::<Serde<ScanReport>>::None,
+                last_report => last.as_ref().map(|(_, r)| Serde(r.clone())),
+                last_at => last.as_ref().map(|(at, _)| stamp(*at, zone.as_deref())),
+                jobs => Serde(jobs),
+                busy => busy,
+                ..view.into().context()
+            },
         )
     }
 
@@ -593,7 +603,13 @@ impl AdminUi {
         let state = store.import_state().await?;
         self.render(
             "fragments/import_panel.html",
-            context! { state => Serde(state), report => report.map(Serde), ..view.into().context() },
+            context! {
+                state => Serde(state),
+                report => report.map(Serde),
+                last_report => Option::<Serde<ScanReport>>::None,
+                last_at => Option::<String>::None,
+                ..view.into().context()
+            },
         )
     }
 

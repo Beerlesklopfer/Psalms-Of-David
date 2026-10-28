@@ -1,0 +1,23 @@
+#!/bin/sh
+# Creates the fixed system user "david" (home /var/lib/david), so that file permissions and ACLs
+# on the music folders can name it. Also runs for an update; an existing user stays untouched.
+set -e
+if command -v systemd-sysusers >/dev/null 2>&1; then
+    systemd-sysusers /usr/lib/sysusers.d/david.conf || true
+fi
+if ! getent passwd david >/dev/null 2>&1; then
+    # No systemd-sysusers: fall back to the distribution tools.
+    if command -v useradd >/dev/null 2>&1; then
+        useradd --system --user-group --home-dir /var/lib/david --no-create-home --shell /usr/sbin/nologin --comment "David audio server" david
+    else
+        adduser --system --group --home /var/lib/david --no-create-home --shell /usr/sbin/nologin david
+    fi
+fi
+# systemd moves the state of an earlier dynamic user and hands it to "david" when the service starts.
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+    if systemctl is-active --quiet david; then
+        systemctl restart david || true
+    fi
+fi
+exit 0

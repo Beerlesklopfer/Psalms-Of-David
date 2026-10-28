@@ -134,6 +134,21 @@ impl Store {
         Ok(canonical)
     }
 
+    /// The result of the last import (by hand or by itself) and when it ran, if there was one.
+    pub async fn last_import(&self) -> Option<(i64, ScanReport)> {
+        let json: serde_json::Value = serde_json::from_str(&self.setting("last_import").await.ok()??).ok()?;
+        Some((json.get("at")?.as_i64()?, serde_json::from_value(json.get("report")?.clone()).ok()?))
+    }
+
+    /// Does the database answer, for reading and for writing? (The health check of the server.)
+    pub async fn healthy(&self) -> bool {
+        let one = |c: &sea_orm::DatabaseConnection| {
+            let c = c.clone();
+            async move { c.query_one_raw(Statement::from_string(DbBackend::Sqlite, "SELECT 1")).await.is_ok() }
+        };
+        one(&self.db.reader).await && one(&self.db.writer).await
+    }
+
     /// Saves the folders that are left out of the import. They need not exist (a mount point that is
     /// not there yet is fine), but they must be absolute paths; the ones that exist are stored in
     /// their canonical form so that a link or a `..` cannot get around them.
@@ -288,6 +303,11 @@ impl Store {
             total.books_released = res.rows_affected() as usize;
         }
         self.fill_library_counts(&mut total).await?;
+        // The last result is kept, so the import page can show it later: the problems of a run (a folder
+        // without permission) are then readable without the server log.
+        if let Ok(json) = serde_json::to_string(&serde_json::json!({ "at": now_ms(), "report": total })) {
+            let _ = self.set_setting("last_import", &json, true).await;
+        }
         Ok(total)
     }
 }

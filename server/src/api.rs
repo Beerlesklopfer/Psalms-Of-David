@@ -262,26 +262,60 @@ pub(crate) async fn find_cover(store: &Store, library: Option<&Path>, id: i64) -
     let b = book::Entity::find_by_id(id).one(&store.db.reader).await.ok()??;
     let first = store.tracks_of(id).await.ok()?.into_iter().next()?;
     let file = resolve(store, library, &b.folder, &first.file).await?;
+    // The folder of the book: the track may lie in a disc folder below it (`CD 1/01.mp3`).
+    let depth = first.file.split('/').count();
+    let book_dir = file.ancestors().nth(depth).map(Path::to_path_buf);
     tokio::task::spawn_blocking(move || {
-        let dir = file.parent()?.to_owned();
-        for name in COVER_FILES {
-            let candidate = dir.join(name);
-            // Only a real file inside the folder of the item.
-            let Ok(real) = candidate.canonicalize() else { continue };
-            if !real.starts_with(&dir) || !real.is_file() {
-                continue;
-            }
-            if let Ok(bytes) = std::fs::read(&real)
-                && bytes.len() <= crate::tags::MAX_COVER_BYTES
-                && let Some(mime) = crate::profile::sniff_image(&bytes)
-            {
-                return Some((mime, bytes));
-            }
-        }
-        crate::tags::embedded_cover(&file)
+        let folders: Vec<PathBuf> = book_dir.into_iter().chain(file.parent().map(Path::to_path_buf)).collect();
+        folders.iter().find_map(|d| cover_in(d)).or_else(|| crate::tags::embedded_cover(&file))
     })
     .await
     .ok()?
+}
+
+/// How much a file name looks like the cover of its folder, lower is better; `None` if it does not.
+/// Names are compared without regard to case (`Folder.jpg`), and the pictures that Windows Media
+/// Player leaves behind count too (`AlbumArt_{GUID}_Large.jpg`, `AlbumArtSmall.jpg`, `cdcover.jpg`).
+pub(crate) fn cover_rank(name: &str) -> Option<u8> {
+    let lower = name.to_lowercase();
+    let (stem, ext) = lower.rsplit_once('.')?;
+    if !matches!(ext, "jpg" | "jpeg" | "png" | "webp") {
+        return None;
+    }
+    match stem {
+        "cover" => Some(0),
+        "folder" => Some(1),
+        "front" => Some(2),
+        "cdcover" => Some(3),
+        s if s.starts_with("albumart") && s.contains("large") => Some(4),
+        s if s.starts_with("albumart") && s.contains("small") => Some(6),
+        s if s.starts_with("albumart") => Some(5),
+        _ => None,
+    }
+}
+
+/// The best picture file of a folder that is a real picture of a sensible size.
+fn cover_in(dir: &Path) -> Option<(&'static str, Vec<u8>)> {
+    let mut candidates: Vec<(u8, PathBuf)> = std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter_map(|e| Some((cover_rank(&e.file_name().to_string_lossy())?, e.path())))
+        .collect();
+    candidates.sort();
+    for (_, path) in candidates {
+        // Only a real file inside the folder of the item.
+        let Ok(real) = path.canonicalize() else { continue };
+        if !real.starts_with(dir.canonicalize().ok()?) || !real.is_file() {
+            continue;
+        }
+        if let Ok(bytes) = std::fs::read(&real)
+            && bytes.len() <= crate::tags::MAX_COVER_BYTES
+            && let Some(mime) = crate::profile::sniff_image(&bytes)
+        {
+            return Some((mime, bytes));
+        }
+    }
+    None
 }
 
 /// The product picture of an item. A picture file in its folder wins (it can be
@@ -399,4 +433,26 @@ pub(crate) fn local_time_now(zone: Option<&str>) -> (u8, u16) {
         _ => now.to_zoned(jiff::tz::TimeZone::system()),
     };
     (zoned.weekday().to_monday_zero_offset() as u8, zoned.hour() as u16 * 60 + zoned.minute() as u16)
+}
+
+#[cfg(test)]
+mod cover_tests {
+    use super::cover_rank;
+
+    #[test]
+    fn folder_pictures_are_recognised_by_name_without_regard_to_case_and_in_order() {
+        assert_eq!(cover_rank("cover.jpg"), Some(0));
+        assert_eq!(cover_rank("Folder.JPG"), Some(1));
+        assert_eq!(cover_rank("Front.png"), Some(2));
+        assert_eq!(cover_rank("cdcover.jpg"), Some(3));
+        assert!(cover_rank("AlbumArt_{0D98}_Large.jpg") < cover_rank("AlbumArt_{0D98}_Small.jpg"));
+        assert!(cover_rank("AlbumArtSmall.jpg").is_some());
+        assert_eq!(cover_rank("01 Track.jpg"), None);
+        assert_eq!(cover_rank("cover.txt"), None);
+        assert_eq!(cover_rank("cover"), None);
+        // A better name wins over a worse one.
+        let mut names = vec!["AlbumArtSmall.jpg", "cdcover.jpg", "Folder.jpg", "cover.png"];
+        names.sort_by_key(|n| cover_rank(n));
+        assert_eq!(names, ["cover.png", "Folder.jpg", "cdcover.jpg", "AlbumArtSmall.jpg"]);
+    }
 }

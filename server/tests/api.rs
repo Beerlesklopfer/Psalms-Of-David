@@ -456,3 +456,27 @@ async fn the_library_version_changes_when_the_library_does() {
     a.store.set_book_description(book, "A blurb").await.unwrap();
     assert_ne!(released, library_version(&a, &token).await, "and a blurb");
 }
+
+#[tokio::test]
+async fn every_route_but_pairing_needs_a_token() {
+    let a = api().await;
+    let routes = [
+        ("GET", "/api/v1/me"),
+        ("POST", "/api/v1/logout"),
+        ("GET", "/api/v1/library/version"),
+        ("GET", "/api/v1/items"),
+        ("GET", "/api/v1/items/1"),
+        ("GET", "/api/v1/items/1/cover"),
+        ("GET", "/api/v1/continue"),
+        ("GET", "/api/v1/parts/1/stream"),
+        ("PUT", "/api/v1/progress"),
+        ("GET", "/api/v1/bible/resolve?q=Joh+3"),
+    ];
+    for (method, uri) in routes {
+        let body = (method != "GET").then(|| json!({}));
+        let none = call(&a, method, uri, None, body.clone(), None).await;
+        assert_eq!(none.status, StatusCode::UNAUTHORIZED, "{method} {uri} without a token");
+        let wrong = call(&a, method, uri, Some("not-a-token"), body, None).await;
+        assert_eq!(wrong.status, StatusCode::UNAUTHORIZED, "{method} {uri} with a wrong token");
+    }
+}

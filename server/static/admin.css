@@ -503,3 +503,5 @@ ul.folders li.left-out small { margin-left: auto; color: var(--muted); }
 .syntax small { color: var(--muted); }
 
 .dialog-form small.warn { color: var(--err); }
+
+h2 small.when { font-size: .8rem; font-weight: 400; color: var(--muted); font-family: system-ui, sans-serif; margin-left: .5rem; }

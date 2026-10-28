@@ -1,0 +1,2 @@
+# System user of the David server (read by systemd-sysusers).
+u david - "David audio server" /var/lib/david /usr/sbin/nologin

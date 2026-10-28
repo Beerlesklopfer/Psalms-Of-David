@@ -57,6 +57,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/admin", get(|| async { Redirect::to("/admin/") }))
         .route("/admin/", get(handlers::overview))
+        .route("/healthz", get(handlers::healthz))
         .route("/admin/login", get(handlers::login_page).post(handlers::login_submit))
         .route("/admin/logout", post(handlers::logout))
         .route("/admin/users", get(handlers::users_page))

@@ -1115,6 +1115,16 @@ pub async fn import_run(State(state): State<AppState>, s: AdminSession) -> Respo
     finish(&s, "/admin/import", outcome)
 }
 
+/// The health check: no sign-in, no cookies, nothing but the state, so that a monitor, a load balancer or
+/// `curl` can ask. 200 with `{"status":"ok"}` if the database answers for reading and writing, 503
+/// otherwise. The version is told for the one who looks after the machine; nothing else is.
+pub async fn healthz(State(state): State<AppState>) -> Response {
+    let ok = state.store.healthy().await;
+    let body = serde_json::json!({ "status": if ok { "ok" } else { "unavailable" }, "version": env!("CARGO_PKG_VERSION") });
+    let status = if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
+    (status, [(header::CACHE_CONTROL, "no-store")], axum::Json(body)).into_response()
+}
+
 // Upload of archives
 
 /// The queue as a fragment: the newest jobs and, while one is still open, a timer that asks again.
