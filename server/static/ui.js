@@ -499,7 +499,7 @@
     }
     const form = root.closest('form');
     const go = form && form.querySelector('[data-cd-import]');
-    if (go) go.disabled = on.length === 0;
+    if (go) go.disabled = on.length === 0 || form.hasAttribute('data-cd-busy');
   };
   const cdPrepare = () => {
     document.querySelectorAll('[data-cd-js]').forEach((e) => { e.hidden = false; });

@@ -1783,6 +1783,22 @@ pub async fn import_run(State(state): State<AppState>, s: AdminSession) -> Respo
 /// The health check: no sign-in, no cookies, nothing but the state, so that a monitor, a load balancer or
 /// `curl` can ask. 200 with `{"status":"ok"}` if the database answers for reading and writing, 503
 /// otherwise. The version is told for the one who looks after the machine; nothing else is.
+/// The start page (`/`). It holds nothing but the way to the administration interface;
+/// the place is kept for content that follows later.
+pub async fn start_page(headers: HeaderMap) -> Response {
+    let (title, link) = match lang_of(&headers) {
+        Lang::De => ("David", "Zur Verwaltung"),
+        _ => ("David", "Administration"),
+    };
+    let html = format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>{title}</title>\
+         <style>body{{font-family:system-ui,sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#f6f6f4;color:#222}}\
+         @media(prefers-color-scheme:dark){{body{{background:#1b1b1b;color:#eee}}}}main{{text-align:center}}a{{color:inherit}}</style></head>\
+         <body><main><h1>{title}</h1><p><a href=\"/admin/\">{link}</a></p></main></body></html>"
+    );
+    Html(html).into_response()
+}
+
 pub async fn healthz(State(state): State<AppState>) -> Response {
     let ok = state.store.healthy().await;
     let body = serde_json::json!({ "status": if ok { "ok" } else { "unavailable" }, "version": env!("CARGO_PKG_VERSION"), "git": crate::buildinfo::GIT, "built": crate::buildinfo::BUILT });

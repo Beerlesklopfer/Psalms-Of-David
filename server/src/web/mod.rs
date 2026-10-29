@@ -69,6 +69,7 @@ pub struct AppState {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route("/", get(handlers::start_page))
         .route("/admin", get(|| async { Redirect::to("/admin/") }))
         .route("/admin/", get(handlers::overview))
         .route("/healthz", get(handlers::healthz))

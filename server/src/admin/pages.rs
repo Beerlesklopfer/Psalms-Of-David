@@ -428,6 +428,8 @@ struct DrivePanel {
     mbq_param: String,
     form: RipForm,
     can_rip: bool,
+    /// A disc is being read: nothing may reach the drive or the MusicBrainz lookup meanwhile.
+    busy: bool,
     device: String,
     lookup_error: Option<&'static str>,
     rip_error: Option<String>,
@@ -1403,6 +1405,7 @@ impl AdminUi {
             on_disc: p.tracks_on_disc,
         });
         let show_import = present.is_none() || q.force;
+        let busy = running || drives.iter().any(|d| d.ripping);
         Ok(DrivePanel {
             rip,
             present,
@@ -1417,6 +1420,7 @@ impl AdminUi {
             mbq,
             form,
             can_rip: ready.is_some() && !running,
+            busy,
             device,
             lookup_error,
             rip_error: rip_error.map(str::to_owned),

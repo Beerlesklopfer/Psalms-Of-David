@@ -3,6 +3,8 @@
      hx-get="/admin/rpc/cd.drive?sig={{ drive.sig }}" hx-trigger="every 3s" hx-swap="outerHTML"
      hx-include="#cd-rip-form input:not([name=csrf]), #cd-rip-form textarea, #cd-rip-form select" hx-disinherit="hx-include">
   <h2>{{ t("cd.drive.title") }}</h2>
+  {# While a disc is being read, nothing may reach the drive or the MusicBrainz lookup that goes with it. #}
+  {% set busy = drive.busy %}
   {% if drive.rip_error == "resume_mismatch" %}<p class="message" role="status">{{ t("cd.err.resume_mismatch") }}</p>
   {% elif drive.rip_error %}<p class="message error" role="alert">{{ t("cd.err." ~ drive.rip_error) }} ({{ drive.rip_error }}){% if drive.taken %} {{ t("cd.list.taken") }} {{ drive.taken }}{% endif %}</p>{% endif %}
   {% if not drive.drives %}
@@ -89,13 +91,13 @@
       <p class="unit">{{ t("cd.present.heal_hint") }}</p>
       <div class="form-foot">
         <a class="btn outline" href="/admin/cd" hx-get="/admin/rpc/cd.drive?reset=1" hx-target="#cd-drive" hx-swap="outerHTML">{{ t("cd.form.cancel") }}</a>
-        {% if drive.can_eject %}<button type="submit" class="btn outline" form="cd-eject-form" data-cd-eject>{{ t("cd.drive.eject") }}</button>{% endif %}
-        <button type="submit" class="btn">{{ t("cd.present.repair") }}</button>
+        {% if drive.can_eject %}<button type="submit" class="btn outline" form="cd-eject-form" data-cd-eject{% if busy %} disabled{% endif %}>{{ t("cd.drive.eject") }}</button>{% endif %}
+        <button type="submit" class="btn"{% if busy %} disabled{% endif %}>{{ t("cd.present.repair") }}</button>
       </div>
     </form>
     {% endif %}
     {% if not drive.show_import %}
-    <p><a href="/admin/cd" hx-get="/admin/rpc/cd.drive?force=1" hx-target="#cd-drive" hx-swap="outerHTML">{{ t("cd.present.anyway") }}</a></p>
+    <p>{% if busy %}<span class="unit">{{ t("cd.present.anyway") }}</span>{% else %}<a href="/admin/cd" hx-get="/admin/rpc/cd.drive?force=1" hx-target="#cd-drive" hx-swap="outerHTML">{{ t("cd.present.anyway") }}</a>{% endif %}</p>
     {% endif %}
   </div>
   {% endif %}
@@ -106,15 +108,15 @@
     <ul class="cd-candidates">
       {% for c in drive.candidates %}
       <li>{{ c.author }}: {{ c.title }}{% if c.audiobook %} ({{ t("cd.opt.audiobook") }}){% endif %}{% if c.disc %}, {{ t("cd.col.disc") }} {{ c.disc }} / {{ c.discs_total }}{% endif %}
-        <a href="/admin/cd" hx-get="/admin/rpc/cd.drive?pick={{ c.index }}{% if drive.mbq_param %}&{{ drive.mbq_param }}{% endif %}" hx-target="#cd-drive" hx-swap="outerHTML">{{ t("cd.drive.use") }}</a></li>
+        {% if busy %}<span class="unit">{{ t("cd.drive.use") }}</span>{% else %}<a href="/admin/cd" hx-get="/admin/rpc/cd.drive?pick={{ c.index }}{% if drive.mbq_param %}&{{ drive.mbq_param }}{% endif %}" hx-target="#cd-drive" hx-swap="outerHTML">{{ t("cd.drive.use") }}</a>{% endif %}</li>
       {% endfor %}
     </ul>
     {% elif not drive.lookup_error %}<p class="unit">{{ t("cd.drive.no_candidates") }}</p>{% endif %}
     <form class="cd-search" method="get" action="/admin/cd" hx-get="/admin/rpc/cd.drive" hx-target="#cd-drive" hx-swap="outerHTML" hx-include="this" role="search">
       <label class="unit" for="cd-mbq">{{ t("cd.search.label") }}</label>
       <div class="form-foot cd-search-row">
-        <input id="cd-mbq" type="search" name="mbq" value="{{ drive.mbq }}" maxlength="200" autocomplete="off" placeholder="{{ t('cd.search.placeholder') }}">
-        <button type="submit" class="btn outline">{{ t("cd.search.go") }}</button>
+        <input id="cd-mbq" type="search" name="mbq" value="{{ drive.mbq }}" maxlength="200" autocomplete="off" placeholder="{{ t('cd.search.placeholder') }}"{% if busy %} disabled{% endif %}>
+        <button type="submit" class="btn outline"{% if busy %} disabled{% endif %}>{{ t("cd.search.go") }}</button>
       </div>
     </form>
     {% if drive.resume %}
@@ -125,7 +127,7 @@
       {% else %}<p class="unit">{{ t("cd.resume.takes") | replace("{kept}", drive.resume.kept) | replace("{rest}", drive.resume.rest) }}{% if drive.resume.dropped %} {{ t("cd.resume.drops") | replace("{n}", drive.resume.dropped) }}{% endif %}</p>{% endif %}
     </div>
     {% endif %}
-    <form id="cd-rip-form" class="settings-form" method="post" action="/admin/rpc/cd.rip" hx-post="/admin/rpc/cd.rip" hx-target="#cd-drive" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <form id="cd-rip-form" class="settings-form"{% if busy %} data-cd-busy{% endif %} method="post" action="/admin/rpc/cd.rip" hx-post="/admin/rpc/cd.rip" hx-target="#cd-drive" hx-swap="outerHTML" hx-disabled-elt="find button">
       <input type="hidden" name="mbq" value="{{ drive.mbq }}">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       {% if drive.present %}<input type="hidden" name="force" value="1">{% endif %}
@@ -165,10 +167,10 @@
       <div class="form-foot">
         <a class="btn outline" href="/admin/cd" hx-get="/admin/rpc/cd.drive?reset=1" hx-target="#cd-drive" hx-swap="outerHTML">{{ t("cd.form.cancel") }}</a>
         {% if drive.resume and drive.resume.settings_match %}
-        <button type="submit" class="btn outline" name="resume" value="0" data-cd-import{% if drive.selected_count == 0 %} disabled{% endif %}>{{ t("cd.resume.reread") }}</button>
-        <button type="submit" class="btn" name="resume" value="1" data-cd-import{% if drive.selected_count == 0 %} disabled{% endif %}>{{ t("cd.resume.continue") }}</button>
+        <button type="submit" class="btn outline" name="resume" value="0" data-cd-import{% if busy or drive.selected_count == 0 %} disabled{% endif %}>{{ t("cd.resume.reread") }}</button>
+        <button type="submit" class="btn" name="resume" value="1" data-cd-import{% if busy or drive.selected_count == 0 %} disabled{% endif %}>{{ t("cd.resume.continue") }}</button>
         {% else %}
-        <button type="submit" class="btn" data-cd-import{% if drive.selected_count == 0 %} disabled{% endif %}>{{ t("cd.form.import") }}</button>
+        <button type="submit" class="btn" data-cd-import{% if busy or drive.selected_count == 0 %} disabled{% endif %}>{{ t("cd.form.import") }}</button>
         {% endif %}
       </div>
     </form>
@@ -178,7 +180,7 @@
   {% set eject_in_row = drive.can_rip and drive.present and not drive.present.complete %}
   <form id="cd-eject-form" method="post" action="/admin/rpc/cd.eject" hx-post="/admin/rpc/cd.eject" hx-target="#cd-drive" hx-swap="outerHTML" class="inline">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    {% if not eject_in_row %}<button type="submit" class="btn outline">{{ t("cd.drive.eject") }}</button>{% endif %}
+    {% if not eject_in_row %}<button type="submit" class="btn outline"{% if busy %} disabled{% endif %}>{{ t("cd.drive.eject") }}</button>{% endif %}
   </form>
   {% endif %}
 </div>

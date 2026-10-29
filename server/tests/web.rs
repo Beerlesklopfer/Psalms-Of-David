@@ -2442,6 +2442,15 @@ async fn healthz_answers_without_signing_in_and_says_only_the_state() {
 }
 
 #[tokio::test]
+async fn the_start_page_links_to_the_administration_without_signing_in() {
+    let a = app().await;
+    let r = send(&a, get("/", &Opts::default())).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(r.body.contains("href=\"/admin/\""), "{}", r.body);
+    assert!(r.header("set-cookie").is_none());
+}
+
+#[tokio::test]
 async fn the_last_import_stays_on_the_import_page_with_its_problems() {
     if !common::audio::ffmpeg_available() {
         eprintln!("skipped: ffmpeg is not installed");
