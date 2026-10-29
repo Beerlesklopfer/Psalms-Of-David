@@ -46,9 +46,7 @@ class AppPaths {
 
   static Directory _legacyBase() {
     final env = Platform.environment;
-    return Directory(
-      '${env['XDG_DATA_HOME'] ?? '${env['HOME'] ?? Directory.systemTemp.path}/.local/share'}/psalm',
-    );
+    return Directory('${env['XDG_DATA_HOME'] ?? '${env['HOME'] ?? Directory.systemTemp.path}/.local/share'}/psalm');
   }
 
   /// Version 1.0 kept the pairing in `~/.config/psalm` and the parts in `~/.cache/psalm/parts`.

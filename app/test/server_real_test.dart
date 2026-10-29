@@ -42,11 +42,7 @@ void main() {
     addTearDown(() => cache.deleteSync(recursive: true));
     final source = ServerSource(api, cache);
     final path = await source.fetchPart(book.tracks.first);
-    expect(
-      File(path).readAsBytesSync(),
-      File(firstFile!).readAsBytesSync(),
-      reason: 'the stream is the file',
-    );
+    expect(File(path).readAsBytesSync(), File(firstFile!).readAsBytesSync(), reason: 'the stream is the file');
 
     final backend = PipeWireBackend.open(target: sink, libraryPath: lib);
     final player = PlayerController(library.books, backend: backend, source: source);

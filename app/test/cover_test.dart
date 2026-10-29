@@ -32,11 +32,7 @@ void main() {
   testWidgets('a book with a product picture shows the picture', (tester) async {
     await tester.pumpWidget(_host(Cover(book: _book(cover: _png))));
     expect(find.byType(Image), findsOneWidget);
-    expect(
-      find.text('Kinder der Freiheit'),
-      findsNothing,
-      reason: 'the title is on the picture, not drawn over it',
-    );
+    expect(find.text('Kinder der Freiheit'), findsNothing, reason: 'the title is on the picture, not drawn over it');
   });
 
   testWidgets('a book without one gets the drawn cover with its title', (tester) async {

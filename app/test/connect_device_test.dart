@@ -11,7 +11,12 @@ import 'package:psalm/server/credentials.dart';
 import 'package:psalm/server/device_pairing.dart';
 
 class _FakeApi implements DevicePairingApi {
-  _FakeApi({this.used = 1, this.max = 2, this.usageError, this.codeError});
+  _FakeApi({
+    this.used = 1,
+    this.max = 2,
+    this.usageError,
+    this.codeError,
+  });
 
   int used;
   int? max;

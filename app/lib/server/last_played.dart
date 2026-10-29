@@ -19,19 +19,13 @@ class LastPlayed {
   /// When it was written, in milliseconds since 1970: compared with what the server says.
   final int at;
 
-  Map<String, Object> toJson() => {
-    'book': bookId,
-    'track': track,
-    'position_ms': position.inMilliseconds,
-    'at': at,
-  };
+  Map<String, Object> toJson() => {'book': bookId, 'track': track, 'position_ms': position.inMilliseconds, 'at': at};
 }
 
 class LastPlayedStore {
   LastPlayedStore(this.file);
 
-  factory LastPlayedStore.standard() =>
-      LastPlayedStore(File('${AppPaths.base.path}/last_played.json'));
+  factory LastPlayedStore.standard() => LastPlayedStore(File('${AppPaths.base.path}/last_played.json'));
 
   final File file;
 

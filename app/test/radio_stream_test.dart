@@ -92,10 +92,7 @@ void main() {
       ]);
       final f = IcyFilter(32, onTitle: titles.add);
       expect(f.process(body.body), body.audio);
-      expect(titles, [
-        'Artist - Song',
-        'Next - One',
-      ], reason: 'a block of length 0 changes nothing');
+      expect(titles, ['Artist - Song', 'Next - One'], reason: 'a block of length 0 changes nothing');
     });
 
     test('chunks may end anywhere, also inside a block or on the length byte', () {
@@ -113,10 +110,7 @@ void main() {
           audio.add(f.process(c));
         }
         expect(audio.takeBytes(), body.audio, reason: 'chunk size $size');
-        expect(titles, [
-          'First title that is longer than sixteen bytes',
-          'Second',
-        ], reason: 'chunk size $size');
+        expect(titles, ['First title that is longer than sixteen bytes', 'Second'], reason: 'chunk size $size');
       }
     });
 
@@ -152,11 +146,7 @@ void main() {
 
     Uri url() => Uri.parse('http://127.0.0.1:${server.port}/stream.mp3');
 
-    RadioStreamSession session({
-      void Function(String?)? onTitle,
-      void Function(StreamDetails)? onDetails,
-      int attempts = 3,
-    }) {
+    RadioStreamSession session({void Function(String?)? onTitle, void Function(StreamDetails)? onDetails, int attempts = 3}) {
       final s = RadioStreamSession(
         url: url(),
         sink: sink,
@@ -225,13 +215,7 @@ void main() {
       await until(() => seen.isNotEmpty);
       expect(
         seen.first,
-        const StreamDetails(
-          name: 'DWG Radio',
-          genre: 'Christian Music',
-          website: 'https://radio.example.org/',
-          bitrateKbps: 128,
-          format: 'MP3',
-        ),
+        const StreamDetails(name: 'DWG Radio', genre: 'Christian Music', website: 'https://radio.example.org/', bitrateKbps: 128, format: 'MP3'),
       );
     });
 
@@ -311,10 +295,7 @@ void main() {
         handler = (r, n) => serve(r, Uint8List.fromList([1, 2, 3]), type: type);
         session().start();
         await sink.failed.future.timeout(const Duration(seconds: 5));
-        expect(sink.failures.single, (
-          kStreamUnsupportedMessage,
-          AudioErrorKind.streamUnsupported,
-        ), reason: type);
+        expect(sink.failures.single, (kStreamUnsupportedMessage, AudioErrorKind.streamUnsupported), reason: type);
         expect(requests.length, 1);
         expect(sink.received.length, 0);
       }
@@ -331,24 +312,27 @@ void main() {
       expect(sink.failures, isEmpty);
     });
 
-    test('a connection that keeps dropping fails after the attempts, one that delivered data starts the count again', () async {
-      // Every connection delivers a healthy amount, then ends: never fails.
-      handler = (r, n) => serve(r, Uint8List(kStreamHealthyBytes));
-      final s = session()..start();
-      await until(() => s.connections >= 3 * kStreamReconnectAttempts);
-      expect(sink.failures, isEmpty);
-      await s.close();
+    test(
+      'a connection that keeps dropping fails after the attempts, one that delivered data starts the count again',
+      () async {
+        // Every connection delivers a healthy amount, then ends: never fails.
+        handler = (r, n) => serve(r, Uint8List(kStreamHealthyBytes));
+        final s = session()..start();
+        await until(() => s.connections >= 3 * kStreamReconnectAttempts);
+        expect(sink.failures, isEmpty);
+        await s.close();
 
-      // Every connection ends at once without data: fails after the attempts.
-      sink = FakeSink();
-      requests.clear();
-      // Nothing, or a few bytes of junk, then the server hangs up: fails after the attempts.
-      handler = (r, n) => serve(r, Uint8List(n.isEven ? 0 : 20));
-      final dead = session()..start();
-      await sink.failed.future.timeout(const Duration(seconds: 5));
-      expect(dead.connections, 1 + kStreamReconnectAttempts);
-      expect(sink.failures.single.$2, AudioErrorKind.streamConnection);
-    });
+        // Every connection ends at once without data: fails after the attempts.
+        sink = FakeSink();
+        requests.clear();
+        // Nothing, or a few bytes of junk, then the server hangs up: fails after the attempts.
+        handler = (r, n) => serve(r, Uint8List(n.isEven ? 0 : 20));
+        final dead = session()..start();
+        await sink.failed.future.timeout(const Duration(seconds: 5));
+        expect(dead.connections, 1 + kStreamReconnectAttempts);
+        expect(sink.failures.single.$2, AudioErrorKind.streamConnection);
+      },
+    );
 
     test('a connection that goes silent is dropped and reopened', () async {
       handler = (r, n) async {

@@ -160,19 +160,13 @@ class ServerSource implements MediaSource {
   @override
   Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) {
     // An episode goes back to the account's own state; a radio station has no position.
-    if (book.kind == 'podcast')
-      return api.putEpisodeState(int.parse(book.id.substring(3)), position, finished: finished);
+    if (book.kind == 'podcast') return api.putEpisodeState(int.parse(book.id.substring(3)), position, finished: finished);
     if (book.isStream) return Future.value();
     final partId = track.partId;
     if (partId == null) return Future.value();
     // A track in a playlist reports to the book it belongs to, as it does when played from the book.
     final itemId = track.itemId ?? book.id;
-    return api.putProgress(
-      itemId: int.parse(itemId),
-      partId: partId,
-      position: position,
-      finished: finished,
-    );
+    return api.putProgress(itemId: int.parse(itemId), partId: partId, position: position, finished: finished);
   }
 
   @override
@@ -198,16 +192,7 @@ class ServerSource implements MediaSource {
 
 /// The library of the signed-in user as the app's models, and where to resume.
 class LoadedLibrary {
-  LoadedLibrary(
-    this.books,
-    this.resume, {
-    this.lastBookId,
-    this.lastAt = 0,
-    this.userName,
-    this.recent = const [],
-    this.genres = const [],
-    this.newIds = const [],
-  });
+  LoadedLibrary(this.books, this.resume, {this.lastBookId, this.lastAt = 0, this.userName, this.recent = const [], this.genres = const [], this.newIds = const []});
 
   /// The ids of the books listened to, the latest first (what "continue listening" says), at most 20.
 
@@ -229,13 +214,7 @@ class LoadedLibrary {
   final Map<String, ({int track, Duration position})> resume;
 }
 
-const _palette = [
-  Color(0xFF6E1F2B),
-  Color(0xFF1F2F4D),
-  Color(0xFF2C4A3E),
-  Color(0xFF4A3B1F),
-  Color(0xFF3B2A4A),
-];
+const _palette = [Color(0xFF6E1F2B), Color(0xFF1F2F4D), Color(0xFF2C4A3E), Color(0xFF4A3B1F), Color(0xFF3B2A4A)];
 
 Future<LoadedLibrary> loadLibrary(ApiClient api) async {
   final items = await api.items();
@@ -271,25 +250,17 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
   } on Object {
     // the "New" row is optional
   }
-  final hiddenIds = {
-    for (final i in items)
-      if (i['hidden'] == true) i['id'] as int,
-  };
-  final ownerOf = {
-    for (final i in items)
-      if (i['owner'] is String) i['id'] as int: i['owner'] as String,
-  };
+  final hiddenIds = {for (final i in items) if (i['hidden'] == true) i['id'] as int};
+  final ownerOf = {for (final i in items) if (i['owner'] is String) i['id'] as int: i['owner'] as String};
   final details = await Future.wait(items.map((i) => api.item(i['id'] as int)));
   // The pictures come alongside; an item without one, or one that cannot be fetched, is drawn.
-  final covers = await Future.wait(
-    items.map((i) async {
-      try {
-        return await api.cover(i['id'] as int);
-      } on ApiException {
-        return null;
-      }
-    }),
-  );
+  final covers = await Future.wait(items.map((i) async {
+    try {
+      return await api.cover(i['id'] as int);
+    } on ApiException {
+      return null;
+    }
+  }));
   final coverOf = {for (var i = 0; i < items.length; i++) items[i]['id'] as int: covers[i]};
   final books = <Book>[];
   final resume = <String, ({int track, Duration position})>{};
@@ -297,56 +268,42 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
     final id = d['id'] as int;
     final parts = (d['parts'] as List).cast<Map<String, dynamic>>();
     if (parts.isEmpty) continue;
-    books.add(
-      Book(
-        id: '$id',
-        title: d['title'] as String,
-        author: d['creator'] as String,
-        color: _palette[id % _palette.length],
-        cover: coverOf[id],
-        blurb: d['description'] as String?,
-        kind: d['kind'] as String? ?? 'audiobook',
-        narrator: d['narrator'] as String?,
-        genre: d['genre'] as String?,
-        plays: d['plays'] as int? ?? 0,
-        lastPlayedAt: dateFromMs(d['last_played_at']),
-        hidden: hiddenIds.contains(id),
-        owner: ownerOf[id],
-        tracks: [
-          for (final p in parts)
-            Track(
-              disc: p['disc'] as int,
-              number: p['number'] as int,
-              title: p['title'] as String,
-              length: Duration(milliseconds: p['duration_ms'] as int),
-              partId: p['id'] as int,
-              plays: p['plays'] as int? ?? 0,
-              lastPlayedAt: dateFromMs(p['last_played_at']),
-            ),
-        ],
-      ),
-    );
+    books.add(Book(
+      id: '$id',
+      title: d['title'] as String,
+      author: d['creator'] as String,
+      color: _palette[id % _palette.length],
+      cover: coverOf[id],
+      blurb: d['description'] as String?,
+      kind: d['kind'] as String? ?? 'audiobook',
+      narrator: d['narrator'] as String?,
+      genre: d['genre'] as String?,
+      plays: d['plays'] as int? ?? 0,
+      lastPlayedAt: dateFromMs(d['last_played_at']),
+      hidden: hiddenIds.contains(id),
+      owner: ownerOf[id],
+      tracks: [
+        for (final p in parts)
+          Track(
+            disc: p['disc'] as int,
+            number: p['number'] as int,
+            title: p['title'] as String,
+            length: Duration(milliseconds: p['duration_ms'] as int),
+            partId: p['id'] as int,
+            plays: p['plays'] as int? ?? 0,
+            lastPlayedAt: dateFromMs(p['last_played_at']),
+          ),
+      ],
+    ));
     final progress = d['progress'];
     if (progress is Map && progress['finished'] != true) {
       final index = parts.indexWhereId(progress['part_id'] as int);
       if (index >= 0) {
-        resume['$id'] = (
-          track: index,
-          position: Duration(milliseconds: progress['position_ms'] as int),
-        );
+        resume['$id'] = (track: index, position: Duration(milliseconds: progress['position_ms'] as int));
       }
     }
   }
-  return LoadedLibrary(
-    books,
-    resume,
-    lastBookId: lastBookId,
-    lastAt: lastAt,
-    userName: userName,
-    recent: recentIds,
-    genres: genres,
-    newIds: newIds,
-  );
+  return LoadedLibrary(books, resume, lastBookId: lastBookId, lastAt: lastAt, userName: userName, recent: recentIds, genres: genres, newIds: newIds);
 }
 
 extension on List<Map<String, dynamic>> {

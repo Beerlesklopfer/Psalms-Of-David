@@ -30,11 +30,7 @@ void main() {
     await tester.tapAt(Offset(box.left + box.width * 0.75, box.center.dy));
     await tester.pumpAndSettle();
     final length = p.track!.length.inMilliseconds;
-    expect(
-      p.position.inMilliseconds,
-      closeTo(length * 0.75, length * 0.06),
-      reason: 'about three quarters',
-    );
+    expect(p.position.inMilliseconds, closeTo(length * 0.75, length * 0.06), reason: 'about three quarters');
     p.dispose();
   });
 
@@ -50,11 +46,7 @@ void main() {
     // The player reports an old position meanwhile (like the engine does): the bar must not jump back.
     p.seek(const Duration(seconds: 1));
     await tester.pump();
-    expect(
-      tester.widget<Slider>(find.byType(Slider)).value,
-      held,
-      reason: 'it stays under the finger',
-    );
+    expect(tester.widget<Slider>(find.byType(Slider)).value, held, reason: 'it stays under the finger');
     await gesture.up();
     await tester.pumpAndSettle();
     expect(p.position.inMilliseconds, held.round(), reason: 'let go: the jump is made');
@@ -65,11 +57,7 @@ void main() {
     final p = PlayerController(demoBooks);
     await tester.pumpWidget(_app(p, const MiniPlayer()));
     expect(find.byType(SeekBar), findsOneWidget);
-    expect(
-      find.byType(LinearProgressIndicator),
-      findsNothing,
-      reason: 'no display-only bar any more',
-    );
+    expect(find.byType(LinearProgressIndicator), findsNothing, reason: 'no display-only bar any more');
     p.dispose();
     final empty = PlayerController(const []);
     await tester.pumpWidget(_app(empty, const SeekBar(compact: true)));
@@ -79,9 +67,7 @@ void main() {
 }
 
 void bookTests() {
-  testWidgets('the bar of the mini player covers the whole book and jumps across tracks', (
-    tester,
-  ) async {
+  testWidgets('the bar of the mini player covers the whole book and jumps across tracks', (tester) async {
     final p = PlayerController(demoBooks)..seek(Duration.zero);
     final book = p.book!;
     await tester.pumpWidget(_app(p, const MiniPlayer()));

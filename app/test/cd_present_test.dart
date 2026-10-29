@@ -294,36 +294,39 @@ void main() {
       c.dispose();
     });
 
-    test('the offer stands while a chosen track was read then (the choice may differ); other settings mean it is read again', () async {
-      var c = make(
-        _drive(
-          resume: const CdResume(
-            discId: 'X',
-            tracksDone: [1],
-            tracksTotal: 2,
-            only: [1, 2],
-            settingsMatch: true,
+    test(
+      'the offer stands while a chosen track was read then (the choice may differ); other settings mean it is read again',
+      () async {
+        var c = make(
+          _drive(
+            resume: const CdResume(
+              discId: 'X',
+              tracksDone: [1],
+              tracksTotal: 2,
+              only: [1, 2],
+              settingsMatch: true,
+            ),
           ),
-        ),
-      );
-      await c.identify();
-      expect(
-        c.resumeOffer,
-        isNotNull,
-        reason: 'track 1 was read and is chosen, though the earlier rip was for 1 and 2 only',
-      );
-      c.toggle(1);
-      expect(c.resumeOffer, isNull, reason: 'the track that was read is not chosen any more');
-      c.toggle(1);
-      c.toggle(3);
-      expect(c.resumeOffer, isNotNull, reason: 'a track more or less does not matter');
-      c.dispose();
+        );
+        await c.identify();
+        expect(
+          c.resumeOffer,
+          isNotNull,
+          reason: 'track 1 was read and is chosen, though the earlier rip was for 1 and 2 only',
+        );
+        c.toggle(1);
+        expect(c.resumeOffer, isNull, reason: 'the track that was read is not chosen any more');
+        c.toggle(1);
+        c.toggle(3);
+        expect(c.resumeOffer, isNotNull, reason: 'a track more or less does not matter');
+        c.dispose();
 
-      c = make(_drive(resume: const CdResume(discId: 'X', settingsMatch: false)));
-      await c.identify();
-      expect((c.resumeOffer, c.resumeLost), (null, true));
-      c.dispose();
-    });
+        c = make(_drive(resume: const CdResume(discId: 'X', settingsMatch: false)));
+        await c.identify();
+        expect((c.resumeOffer, c.resumeLost), (null, true));
+        c.dispose();
+      },
+    );
 
     test('the answer of the server about the resume is kept: resumed, fresh, mismatch', () async {
       server.resumeAnswer = 'mismatch';
@@ -489,10 +492,8 @@ void main() {
         );
         expect(find.text('02  Mitte'), findsOneWidget);
         // Each state has its own colour, in the text and in the symbol: the track that is read has the accent, waiting is quiet, an error is red.
-        Color? colorOf(int n) =>
-            tester.widget<Text>(find.byKey(Key('cd-state-text-$n'))).style?.color;
-        final scheme = Theme.of(tester.element(find.byKey(const Key('cd-state-text-2'))))
-            .colorScheme;
+        Color? colorOf(int n) => tester.widget<Text>(find.byKey(Key('cd-state-text-$n'))).style?.color;
+        final scheme = Theme.of(tester.element(find.byKey(const Key('cd-state-text-2')))).colorScheme;
         expect(colorOf(2), scheme.primary);
         expect(colorOf(3), scheme.onSurfaceVariant);
         expect(colorOf(4), scheme.error);
@@ -506,9 +507,7 @@ void main() {
             track: 0,
             tracksTotal: 3,
             buffer: CdBuffer(seconds: 0, max: 600, percent: 0, speedX: 7.84),
-            trackStates: [
-              CdTrackState(number: 2, title: 'Mitte', state: 'rereading', fraction: 0.3),
-            ],
+            trackStates: [CdTrackState(number: 2, title: 'Mitte', state: 'rereading', fraction: 0.3)],
           ),
         });
         await tester.pump();
@@ -522,9 +521,7 @@ void main() {
             phase: 'ripping',
             track: 1,
             tracksTotal: 3,
-            trackStates: [
-              CdTrackState(number: 2, title: 'Mitte', state: 'unverified', fraction: 1),
-            ],
+            trackStates: [CdTrackState(number: 2, title: 'Mitte', state: 'unverified', fraction: 1)],
           ),
         });
         await tester.pump();
@@ -674,7 +671,9 @@ void main() {
         });
         await tester.pump();
         expect(
-          find.text('Some tracks could not be read from the CD (it may be scratched).'),
+          find.text(
+            'Some tracks could not be read from the CD (it may be scratched).',
+          ),
           findsOneWidget,
         );
         await tester.tap(find.byKey(const Key('cd-close')));

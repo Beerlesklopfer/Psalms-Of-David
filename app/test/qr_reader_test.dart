@@ -75,25 +75,12 @@ void main() {
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     locale: const Locale('en'),
-    home: ConnectScreen(
-      deviceName: 'Laptop',
-      pickPicture: pick,
-      onPair: (a, n) async => null,
-      onDemo: () {},
-    ),
+    home: ConnectScreen(deviceName: 'Laptop', pickPicture: pick, onPair: (a, n) async => null, onDemo: () {}),
   );
 
   testWidgets('the QR button reads the chosen picture into the address field', (tester) async {
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async => null,
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async => null);
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
     String? title;
     await tester.pumpWidget(
       screen((t) async {
@@ -108,25 +95,14 @@ void main() {
   });
 
   testWidgets('a picture without a code says so; cancelling changes nothing', (tester) async {
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async => null,
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async => null);
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
     final blank = img.Image(width: 200, height: 200);
     img.fill(blank, color: img.ColorRgb8(250, 250, 250));
     await tester.pumpWidget(screen((t) async => Uint8List.fromList(img.encodePng(blank))));
     await tester.tap(find.byIcon(Icons.qr_code_scanner));
     await tester.pumpAndSettle();
-    expect(
-      find.text('No QR code found in this picture. Try a sharper or larger one.'),
-      findsOneWidget,
-    );
+    expect(find.text('No QR code found in this picture. Try a sharper or larger one.'), findsOneWidget);
 
     await tester.pumpWidget(screen((t) async => null));
     await tester.pumpAndSettle();

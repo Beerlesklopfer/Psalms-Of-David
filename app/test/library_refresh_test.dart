@@ -16,13 +16,7 @@ Book _book(String id, {int tracks = 3}) => Book(
   color: const Color(0xFF000000),
   tracks: [
     for (var i = 1; i <= tracks; i++)
-      Track(
-        disc: 1,
-        number: i,
-        title: 'T$i',
-        length: const Duration(minutes: 5),
-        path: '/m/$id/$i.mp3',
-      ),
+      Track(disc: 1, number: i, title: 'T$i', length: const Duration(minutes: 5), path: '/m/$id/$i.mp3'),
   ],
 );
 
@@ -53,9 +47,7 @@ void main() {
     p.dispose();
   });
 
-  testWidgets('the refresh button asks for the library once and shows progress meanwhile', (
-    tester,
-  ) async {
+  testWidgets('the refresh button asks for the library once and shows progress meanwhile', (tester) async {
     final p = PlayerController([_book('1')]);
     var calls = 0;
     p.refresher = () async {

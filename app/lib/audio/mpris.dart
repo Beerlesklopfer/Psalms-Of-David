@@ -77,9 +77,7 @@ bool performPlayerMethod(PlayerController p, String name, List<DBusValue> args) 
       // The position inside the current track; the track id says which one it was meant for.
       if (args.length == 2 &&
           args[0].asObjectPath() ==
-              playerProperties(
-                p,
-              )['Metadata']!.asStringVariantDict()['mpris:trackid']!.asObjectPath()) {
+              playerProperties(p)['Metadata']!.asStringVariantDict()['mpris:trackid']!.asObjectPath()) {
         p.seek(Duration(microseconds: args[1].asInt64()));
       }
     case 'OpenUri':
@@ -126,8 +124,7 @@ class MprisService extends DBusObject {
         if (e.key != 'Position' && _last[e.key] != e.value) e.key: e.value,
     };
     _last = now;
-    if (changed.isNotEmpty)
-      unawaited(emitPropertiesChanged(_playerInterface, changedProperties: changed));
+    if (changed.isNotEmpty) unawaited(emitPropertiesChanged(_playerInterface, changedProperties: changed));
   }
 
   Future<void> stop() async {
@@ -148,13 +145,10 @@ class MprisService extends DBusObject {
     DBusIntrospectInterface(
       _playerInterface,
       methods: [
-        for (final m in ['Next', 'Previous', 'Pause', 'PlayPause', 'Stop', 'Play'])
-          DBusIntrospectMethod(m),
+        for (final m in ['Next', 'Previous', 'Pause', 'PlayPause', 'Stop', 'Play']) DBusIntrospectMethod(m),
         DBusIntrospectMethod(
           'Seek',
-          args: [
-            DBusIntrospectArgument(DBusSignature('x'), DBusArgumentDirection.in_, name: 'Offset'),
-          ],
+          args: [DBusIntrospectArgument(DBusSignature('x'), DBusArgumentDirection.in_, name: 'Offset')],
         ),
         DBusIntrospectMethod(
           'SetPosition',
@@ -169,9 +163,7 @@ class MprisService extends DBusObject {
           DBusIntrospectProperty(
             e.key,
             e.value.signature,
-            access: e.key == 'Rate' || e.key == 'Volume'
-                ? DBusPropertyAccess.readwrite
-                : DBusPropertyAccess.read,
+            access: e.key == 'Rate' || e.key == 'Volume' ? DBusPropertyAccess.readwrite : DBusPropertyAccess.read,
           ),
       ],
     ),
@@ -197,20 +189,17 @@ class MprisService extends DBusObject {
         : interface == _playerInterface
         ? playerProperties(_player)
         : null)?[name];
-    return value == null
-        ? DBusMethodErrorResponse.unknownProperty()
-        : DBusGetPropertyResponse(value);
+    return value == null ? DBusMethodErrorResponse.unknownProperty() : DBusGetPropertyResponse(value);
   }
 
   @override
-  Future<DBusMethodResponse> getAllProperties(String interface) async =>
-      DBusGetAllPropertiesResponse(
-        interface == _rootInterface
-            ? rootProperties()
-            : interface == _playerInterface
-            ? playerProperties(_player)
-            : {},
-      );
+  Future<DBusMethodResponse> getAllProperties(String interface) async => DBusGetAllPropertiesResponse(
+    interface == _rootInterface
+        ? rootProperties()
+        : interface == _playerInterface
+        ? playerProperties(_player)
+        : {},
+  );
 
   @override
   Future<DBusMethodResponse> setProperty(String interface, String name, DBusValue value) async {

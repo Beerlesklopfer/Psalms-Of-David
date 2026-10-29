@@ -18,11 +18,14 @@ String formatDuration(Duration d) {
 /// "14 Std. 20 Min.").
 String formatTotal(AppLocalizations l, Duration d) {
   final m = d.inMinutes.remainder(60);
-  return d.inHours > 0 ? l.durationHoursMinutes(d.inHours, m) : l.durationMinutes(d.inMinutes);
+  return d.inHours > 0
+      ? l.durationHoursMinutes(d.inHours, m)
+      : l.durationMinutes(d.inMinutes);
 }
 
 /// Playback speed with the decimal separator of the language: "1.5×" / "1,5×".
-String formatSpeed(String locale, double speed) => '${NumberFormat('0.##', locale).format(speed)}×';
+String formatSpeed(String locale, double speed) =>
+    '${NumberFormat('0.##', locale).format(speed)}×';
 
 /// A size in bytes as people read it: "812 KB", "1.4 GB" / "1,4 GB" (powers of 1000, like the
 /// disk sizes of the system).

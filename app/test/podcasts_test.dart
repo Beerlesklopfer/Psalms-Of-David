@@ -18,15 +18,9 @@ void main() {
       'position_ms': 61000,
       'finished': false,
     });
-    expect(
-      (e.position, e.duration, e.finished),
-      (const Duration(seconds: 61), const Duration(minutes: 10), false),
-    );
+    expect((e.position, e.duration, e.finished), (const Duration(seconds: 61), const Duration(minutes: 10), false));
     final book = e.asBook('Kinderfunk');
-    expect(
-      (book.id, book.kind, book.author, book.isStream),
-      ('ep:5', 'podcast', 'Kinderfunk', false),
-    );
+    expect((book.id, book.kind, book.author, book.isStream), ('ep:5', 'podcast', 'Kinderfunk', false));
     expect((book.tracks.single.url, book.tracks.single.live), ('https://example.org/1.mp3', false));
   });
 
@@ -40,20 +34,13 @@ void main() {
     expect(s.approved, isFalse);
     final book = s.asBook();
     expect((book.id, book.isStream, book.tracks.single.live), ('st:3', true, true));
-    final p = Podcast.fromJson({
-      'id': 1,
-      'title': 'Kinderfunk',
-      'description': '',
-      'approved': false,
-      'unheard': 2,
-    });
+    final p = Podcast.fromJson({'id': 1, 'title': 'Kinderfunk', 'description': '', 'approved': false, 'unheard': 2});
     expect((p.approved, p.unheard), (false, 2));
   });
 
   testWidgets('a live stream has no seek bar and shows Live', (tester) async {
     final p = PlayerController([
-      Station.fromJson({'id': 3, 'name': 'Radio A', 'stream_url': 'https://stream.example.org/a'})
-          .asBook(),
+      Station.fromJson({'id': 3, 'name': 'Radio A', 'stream_url': 'https://stream.example.org/a'}).asBook(),
     ]);
     await tester.pumpWidget(
       PlayerScope(

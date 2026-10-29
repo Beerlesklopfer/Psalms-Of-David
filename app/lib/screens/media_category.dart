@@ -12,27 +12,18 @@ enum MediaCategory { all, music, audiobooks, podcasts, radio, playlists, videos,
 extension MediaCategoryBooks on MediaCategory {
   /// The books of this category, or null for a category David does not manage yet.
   List<Book>? pick(List<Book> library) => switch (this) {
-    MediaCategory.all => library,
-    MediaCategory.music => library.where((b) => b.kind == 'music').toList(),
-    MediaCategory.audiobooks => library.where((b) => b.kind == 'audiobook').toList(),
-    MediaCategory.podcasts ||
-    MediaCategory.radio ||
-    MediaCategory.playlists ||
-    MediaCategory.videos ||
-    MediaCategory.ebooks => null,
-  };
+        MediaCategory.all => library,
+        MediaCategory.music => library.where((b) => b.kind == 'music').toList(),
+        MediaCategory.audiobooks => library.where((b) => b.kind == 'audiobook').toList(),
+        MediaCategory.podcasts || MediaCategory.radio || MediaCategory.playlists || MediaCategory.videos || MediaCategory.ebooks => null,
+      };
 }
 
 /// The row of chips that chooses a category. For the search ([forSearch]) there is "All" in front
 /// and no podcasts and radio (they are lists of feeds and stations, not found by the search); the
 /// library has them and no "All".
 class CategoryChips extends StatelessWidget {
-  const CategoryChips({
-    super.key,
-    required this.value,
-    required this.onChanged,
-    this.forSearch = false,
-  });
+  const CategoryChips({super.key, required this.value, required this.onChanged, this.forSearch = false});
 
   final MediaCategory value;
   final ValueChanged<MediaCategory> onChanged;
@@ -84,19 +75,11 @@ class ComingSoon extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              videos ? Icons.movie_outlined : Icons.auto_stories_outlined,
-              size: 48,
-              color: cs.onSurfaceVariant,
-            ),
+            Icon(videos ? Icons.movie_outlined : Icons.auto_stories_outlined, size: 48, color: cs.onSurfaceVariant),
             const SizedBox(height: 12),
             Text(l.comingSoonTitle, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 4),
-            Text(
-              videos ? l.comingSoonVideos : l.comingSoonEbooks,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: cs.onSurfaceVariant),
-            ),
+            Text(videos ? l.comingSoonVideos : l.comingSoonEbooks, textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
           ],
         ),
       ),

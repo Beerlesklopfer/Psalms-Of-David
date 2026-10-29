@@ -18,8 +18,7 @@ import 'server/server_source.dart';
 class PlayerController extends ChangeNotifier {
   PlayerController(this.library, {this.backend, this.source, this.lastStore, this.playbackStore}) {
     final b = backend;
-    if (b != null && b.bufferAdjustable)
-      b.setBufferSeconds(playbackStore?.readBufferSeconds() ?? kBufferDefaultSeconds);
+    if (b != null && b.bufferAdjustable) b.setBufferSeconds(playbackStore?.readBufferSeconds() ?? kBufferDefaultSeconds);
     // Demo: the first book has already been listened to.
     if (library.isEmpty) return;
     book = library.first;
@@ -56,7 +55,6 @@ class PlayerController extends ChangeNotifier {
     playbackStore?.writeBufferSeconds(n);
     notifyListeners();
   }
-
   DateTime _lastWritten = DateTime.fromMillisecondsSinceEpoch(0);
 
   /// The server, if there is one: fetches the files of parts and takes the position.
@@ -172,9 +170,7 @@ class PlayerController extends ChangeNotifier {
 
   /// The engine plays a file on the device, a part of the server, an episode or a radio station (the last two have an address and
   /// are fetched through the source). Without it the clock only runs on: a station of length zero would be over at once.
-  bool get _useBackend =>
-      backend != null &&
-      (track?.path != null || ((track?.partId != null || track?.url != null) && source != null));
+  bool get _useBackend => backend != null && (track?.path != null || ((track?.partId != null || track?.url != null) && source != null));
 
   // ---- Downloads: keeping a book on the device ---------------------------------------
 
@@ -190,8 +186,7 @@ class PlayerController extends ChangeNotifier {
   /// Counts up whenever the downloads on the device change, so a page can show the size again.
   int storageRevision = 0;
 
-  Future<({int files, int bytes})> storageUsed() async =>
-      await source?.storageUsed() ?? (files: 0, bytes: 0);
+  Future<({int files, int bytes})> storageUsed() async => await source?.storageUsed() ?? (files: 0, bytes: 0);
 
   /// Deletes every downloaded part of every book.
   Future<void> removeAllDownloads() async {
@@ -253,14 +248,7 @@ class PlayerController extends ChangeNotifier {
     for (final t in b.tracks) {
       final path = s.relativePath(t);
       if (path == null) continue;
-      entries.add(
-        M3uEntry(
-          duration: t.live ? null : t.length,
-          artist: t.bookAuthor ?? b.author,
-          title: t.title,
-          path: path,
-        ),
-      );
+      entries.add(M3uEntry(duration: t.live ? null : t.length, artist: t.bookAuthor ?? b.author, title: t.title, path: path));
     }
     try {
       await s.writeM3u(name, entries);
@@ -294,9 +282,9 @@ class PlayerController extends ChangeNotifier {
 
   /// The books of [newIds] that are in the library, in the order of the server. Unknown ids are skipped.
   List<Book> newBooks() => [
-    for (final id in newIds)
-      for (final b in library.where((b) => b.id == id).take(1)) b,
-  ];
+        for (final id in newIds)
+          for (final b in library.where((b) => b.id == id).take(1)) b,
+      ];
 
   /// Tracks heard to the end in this session, as `bookId:trackIndex`. It shows the check mark at once;
   /// a reload from the server replaces it.
@@ -304,8 +292,7 @@ class PlayerController extends ChangeNotifier {
 
   /// Has this user heard track [index] of [b] to the end: the server says so, or it happened just now.
   bool isTrackPlayed(Book b, int index) =>
-      (index >= 0 && index < b.tracks.length && b.tracks[index].plays > 0) ||
-      _heard.contains('${b.id}:$index');
+      (index >= 0 && index < b.tracks.length && b.tracks[index].plays > 0) || _heard.contains('${b.id}:$index');
 
   /// How often [b] was heard as a whole. The server knows; a book finished just now counts once at least.
   int playsOf(Book b) {
@@ -317,8 +304,7 @@ class PlayerController extends ChangeNotifier {
   void _markHeard({bool ended = false}) {
     final b = book, t = track;
     if (b == null || t == null || t.live || b.isStream) return;
-    if (ended || (t.length > Duration.zero && position >= t.length - heardTail))
-      _heard.add('${b.id}:$trackIndex');
+    if (ended || (t.length > Duration.zero && position >= t.length - heardTail)) _heard.add('${b.id}:$trackIndex');
   }
 
   /// The ids of the books listened to, the latest first. Comes from the server and is kept up to
@@ -333,9 +319,9 @@ class PlayerController extends ChangeNotifier {
 
   /// The books listened to last, the latest first, at most [count].
   List<Book> recentBooks([int count = 6]) => [
-    for (final id in recentIds)
-      for (final b in library.where((b) => b.id == id).take(1)) b,
-  ].take(count).toList();
+        for (final id in recentIds)
+          for (final b in library.where((b) => b.id == id).take(1)) b,
+      ].take(count).toList();
 
   /// Set by the app when there is a server: loads the library again. Null without a server.
   Future<void> Function()? refresher;
@@ -453,14 +439,7 @@ class PlayerController extends ChangeNotifier {
     if (!force && now.difference(_lastWritten) < const Duration(seconds: 5)) return;
     _lastWritten = now;
     if (b.kind == kPlaylistKind) onPlaylistPosition?.call(b, b.tracks[trackIndex], position);
-    store?.write(
-      LastPlayed(
-        bookId: b.id,
-        track: trackIndex,
-        position: position,
-        at: now.millisecondsSinceEpoch,
-      ),
-    );
+    store?.write(LastPlayed(bookId: b.id, track: trackIndex, position: position, at: now.millisecondsSinceEpoch));
   }
 
   /// Opens a passage of an audio Bible by its text ("Johannes 3,16"). False if
@@ -583,7 +562,9 @@ class PlayerController extends ChangeNotifier {
   void seek(Duration to) {
     final t = track;
     if (t == null) return;
-    position = to < Duration.zero ? Duration.zero : (to > t.length ? t.length : to);
+    position = to < Duration.zero
+        ? Duration.zero
+        : (to > t.length ? t.length : to);
     if (_useBackend && _loadedKey == '${book!.id}:$trackIndex') {
       try {
         backend!.seek(position);
@@ -682,9 +663,7 @@ class PlayerController extends ChangeNotifier {
           _timer?.cancel();
         }
       } else if (backend!.state == BackendState.failed) {
-        error =
-            (backend is StreamInfo ? (backend as StreamInfo).errorMessage : null) ??
-            'playback failed';
+        error = (backend is StreamInfo ? (backend as StreamInfo).errorMessage : null) ?? 'playback failed';
         playing = false;
         _timer?.cancel();
       }
@@ -722,12 +701,14 @@ class PlayerController extends ChangeNotifier {
 }
 
 class PlayerScope extends InheritedNotifier<PlayerController> {
-  const PlayerScope({super.key, required PlayerController controller, required super.child})
-    : super(notifier: controller);
+  const PlayerScope({
+    super.key,
+    required PlayerController controller,
+    required super.child,
+  }) : super(notifier: controller);
 
   /// The player, or null where there is none above (a page shown on its own).
-  static PlayerController? maybeOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<PlayerScope>()?.notifier;
+  static PlayerController? maybeOf(BuildContext context) => context.dependOnInheritedWidgetOfExactType<PlayerScope>()?.notifier;
 
   static PlayerController of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<PlayerScope>()!.notifier!;

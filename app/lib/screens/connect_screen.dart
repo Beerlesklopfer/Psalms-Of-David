@@ -121,14 +121,14 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   String _message(AppLocalizations l, ConnectError e) => switch (e) {
-    ConnectError.address => l.connectErrorAddress,
-    ConnectError.code => l.connectErrorCode,
-    ConnectError.limit => l.connectErrorLimit,
-    ConnectError.network => l.connectErrorNetwork,
-    ConnectError.certificate => l.connectErrorCertificate,
-    ConnectError.qr => l.qrNotFound,
-    ConnectError.other => l.connectErrorOther,
-  };
+        ConnectError.address => l.connectErrorAddress,
+        ConnectError.code => l.connectErrorCode,
+        ConnectError.limit => l.connectErrorLimit,
+        ConnectError.network => l.connectErrorNetwork,
+        ConnectError.certificate => l.connectErrorCertificate,
+        ConnectError.qr => l.qrNotFound,
+        ConnectError.other => l.connectErrorOther,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -199,9 +199,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
               ],
               const SizedBox(height: 20),
               FilledButton(
-                onPressed: _busy
-                    ? null
-                    : () => _run(() => widget.onPair(_address.text, _name.text)),
+                onPressed: _busy ? null : () => _run(() => widget.onPair(_address.text, _name.text)),
                 child: Text(l.connectButton),
               ),
               if (widget.onRetry != null)
@@ -209,9 +207,9 @@ class _ConnectScreenState extends State<ConnectScreen> {
                   onPressed: _busy
                       ? null
                       : () => _run(() async {
-                          await widget.onRetry!();
-                          return ConnectError.network;
-                        }),
+                            await widget.onRetry!();
+                            return ConnectError.network;
+                          }),
                   child: Text(l.retryButton),
                 ),
               TextButton(onPressed: _busy ? null : widget.onDemo, child: Text(l.useDemoButton)),

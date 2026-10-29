@@ -19,15 +19,7 @@ Book _book(String id, String kind, {String? genre}) => Book(
   color: const Color(0xFF000000),
   kind: kind,
   genre: genre,
-  tracks: [
-    Track(
-      disc: 1,
-      number: 1,
-      title: 'T',
-      length: const Duration(minutes: 3),
-      partId: int.parse(id),
-    ),
-  ],
+  tracks: [Track(disc: 1, number: 1, title: 'T', length: const Duration(minutes: 3), partId: int.parse(id))],
 );
 
 class FakeFeeds implements FeedApi {
@@ -62,11 +54,9 @@ class FakeFeeds implements FeedApi {
   @override
   Future<List<Map<String, dynamic>>> episodes(int podcastId) async => [];
   @override
-  Future<Map<String, dynamic>> addStation(
-    String name,
-    String streamUrl, {
-    String? homepage,
-  }) async => {'approved': true};
+  Future<Map<String, dynamic>> addStation(String name, String streamUrl, {String? homepage}) async => {
+    'approved': true,
+  };
   @override
   Future<void> removeStation(int id) async {}
 }
@@ -109,29 +99,22 @@ void main() {
     return p;
   }
 
-  Future<void> toMusic(
-    WidgetTester tester,
-    PlayerController p, {
-    Locale locale = const Locale('en'),
-  }) async {
+  Future<void> toMusic(WidgetTester tester, PlayerController p, {Locale locale = const Locale('en')}) async {
     await tester.pumpWidget(_app(p, const LibraryScreen(), locale: locale));
     await tester.tap(find.text(locale.languageCode == 'de' ? 'Musik' : 'Music'));
     await tester.pump();
   }
 
   group('first row', () {
-    testWidgets(
-      'music, audiobooks, podcasts, radio, videos, e-books from left to right, with icons',
-      (tester) async {
-        _bigWindow(tester);
-        await tester.pumpWidget(_app(music(), const LibraryScreen()));
-        final labels = ['Music', 'Audiobooks', 'Podcasts', 'Radio', 'Videos', 'E-Books'];
-        final x = [for (final t in labels) tester.getCenter(find.widgetWithText(ChoiceChip, t)).dx];
-        expect(x, orderedEquals([...x]..sort()), reason: '$x');
-        expect(find.byIcon(Icons.podcasts), findsOneWidget);
-        expect(find.byIcon(Icons.radio), findsOneWidget);
-      },
-    );
+    testWidgets('music, audiobooks, podcasts, radio, videos, e-books from left to right, with icons', (tester) async {
+      _bigWindow(tester);
+      await tester.pumpWidget(_app(music(), const LibraryScreen()));
+      final labels = ['Music', 'Audiobooks', 'Podcasts', 'Radio', 'Videos', 'E-Books'];
+      final x = [for (final t in labels) tester.getCenter(find.widgetWithText(ChoiceChip, t)).dx];
+      expect(x, orderedEquals([...x]..sort()), reason: '$x');
+      expect(find.byIcon(Icons.podcasts), findsOneWidget);
+      expect(find.byIcon(Icons.radio), findsOneWidget);
+    });
 
     testWidgets('the search has All and no podcasts and no radio', (tester) async {
       _bigWindow(tester);
@@ -163,25 +146,22 @@ void main() {
   });
 
   group('podcasts and radio in the library', () {
-    testWidgets(
-      'Podcasts shows the list of the podcast page, with Add and Refresh in the app bar',
-      (tester) async {
-        _bigWindow(tester);
-        final feeds = FakeFeeds();
-        await tester.pumpWidget(_app(music(), LibraryScreen(api: feeds)));
-        await tester.tap(find.widgetWithText(ChoiceChip, 'Podcasts'));
-        await tester.pump();
-        await tester.pump();
-        expect(find.text('Kinderfunk'), findsOneWidget);
-        expect(find.byTooltip('Follow a podcast'), findsOneWidget);
-        expect(find.byTooltip('Refresh the library'), findsOneWidget);
-        expect(find.byKey(genreRowKey), findsNothing);
-        final before = feeds.podcastLoads;
-        await tester.tap(find.byTooltip('Refresh the library'));
-        await tester.pump();
-        expect(feeds.podcastLoads, before + 1);
-      },
-    );
+    testWidgets('Podcasts shows the list of the podcast page, with Add and Refresh in the app bar', (tester) async {
+      _bigWindow(tester);
+      final feeds = FakeFeeds();
+      await tester.pumpWidget(_app(music(), LibraryScreen(api: feeds)));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Podcasts'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Kinderfunk'), findsOneWidget);
+      expect(find.byTooltip('Follow a podcast'), findsOneWidget);
+      expect(find.byTooltip('Refresh the library'), findsOneWidget);
+      expect(find.byKey(genreRowKey), findsNothing);
+      final before = feeds.podcastLoads;
+      await tester.tap(find.byTooltip('Refresh the library'));
+      await tester.pump();
+      expect(feeds.podcastLoads, before + 1);
+    });
 
     testWidgets('the one refresh button reloads the library and both lists', (tester) async {
       _bigWindow(tester);
@@ -214,9 +194,7 @@ void main() {
       expect(find.byIcon(Icons.radio), findsWidgets);
     });
 
-    testWidgets('without a server they say so, with a failing server they say that', (
-      tester,
-    ) async {
+    testWidgets('without a server they say so, with a failing server they say that', (tester) async {
       _bigWindow(tester);
       await tester.pumpWidget(_app(music(), const LibraryScreen()));
       await tester.tap(find.widgetWithText(ChoiceChip, 'Podcasts'));
@@ -228,13 +206,7 @@ void main() {
       await tester.tap(find.widgetWithText(ChoiceChip, 'Radio'));
       await tester.pump();
       await tester.pump();
-      expect(
-        find
-            .byType(Text)
-            .evaluate()
-            .any((e) => (e.widget as Text).data?.contains('server') ?? false),
-        isTrue,
-      );
+      expect(find.byType(Text).evaluate().any((e) => (e.widget as Text).data?.contains('server') ?? false), isTrue);
     });
   });
 
@@ -252,9 +224,7 @@ void main() {
       expect(all, findsNothing);
     });
 
-    testWidgets('All first, the genres in the order of the server with counts, Other last', (
-      tester,
-    ) async {
+    testWidgets('All first, the genres in the order of the server with counts, Other last', (tester) async {
       _bigWindow(tester);
       await toMusic(tester, music());
       expect(find.text('All'), findsWidgets);
@@ -264,17 +234,11 @@ void main() {
       final x = [
         for (final f in [all, rock, jazz, other]) tester.getCenter(f).dx,
       ];
-      expect(
-        x,
-        orderedEquals([...x]..sort()),
-        reason: 'server order: Rock before Jazz here, Other last: $x',
-      );
+      expect(x, orderedEquals([...x]..sort()), reason: 'server order: Rock before Jazz here, Other last: $x');
       expect(tester.widget<FilterChip>(all).selected, isTrue);
     });
 
-    testWidgets('only genres that have an album; Other only when albums have no genre', (
-      tester,
-    ) async {
+    testWidgets('only genres that have an album; Other only when albums have no genre', (tester) async {
       _bigWindow(tester);
       final p = music(
         books: [_book('1', 'music', genre: 'Rock')],
@@ -286,9 +250,7 @@ void main() {
       expect(other, findsNothing);
     });
 
-    testWidgets('a tap chooses exactly one genre and shows only its section; All lifts it', (
-      tester,
-    ) async {
+    testWidgets('a tap chooses exactly one genre and shows only its section; All lifts it', (tester) async {
       _bigWindow(tester);
       await toMusic(tester, music());
       expect(find.text('Title 1'), findsWidgets);
@@ -316,9 +278,7 @@ void main() {
       expect(find.text('Title 4'), findsWidgets);
     });
 
-    testWidgets('the choice stays when the category changes and when the library is reloaded', (
-      tester,
-    ) async {
+    testWidgets('the choice stays when the category changes and when the library is reloaded', (tester) async {
       _bigWindow(tester);
       final p = music();
       await toMusic(tester, p);
@@ -332,11 +292,7 @@ void main() {
 
       p.updateLibrary(
         LoadedLibrary(
-          [
-            _book('2', 'music', genre: 'Rock'),
-            _book('3', 'music', genre: 'Rock'),
-            _book('6', 'music', genre: 'Rock'),
-          ],
+          [_book('2', 'music', genre: 'Rock'), _book('3', 'music', genre: 'Rock'), _book('6', 'music', genre: 'Rock')],
           {},
           genres: ['Rock', 'Jazz'],
         ),
@@ -352,9 +308,7 @@ void main() {
       await toMusic(tester, p);
       await tester.tap(jazz);
       await tester.pump();
-      p.updateLibrary(
-        LoadedLibrary([_book('2', 'music', genre: 'Rock')], {}, genres: ['Rock', 'Jazz']),
-      );
+      p.updateLibrary(LoadedLibrary([_book('2', 'music', genre: 'Rock')], {}, genres: ['Rock', 'Jazz']));
       await tester.pump();
       expect(jazz, findsNothing);
       expect(tester.widget<FilterChip>(all).selected, isTrue);

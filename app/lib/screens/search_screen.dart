@@ -28,13 +28,13 @@ class _SearchScreenState extends State<SearchScreen> {
 
   /// A name from the hits; a tap searches for exactly this name, which brings all their albums.
   Widget _names(List<String> names, IconData icon) => SliverList.builder(
-    itemCount: names.length,
-    itemBuilder: (_, i) => ListTile(
-      leading: Icon(icon),
-      title: Text(names[i]),
-      onTap: () => setState(() => _controller.text = names[i]),
-    ),
-  );
+        itemCount: names.length,
+        itemBuilder: (_, i) => ListTile(
+          leading: Icon(icon),
+          title: Text(names[i]),
+          onTap: () => setState(() => _controller.text = names[i]),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -82,13 +82,7 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          sliver: SliverToBoxAdapter(
-            child: CategoryChips(
-              value: _category,
-              forSearch: true,
-              onChanged: (c) => setState(() => _category = c),
-            ),
-          ),
+          sliver: SliverToBoxAdapter(child: CategoryChips(value: _category, forSearch: true, onChanged: (c) => setState(() => _category = c))),
         ),
         // With a server, the text may be a passage of an audio Bible ("Johannes 3,16").
         if (query.isNotEmpty && p.source != null)
@@ -134,8 +128,13 @@ class _SearchScreenState extends State<SearchScreen> {
                           a,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w600, color: cs.onSecondary),
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSecondary,
+                              ),
                         ),
                       ),
                     ),
@@ -144,7 +143,10 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           ),
         ] else if (found.isEmpty)
-          SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.nothingFound)))
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: Text(l.nothingFound)),
+          )
         else ...[
           // The hits in groups: the albums (books) by title, then the artists (authors) and the narrators.
           if (found.albums.isNotEmpty) ...[

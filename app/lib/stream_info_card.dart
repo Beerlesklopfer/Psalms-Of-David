@@ -50,13 +50,7 @@ class StreamInfoCard extends StatelessWidget {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(
-                            width: 96,
-                            child: Text(
-                              label,
-                              style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                            ),
-                          ),
+                          SizedBox(width: 96, child: Text(label, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant))),
                           Expanded(child: SelectableText(value, style: text.bodyMedium)),
                         ],
                       ),

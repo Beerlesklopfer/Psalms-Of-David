@@ -112,56 +112,49 @@ void main() {
         ? 'set PSALM_AUDIO_LIB, PSALM_TEST_SINK and PSALM_TEST_CLIP (see audio/scripts/verify-dart.sh)'
         : false;
 
-    test(
-      'loads, plays, pauses, seeks and changes the volume through the C library',
-      skip: skip,
-      () {
-        final b = PipeWireBackend.open(target: sink, libraryPath: lib);
-        addTearDown(b.dispose);
+    test('loads, plays, pauses, seeks and changes the volume through the C library', skip: skip, () {
+      final b = PipeWireBackend.open(target: sink, libraryPath: lib);
+      addTearDown(b.dispose);
 
-        b.load(clip!, play: false, title: 'Dart test');
-        expect(b.state, BackendState.paused);
-        expect(b.position, Duration.zero);
-        expect(b.duration, isNotNull);
-        expect(b.duration!.inSeconds, greaterThan(5));
+      b.load(clip!, play: false, title: 'Dart test');
+      expect(b.state, BackendState.paused);
+      expect(b.position, Duration.zero);
+      expect(b.duration, isNotNull);
+      expect(b.duration!.inSeconds, greaterThan(5));
 
-        b.play();
-        sleep(const Duration(milliseconds: 1300));
-        expect(b.state, BackendState.playing);
-        final p = b.position;
-        expect(p, greaterThan(const Duration(milliseconds: 900)));
-        expect(p, lessThan(const Duration(milliseconds: 1800)));
+      b.play();
+      sleep(const Duration(milliseconds: 1300));
+      expect(b.state, BackendState.playing);
+      final p = b.position;
+      expect(p, greaterThan(const Duration(milliseconds: 900)));
+      expect(p, lessThan(const Duration(milliseconds: 1800)));
 
-        b.pause();
-        sleep(const Duration(milliseconds: 150));
-        final held = b.position;
-        sleep(const Duration(milliseconds: 500));
-        expect(b.position, held, reason: 'paused means standing still');
-        expect(b.state, BackendState.paused);
+      b.pause();
+      sleep(const Duration(milliseconds: 150));
+      final held = b.position;
+      sleep(const Duration(milliseconds: 500));
+      expect(b.position, held, reason: 'paused means standing still');
+      expect(b.state, BackendState.paused);
 
-        b.seek(const Duration(seconds: 5));
-        sleep(const Duration(milliseconds: 400));
-        expect(b.state, BackendState.paused, reason: 'a seek while paused stays paused');
-        expect(b.position, greaterThanOrEqualTo(const Duration(seconds: 5)));
-        expect(b.position, lessThan(const Duration(seconds: 5, milliseconds: 800)));
+      b.seek(const Duration(seconds: 5));
+      sleep(const Duration(milliseconds: 400));
+      expect(b.state, BackendState.paused, reason: 'a seek while paused stays paused');
+      expect(b.position, greaterThanOrEqualTo(const Duration(seconds: 5)));
+      expect(b.position, lessThan(const Duration(seconds: 5, milliseconds: 800)));
 
-        b.setVolume(0.5);
-        expect(b.volume, 0.5);
+      b.setVolume(0.5);
+      expect(b.volume, 0.5);
 
-        expect(() => b.load('/definitely/not/there.mp3'), throwsA(isA<AudioException>()));
-        expect(b.state, BackendState.failed);
+      expect(() => b.load('/definitely/not/there.mp3'), throwsA(isA<AudioException>()));
+      expect(b.state, BackendState.failed);
 
-        b.dispose();
-        b.dispose();
-        expect(() => b.play(), throwsStateError);
-      },
-    );
+      b.dispose();
+      b.dispose();
+      expect(() => b.play(), throwsStateError);
+    });
 
     test('says why when the library or the engine is not there', () {
-      expect(
-        () => PipeWireBackend.open(libraryPath: '/no/such/libpsalm_audio.so'),
-        throwsA(isA<AudioException>()),
-      );
+      expect(() => PipeWireBackend.open(libraryPath: '/no/such/libpsalm_audio.so'), throwsA(isA<AudioException>()));
     });
   });
 }

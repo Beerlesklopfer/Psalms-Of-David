@@ -63,7 +63,10 @@ class _DrawnCover extends StatelessWidget {
             padding: EdgeInsets.all(s * 0.06),
             child: DecoratedBox(
               decoration: BoxDecoration(
-                border: Border.all(color: Palette.gold.withValues(alpha: 0.55), width: 1),
+                border: Border.all(
+                  color: Palette.gold.withValues(alpha: 0.55),
+                  width: 1,
+                ),
               ),
               child: Padding(
                 padding: EdgeInsets.all(s * 0.05),
@@ -115,7 +118,9 @@ class _DrawnCover extends StatelessWidget {
 }
 
 void openBook(BuildContext context, Book book) {
-  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => BookScreen(book: book)));
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => BookScreen(book: book)),
+  );
 }
 
 /// Cover with title and author below, used in rows and grids.
@@ -128,15 +133,7 @@ class PlayedMark extends StatelessWidget {
     final label = AppLocalizations.of(context).tooltipPlayed;
     return Tooltip(
       message: label,
-      child: Semantics(
-        label: label,
-        child: const Icon(
-          Icons.check_circle,
-          key: ValueKey('played-mark'),
-          color: Palette.played,
-          size: 20,
-        ),
-      ),
+      child: Semantics(label: label, child: const Icon(Icons.check_circle, key: ValueKey('played-mark'), color: Palette.played, size: 20)),
     );
   }
 }
@@ -175,12 +172,7 @@ class BookCard extends StatelessWidget {
                       right: 6,
                       child: Tooltip(
                         message: AppLocalizations.of(context).hiddenMark,
-                        child: const Icon(
-                          Icons.visibility_off,
-                          key: ValueKey('hidden-mark'),
-                          size: 20,
-                          color: Colors.white,
-                        ),
+                        child: const Icon(Icons.visibility_off, key: ValueKey('hidden-mark'), size: 20, color: Colors.white),
                       ),
                     ),
                   if (badge != null)
@@ -188,19 +180,13 @@ class BookCard extends StatelessWidget {
                       top: 6,
                       left: 6,
                       child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
+                        decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(4)),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           child: Text(
                             badge!,
                             key: const ValueKey('book-badge'),
-                            style: text.labelSmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onPrimary,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: text.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onPrimary, fontWeight: FontWeight.w700),
                           ),
                         ),
                       ),
@@ -232,17 +218,8 @@ class BookCard extends StatelessWidget {
 
 /// A small window with text fields and one action (Cancel / action). Returns the entries, or null if it was cancelled
 /// or a field is empty.
-Future<List<String>?> askFields(
-  BuildContext context, {
-  required String title,
-  required List<({String label, String? hint})> fields,
-  required String action,
-  List<String>? initial,
-}) {
-  final controllers = [
-    for (var i = 0; i < fields.length; i++)
-      TextEditingController(text: initial != null && i < initial.length ? initial[i] : null),
-  ];
+Future<List<String>?> askFields(BuildContext context, {required String title, required List<({String label, String? hint})> fields, required String action, List<String>? initial}) {
+  final controllers = [for (var i = 0; i < fields.length; i++) TextEditingController(text: initial != null && i < initial.length ? initial[i] : null)];
   final cancel = MaterialLocalizations.of(context).cancelButtonLabel;
   return showDialog<List<String>>(
     context: context,
@@ -258,39 +235,22 @@ Future<List<String>?> askFields(
                 controller: controllers[i],
                 autofocus: i == 0,
                 decoration: InputDecoration(labelText: f.label, hintText: f.hint),
-                onSubmitted: i == fields.length - 1
-                    ? (_) => Navigator.of(context).pop([for (final c in controllers) c.text.trim()])
-                    : null,
+                onSubmitted: i == fields.length - 1 ? (_) => Navigator.of(context).pop([for (final c in controllers) c.text.trim()]) : null,
               ),
           ],
         ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(cancel)),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop([for (final c in controllers) c.text.trim()]),
-          child: Text(action),
-        ),
+        FilledButton(onPressed: () => Navigator.of(context).pop([for (final c in controllers) c.text.trim()]), child: Text(action)),
       ],
     ),
   ).then((v) => v == null || v.any((s) => s.isEmpty) ? null : v);
 }
 
 /// One text field: the entry, or null.
-Future<String?> askText(
-  BuildContext context, {
-  required String title,
-  required String label,
-  String? hint,
-  required String action,
-  String? initial,
-}) => askFields(
-  context,
-  title: title,
-  fields: [(label: label, hint: hint)],
-  action: action,
-  initial: initial == null ? null : [initial],
-).then((v) => v?.first);
+Future<String?> askText(BuildContext context, {required String title, required String label, String? hint, required String action, String? initial}) =>
+    askFields(context, title: title, fields: [(label: label, hint: hint)], action: action, initial: initial == null ? null : [initial]).then((v) => v?.first);
 
 class SectionHeader extends StatelessWidget {
   const SectionHeader(this.title, {super.key});
@@ -454,29 +414,23 @@ class MiniPlayer extends StatelessWidget {
                           book.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: text.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                          style: text.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         Text(
-                          p.nowPlaying ??
-                              (p.track!.live
-                                  ? p.track!.title
-                                  : l.discTrack(p.track!.disc, p.track!.title)),
+                          p.nowPlaying ?? (p.track!.live ? p.track!.title : l.discTrack(p.track!.disc, p.track!.title)),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                          style: text.bodySmall
+                              ?.copyWith(color: cs.onSurfaceVariant),
                         ),
                       ],
                     ),
                   ),
                   // Played and total time of the book.
                   Text(
-                    p.track?.live == true
-                        ? l.radioLive
-                        : '${formatDuration(p.bookPosition)} / ${formatDuration(p.bookTotal)}',
-                    style: text.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
+                    p.track?.live == true ? l.radioLive : '${formatDuration(p.bookPosition)} / ${formatDuration(p.bookTotal)}',
+                    style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()]),
                   ),
                   if (speedMenu)
                     PopupMenuButton<double>(
@@ -491,18 +445,12 @@ class MiniPlayer extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         child: Text(
                           formatSpeed(l.localeName, p.speed),
-                          style: text.labelLarge?.copyWith(
-                            color: p.speed == 1.0 ? cs.onSurfaceVariant : cs.primary,
-                          ),
+                          style: text.labelLarge?.copyWith(color: p.speed == 1.0 ? cs.onSurfaceVariant : cs.primary),
                         ),
                       ),
                     ),
                   if (transport) ...[
-                    IconButton(
-                      tooltip: l.tooltipPrevious,
-                      onPressed: p.previous,
-                      icon: const Icon(Icons.skip_previous),
-                    ),
+                    IconButton(tooltip: l.tooltipPrevious, onPressed: p.previous, icon: const Icon(Icons.skip_previous)),
                     IconButton(
                       tooltip: l.tooltipBack10,
                       onPressed: () => p.skip(const Duration(seconds: -10)),
@@ -521,11 +469,7 @@ class MiniPlayer extends StatelessWidget {
                       onPressed: () => p.skip(const Duration(seconds: 30)),
                       icon: const Icon(Icons.forward_30),
                     ),
-                    IconButton(
-                      tooltip: l.tooltipNext,
-                      onPressed: p.next,
-                      icon: const Icon(Icons.skip_next),
-                    ),
+                    IconButton(tooltip: l.tooltipNext, onPressed: p.next, icon: const Icon(Icons.skip_next)),
                   ],
                 ],
               ),
@@ -537,6 +481,7 @@ class MiniPlayer extends StatelessWidget {
     );
   }
 }
+
 
 /// A page of plain content: centred, never wider than a comfortable column, with
 /// the title in the app bar.
@@ -572,6 +517,7 @@ class CenteredPage extends StatelessWidget {
   }
 }
 
+
 /// The lyre of the logo, drawn in a 24 x 24 box (the same shape as in the server's
 /// logo.svg) and scaled to the size of the widget.
 class Lyre extends StatelessWidget {
@@ -581,8 +527,7 @@ class Lyre extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) =>
-      CustomPaint(size: Size.square(size), painter: _LyrePainter(color));
+  Widget build(BuildContext context) => CustomPaint(size: Size.square(size), painter: _LyrePainter(color));
 }
 
 class _LyrePainter extends CustomPainter {
@@ -619,6 +564,7 @@ class _LyrePainter extends CustomPainter {
   bool shouldRepaint(_LyrePainter old) => old.color != color;
 }
 
+
 /// Loads the library again from the server. Not shown without a server (demo data).
 class RefreshButton extends StatelessWidget {
   const RefreshButton({super.key, this.also});
@@ -633,10 +579,7 @@ class RefreshButton extends StatelessWidget {
     if (!p.canRefresh && also == null) return const SizedBox.shrink();
     final l = AppLocalizations.of(context);
     return p.refreshing
-        ? const Padding(
-            padding: EdgeInsets.all(14),
-            child: SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-          )
+        ? const Padding(padding: EdgeInsets.all(14), child: SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)))
         : IconButton(
             tooltip: l.tooltipRefresh,
             onPressed: () {

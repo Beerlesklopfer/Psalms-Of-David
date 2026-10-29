@@ -5,14 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/library_groups.dart';
 import 'package:psalm/models.dart';
 
-Book _b(
-  String id,
-  String title,
-  String author, {
-  String kind = 'music',
-  String? genre,
-  String? narrator,
-}) => Book(
+Book _b(String id, String title, String author, {String kind = 'music', String? genre, String? narrator}) => Book(
   id: id,
   title: title,
   author: author,
@@ -48,11 +41,7 @@ void main() {
       _b('4', 'Winter der Welt', 'Follett', kind: 'audiobook', narrator: 'Johannes Steck'),
     ];
     final f = searchGroups(pool, 'petra');
-    expect(f.albums.map((b) => b.id), [
-      '1',
-      '2',
-      '3',
-    ], reason: 'the full name brings the albums, the title adds one');
+    expect(f.albums.map((b) => b.id), ['1', '2', '3'], reason: 'the full name brings the albums, the title adds one');
     expect(f.creators, ['Petra']);
     expect(f.narrators, isEmpty);
 

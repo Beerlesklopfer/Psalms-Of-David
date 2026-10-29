@@ -29,9 +29,7 @@ void main() {
           Track(disc: 1, number: i, title: 'T$i', length: const Duration(seconds: 30), path: clip),
       ],
     );
-    final p = PlayerController([
-      book,
-    ], backend: PipeWireBackend.open(target: sink, libraryPath: lib));
+    final p = PlayerController([book], backend: PipeWireBackend.open(target: sink, libraryPath: lib));
     addTearDown(p.dispose);
 
     p.open(book, track: 0);

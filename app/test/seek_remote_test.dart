@@ -13,12 +13,7 @@ class _Source extends MediaSource {
   @override
   Future<String> fetchPart(Track track) async => '/cache/${track.partId}.audio';
   @override
-  Future<void> saveProgress(
-    Book book,
-    Track track,
-    Duration position, {
-    required bool finished,
-  }) async {}
+  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {}
   @override
   Future<PassageHit?> resolvePassage(String text) async => null;
 }
@@ -32,9 +27,7 @@ void main() {
       title: 'B',
       author: 'A',
       color: const Color(0xFF000000),
-      tracks: [
-        Track(disc: 1, number: 1, title: 'T1', length: const Duration(minutes: 6), partId: 10),
-      ],
+      tracks: [Track(disc: 1, number: 1, title: 'T1', length: const Duration(minutes: 6), partId: 10)],
     );
     final p = PlayerController([book], backend: backend, source: _Source());
     addTearDown(p.dispose);

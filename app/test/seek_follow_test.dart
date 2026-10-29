@@ -17,9 +17,7 @@ void main() {
       title: 'B',
       author: 'A',
       color: const Color(0xFF000000),
-      tracks: [
-        Track(disc: 1, number: 1, title: 'T1', length: const Duration(minutes: 6), path: '/a.mp3'),
-      ],
+      tracks: [Track(disc: 1, number: 1, title: 'T1', length: const Duration(minutes: 6), path: '/a.mp3')],
     );
     final p = PlayerController([book], backend: backend);
     addTearDown(p.dispose);
