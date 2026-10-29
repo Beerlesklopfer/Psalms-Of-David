@@ -13,26 +13,19 @@
     </div>
   </dl>
 
-  <h2>{{ t("import.folders") }}</h2>
-  {% if state.roots %}
+  {% for k in kinds %}
+  <h2>{{ t("import.kind." ~ k.kind) }}</h2>
+  {% if k.roots %}
   <ul class="folders">
-    {% for root in state.roots %}<li>{{ icon("folder") }}<code>{{ root }}</code></li>{% endfor %}
-    {% for e in state.excludes %}<li class="left-out">{{ icon("close") }}<code>{{ e }}</code><small>{{ t("import.left_out") }}</small></li>{% endfor %}
+    {% for root in k.roots %}<li>{{ icon(k.icon) }}<code>{{ root }}</code></li>{% endfor %}
+    {% for e in k.excludes %}<li class="left-out">{{ icon("close") }}<code>{{ e }}</code><small>{{ t("import.left_out") }}</small></li>{% endfor %}
   </ul>
-  <p class="hint">{{ t("import.roots_hint") }}</p>
-  {% else %}
+  {% elif k.kind == "audiobook" %}
   <p class="message">{{ t("import.no_folders") }}</p>
-  {% endif %}
-
-  <h2>{{ t("import.music_folders") }}</h2>
-  {% if state.music_roots %}
-  <ul class="folders">
-    {% for root in state.music_roots %}<li>{{ icon("music") }}<code>{{ root }}</code></li>{% endfor %}
-    {% for e in state.music_excludes %}<li class="left-out">{{ icon("close") }}<code>{{ e }}</code><small>{{ t("import.left_out") }}</small></li>{% endfor %}
-  </ul>
   {% else %}
-  <p class="hint">{{ t("import.no_music_folders") }}</p>
+  <p class="hint">{{ t("import.no_folders_of_kind") }}</p>
   {% endif %}
+  {% endfor %}
 
   <div class="gate">
     <button type="button" class="btn outline" data-dialog="dlg-import">{{ icon("edit") }}<span>{{ t("import.edit") }}</span></button>
@@ -56,20 +49,19 @@
       <form id="import-form" class="dialog-form" method="post" action="/admin/rpc/import.save_criteria"
             hx-post="/admin/rpc/import.save_criteria" hx-target="#import-settings" hx-swap="outerHTML" hx-disabled-elt="find button" data-close-window>
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        <label class="field span-all"><textarea name="roots" rows="4" spellcheck="false" placeholder=" ">{{ state.roots | join("\n") }}{% for e in state.excludes %}
-!{{ e }}{% endfor %}</textarea><span>{{ t("import.roots") }}</span></label>
-        <small class="span-all">{{ t("import.roots_hint") }}</small>
-        <label class="field span-all"><textarea name="music_roots" rows="3" spellcheck="false" placeholder=" ">{{ state.music_roots | join("\n") }}{% for e in state.music_excludes %}
-!{{ e }}{% endfor %}</textarea><span>{{ t("import.music_roots") }}</span></label>
-        <small class="span-all">{{ t("import.music_hint") }}</small>
-        <div class="syntax span-all">
-          <strong>{{ t("import.syntax") }}</strong>
-          <dl>
-            <dt><code>/srv/Musik</code></dt><dd>{{ t("import.syntax.folder") }}</dd>
-            <dt><code>!/srv/Musik/Audiobooks</code></dt><dd>{{ t("import.syntax.exclude") }}</dd>
-          </dl>
-          <small>{{ t("import.syntax.note") }}</small>
-        </div>
+        <input type="hidden" name="rows" value="1">
+        {% for k in kinds %}
+        <fieldset class="root-kind span-all">
+          <legend>{{ icon(k.icon) }}<span>{{ t("import.kind." ~ k.kind) }}</span></legend>
+          <div id="rows-{{ k.kind }}">
+            {% set kind = k.kind %}
+            {% for path in k.roots %}{% set n = loop.index %}{% set excluded = false %}{% include "fragments/root_row.html" %}{% endfor %}
+            {% for path in k.excludes %}{% set n = 100 + loop.index %}{% set excluded = true %}{% include "fragments/root_row.html" %}{% endfor %}
+          </div>
+          <button type="button" class="btn outline" hx-get="/admin/rpc/import.row?kind={{ k.kind }}" hx-target="#rows-{{ k.kind }}" hx-swap="beforeend">{{ icon("plus") }}<span>{{ t("import.add_folder") }}</span></button>
+          <small>{{ t("import.kind." ~ k.kind ~ ".hint") }}</small>
+        </fieldset>
+        {% endfor %}
         <label class="field span-all"><select name="rule">
           <option value="manual"{% if state.rule == "manual" %} selected{% endif %}>{{ t("import.rule.manual") }}</option>
           <option value="recommendation"{% if state.rule == "recommendation" %} selected{% endif %}>{{ t("import.rule.recommendation") }}</option>
@@ -81,5 +73,9 @@
       <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
       <button type="submit" class="btn" form="import-form">{{ t("import.save") }}</button>
     </div>
+  </dialog>
+  <dialog id="dlg-folders-import" class="window folder-window" aria-labelledby="dlg-folders-import-title">
+    <div class="window-head"><h3 id="dlg-folders-import-title">{{ t("folders.title") }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+    <div class="window-body" id="folders-body-import"></div>
   </dialog>
 </section>

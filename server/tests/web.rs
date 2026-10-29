@@ -2362,8 +2362,9 @@ async fn named_folders_are_left_out_of_the_import() {
     let r = send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &format!("{root}\n!{trash}\n!{notmine}\n")), ("rule", "manual")]), &o)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
     assert!(r.body.contains("left out") && r.body.contains("Trash") && r.body.contains("Not Mine"));
-    assert!(r.body.contains("One folder per line") && r.body.contains("a ! in front"), "the syntax is written into the window");
-    assert!(r.body.contains("!{trash}".replace("{trash}", &trash.replace('/', "&#x2f;")).as_str()), "the dialog shows them again as ! lines");
+    // The window has a row for every folder; a folder that is left out has its box ticked.
+    let esc = |x: &str| x.replace('/', "&#x2f;");
+    assert!(r.body.contains("name=\"r_audiobook_1\"") && r.body.contains(&esc(&trash)) && r.body.contains("name=\"x_audiobook_101\" value=\"1\" checked"), "the dialog shows the folders as rows");
 
     send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
     send(&a, post("/admin/rpc/import.run", "", &o)).await;
@@ -3631,6 +3632,74 @@ fn the_templates_use_only_filters_the_engine_has() {
 }
 
 #[tokio::test]
+async fn the_import_folders_are_a_list_of_rows_for_four_kinds_and_a_folder_belongs_to_one_kind() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let hx = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let root = tempfile::tempdir().unwrap();
+    let dirs: Vec<String> = ["Buecher", "Musik", "Bilder", "Ebooks", "Weg"]
+        .iter()
+        .map(|d| {
+            std::fs::create_dir(root.path().join(d)).unwrap();
+            root.path().join(d).to_string_lossy().into_owned()
+        })
+        .collect();
+    let (b, m, p, e, w) = (&dirs[0], &dirs[1], &dirs[2], &dirs[3], &dirs[4]);
+    let save = |fields: Vec<(&str, &str)>| {
+        let mut all = vec![("csrf", csrf.as_str()), ("rows", "1"), ("rule", "manual")];
+        all.extend(fields);
+        post("/admin/rpc/import.save_criteria", &form(&all), &hx)
+    };
+    // Rows for all four kinds; the box "left out" turns a row into an exception of its kind.
+    let r = send(&a, save(vec![("r_audiobook_1", b), ("r_music_1", m), ("r_photo_1", p), ("r_ebook_1", e), ("r_audiobook_2", w), ("x_audiobook_2", "1")])).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let st = a.store.import_state().await.unwrap();
+    let canon = |x: &String| std::fs::canonicalize(x).unwrap().to_string_lossy().into_owned();
+    assert_eq!((st.roots.clone(), st.music_roots.clone(), st.photo_roots.clone(), st.ebook_roots.clone()), (vec![canon(b)], vec![canon(m)], vec![canon(p)], vec![canon(e)]));
+    assert_eq!(st.excludes, vec![canon(w)]);
+    // The dialog shows a row for each folder and every kind has its list.
+    let page = send(&a, get("/admin/settings?tab=import", &Opts { cookie: Some(&cookie), ..Default::default() })).await.body;
+    for kind in ["audiobook", "music", "photo", "ebook"] {
+        assert!(page.contains(&format!("id=\"rows-{kind}\"")) && page.contains(&format!("import.row?kind={kind}")), "{kind}: {page}");
+    }
+    assert!(page.contains("name=\"r_photo_1\"") && page.contains(&canon(p).replace('/', "&#x2f;")), "{page}");
+    // A folder of pictures cannot also be a folder of e-books.
+    let r = send(&a, save(vec![("r_audiobook_1", b), ("r_photo_1", p), ("r_ebook_1", p)])).await;
+    assert_ne!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.header("x-invalid-field"), Some("r_ebook_1"), "the row of the kind that was refused is ringed");
+    let r = send(&a, save(vec![("r_audiobook_1", b), ("r_photo_1", "/gibt/es/nicht")])).await;
+    assert_eq!(r.header("x-invalid-field"), Some("r_photo_1"), "{}", r.body);
+    assert_eq!(a.store.import_state().await.unwrap().ebook_roots, vec![canon(e)], "a refused form changes nothing of that kind");
+    // Rows without a folder empty the kind; no audiobook folder is fine while music folders are saved with it.
+    let r = send(&a, save(vec![("r_music_1", m)])).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let st = a.store.import_state().await.unwrap();
+    assert!(st.roots.is_empty() && st.photo_roots.is_empty() && st.ebook_roots.is_empty() && st.music_roots == vec![canon(m)]);
+    // Nothing at all is not a set of criteria.
+    assert_ne!(send(&a, save(vec![])).await.status, StatusCode::OK);
+    // One more empty row, for a known kind only.
+    let row = send(&a, get("/admin/rpc/import.row?kind=photo", &hx)).await;
+    assert!(row.status == StatusCode::OK && row.body.contains("name=\"r_photo_") && row.body.contains("data-remove-row"), "{}", row.body);
+    assert_ne!(send(&a, get("/admin/rpc/import.row?kind=x", &hx)).await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_refused_form_names_the_input_to_ring_in_the_other_windows_too() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let hx = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let r = send(&a, post("/admin/rpc/user.create", &form(&[("csrf", &csrf), ("name", "  "), ("role", "member")]), &hx)).await;
+    assert_eq!((r.status, r.header("x-invalid-field")), (StatusCode::UNPROCESSABLE_ENTITY, Some("name")), "{}", r.body);
+    let r = send(&a, post("/admin/rpc/user.create", &form(&[("csrf", &csrf), ("name", "Anni"), ("role", "member"), ("pin", "x")]), &hx)).await;
+    assert_eq!(r.header("x-invalid-field"), Some("pin"), "{}", r.body);
+    let r = send(&a, post("/admin/rpc/user.create", &form(&[("csrf", &csrf), ("name", "Anni"), ("role", "member"), ("birth_date", "kein-datum")]), &hx)).await;
+    assert_eq!(r.header("x-invalid-field"), Some("birth_date"), "{}", r.body);
+    send(&a, post("/admin/rpc/user.create", &form(&[("csrf", &csrf), ("name", "Anni"), ("role", "member")]), &hx)).await;
+    let r = send(&a, post("/admin/rpc/user.create", &form(&[("csrf", &csrf), ("name", "Anni"), ("role", "member")]), &hx)).await;
+    assert_eq!((r.status, r.header("x-invalid-field")), (StatusCode::CONFLICT, Some("name")), "a name that is taken: {}", r.body);
+}
+
+#[tokio::test]
 async fn every_member_has_a_folder_for_every_medium_chosen_in_a_dialog_that_lists_only_what_the_server_can_use() {
     let a = app().await;
     let (cookie, csrf) = sign_in(&a).await;
@@ -3686,6 +3755,9 @@ async fn every_member_has_a_folder_for_every_medium_chosen_in_a_dialog_that_list
     let bad = send(&a, post("/admin/rpc/user.update", &base("&folder_photo=%2Fno%2Fsuch%2Ffolder"), &hx)).await;
     assert_eq!(bad.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", bad.body);
     assert!(bad.body.contains("cannot be used"), "{}", bad.body);
+    assert_eq!(bad.header("x-invalid-field"), Some("folder_photo"), "the page is told which input to ring");
+    let bad_pin = send(&a, post("/admin/rpc/user.update", &base("&pin=x"), &hx)).await;
+    assert_eq!((bad_pin.status, bad_pin.header("x-invalid-field")), (StatusCode::UNPROCESSABLE_ENTITY, Some("pin")), "{}", bad_pin.body);
     let rel = send(&a, post("/admin/rpc/user.update", &base("&folder_photo=relative%2Fpath"), &hx)).await;
     assert_eq!(rel.status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(a.store.profile_folders(anna).await.unwrap().len(), 1, "nothing was saved by a refused form");

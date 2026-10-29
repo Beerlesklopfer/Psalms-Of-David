@@ -670,6 +670,50 @@ async fn folders_left_empty_by_a_move_are_removed_and_never_reported_by_the_impo
 }
 
 #[tokio::test]
+async fn a_branch_of_the_filing_moves_up_with_ids_kept_and_a_place_that_exists_stays() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let m = mcp().await;
+    let music = tempfile::TempDir::new().unwrap();
+    m.store.save_music_roots(&[music.path().display().to_string()]).await.unwrap();
+    make_mp3(&music.path().join("JÖRG/MP3-I/Artist A/Album 1/01.mp3"), &[("album", "Album 1"), ("artist", "Artist A"), ("track", "1")]);
+    make_mp3(&music.path().join("JÖRG/MP3-I/Artist B/Album 2/01.mp3"), &[("album", "Album 2"), ("artist", "Artist B"), ("track", "1")]);
+    make_mp3(&music.path().join("JÖRG/MP3-I/Single/01.mp3"), &[("album", "Single"), ("artist", "Solo"), ("track", "1")]);
+    make_mp3(&music.path().join("JÖRG/Artist B/Album 2/01.mp3"), &[("album", "Album 2 again"), ("artist", "Artist B"), ("track", "1")]);
+    m.store.scan_kind(music.path(), "music").await.unwrap();
+    let write = m.store.create_mcp_token("w", true, m.admin).await.unwrap();
+    let read = m.store.create_mcp_token("r", false, m.admin).await.unwrap();
+    let a1 = m.store.find_book("JÖRG/MP3-I/Artist A/Album 1").await.unwrap().unwrap().id;
+    let a2 = m.store.find_book("JÖRG/MP3-I/Artist B/Album 2").await.unwrap().unwrap().id;
+    let single = m.store.find_book("JÖRG/MP3-I/Single").await.unwrap().unwrap().id;
+
+    // The default is a look: three albums move, the one whose place exists already is told as a problem.
+    let (err, plan) = tool(&m, &read, "move_albums", json!({ "from": "JÖRG/MP3-I", "to": "JÖRG" })).await;
+    assert!(!err && plan["dry_run"] == true && plan["movable"] == 2 && plan["blocked"] == 1 && plan["moved"] == 0, "{plan}");
+    assert!(music.path().join("JÖRG/MP3-I/Artist A/Album 1/01.mp3").is_file(), "a look changes nothing");
+    let (err, _) = tool(&m, &read, "move_albums", json!({ "from": "JÖRG/MP3-I", "to": "JÖRG", "dry_run": false })).await;
+    assert!(err, "a reading token may not move");
+    for bad in [json!({ "from": "" }), json!({ "from": "JÖRG/../x", "to": "JÖRG" }), json!({ "from": "JÖRG", "to": "JÖRG/MP3-I" }), json!({ "from": "JÖRG", "to": "JÖRG" })] {
+        let (err, _) = tool(&m, &write, "move_albums", bad.clone()).await;
+        assert!(err, "{bad}");
+    }
+
+    let (err, done) = tool(&m, &write, "move_albums", json!({ "from": "JÖRG/MP3-I", "to": "JÖRG", "dry_run": false })).await;
+    assert!(!err && done["moved"] == 2 && done["failed"] == 0, "{done}");
+    assert!(music.path().join("JÖRG/Artist A/Album 1/01.mp3").is_file() && music.path().join("JÖRG/Single/01.mp3").is_file());
+    assert!(!music.path().join("JÖRG/MP3-I/Artist A").exists() && !music.path().join("JÖRG/MP3-I/Single").exists());
+    assert!(music.path().join("JÖRG/MP3-I/Artist B/Album 2/01.mp3").is_file(), "the album whose place exists stays where it is");
+    // The ids stay, the places are the new ones.
+    assert_eq!(m.store.book_folder(a1).await.unwrap().as_deref(), Some("JÖRG/Artist A/Album 1"));
+    assert_eq!(m.store.book_folder(single).await.unwrap().as_deref(), Some("JÖRG/Single"));
+    assert_eq!(m.store.book_folder(a2).await.unwrap().as_deref(), Some("JÖRG/MP3-I/Artist B/Album 2"));
+    // A second run has only the album that could not move.
+    let (_, again) = tool(&m, &write, "move_albums", json!({ "from": "JÖRG/MP3-I", "to": "JÖRG" })).await;
+    assert_eq!((again["movable"].as_i64(), again["blocked"].as_i64()), (Some(0), Some(1)), "{again}");
+}
+
+#[tokio::test]
 async fn an_album_is_renamed_and_moved_by_author_and_title_and_keeps_its_id() {
     if !ffmpeg_available() {
         return;

@@ -12,7 +12,7 @@ use crate::error::Result;
 use crate::store::Store;
 
 /// The kinds of medium a profile has a folder for.
-pub const KINDS: [&str; 3] = ["audiobook", "music", "photo"];
+pub const KINDS: [&str; 4] = ["audiobook", "music", "photo", "ebook"];
 
 /// May the server read, write and enter this folder?
 pub fn usable(path: &Path) -> bool {

@@ -57,6 +57,7 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("fragments/access_warning.html", include_str!("../../templates/fragments/access_warning.html")),
     ("fragments/settings_roles.html", include_str!("../../templates/fragments/settings_roles.html")),
     ("fragments/import_settings.html", include_str!("../../templates/fragments/import_settings.html")),
+    ("fragments/root_row.html", include_str!("../../templates/fragments/root_row.html")),
     ("profile.html", include_str!("../../templates/profile.html")),
     ("fragments/ui.html", include_str!("../../templates/fragments/ui.html")),
     ("fragments/avatar.html", include_str!("../../templates/fragments/avatar.html")),
@@ -860,7 +861,7 @@ impl AdminUi {
         let state = store.import_state().await?;
         // The tab holds the values of the CD import; the import itself (drive, choice, progress, log) is the page "CD import".
         let cd = self.cd_context(store, cd, false, &HashMap::new()).await?;
-        let ctx = context! { tab => tab, saved => false, zones => Self::zone_names(), state => Serde(state), policies => Serde(policies), settings => Serde(settings), ..view.into().context() };
+        let ctx = context! { tab => tab, saved => false, zones => Self::zone_names(), kinds => Self::root_kinds(&state), state => Serde(state), policies => Serde(policies), settings => Serde(settings), ..view.into().context() };
         let ctx = context! { ..ctx, ..llm, ..cd };
         self.render("settings.html", ctx)
     }
@@ -895,7 +896,7 @@ impl AdminUi {
         let settings = self.setting_views(store).await?;
         let state = store.import_state().await?;
         let llm = self.llm_context(store, endpoint, Some(token)).await?;
-        let ctx = context! { tab => "llm", saved => false, zones => Self::zone_names(), state => Serde(state), policies => Serde(policies), settings => Serde(settings), ..view.into().context() };
+        let ctx = context! { tab => "llm", saved => false, zones => Self::zone_names(), kinds => Self::root_kinds(&state), state => Serde(state), policies => Serde(policies), settings => Serde(settings), ..view.into().context() };
         let ctx = context! { ..ctx, ..llm };
         self.render("settings.html", ctx)
     }
@@ -1068,7 +1069,24 @@ impl AdminUi {
     /// The import tab of the settings alone: folders, rule and the lock.
     pub async fn import_settings_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
         let state = store.import_state().await?;
-        self.render("fragments/import_settings.html", context! { state => Serde(state), ..view.into().context() })
+        let kinds = Self::root_kinds(&state);
+        self.render("fragments/import_settings.html", context! { state => Serde(state), kinds => kinds, ..view.into().context() })
+    }
+
+    /// The four kinds of medium with their folders and what they leave out, in the order the settings page shows them.
+    fn root_kinds(state: &crate::importer::ImportState) -> Serde<Vec<serde_json::Value>> {
+        let kinds = [
+            ("audiobook", "folder", &state.roots, &state.excludes),
+            ("music", "music", &state.music_roots, &state.music_excludes),
+            ("photo", "media", &state.photo_roots, &state.photo_excludes),
+            ("ebook", "books", &state.ebook_roots, &state.ebook_excludes),
+        ];
+        Serde(kinds.iter().map(|(kind, icon, roots, excludes)| serde_json::json!({ "kind": kind, "icon": icon, "roots": roots, "excludes": excludes })).collect())
+    }
+
+    /// One empty row of folders for the dialog of the import settings.
+    pub async fn import_row_fragment<'a>(&self, view: impl Into<View<'a>>, kind: &str, n: i64) -> Result<String> {
+        self.render("fragments/root_row.html", context! { kind => kind, n => n, path => "", excluded => false, ..view.into().context() })
     }
 
     /// The form with the plain values of the settings page.

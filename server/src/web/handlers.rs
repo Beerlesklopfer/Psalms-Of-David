@@ -21,11 +21,19 @@ use crate::store::{NewProfile, now_ms};
 struct Failure {
     status: StatusCode,
     key: &'static str,
+    /// The input of the form that the failure is about (its `name`), so that the page can mark it.
+    field: Option<String>,
 }
 
 impl Failure {
     const fn new(status: StatusCode, key: &'static str) -> Failure {
-        Failure { status, key }
+        Failure { status, key, field: None }
+    }
+
+    /// Says which input of the form is wrong. The first one named stays.
+    fn at(mut self, field: impl Into<String>) -> Failure {
+        self.field.get_or_insert_with(|| field.into());
+        self
     }
 
     fn input() -> Failure {
@@ -700,7 +708,14 @@ fn finish(s: &AdminSession, back: &str, outcome: Outcome) -> Response {
     match (outcome, s.htmx) {
         (Ok(fragment), true) => Html(fragment).into_response(),
         (Ok(_), false) => Redirect::to(&format!("{back}{}msg=ok.saved", sep(back))).into_response(),
-        (Err(f), true) => plain_failure(f.status, f.key, s.lang, true),
+        (Err(f), true) => {
+            let mut res = plain_failure(f.status, f.key, s.lang, true);
+            // The input that is wrong: the page puts a ring around it (`X-Invalid-Field`, the name of the input).
+            if let Some(field) = f.field.as_deref().and_then(|n| HeaderValue::from_str(n).ok()) {
+                res.headers_mut().insert("x-invalid-field", field);
+            }
+            res
+        }
         (Err(f), false) => Redirect::to(&format!("{back}{}msg={}", sep(back), f.key)).into_response(),
     }
 }
@@ -773,26 +788,26 @@ pub async fn user_create(State(state): State<AppState>, s: AdminSession, Form(f)
     let outcome = async {
         let name = f.name.trim();
         if name.is_empty() || name.chars().count() > 80 {
-            return Err(Failure::input());
+            return Err(Failure::input().at("name"));
         }
-        let role = parse_role(&f.role)?;
+        let role = parse_role(&f.role).map_err(|e| e.at("role"))?;
         let birth = f.birth_date.trim();
-        let max_age = if birth.is_empty() { optional_number(&f.max_age, 0, 21)? } else { Some(age_of_birth(&state, birth).await?) };
+        let max_age = if birth.is_empty() { optional_number(&f.max_age, 0, 21).map_err(|e| e.at("max_age"))? } else { Some(age_of_birth(&state, birth).await.map_err(|e| e.at("birth_date"))?) };
         let pin = f.pin.trim();
         if !pin.is_empty() && !crate::auth::valid_secret(pin) {
-            return Err(Error::InvalidPin.into());
+            return Err(Failure::from(Error::InvalidPin).at("pin"));
         }
         let new = if role == Role::Child {
-            NewProfile { name: name.to_owned(), role, max_age, schedule: Some(daytime(&f.hours_from, &f.hours_until)?) }
+            NewProfile { name: name.to_owned(), role, max_age, schedule: Some(daytime(&f.hours_from, &f.hours_until).map_err(|e| e.at("hours_from"))?) }
         } else {
             NewProfile { name: name.to_owned(), role, max_age, schedule: None }
         };
-        let id = state.store.create_user(new).await?;
+        let id = state.store.create_user(new).await.map_err(|e| Failure::from(e).at("name"))?;
         if !f.first_name.trim().is_empty() || !f.last_name.trim().is_empty() {
-            state.store.set_person_names(id, name, &f.first_name, &f.last_name).await?;
+            state.store.set_person_names(id, name, &f.first_name, &f.last_name).await.map_err(|e| Failure::from(e).at("first_name"))?;
         }
         if !birth.is_empty() {
-            state.store.set_birth_date(id, Some(birth)).await?;
+            state.store.set_birth_date(id, Some(birth)).await.map_err(|e| Failure::from(e).at("birth_date"))?;
         }
         if !pin.is_empty() {
             state.store.set_pin(id, pin).await?;
@@ -890,19 +905,19 @@ pub struct UserUpdate {
 /// an age limit) can still refuse a step, and then the steps before it stay done.
 pub async fn user_update(State(state): State<AppState>, s: AdminSession, Form(f): Form<UserUpdate>) -> Response {
     let outcome = async {
-        let role = parse_role(&f.role)?;
+        let role = parse_role(&f.role).map_err(|e| e.at("role"))?;
         let birth = f.birth_date.trim();
-        let typed_age = f.max_age.as_deref().map(|a| optional_number(a, 0, 21)).transpose()?;
+        let typed_age = f.max_age.as_deref().map(|a| optional_number(a, 0, 21)).transpose().map_err(|e| e.at("max_age"))?;
         // The age that holds after this change: from the birthday, else the typed one, else the current one.
         let current = state.store.profile_by_id(f.id).await?.ok_or_else(Failure::not_found)?;
-        let max_age = if !birth.is_empty() { Some(age_of_birth(&state, birth).await?) } else { typed_age.unwrap_or(current.max_age) };
-        let max_devices = optional_number(&f.max_devices, 0, 50)?;
+        let max_age = if !birth.is_empty() { Some(age_of_birth(&state, birth).await.map_err(|e| e.at("birth_date"))?) } else { typed_age.unwrap_or(current.max_age) };
+        let max_devices = optional_number(&f.max_devices, 0, 50).map_err(|e| e.at("max_devices"))?;
         let pin = f.pin.trim();
         if !pin.is_empty() && !crate::auth::valid_secret(pin) {
-            return Err(Error::InvalidPin.into());
+            return Err(Failure::from(Error::InvalidPin).at("pin"));
         }
         // The planner is only given when the user becomes a child; then the hours count.
-        let schedule = if role == Role::Child && current.role != "child" { Some(daytime(&f.hours_from, &f.hours_until)?) } else { None };
+        let schedule = if role == Role::Child && current.role != "child" { Some(daytime(&f.hours_from, &f.hours_until).map_err(|e| e.at("hours_from"))?) } else { None };
 
         // The folders: a path the server can read, write and enter; checked before anything changes.
         let mut folders: Vec<(&str, Option<String>)> = Vec::new();
@@ -912,19 +927,19 @@ pub async fn user_update(State(state): State<AppState>, s: AdminSession, Form(f)
                 if v.is_empty() {
                     folders.push((kind, None));
                 } else {
-                    let real = crate::folders::check(v).map_err(|_| Failure::new(StatusCode::UNPROCESSABLE_ENTITY, "err.folder"))?;
+                    let real = crate::folders::check(v).map_err(|_| Failure::new(StatusCode::UNPROCESSABLE_ENTITY, "err.folder").at(format!("folder_{kind}")))?;
                     folders.push((kind, Some(real.to_string_lossy().into_owned())));
                 }
             }
         }
 
-        state.store.set_person_names(f.id, &f.name, &f.first_name, &f.last_name).await?;
+        state.store.set_person_names(f.id, &f.name, &f.first_name, &f.last_name).await.map_err(|e| Failure::from(e).at("name"))?;
         for (kind, path) in &folders {
             state.store.set_profile_folder(f.id, kind, path.as_deref()).await?;
         }
         state.store.change_role(f.id, role, max_age, schedule.as_ref()).await?;
         if !birth.is_empty() {
-            state.store.set_birth_date(f.id, Some(birth)).await?;
+            state.store.set_birth_date(f.id, Some(birth)).await.map_err(|e| Failure::from(e).at("birth_date"))?;
         } else if typed_age.is_some() {
             // An empty age limit means "none", which change_role leaves alone.
             state.store.set_profile_max_age(f.id, max_age).await?;
@@ -1058,16 +1073,16 @@ pub async fn book_update(State(state): State<AppState>, s: AdminSession, Form(f)
     let outcome = async {
         let book = state.store.admin_book_row(f.id).await?.ok_or_else(Failure::not_found)?;
         if f.description.as_deref().is_some_and(|t| t.trim().chars().count() > crate::store::MAX_DESCRIPTION_CHARS) {
-            return Err(Error::DescriptionTooLong.into());
+            return Err(Failure::from(Error::DescriptionTooLong).at("description"));
         }
         let release = f.released == "1";
-        let min_age = if release { Some(optional_number(&f.min_age, 0, 21)?.ok_or(Error::ReleaseRequiresAge)?) } else { None };
+        let min_age = if release { Some(optional_number(&f.min_age, 0, 21).map_err(|e| e.at("min_age"))?.ok_or_else(|| Failure::from(Error::ReleaseRequiresAge).at("min_age"))?) } else { None };
         // The family decides, but releasing below the recommendation needs a second look.
         if let Some(age) = min_age
             && book.recommended_age.is_some_and(|r| age < r)
             && f.confirm != "1"
         {
-            return Err(Failure::new(StatusCode::CONFLICT, "err.below_recommendation"));
+            return Err(Failure::new(StatusCode::CONFLICT, "err.below_recommendation").at("confirm"));
         }
         match min_age {
             Some(age) => state.store.release_book(f.id, age).await?,
@@ -1081,9 +1096,9 @@ pub async fn book_update(State(state): State<AppState>, s: AdminSession, Form(f)
         // The owner is another thing than the release: whom the book belongs to.
         if let Some(owner) = f.owner.as_deref() {
             let owner = owner.trim();
-            let id = if owner.is_empty() { None } else { Some(owner.parse::<i64>().map_err(|_| Failure::input())?) };
+            let id = if owner.is_empty() { None } else { Some(owner.parse::<i64>().map_err(|_| Failure::input().at("owner"))?) };
             if !state.store.set_book_owner(f.id, id).await? {
-                return Err(Failure::input());
+                return Err(Failure::input().at("owner"));
             }
         }
         book_row(&state, &s, f.id).await
@@ -1745,16 +1760,6 @@ async fn import_settings(state: &AppState, s: &AdminSession) -> Outcome {
     Ok(state.ui.import_settings_fragment(&state.store, view(s)).await?)
 }
 
-#[derive(Deserialize)]
-pub struct ImportCriteria {
-    #[serde(default)]
-    roots: String,
-    /// Folders with music, one per line. Absent (an older form) leaves them alone.
-    #[serde(default)]
-    music_roots: Option<String>,
-    rule: String,
-}
-
 /// Splits the lines of a list of folders: `!/path` lines name folders to leave out, the others are
 /// import folders.
 fn folder_lines(text: &str) -> (Vec<String>, Vec<String>) {
@@ -1768,21 +1773,90 @@ fn folder_lines(text: &str) -> (Vec<String>, Vec<String>) {
     (folders, left_out)
 }
 
-pub async fn import_save(State(state): State<AppState>, s: AdminSession, Form(f): Form<ImportCriteria>) -> Response {
+/// A refusal of a folder of the import settings, with the row it was typed in: the message names the folder, and the rows of the kind that
+/// was being saved are looked at first (a folder that is taken by another kind is typed in both).
+fn ring_row(pairs: &[(String, String)], kind: &str, e: Error) -> Failure {
+    let named = if let Error::InvalidImportRoot(msg) = &e {
+        let prefix = format!("r_{kind}_");
+        let fits = |v: &str| {
+            let typed = v.trim();
+            !typed.is_empty() && (msg.starts_with(typed) || std::fs::canonicalize(typed).is_ok_and(|c| msg.starts_with(&*c.to_string_lossy())))
+        };
+        let rows = || pairs.iter().filter(|(k, _)| k.starts_with("r_"));
+        rows().find(|(k, v)| k.starts_with(&prefix) && fits(v)).or_else(|| rows().find(|(_, v)| fits(v))).map(|(k, _)| k.clone())
+    } else {
+        None
+    };
+    let failure = Failure::from(e);
+    match named {
+        Some(key) => failure.at(key),
+        None => failure,
+    }
+}
+
+/// The kinds of medium that have folders of their own in the import settings.
+const ROOT_KINDS: [&str; 4] = ["audiobook", "music", "photo", "ebook"];
+
+/// Saves the folders and the rating rule. The form of the dialog sends a row for every folder (`r_<kind>_<n>` is the path, `x_<kind>_<n>=1`
+/// leaves it out) and `rows=1`; an older form sends `roots` and `music_roots` as lines (`!/path` leaves out), which is still understood.
+pub async fn import_save(State(state): State<AppState>, s: AdminSession, Form(pairs): Form<Vec<(String, String)>>) -> Response {
     let outcome = async {
-        let rule = crate::importer::RatingRule::parse(&f.rule).ok_or_else(Failure::input)?;
-        let (roots, left_out) = folder_lines(&f.roots);
-        state.store.save_import_criteria(&roots, rule).await?;
-        state.store.save_import_excludes(false, &left_out).await?;
-        if let Some(text) = &f.music_roots {
-            let (music, music_left_out) = folder_lines(text);
-            state.store.save_music_roots(&music).await?;
-            state.store.save_import_excludes(true, &music_left_out).await?;
+        let get = |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str());
+        let rule = crate::importer::RatingRule::parse(get("rule").unwrap_or("")).ok_or_else(|| Failure::input().at("rule"))?;
+        let by_rows = get("rows").is_some();
+        // The folders of a kind and the ones it leaves out, from the rows of the form.
+        let rows_of = |kind: &str| -> (Vec<String>, Vec<String>) {
+            let prefix = format!("r_{kind}_");
+            let (mut folders, mut left_out) = (Vec::new(), Vec::new());
+            for (k, v) in &pairs {
+                let Some(n) = k.strip_prefix(&prefix) else { continue };
+                let path = v.trim();
+                if path.is_empty() {
+                    continue;
+                }
+                let out = pairs.iter().any(|(k2, v2)| k2.strip_prefix(&format!("x_{kind}_")) == Some(n) && v2 == "1");
+                if out { left_out.push(path.to_owned()) } else { folders.push(path.to_owned()) }
+            }
+            (folders, left_out)
+        };
+        let (books, books_out) = if by_rows { rows_of("audiobook") } else { folder_lines(get("roots").unwrap_or("")) };
+        let music = if by_rows { Some(rows_of("music")) } else { get("music_roots").map(folder_lines) };
+        state.store.save_import_criteria_with(&books, rule, music.as_ref().is_some_and(|m| !m.0.is_empty())).await.map_err(|e| ring_row(&pairs, "audiobook", e))?;
+        state.store.save_import_excludes(false, &books_out).await.map_err(|e| ring_row(&pairs, "audiobook", e))?;
+        if let Some((music, music_out)) = &music {
+            state.store.save_music_roots(music).await.map_err(|e| ring_row(&pairs, "music", e))?;
+            state.store.save_import_excludes(true, music_out).await.map_err(|e| ring_row(&pairs, "music", e))?;
+        }
+        if by_rows {
+            for kind in ["photo", "ebook"] {
+                let (folders, left_out) = rows_of(kind);
+                state.store.save_media_roots(kind, &folders, &left_out).await.map_err(|e| ring_row(&pairs, kind, e))?;
+            }
         }
         import_settings(&state, &s).await
     }
     .await;
     finish(&s, "/admin/settings?tab=import", outcome)
+}
+
+#[derive(Deserialize)]
+pub struct RootRowQuery {
+    kind: String,
+}
+
+/// One more empty row for the folders of a kind, to be added to the dialog.
+pub async fn import_row(State(state): State<AppState>, s: AdminSession, Query(q): Query<RootRowQuery>) -> Response {
+    if !ROOT_KINDS.contains(&q.kind.as_str()) {
+        return plain_failure(StatusCode::UNPROCESSABLE_ENTITY, "err.input", s.lang, true);
+    }
+    // A number that no row of the page has: the time in milliseconds.
+    match state.ui.import_row_fragment(view(&s), &q.kind, now_ms() % 1_000_000_000).await {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "a row of folders failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
 }
 
 pub async fn import_unlock(State(state): State<AppState>, s: AdminSession) -> Response {
@@ -2127,7 +2201,7 @@ pub struct SchedulePreset {
 
 pub async fn schedule_preset(State(state): State<AppState>, s: AdminSession, Form(f): Form<SchedulePreset>) -> Response {
     let outcome = async {
-        let planner = daytime(&f.hours_from, &f.hours_until)?;
+        let planner = daytime(&f.hours_from, &f.hours_until).map_err(|e| e.at("hours_from"))?;
         state.store.set_profile_schedule(f.id, Some(&planner)).await?;
         schedule_panel(&state, &s, f.id).await
     }

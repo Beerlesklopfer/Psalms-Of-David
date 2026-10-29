@@ -57,6 +57,11 @@ pub struct ImportState {
     pub excludes: Vec<String>,
     /// The same for the music folders.
     pub music_excludes: Vec<String>,
+    /// Folders with pictures and with e-books, and what they leave out. They are only kept for now: the import of both follows.
+    pub photo_roots: Vec<String>,
+    pub photo_excludes: Vec<String>,
+    pub ebook_roots: Vec<String>,
+    pub ebook_excludes: Vec<String>,
     pub rule: RatingRule,
     /// Both the roots and the rating rule have been saved by an administrator.
     pub criteria_defined: bool,
@@ -118,6 +123,9 @@ impl Store {
             .unwrap_or_default();
         let excludes: Vec<String> = self.setting("import_excludes").await?.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or_default();
         let music_excludes: Vec<String> = self.setting("music_excludes").await?.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or_default();
+        let list = |key: &'static str| async move { Ok::<Vec<String>, Error>(self.setting(key).await?.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or_default()) };
+        let (photo_roots, photo_excludes) = (list("photo_roots").await?, list("photo_excludes").await?);
+        let (ebook_roots, ebook_excludes) = (list("ebook_roots").await?, list("ebook_excludes").await?);
         let rule = self.setting("rating_rule").await?.and_then(|v| RatingRule::parse(&v)).unwrap_or(RatingRule::Manual);
         let rule_confirmed = self.setting_rows().await?.iter().any(|s| s.key == "rating_rule" && s.confirmed);
         let unlocked_by = self.setting("import_unlocked_by").await?;
@@ -129,6 +137,10 @@ impl Store {
             music_roots,
             excludes,
             music_excludes,
+            photo_roots,
+            photo_excludes,
+            ebook_roots,
+            ebook_excludes,
             rule,
             unlocked_by,
             unlocked_at,
@@ -205,12 +217,45 @@ impl Store {
         self.set_setting("music_roots", &serde_json::to_string(&canonical).unwrap_or_else(|_| "[]".into()), true).await
     }
 
+    /// Saves the folders of one of the kinds that are only kept for now (`photo`, `ebook`) and what they leave out. A folder belongs to one
+    /// kind only: audiobooks, music, pictures and e-books must not share a folder.
+    pub async fn save_media_roots(&self, kind: &str, roots: &[String], excludes: &[String]) -> Result<()> {
+        if !matches!(kind, "photo" | "ebook") {
+            return Err(Error::InvalidImportRoot(format!("{kind} is not a kind of medium with folders of its own")));
+        }
+        let canonical = Self::canonical_roots(roots)?;
+        let state = self.import_state().await?;
+        let others: Vec<(&str, &Vec<String>)> = vec![("audiobook", &state.roots), ("music", &state.music_roots), ("photo", &state.photo_roots), ("ebook", &state.ebook_roots)];
+        for (other, list) in others.into_iter().filter(|(o, _)| *o != kind) {
+            if let Some(both) = canonical.iter().find(|r| list.contains(r)) {
+                return Err(Error::InvalidImportRoot(format!("{both} is already a folder of {other}")));
+            }
+        }
+        let mut left_out: Vec<String> = Vec::new();
+        for e in excludes.iter().map(|e| e.trim()).filter(|e| !e.is_empty()) {
+            if !Path::new(e).is_absolute() {
+                return Err(Error::InvalidImportRoot(format!("{e} is not an absolute path")));
+            }
+            let text = std::fs::canonicalize(e).map_or_else(|_| e.trim_end_matches('/').to_owned(), |p| p.to_string_lossy().into_owned());
+            if !left_out.contains(&text) {
+                left_out.push(text);
+            }
+        }
+        self.set_setting(&format!("{kind}_roots"), &serde_json::to_string(&canonical).unwrap_or_else(|_| "[]".into()), true).await?;
+        self.set_setting(&format!("{kind}_excludes"), &serde_json::to_string(&left_out).unwrap_or_else(|_| "[]".into()), true).await
+    }
+
     /// Saves the release criteria. Every root must be an existing folder that is
     /// not a filesystem root; it is stored in its canonical form. Saving the
     /// criteria is the administrator's confirmation of the rating rule.
     pub async fn save_import_criteria(&self, roots: &[String], rule: RatingRule) -> Result<()> {
+        self.save_import_criteria_with(roots, rule, false).await
+    }
+
+    /// The same; `music_follows` says that music folders are saved with it, so that no audiobook folder at all is fine.
+    pub async fn save_import_criteria_with(&self, roots: &[String], rule: RatingRule, music_follows: bool) -> Result<()> {
         let canonical = Self::canonical_roots(roots)?;
-        if canonical.is_empty() {
+        if canonical.is_empty() && !music_follows {
             return Err(Error::ImportCriteriaMissing);
         }
         let music = self.import_state().await?.music_roots;

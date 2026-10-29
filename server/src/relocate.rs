@@ -313,9 +313,15 @@ pub async fn plan_rename(store: &Store, library: Option<&Path>, id: i64, author:
     let depth = old_folder.split('/').count();
     let root = dir.ancestors().nth(depth).ok_or("the import folder of the album cannot be found")?.to_path_buf();
     plan.to = names.iter().fold(root.clone(), |p, n| p.join(n));
+    check_place(store, &mut plan, &old_folder).await?;
+    Ok(plan)
+}
+
+/// Fills in `problem` of a plan: nothing to change, outside the import folders, inside itself, a place that exists, or no right to write.
+async fn check_place(store: &Store, plan: &mut Rename, old_folder: &str) -> Result<(), String> {
     if plan.new_folder == old_folder {
         plan.problem = Some("nothing to change".into());
-        return Ok(plan);
+        return Ok(());
     }
     if plan.to != plan.from {
         let state = store.import_state().await.map_err(|e| e.to_string())?;
@@ -331,7 +337,56 @@ pub async fn plan_rename(store: &Store, library: Option<&Path>, id: i64, author:
             blocked_write(&plan.from, &plan.to)
         };
     }
-    Ok(plan)
+    Ok(())
+}
+
+/// What moving a whole branch of the filing would do: every album whose place is `from` or lies below it goes to the same place below `to`
+/// (`JÖRG/MP3-I/Reinhard Mey/Ikarus` -> `JÖRG/Reinhard Mey/Ikarus` for `from = JÖRG/MP3-I`, `to = JÖRG`). Places are written as the
+/// database keeps them: below the import folder, with `/`. An empty `to` is the import folder itself. The ids stay, so progress and releases stay.
+/// Nothing changes before `execute_rename` (one album after the other).
+pub async fn plan_move_branch(store: &Store, library: Option<&Path>, from: &str, to: &str) -> Result<Vec<Rename>, String> {
+    let clean = |raw: &str| -> Result<String, String> {
+        let parts: Vec<&str> = raw.split('/').map(str::trim).filter(|p| !p.is_empty()).collect();
+        if parts.iter().any(|p| *p == "." || *p == "..") {
+            return Err("a place must not contain . or ..".into());
+        }
+        Ok(parts.join("/"))
+    };
+    let (from, to) = (clean(from)?, clean(to)?);
+    if from.is_empty() {
+        return Err("from is required: the place that is moved, below the import folder".into());
+    }
+    if from == to {
+        return Err("from and to are the same place".into());
+    }
+    if to.starts_with(&format!("{from}/")) {
+        return Err("to lies inside from".into());
+    }
+    let rows = store.admin_book_rows().await.map_err(|e| e.to_string())?;
+    let mut plans: Vec<Rename> = Vec::new();
+    let mut claimed: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    for row in rows.iter().filter(|r| r.folder == from || r.folder.starts_with(&format!("{from}/"))) {
+        let rest = row.folder[from.len()..].trim_start_matches('/');
+        let new_folder = [to.as_str(), rest].iter().filter(|p| !p.is_empty()).copied().collect::<Vec<_>>().join("/");
+        let Some((dir, _, _)) = book_dir(store, library, row.id).await else {
+            plans.push(Rename { id: row.id, author: row.author.clone(), title: row.title.clone(), from: PathBuf::new(), to: PathBuf::new(), new_folder, problem: Some("the files of the album cannot be found on the disk".into()) });
+            continue;
+        };
+        let depth = row.folder.split('/').count();
+        let Some(root) = dir.ancestors().nth(depth).map(Path::to_path_buf) else {
+            plans.push(Rename { id: row.id, author: row.author.clone(), title: row.title.clone(), from: dir, to: PathBuf::new(), new_folder, problem: Some("the import folder of the album cannot be found".into()) });
+            continue;
+        };
+        let mut plan = Rename { id: row.id, author: row.author.clone(), title: row.title.clone(), from: dir.clone(), to: new_folder.split('/').fold(root, |p, n| p.join(n)), new_folder, problem: None };
+        check_place(store, &mut plan, &row.folder).await?;
+        // Two albums of the branch must not end in one place.
+        if plan.problem.is_none() && !claimed.insert(plan.to.clone()) {
+            plan.problem = Some("another album of this move goes to the same place".into());
+        }
+        plans.push(plan);
+    }
+    plans.sort_by(|a, b| a.from.cmp(&b.from));
+    Ok(plans)
 }
 
 /// Why the server may not move a folder from `from` to `to` (rights), if it may not.

@@ -282,6 +282,20 @@ an existing folder, usable, symbolic links resolved); a wrong one answers `422 e
 that does not send the fields leaves them alone. The folders are stored in `profile_folder` (one per profile and kind). They are the ground of the personal
 structure: the music and audiobooks of a member, the target of an import for them, and the folder of the picture sync (`docs/spec-photo-sync.md`).
 
+### Collection folders as a list, with pictures and e-books (schema 0043, 2026-10-29)
+
+Project owner: "the collection folders of the media must be manageable; pictures and e-books are missing". The import settings (Settings → Import → "Folders and
+rule") no longer have text fields with `!` lines. The window has **a block for every kind of medium: audiobooks, music, pictures, e-books**. A block is a list of
+rows; a row is the folder (an input with the button of the folder dialog inside it), a box **"Left out"** (the row then is an exception of its kind: it is read
+nowhere below this block) and a button that removes the row. "Add a folder" fetches one more empty row (`GET /admin/rpc/import.row?kind=`, the number of the row is
+the time in milliseconds, so that no row of the page has it). The form sends `rows=1`, `r_<kind>_<n>` (the path) and `x_<kind>_<n>=1` (left out); empty paths are
+dropped. The older form with the lines `roots` and `music_roots` (`!/path` leaves out) is still understood.
+
+Rules: a folder belongs to **one kind** (a second kind with the same folder is refused with the other kind named); the audiobook folders may be empty when
+music folders are saved with them (before, one audiobook folder was always required); nothing at all is not a set of criteria. **Pictures and e-books are only kept
+for now** (settings `photo_roots`, `photo_excludes`, `ebook_roots`, `ebook_excludes`): the import of e-books and the synchronisation of pictures
+(`docs/spec-photo-sync.md`) follow. The folders of a profile get the fourth kind `ebook` (migration 0043 makes the table again, because a CHECK cannot be changed).
+
 ### Pages of the media lists (schema 0042, 2026-10-29)
 
 The lists "Audiobooks" and "Music" come in **pages**. The books of the list (after the search) are cut into pages; the tree of folders/authors is built from the books of

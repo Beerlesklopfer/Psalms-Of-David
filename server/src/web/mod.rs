@@ -122,6 +122,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/rpc/book.tracks", get(handlers::book_tracks))
         .route("/admin/rpc/book.tags", post(handlers::book_tags).layer(DefaultBodyLimit::max(crate::tags::MAX_COVER_BYTES + 64 * 1024)))
         .route("/admin/rpc/import.save_criteria", post(handlers::import_save))
+        .route("/admin/rpc/import.row", get(handlers::import_row))
         .route("/admin/rpc/import.unlock", post(handlers::import_unlock))
         .route("/admin/rpc/import.lock", post(handlers::import_lock))
         .route("/admin/rpc/import.run", post(handlers::import_run))

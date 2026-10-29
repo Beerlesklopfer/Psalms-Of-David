@@ -49,6 +49,12 @@
       if (dialog) dialog.close();
       return;
     }
+    // A row of folders (import settings): the button takes the row out of the form.
+    const removeRow = target.closest('[data-remove-row]');
+    if (removeRow) {
+      removeRow.closest('.root-row')?.remove();
+      return;
+    }
     // The folder dialog: a button with data-pick-folder puts the path into the input named by data-target and closes the dialog.
     const pick = target.closest('[data-pick-folder]');
     if (pick) {
@@ -101,12 +107,29 @@
         e.detail.shouldSwap = false;
         box.innerHTML = e.detail.serverResponse;
       }
+      // The input the server names gets a ring (see .is-invalid); one that was marked before is cleared first.
+      dialog.querySelectorAll('.is-invalid').forEach((i) => i.classList.remove('is-invalid'));
+      const named = e.detail.xhr ? e.detail.xhr.getResponseHeader('X-Invalid-Field') : null;
+      const bad = named ? form.elements.namedItem(named) : null;
+      if (bad && bad.classList) {
+        bad.classList.add('is-invalid');
+        bad.setAttribute('aria-invalid', 'true');
+        bad.focus();
+      }
       return;
     }
     if (status < 200 || status >= 300 || !form.matches('form[data-close-window]')) return;
     if (dialog.open) dialog.close();
     // A form that creates something starts empty the next time (data-reset).
     if (form.hasAttribute('data-reset')) form.reset();
+  });
+  // Typing in a marked input takes the ring off.
+  document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t instanceof HTMLElement && t.classList.contains('is-invalid')) {
+      t.classList.remove('is-invalid');
+      t.removeAttribute('aria-invalid');
+    }
   });
   document.addEventListener('close', (e) => {
     const d = e.target;

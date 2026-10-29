@@ -282,6 +282,11 @@ fn tool_list() -> Value {
             }, "required": ["action"] }
         },
         {
+            "name": "move_albums",
+            "description": "Moves a whole branch of the filing: every album whose place is `from` or lies below it goes to the same place below `to`, for example from=JÖRG/MP3-I to=JÖRG puts JÖRG/MP3-I/Reinhard Mey/Ikarus at JÖRG/Reinhard Mey/Ikarus. Places are written as list_albums and get_album show the folder: below the import folder, with /; an empty `to` is the import folder itself. The ids stay, so listening progress, releases and owners stay; the folders left empty are removed. Without dry_run=false it only lists the moves (the default). An album whose new place exists, or that the server may not write, stays and says why. Needs a token that may write.",
+            "inputSchema": { "type": "object", "properties": { "from": { "type": "string", "description": "The place to move, e.g. JÖRG/MP3-I" }, "to": { "type": "string", "description": "Where it goes, e.g. JÖRG; empty: the import folder" }, "dry_run": { "type": "boolean", "description": "true by default; false moves the folders" } }, "required": ["from"] }
+        },
+        {
             "name": "rename_album",
             "description": "Moves an album to the folder that belongs to an author and a title: the folders are only the filing (Author/Title below the import folder), the ID tags decide what the album is called, so this changes the place and nothing else. Set the tags with set_tags (AlbumArtist, AlbumTitle) and then file the album with this. The id stays, so listening progress and releases stay. Without dry_run=false it only shows from and to (the default). It refuses if the new place exists, lies in the old one, or the server may not write there. Needs a token that may write.",
             "inputSchema": { "type": "object", "properties": { "id": id, "author": { "type": "string" }, "title": { "type": "string" }, "dry_run": { "type": "boolean", "description": "true by default; false moves the folder" } }, "required": ["id"] }
@@ -362,7 +367,7 @@ async fn prompt_of(s: &McpState) -> String {
 }
 
 /// The tools that change files; a token that may only read cannot use them.
-const WRITING_TOOLS: [&str; 20] = ["set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
+const WRITING_TOOLS: [&str; 21] = ["move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
 
 /// A sample call of a tool, for `help_for`.
 fn example_of(tool: &str) -> Value {
@@ -388,6 +393,7 @@ fn example_of(tool: &str) -> Value {
         "list_genres" => json!({}),
         "upgrade_to_id3v2" => json!({ "dry_run": true }),
         "rename_album" => json!({ "id": 43, "author": "Edith Piaf", "title": "Edith Piaf", "dry_run": true }),
+        "move_albums" => json!({ "from": "JÖRG/MP3-I", "to": "JÖRG", "dry_run": true }),
         "edit_genres" => json!({ "action": "assign", "tag": "Prog Rock", "genre": "Rock" }),
         "list_podcasts" => json!({ "profile": "Anna" }),
         "edit_podcasts" => json!({ "action": "follow", "url": "https://example.org/podcast/feed.xml", "for": ["Anna"] }),
@@ -884,6 +890,39 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             Ok(json!({ "version": crate::buildinfo::VERSION, "git": crate::buildinfo::GIT, "built_at": crate::buildinfo::BUILT, "started_at_ms": crate::buildinfo::started_at(), "binary_sha256": sha, "summary": crate::buildinfo::describe() }))
         }
         "check_access" => Ok(json!(crate::access::refresh(&s.store).await)),
+        "move_albums" => {
+            let dry = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
+            if !dry && !token.can_write {
+                return Err("this token may only read".into());
+            }
+            let from = text("from").ok_or("from is required")?;
+            let to = text("to").unwrap_or_default();
+            let plans = crate::relocate::plan_move_branch(&s.store, s.library.as_deref(), &from, &to).await?;
+            let (mut moved, mut failed) = (0usize, 0usize);
+            let mut albums: Vec<Value> = Vec::new();
+            for plan in &plans {
+                let mut problem = plan.problem.clone();
+                if !dry && problem.is_none() {
+                    match crate::relocate::execute_rename(&s.store, plan).await {
+                        Ok(()) => {
+                            moved += 1;
+                            tracing::info!(token = %token.name, album = plan.id, from = %plan.from.display(), to = %plan.to.display(), "album moved");
+                            s.store.log_tag_change(&token.name, plan.id, "", "Folder", &plan.from.display().to_string(), &plan.to.display().to_string()).await.map_err(db)?;
+                        }
+                        Err(e) => {
+                            failed += 1;
+                            problem = Some(e);
+                        }
+                    }
+                }
+                albums.push(json!({ "id": plan.id, "author": plan.author, "title": plan.title, "to": plan.new_folder, "from": plan.from, "problem": problem }));
+            }
+            if moved > 0 {
+                s.store.rescan_soon();
+            }
+            let movable = plans.iter().filter(|p| p.problem.is_none()).count();
+            Ok(json!({ "dry_run": dry, "albums": albums, "movable": movable, "blocked": plans.len() - movable, "moved": moved, "failed": failed }))
+        }
         "rename_album" => {
             let dry = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
             if !dry && !token.can_write {

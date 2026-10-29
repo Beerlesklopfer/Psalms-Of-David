@@ -1,0 +1,10 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<div class="root-row">
+  <div class="field folder-line">
+    <input type="text" id="root-{{ kind }}-{{ n }}" name="r_{{ kind }}_{{ n }}" value="{{ path }}" maxlength="500" autocomplete="off" spellcheck="false" placeholder=" ">
+    <span>{{ t("import.folder") }}</span>
+    <button type="button" class="btn outline folder-choose" data-dialog="dlg-folders-import" hx-get="/admin/rpc/folders?target=root-{{ kind }}-{{ n }}" hx-target="#folders-body-import" hx-swap="innerHTML" title="{{ t('folders.choose') }}" aria-label="{{ t('folders.choose') }}">{{ icon("books") }}</button>
+  </div>
+  <label class="root-out"><input type="checkbox" name="x_{{ kind }}_{{ n }}" value="1"{% if excluded %} checked{% endif %}><span>{{ t("import.left_out_short") }}</span></label>
+  <button type="button" class="btn outline root-remove" data-remove-row title="{{ t('import.remove_folder') }}" aria-label="{{ t('import.remove_folder') }}">{{ icon("close") }}</button>
+</div>
