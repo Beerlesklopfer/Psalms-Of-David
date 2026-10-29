@@ -17,7 +17,13 @@ Book _book(String id) => Book(
   color: const Color(0xFF000000),
   tracks: [
     for (var i = 1; i <= 4; i++)
-      Track(disc: 1, number: i, title: 'T$i', length: const Duration(minutes: 5), partId: int.parse(id) * 10 + i),
+      Track(
+        disc: 1,
+        number: i,
+        title: 'T$i',
+        length: const Duration(minutes: 5),
+        partId: int.parse(id) * 10 + i,
+      ),
   ],
 );
 
@@ -26,7 +32,12 @@ class _Source extends MediaSource {
   Future<String> fetchPart(Track track) async => '/nowhere';
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {}
+  Future<void> saveProgress(
+    Book book,
+    Track track,
+    Duration position, {
+    required bool finished,
+  }) async {}
 
   @override
   Future<PassageHit?> resolvePassage(String text) async => null;
@@ -41,8 +52,11 @@ void main() {
   });
   tearDown(() => dir.deleteSync(recursive: true));
 
-  PlayerController make() =>
-      PlayerController([_book('1'), _book('2'), _book('3')], backend: FakeBackend(), lastStore: store);
+  PlayerController make() => PlayerController(
+    [_book('1'), _book('2'), _book('3')],
+    backend: FakeBackend(),
+    lastStore: store,
+  );
 
   test('what was playing is written down, and the next start opens on it', () {
     final p = make();
@@ -51,7 +65,8 @@ void main() {
     p.flush();
     p.dispose();
 
-    final again = make()..attachServer(_Source(), LoadedLibrary([_book('1'), _book('2'), _book('3')], {}));
+    final again = make()
+      ..attachServer(_Source(), LoadedLibrary([_book('1'), _book('2'), _book('3')], {}));
     expect(again.book!.id, '2', reason: 'not the first book of the library');
     expect(again.trackIndex, 2);
     expect(again.position, const Duration(minutes: 3));
@@ -66,7 +81,12 @@ void main() {
     final laterElsewhere = make()
       ..attachServer(
         _Source(),
-        LoadedLibrary(books, {'3': (track: 3, position: const Duration(minutes: 2))}, lastBookId: '3', lastAt: 5000),
+        LoadedLibrary(
+          books,
+          {'3': (track: 3, position: const Duration(minutes: 2))},
+          lastBookId: '3',
+          lastAt: 5000,
+        ),
       );
     expect(laterElsewhere.book!.id, '3');
     expect((laterElsewhere.trackIndex, laterElsewhere.position), (3, const Duration(minutes: 2)));
@@ -74,7 +94,8 @@ void main() {
 
     // (closing the first player wrote its own state; put the old one back)
     store.write(LastPlayed(bookId: '2', track: 1, position: const Duration(minutes: 1), at: 1000));
-    final laterHere = make()..attachServer(_Source(), LoadedLibrary(books, {}, lastBookId: '3', lastAt: 500));
+    final laterHere = make()
+      ..attachServer(_Source(), LoadedLibrary(books, {}, lastBookId: '3', lastAt: 500));
     expect(laterHere.book!.id, '2');
     laterHere.dispose();
   });

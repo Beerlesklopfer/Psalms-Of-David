@@ -64,12 +64,17 @@ class _ConnectDeviceCardState extends State<ConnectDeviceCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    u.max == null ? l.settingsDevicesNoLimit(u.used) : l.settingsDevicesCount(u.used, u.max!),
+                    u.max == null
+                        ? l.settingsDevicesNoLimit(u.used)
+                        : l.settingsDevicesCount(u.used, u.max!),
                     key: const Key('devices-count'),
                     style: text.bodyLarge,
                   ),
                   const SizedBox(height: 4),
-                  Text(l.settingsConnectDeviceHint, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                  Text(
+                    l.settingsConnectDeviceHint,
+                    style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
                     key: const Key('connect-device'),
@@ -78,7 +83,8 @@ class _ConnectDeviceCardState extends State<ConnectDeviceCard> {
                     onPressed: () async {
                       await showDialog<void>(
                         context: context,
-                        builder: (_) => ConnectDeviceDialog(api: widget.api, credentials: widget.credentials),
+                        builder: (_) =>
+                            ConnectDeviceDialog(api: widget.api, credentials: widget.credentials),
                       );
                       await _load();
                     },
@@ -152,7 +158,11 @@ class _ConnectDeviceDialogState extends State<ConnectDeviceDialog> {
       });
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (!mounted) return;
-        setState(() => _left = _left > const Duration(seconds: 1) ? _left - const Duration(seconds: 1) : Duration.zero);
+        setState(
+          () => _left = _left > const Duration(seconds: 1)
+              ? _left - const Duration(seconds: 1)
+              : Duration.zero,
+        );
         if (_left == Duration.zero) _timer?.cancel();
       });
     } on ApiException catch (e) {
@@ -186,11 +196,17 @@ class _ConnectDeviceDialogState extends State<ConnectDeviceDialog> {
     final expired = _code != null && _left == Duration.zero;
     final Widget body;
     if (_busy) {
-      body = const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
+      body = const Center(
+        child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()),
+      );
     } else if (_refused?.code == 'device_limit_reached') {
       body = Text(l.pairQrFull, key: const Key('pair-full'));
     } else if (_refused != null || _failed || _uri == null) {
-      body = Text(l.pairQrError, key: const Key('pair-error'), style: TextStyle(color: cs.error));
+      body = Text(
+        l.pairQrError,
+        key: const Key('pair-error'),
+        style: TextStyle(color: cs.error),
+      );
     } else {
       body = Column(
         mainAxisSize: MainAxisSize.min,
@@ -201,7 +217,12 @@ class _ConnectDeviceDialogState extends State<ConnectDeviceDialog> {
             padding: const EdgeInsets.all(8),
             child: Opacity(
               opacity: expired ? 0.15 : 1,
-              child: QrImageView(key: const Key('pair-qr'), data: _uri!, size: 240, backgroundColor: Colors.white),
+              child: QrImageView(
+                key: const Key('pair-qr'),
+                data: _uri!,
+                size: 240,
+                backgroundColor: Colors.white,
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -234,7 +255,11 @@ class _ConnectDeviceDialogState extends State<ConnectDeviceDialog> {
       actions: [
         if (!_busy && _refused?.code != 'device_limit_reached')
           TextButton(key: const Key('pair-new'), onPressed: _make, child: Text(l.pairQrNew)),
-        FilledButton(key: const Key('pair-close'), onPressed: () => Navigator.pop(context), child: Text(l.pairQrClose)),
+        FilledButton(
+          key: const Key('pair-close'),
+          onPressed: () => Navigator.pop(context),
+          child: Text(l.pairQrClose),
+        ),
       ],
     );
   }

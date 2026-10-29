@@ -54,8 +54,9 @@ SearchGroups searchGroups(List<Book> pool, String query) {
 }
 
 /// Music (or any list) by owner: the owners alphabetically by nickname, each with their albums in the order given, and the albums that belong to
-/// nobody last under `null`. With no owner at all the result is one group `null`.
-List<(String?, List<Book>)> groupByOwner(List<Book> books) {
+/// nobody last under `null`. With no owner at all the result is one group `null`. The owner [first] (the signed-in person), if there is one,
+/// comes before the others.
+List<(String?, List<Book>)> groupByOwner(List<Book> books, {String? first}) {
   final by = <String, List<Book>>{};
   final none = <Book>[];
   for (final b in books) {
@@ -66,6 +67,11 @@ List<(String?, List<Book>)> groupByOwner(List<Book> books) {
       by.putIfAbsent(o, () => []).add(b);
     }
   }
-  final names = by.keys.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  final names = by.keys.toList()
+    ..sort((a, b) {
+      if (a == first) return b == first ? 0 : -1;
+      if (b == first) return 1;
+      return a.toLowerCase().compareTo(b.toLowerCase());
+    });
   return [for (final n in names) (n, by[n]!), if (none.isNotEmpty) (null, none)];
 }

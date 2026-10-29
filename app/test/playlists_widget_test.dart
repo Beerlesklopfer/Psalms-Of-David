@@ -380,7 +380,11 @@ void main() {
       final y = [
         for (final t in ['Not available', 'Chapter 1', 'Song']) tester.getCenter(find.text(t)).dy,
       ];
-      expect(y, orderedEquals([...y]..sort()), reason: 'Chapter 1 moved below the unavailable entry: $y');
+      expect(
+        y,
+        orderedEquals([...y]..sort()),
+        reason: 'Chapter 1 moved below the unavailable entry: $y',
+      );
     });
 
     testWidgets('Rename: one field with the name in it, Save and Cancel', (tester) async {

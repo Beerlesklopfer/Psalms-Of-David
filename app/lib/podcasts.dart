@@ -19,17 +19,25 @@ abstract class FeedApi {
 
 /// A podcast the account follows. [approved] is false while a request of a child waits for a release.
 class Podcast {
-  const Podcast({required this.id, required this.title, required this.description, required this.approved, required this.unheard, this.imageUrl, this.error});
+  const Podcast({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.approved,
+    required this.unheard,
+    this.imageUrl,
+    this.error,
+  });
 
   factory Podcast.fromJson(Map<String, dynamic> j) => Podcast(
-        id: j['id'] as int,
-        title: j['title'] as String,
-        description: j['description'] as String? ?? '',
-        approved: j['approved'] as bool? ?? true,
-        unheard: j['unheard'] as int? ?? 0,
-        imageUrl: j['image_url'] as String?,
-        error: j['last_error'] as String?,
-      );
+    id: j['id'] as int,
+    title: j['title'] as String,
+    description: j['description'] as String? ?? '',
+    approved: j['approved'] as bool? ?? true,
+    unheard: j['unheard'] as int? ?? 0,
+    imageUrl: j['image_url'] as String?,
+    error: j['last_error'] as String?,
+  );
 
   final int id;
   final String title;
@@ -42,18 +50,29 @@ class Podcast {
 
 /// One episode with where this account stopped (the same on every device of the account).
 class Episode {
-  const Episode({required this.id, required this.title, required this.audioUrl, required this.published, required this.duration, required this.position, required this.finished, this.description = ''});
+  const Episode({
+    required this.id,
+    required this.title,
+    required this.audioUrl,
+    required this.published,
+    required this.duration,
+    required this.position,
+    required this.finished,
+    this.description = '',
+  });
 
   factory Episode.fromJson(Map<String, dynamic> j) => Episode(
-        id: j['id'] as int,
-        title: j['title'] as String,
-        audioUrl: j['audio_url'] as String,
-        published: j['published_at'] == null || (j['published_at'] as int) == 0 ? null : DateTime.fromMillisecondsSinceEpoch(j['published_at'] as int),
-        duration: Duration(seconds: j['duration_s'] as int? ?? 0),
-        position: Duration(milliseconds: j['position_ms'] as int? ?? 0),
-        finished: j['finished'] as bool? ?? false,
-        description: j['description'] as String? ?? '',
-      );
+    id: j['id'] as int,
+    title: j['title'] as String,
+    audioUrl: j['audio_url'] as String,
+    published: j['published_at'] == null || (j['published_at'] as int) == 0
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(j['published_at'] as int),
+    duration: Duration(seconds: j['duration_s'] as int? ?? 0),
+    position: Duration(milliseconds: j['position_ms'] as int? ?? 0),
+    finished: j['finished'] as bool? ?? false,
+    description: j['description'] as String? ?? '',
+  );
 
   final int id;
   final String title;
@@ -67,27 +86,34 @@ class Episode {
   /// The episode as something the player plays: one track, from the publisher. Its id says which episode it is,
   /// so the position goes back to the server.
   Book asBook(String podcast) => Book(
-        id: 'ep:$id',
-        title: title,
-        author: podcast,
-        kind: 'podcast',
-        color: const Color(0xFF2C4A3E),
-        tracks: [Track(disc: 1, number: 1, title: title, length: duration, url: audioUrl)],
-      );
+    id: 'ep:$id',
+    title: title,
+    author: podcast,
+    kind: 'podcast',
+    color: const Color(0xFF2C4A3E),
+    tracks: [Track(disc: 1, number: 1, title: title, length: duration, url: audioUrl)],
+  );
 }
 
 /// A radio station of the favourites.
 class Station {
-  const Station({required this.id, required this.name, required this.streamUrl, required this.approved, this.homepage, this.logoUrl});
+  const Station({
+    required this.id,
+    required this.name,
+    required this.streamUrl,
+    required this.approved,
+    this.homepage,
+    this.logoUrl,
+  });
 
   factory Station.fromJson(Map<String, dynamic> j) => Station(
-        id: j['id'] as int,
-        name: j['name'] as String,
-        streamUrl: j['stream_url'] as String,
-        approved: j['approved'] as bool? ?? true,
-        homepage: j['homepage'] as String?,
-        logoUrl: j['logo_url'] as String?,
-      );
+    id: j['id'] as int,
+    name: j['name'] as String,
+    streamUrl: j['stream_url'] as String,
+    approved: j['approved'] as bool? ?? true,
+    homepage: j['homepage'] as String?,
+    logoUrl: j['logo_url'] as String?,
+  );
 
   final int id;
   final String name;
@@ -98,13 +124,15 @@ class Station {
 
   /// The station as something the player plays: a live stream without an end.
   Book asBook({Uint8List? logo}) => Book(
-        id: 'st:$id',
-        title: name,
-        author: '',
-        kind: 'radio',
-        cover: logo,
-        coverUrl: logoUrl,
-        color: const Color(0xFF4A3B1F),
-        tracks: [Track(disc: 1, number: 1, title: name, length: Duration.zero, url: streamUrl, live: true)],
-      );
+    id: 'st:$id',
+    title: name,
+    author: '',
+    kind: 'radio',
+    cover: logo,
+    coverUrl: logoUrl,
+    color: const Color(0xFF4A3B1F),
+    tracks: [
+      Track(disc: 1, number: 1, title: name, length: Duration.zero, url: streamUrl, live: true),
+    ],
+  );
 }

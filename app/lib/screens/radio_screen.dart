@@ -37,16 +37,36 @@ class RadioController extends ChangeNotifier {
 
   Future<void> add(BuildContext context) async {
     final l = AppLocalizations.of(context);
-    final entry = await askFields(context, title: l.stationAdd, fields: [(label: l.stationName, hint: null), (label: l.stationAddress, hint: 'https://stream.example.org/live')], action: l.stationSave);
+    final entry = await askFields(
+      context,
+      title: l.stationAdd,
+      fields: [
+        (label: l.stationName, hint: null),
+        (label: l.stationAddress, hint: 'https://stream.example.org/live'),
+      ],
+      action: l.stationSave,
+    );
     if (entry == null || !context.mounted) return;
     final (name, url) = (entry[0], entry[1]);
     final messenger = ScaffoldMessenger.of(context);
     try {
       final r = await api!.addStation(name, url);
-      messenger.showSnackBar(SnackBar(content: Text(r['approved'] == true ? l.stationAdded(name) : l.askToRelease)));
+      messenger.showSnackBar(
+        SnackBar(content: Text(r['approved'] == true ? l.stationAdded(name) : l.askToRelease)),
+      );
       await load();
     } on ApiException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.code == 'invalid_station' ? l.stationInvalid : e.code == 'forbidden' ? l.notAllowed : l.serverUnreachableShort)));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            e.code == 'invalid_station'
+                ? l.stationInvalid
+                : e.code == 'forbidden'
+                ? l.notAllowed
+                : l.serverUnreachableShort,
+          ),
+        ),
+      );
     }
   }
 
@@ -70,10 +90,22 @@ class RadioActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     if (controller.api == null) return const SizedBox.shrink();
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      IconButton(tooltip: l.stationAdd, icon: const Icon(Icons.add), onPressed: () => controller.add(context)),
-      if (withRefresh) IconButton(tooltip: l.tooltipRefresh, icon: const Icon(Icons.refresh), onPressed: controller.load),
-    ]);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: l.stationAdd,
+          icon: const Icon(Icons.add),
+          onPressed: () => controller.add(context),
+        ),
+        if (withRefresh)
+          IconButton(
+            tooltip: l.tooltipRefresh,
+            icon: const Icon(Icons.refresh),
+            onPressed: controller.load,
+          ),
+      ],
+    );
   }
 }
 
@@ -91,10 +123,26 @@ class RadioBody extends StatelessWidget {
       listenable: controller,
       builder: (context, _) {
         final list = controller.stations;
-        if (controller.api == null) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.needsServer)));
-        if (controller.error != null) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.serverUnreachableShort)));
-        if (list == null) return const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator()));
-        if (list.isEmpty) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.noStationsYet)));
+        if (controller.api == null)
+          return SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: Text(l.needsServer)),
+          );
+        if (controller.error != null)
+          return SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: Text(l.serverUnreachableShort)),
+          );
+        if (list == null)
+          return const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: CircularProgressIndicator()),
+          );
+        if (list.isEmpty)
+          return SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: Text(l.noStationsYet)),
+          );
         return SliverList.builder(
           itemCount: list.length,
           itemBuilder: (context, i) {
@@ -181,7 +229,11 @@ class _StationIcon extends StatelessWidget {
           if (bytes == null) return const Icon(Icons.radio);
           return ClipRRect(
             borderRadius: BorderRadius.circular(3),
-            child: Image.memory(bytes, fit: BoxFit.cover, errorBuilder: (context, error, stack) => const Icon(Icons.radio)),
+            child: Image.memory(
+              bytes,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stack) => const Icon(Icons.radio),
+            ),
           );
         },
       ),

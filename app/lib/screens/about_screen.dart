@@ -42,18 +42,34 @@ class _AboutScreenState extends State<AboutScreen> {
             height: 132,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: RadialGradient(colors: [cs.primary.withValues(alpha: 0.35), cs.primary.withValues(alpha: 0.05)]),
+              gradient: RadialGradient(
+                colors: [cs.primary.withValues(alpha: 0.35), cs.primary.withValues(alpha: 0.05)],
+              ),
               border: Border.all(color: cs.primary.withValues(alpha: 0.6), width: 2),
-              boxShadow: [BoxShadow(color: cs.primary.withValues(alpha: 0.25), blurRadius: 36, spreadRadius: 2)],
+              boxShadow: [
+                BoxShadow(
+                  color: cs.primary.withValues(alpha: 0.25),
+                  blurRadius: 36,
+                  spreadRadius: 2,
+                ),
+              ],
             ),
             alignment: Alignment.center,
             child: Lyre(size: 80, color: cs.primary),
           ),
         ),
         const SizedBox(height: 20),
-        Text(l.appTitle, textAlign: TextAlign.center, style: text.displayMedium?.copyWith(color: cs.primary, letterSpacing: 1)),
+        Text(
+          l.appTitle,
+          textAlign: TextAlign.center,
+          style: text.displayMedium?.copyWith(color: cs.primary, letterSpacing: 1),
+        ),
         const SizedBox(height: 4),
-        Text(l.aboutVersion(appVersion), textAlign: TextAlign.center, style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+        Text(
+          l.aboutVersion(appVersion),
+          textAlign: TextAlign.center,
+          style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+        ),
         const SizedBox(height: 20),
         Text(l.aboutDescription, textAlign: TextAlign.center, style: text.bodyLarge),
         const SizedBox(height: 20),
@@ -62,10 +78,22 @@ class _AboutScreenState extends State<AboutScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            Chip(avatar: const Icon(Icons.menu_book_outlined, size: 18), label: Text(l.filterBooks)),
-            Chip(avatar: const Icon(Icons.music_note_outlined, size: 18), label: Text(l.filterMusic)),
-            Chip(avatar: const Icon(Icons.auto_stories_outlined, size: 18), label: Text(l.aboutScripture)),
-            Chip(avatar: const Icon(Icons.family_restroom_outlined, size: 18), label: Text(l.aboutFamily)),
+            Chip(
+              avatar: const Icon(Icons.menu_book_outlined, size: 18),
+              label: Text(l.filterBooks),
+            ),
+            Chip(
+              avatar: const Icon(Icons.music_note_outlined, size: 18),
+              label: Text(l.filterMusic),
+            ),
+            Chip(
+              avatar: const Icon(Icons.auto_stories_outlined, size: 18),
+              label: Text(l.aboutScripture),
+            ),
+            Chip(
+              avatar: const Icon(Icons.family_restroom_outlined, size: 18),
+              label: Text(l.aboutFamily),
+            ),
           ],
         ),
         const SizedBox(height: 28),
@@ -77,15 +105,25 @@ class _AboutScreenState extends State<AboutScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
-                  Icon(Icons.dns_outlined, color: cs.primary),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(l.aboutDavidTitle, style: text.titleMedium?.copyWith(color: cs.primary))),
-                ]),
+                Row(
+                  children: [
+                    Icon(Icons.dns_outlined, color: cs.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        l.aboutDavidTitle,
+                        style: text.titleMedium?.copyWith(color: cs.primary),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 10),
                 Text(l.aboutDavidText),
                 const SizedBox(height: 10),
-                Text(l.aboutDavidSteps, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                Text(
+                  l.aboutDavidSteps,
+                  style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                ),
               ],
             ),
           ),
@@ -101,14 +139,19 @@ class _AboutScreenState extends State<AboutScreen> {
                 return ListTile(
                   leading: Icon(Icons.sd_storage_outlined, color: cs.primary),
                   title: Text(l.aboutStorage),
-                  subtitle: Text(usage == null
-                      ? '…'
-                      : usage.files == 0
-                          ? l.aboutStorageNone
-                          : l.aboutStorageUsed(formatBytes(l.localeName, usage.bytes), usage.files)),
+                  subtitle: Text(
+                    usage == null
+                        ? '…'
+                        : usage.files == 0
+                        ? l.aboutStorageNone
+                        : l.aboutStorageUsed(formatBytes(l.localeName, usage.bytes), usage.files),
+                  ),
                   trailing: usage == null || usage.files == 0
                       ? null
-                      : TextButton(onPressed: () => _confirmRemove(context, p, l), child: Text(l.downloadRemove)),
+                      : TextButton(
+                          onPressed: () => _confirmRemove(context, p, l),
+                          child: Text(l.downloadRemove),
+                        ),
                 );
               },
             ),
@@ -122,26 +165,64 @@ class _AboutScreenState extends State<AboutScreen> {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-                child: Row(children: [
-                  Icon(Icons.verified_user_outlined, color: cs.primary),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(l.craTitle, style: text.titleMedium?.copyWith(color: cs.primary))),
-                ]),
+                child: Row(
+                  children: [
+                    Icon(Icons.verified_user_outlined, color: cs.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(l.craTitle, style: text.titleMedium?.copyWith(color: cs.primary)),
+                    ),
+                  ],
+                ),
               ),
-              ListTile(dense: true, title: Text(l.craManufacturer), subtitle: const Text(manufacturerName)),
-              ListTile(dense: true, title: Text(l.craEmail), subtitle: const SelectableText(manufacturerEmail)),
-              ListTile(dense: true, title: Text(l.craWebsite), subtitle: const SelectableText(manufacturerWebsite)),
-              ListTile(dense: true, title: Text(l.craVersion), subtitle: Text('$appVersion ($licenseName)')),
-              ListTile(dense: true, title: Text(l.aboutSource), subtitle: const SelectableText(sourceUrl)),
-              ListTile(dense: true, title: Text(l.craContact), subtitle: const SelectableText(securityContact)),
-              ListTile(dense: true, title: Text(l.craSupport), subtitle: Text(supportUntil == null ? l.craSupportOpen : l.craSupportUntil(supportUntil!))),
+              ListTile(
+                dense: true,
+                title: Text(l.craManufacturer),
+                subtitle: const Text(manufacturerName),
+              ),
+              ListTile(
+                dense: true,
+                title: Text(l.craEmail),
+                subtitle: const SelectableText(manufacturerEmail),
+              ),
+              ListTile(
+                dense: true,
+                title: Text(l.craWebsite),
+                subtitle: const SelectableText(manufacturerWebsite),
+              ),
+              ListTile(
+                dense: true,
+                title: Text(l.craVersion),
+                subtitle: Text('$appVersion ($licenseName)'),
+              ),
+              ListTile(
+                dense: true,
+                title: Text(l.aboutSource),
+                subtitle: const SelectableText(sourceUrl),
+              ),
+              ListTile(
+                dense: true,
+                title: Text(l.craContact),
+                subtitle: const SelectableText(securityContact),
+              ),
+              ListTile(
+                dense: true,
+                title: Text(l.craSupport),
+                subtitle: Text(
+                  supportUntil == null ? l.craSupportOpen : l.craSupportUntil(supportUntil!),
+                ),
+              ),
               ListTile(dense: true, title: Text(l.craData), subtitle: Text(l.craDataText)),
               ListTile(
                 dense: true,
                 title: Text(l.craComponents),
                 subtitle: Text(l.craComponentsText),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => showLicensePage(context: context, applicationName: l.appTitle, applicationVersion: appVersion),
+                onTap: () => showLicensePage(
+                  context: context,
+                  applicationName: l.appTitle,
+                  applicationVersion: appVersion,
+                ),
               ),
             ],
           ),
@@ -157,7 +238,9 @@ class _AboutScreenState extends State<AboutScreen> {
                 title: Text(l.aboutLicenseTitle),
                 subtitle: Text(l.aboutLicense),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LicenseTextScreen())),
+                onTap: () =>
+                    Navigator.of(context)
+                        .push(MaterialPageRoute<void>(builder: (_) => const LicenseTextScreen())),
               ),
             ],
           ),
@@ -204,7 +287,10 @@ class LicenseTextScreen extends StatelessWidget {
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 760),
-                  child: SelectableText(snap.data!, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace')),
+                  child: SelectableText(
+                    snap.data!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                  ),
                 ),
               ),
             ),

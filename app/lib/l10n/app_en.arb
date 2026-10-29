@@ -878,5 +878,7 @@
       }
     }
   },
-  "audiobooksOfNobody": "Other audiobooks"
+  "audiobooksOfNobody": "Other audiobooks",
+  "groupExpand": "Expand",
+  "groupCollapse": "Collapse"
 }

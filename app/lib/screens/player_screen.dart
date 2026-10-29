@@ -8,14 +8,11 @@ import '../player_controller.dart';
 import '../stream_info_card.dart';
 import '../widgets.dart';
 
-
 class PlayerScreen extends StatelessWidget {
   const PlayerScreen({super.key});
 
-  static Route<void> route() => MaterialPageRoute<void>(
-        fullscreenDialog: true,
-        builder: (_) => const PlayerScreen(),
-      );
+  static Route<void> route() =>
+      MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => const PlayerScreen());
 
   @override
   Widget build(BuildContext context) {
@@ -39,10 +36,7 @@ class PlayerScreen extends StatelessWidget {
           icon: const Icon(Icons.expand_more, size: 30),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text(
-          shown.author,
-          style: text.titleSmall?.copyWith(color: cs.onSurfaceVariant),
-        ),
+        title: Text(shown.author, style: text.titleSmall?.copyWith(color: cs.onSurfaceVariant)),
         centerTitle: true,
       ),
       body: Center(
@@ -63,36 +57,41 @@ class PlayerScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               if (track.live) ...[
-                Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(l.radioLive, style: text.titleMedium?.copyWith(color: cs.primary))),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(l.radioLive, style: text.titleMedium?.copyWith(color: cs.primary)),
+                ),
                 StreamInfoCard(player: p),
-              ]
-              else ...[
-              const SeekBar(),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(formatDuration(p.position), style: text.bodySmall),
-                    Text(
-                      '−${formatDuration(track.length - p.position)}',
-                      style: text.bodySmall,
-                    ),
-                  ],
+              ] else ...[
+                const SeekBar(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(formatDuration(p.position), style: text.bodySmall),
+                      Text('−${formatDuration(track.length - p.position)}', style: text.bodySmall),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(l.bookPlayed(formatDuration(p.bookPosition)), style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                    Text(l.bookTotal(formatDuration(p.bookTotal)), style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                  ],
+                const SizedBox(height: 4),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        l.bookPlayed(formatDuration(p.bookPosition)),
+                        style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                      Text(
+                        l.bookTotal(formatDuration(p.bookTotal)),
+                        style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SeekBar(wholeBook: true),
+                const SeekBar(wholeBook: true),
               ],
               const SizedBox(height: 8),
               Row(
@@ -162,10 +161,13 @@ class PlayerScreen extends StatelessWidget {
                         : Text('${i + 1}', textAlign: TextAlign.end),
                   ),
                   title: Text(l.discTrack(t.disc, t.title)),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if (p.isTrackPlayed(book, i)) ...const [PlayedMark(), SizedBox(width: 8)],
-                    Text(formatDuration(t.length)),
-                  ]),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (p.isTrackPlayed(book, i)) ...const [PlayedMark(), SizedBox(width: 8)],
+                      Text(formatDuration(t.length)),
+                    ],
+                  ),
                   onTap: () => p.open(book, track: i),
                 ),
               const SizedBox(height: 24),

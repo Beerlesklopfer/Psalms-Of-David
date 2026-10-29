@@ -1654,7 +1654,7 @@ async fn owners_list(store: &Store) -> Result<Vec<Member>> {
 impl AdminUi {
     /// The dialog that chooses a folder: what the server can read, write and enter below `path` (the start: the places it works in). `target` is
     /// the id of the input that gets the choice.
-    pub async fn folder_picker<'a>(&self, store: &Store, view: impl Into<View<'a>>, path: &str, target: &str, library: Option<&std::path::Path>) -> Result<String> {
+    pub async fn folder_picker<'a>(&self, store: &Store, view: impl Into<View<'a>>, path: &str, target: &str, library: Option<&std::path::Path>, create_error: Option<&str>) -> Result<String> {
         let mut starts: Vec<std::path::PathBuf> = Vec::new();
         let state = store.import_state().await?;
         starts.extend(state.roots.iter().chain(state.music_roots.iter()).map(std::path::PathBuf::from));
@@ -1667,6 +1667,6 @@ impl AdminUi {
             Ok(b) => (Some(b), None),
             Err(e) => (None, Some(e.to_string())),
         };
-        self.render("fragments/folder_picker.html", context! { listing => Serde(listing), error => error, target => target, ..view.into().context() })
+        self.render("fragments/folder_picker.html", context! { listing => Serde(listing), error => error, create_error => create_error, target => target, ..view.into().context() })
     }
 }

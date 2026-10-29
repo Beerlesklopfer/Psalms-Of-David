@@ -117,6 +117,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/rpc/book.visibility", post(handlers::book_visibility))
         .route("/admin/rpc/book.owner", post(handlers::book_owner))
         .route("/admin/rpc/folders", get(handlers::folder_picker))
+        .route("/admin/rpc/folders.create", post(handlers::folder_create))
         .route("/admin/rpc/book.tags_form", get(handlers::book_tags_form))
         .route("/admin/rpc/book.tracks", get(handlers::book_tracks))
         .route("/admin/rpc/book.tags", post(handlers::book_tags).layer(DefaultBodyLimit::max(crate::tags::MAX_COVER_BYTES + 64 * 1024)))

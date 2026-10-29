@@ -21,11 +21,16 @@ void main() {
     });
 
     test('a server without TLS has no fingerprint', () {
-      expect(PairingAddress.parse('david://pair?v=1&id=a&addr=localhost%3A8484&code=c')!.fingerprint, isNull);
+      expect(
+        PairingAddress.parse('david://pair?v=1&id=a&addr=localhost%3A8484&code=c')!.fingerprint,
+        isNull,
+      );
     });
 
     test('a certificate authority is marked, and then there is no fingerprint to pin', () {
-      final p = PairingAddress.parse('david://pair?v=1&id=a&addr=david.example.org%3A8484&ca=1&code=c')!;
+      final p = PairingAddress.parse(
+        'david://pair?v=1&id=a&addr=david.example.org%3A8484&ca=1&code=c',
+      )!;
       expect(p.ca, isTrue);
       expect(p.fingerprint, isNull);
       expect(p.address, 'david.example.org:8484');
@@ -61,8 +66,14 @@ void main() {
   });
 
   test('FoundServer writes IPv6 addresses in brackets', () {
-    expect(FoundServer(serverId: 'a', name: 'n', host: '192.168.1.2', port: 80).address, '192.168.1.2:80');
-    expect(FoundServer(serverId: 'a', name: 'n', host: 'fe80::1', port: 80).address, '[fe80::1]:80');
+    expect(
+      FoundServer(serverId: 'a', name: 'n', host: '192.168.1.2', port: 80).address,
+      '192.168.1.2:80',
+    );
+    expect(
+      FoundServer(serverId: 'a', name: 'n', host: 'fe80::1', port: 80).address,
+      '[fe80::1]:80',
+    );
   });
 
   group('CredentialStore', () {
@@ -73,9 +84,20 @@ void main() {
     test('keeps what pairing gave, readable by the owner only', () {
       final store = CredentialStore(File('${dir.path}/sub/server.json'));
       expect(store.load(), isNull);
-      store.save(Credentials(serverId: 'id', address: 'h:1', fingerprint: 'ff', token: 't', deviceName: 'Laptop'));
+      store.save(
+        Credentials(
+          serverId: 'id',
+          address: 'h:1',
+          fingerprint: 'ff',
+          token: 't',
+          deviceName: 'Laptop',
+        ),
+      );
       final c = store.load()!;
-      expect((c.serverId, c.address, c.fingerprint, c.token, c.deviceName), ('id', 'h:1', 'ff', 't', 'Laptop'));
+      expect(
+        (c.serverId, c.address, c.fingerprint, c.token, c.deviceName),
+        ('id', 'h:1', 'ff', 't', 'Laptop'),
+      );
       if (!Platform.isWindows) {
         expect(store.file.statSync().mode & 0x1ff, 384, reason: 'mode 600');
       }
@@ -121,7 +143,9 @@ void main() {
 void ipv6Tests() {
   group('IPv6', () {
     test('an address in brackets is read, with its port', () {
-      final p = PairingAddress.parse('david://pair?v=1&id=a&addr=%5B2001%3Adb8%3A%3A250%5D%3A8484&fp=ff&code=c')!;
+      final p = PairingAddress.parse(
+        'david://pair?v=1&id=a&addr=%5B2001%3Adb8%3A%3A250%5D%3A8484&fp=ff&code=c',
+      )!;
       expect(p.address, '[2001:db8::250]:8484');
       expect(ApiClient(address: p.address, fingerprint: 'ff').scheme, 'https');
     });

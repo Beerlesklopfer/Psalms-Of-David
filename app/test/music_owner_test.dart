@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/l10n/app_localizations.dart';
+import 'package:psalm/library_folds.dart';
 import 'package:psalm/library_groups.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
@@ -27,13 +30,13 @@ Book _music(String id, String title, {String? owner, String? genre}) => Book(
   ],
 );
 
-Widget _app(PlayerController p, Locale locale) => PlayerScope(
+Widget _app(PlayerController p, Locale locale, {LibraryFolds? folds}) => PlayerScope(
   controller: p,
   child: MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     locale: locale,
-    home: const Scaffold(body: LibraryScreen()),
+    home: Scaffold(body: LibraryScreen(folds: folds ?? LibraryFolds())),
   ),
 );
 
@@ -121,6 +124,10 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(find.text('Other music'), findsOneWidget);
+      // Nobody is signed in here, so every group is closed until it is opened.
+      expect(find.text('Erstes Album'), findsNothing);
+      await tester.tap(find.byKey(const Key('fold-music-Nora')));
+      await tester.pumpAndSettle();
       expect(find.text('Erstes Album'), findsWidgets);
       await tester.scrollUntilVisible(
         find.text('Music of Anni'),
@@ -132,6 +139,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Music of Anni'), findsOneWidget);
       expect(find.text('Music of Nora'), findsNothing);
+      await tester.tap(find.byKey(const Key('fold-music-Anni')));
+      await tester.pumpAndSettle();
       expect(find.text('Zweites Album'), findsWidgets);
       p.dispose();
     },
@@ -156,4 +165,54 @@ void main() {
       q.dispose();
     },
   );
+
+  testWidgets(
+    'with ten siblings only the own group is open and first; it can be closed too, and the choice is kept',
+    (tester) async {
+      tester.view.physicalSize = const Size(1000, 6000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final dir = Directory.systemTemp.createTempSync('folds');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/library_folds.json');
+      final names = ['Anni', 'Bert', 'Clara', 'Dirk', 'Nora'];
+      final p = PlayerController([
+        for (var i = 0; i < names.length; i++)
+          _audio('${i + 1}', 'Buch von ${names[i]}', owner: names[i]),
+      ])..userName = 'Nora';
+      await tester.pumpWidget(_app(p, const Locale('en'), folds: LibraryFolds(file)));
+      await tester.pumpAndSettle();
+      // The own group comes first and is open; the nine others are closed.
+      expect(find.text('Buch von Nora'), findsWidgets);
+      for (final n in names.where((n) => n != 'Nora')) {
+        expect(find.text('Buch von $n'), findsNothing, reason: n);
+      }
+      expect(
+        tester.getTopLeft(find.text('Audiobooks of Nora')).dy,
+        lessThan(tester.getTopLeft(find.text('Audiobooks of Anni')).dy),
+      );
+      // Another group opens; the own one closes: both work the same.
+      await tester.tap(find.byKey(const Key('fold-audiobooks-Bert')));
+      await tester.tap(find.byKey(const Key('fold-audiobooks-Nora')));
+      await tester.pumpAndSettle();
+      expect(find.text('Buch von Bert'), findsWidgets);
+      expect(find.text('Buch von Nora'), findsNothing);
+      // A new start (a new object on the same file) finds the same state.
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(_app(p, const Locale('en'), folds: LibraryFolds(file)));
+      await tester.pumpAndSettle();
+      expect(find.text('Buch von Bert'), findsWidgets);
+      expect(find.text('Buch von Nora'), findsNothing);
+      expect(find.text('Buch von Anni'), findsNothing);
+      p.dispose();
+    },
+  );
+
+  test('the first owner comes before the others in the groups', () {
+    final g = groupByOwner([
+      _music('1', 'A', owner: 'Anni'),
+      _music('2', 'B', owner: 'Nora'),
+    ], first: 'Nora');
+    expect(g.map((e) => e.$1).toList(), ['Nora', 'Anni']);
+  });
 }

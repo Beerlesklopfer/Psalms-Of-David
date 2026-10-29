@@ -572,5 +572,7 @@
       }
     }
   },
-  "audiobooksOfNobody": "Weitere Hörbücher"
+  "audiobooksOfNobody": "Weitere Hörbücher",
+  "groupExpand": "Aufklappen",
+  "groupCollapse": "Zuklappen"
 }

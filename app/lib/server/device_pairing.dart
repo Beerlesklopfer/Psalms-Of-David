@@ -12,13 +12,22 @@ class PairingUsage {
   final int? max;
   final bool full;
 
-  factory PairingUsage.fromJson(Map<String, dynamic> j) =>
-      PairingUsage(used: j['used'] as int, max: j['max'] as int?, full: j['full'] as bool? ?? false);
+  factory PairingUsage.fromJson(Map<String, dynamic> j) => PairingUsage(
+    used: j['used'] as int,
+    max: j['max'] as int?,
+    full: j['full'] as bool? ?? false,
+  );
 }
 
 /// A one-time code for a further device (`POST /api/v1/devices/pairing`).
 class PairingCode {
-  const PairingCode({required this.code, required this.serverId, required this.expiresIn, required this.used, this.max});
+  const PairingCode({
+    required this.code,
+    required this.serverId,
+    required this.expiresIn,
+    required this.used,
+    this.max,
+  });
 
   final String code;
   final String serverId;

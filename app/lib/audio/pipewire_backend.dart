@@ -162,7 +162,10 @@ class PipeWireBackend implements AudioBackend, StreamInfo {
     final nativePath = path.toNativeUtf8();
     final nativeTitle = title.toNativeUtf8();
     try {
-      _ok(_load(_e, nativePath, start.inMilliseconds, play ? 1 : 0, nativeTitle), 'cannot load $path');
+      _ok(
+        _load(_e, nativePath, start.inMilliseconds, play ? 1 : 0, nativeTitle),
+        'cannot load $path',
+      );
     } finally {
       calloc.free(nativePath);
       calloc.free(nativeTitle);
@@ -183,7 +186,12 @@ class PipeWireBackend implements AudioBackend, StreamInfo {
       calloc.free(nativeTitle);
     }
     _pushBuffer = calloc<Uint8>(kStreamPushBytes);
-    _session = RadioStreamSession(url: uri, sink: _EngineSink(this), onTitle: (t) => _title.value = t, onDetails: (d) => _details.value = d)..start();
+    _session = RadioStreamSession(
+      url: uri,
+      sink: _EngineSink(this),
+      onTitle: (t) => _title.value = t,
+      onDetails: (d) => _details.value = d,
+    )..start();
   }
 
   /// Ends the network side of a live stream; the engine drops its queue itself on
@@ -246,7 +254,9 @@ class PipeWireBackend implements AudioBackend, StreamInfo {
   @override
   AudioErrorKind get errorKind {
     if (_failure != null) return _failureKind;
-    return errorMessage == kStreamUnsupportedMessage ? AudioErrorKind.streamUnsupported : AudioErrorKind.generic;
+    return errorMessage == kStreamUnsupportedMessage
+        ? AudioErrorKind.streamUnsupported
+        : AudioErrorKind.generic;
   }
 
   @override

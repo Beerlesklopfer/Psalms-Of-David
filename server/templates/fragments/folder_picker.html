@@ -14,6 +14,16 @@
     {% endfor %}
     {% if not listing.folders %}<li class="unit">{{ t("folders.none") }}</li>{% endif %}
   </ul>
+  {% if listing.choosable %}
+  {% if create_error %}<p class="message error" role="alert">{{ t(create_error) }}</p>{% endif %}
+  <form class="folder-new" hx-post="/admin/rpc/folders.create" hx-target="closest .folder-picker" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="path" value="{{ listing.path }}">
+    <input type="hidden" name="target" value="{{ target }}">
+    <label class="sr-only" for="folder-new-{{ target }}">{{ t("folders.new_name") }}</label>
+    <input id="folder-new-{{ target }}" type="text" name="name" maxlength="255" autocomplete="off" spellcheck="false" placeholder="{{ t('folders.new') }}" required>
+    <button type="submit" class="btn outline">{{ t("folders.create") }}</button>
+  </form>
+  {% endif %}
   {% if listing.choosable %}<p><button type="button" class="btn" data-pick-folder="{{ listing.path }}" data-target="{{ target }}">{{ t("folders.use") }}</button></p>{% endif %}
   {% endif %}
 </div>

@@ -22,14 +22,23 @@ Widget _screen({String? initial}) => MaterialApp(
 
 /// Makes the clipboard of the test hold [text].
 void _clipboard(WidgetTester tester, String? text) {
-  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
-    if (call.method == 'Clipboard.getData') return text == null ? null : <String, dynamic>{'text': text};
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (
+    call,
+  ) async {
+    if (call.method == 'Clipboard.getData')
+      return text == null ? null : <String, dynamic>{'text': text};
     return null;
   });
-  addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    ),
+  );
 }
 
-String _field(WidgetTester tester) => tester.widget<TextField>(find.byType(TextField).first).controller!.text;
+String _field(WidgetTester tester) =>
+    tester.widget<TextField>(find.byType(TextField).first).controller!.text;
 
 void main() {
   testWidgets('the paste button puts the clipboard into the address field', (tester) async {

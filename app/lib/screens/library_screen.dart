@@ -6,6 +6,7 @@ import '../cd/cd_import_ui.dart';
 import '../cd/cd_kit.dart';
 import '../cd/cd_progress_bar.dart';
 import '../l10n/app_localizations.dart';
+import '../library_folds.dart';
 import '../library_groups.dart';
 import '../models.dart';
 import '../podcasts.dart';
@@ -17,7 +18,10 @@ import '../player_controller.dart';
 import '../widgets.dart';
 
 class LibraryScreen extends StatefulWidget {
-  const LibraryScreen({super.key, this.cd, this.api});
+  const LibraryScreen({super.key, this.cd, this.api, this.folds});
+
+  /// Which groups of owners are open; null: kept on this device ([LibraryFolds.standard]).
+  final LibraryFolds? folds;
 
   /// The server, for the podcast and radio lists of the library; null without a server.
   final FeedApi? api;
@@ -43,6 +47,32 @@ class _LibraryScreenState extends State<LibraryScreen> {
   );
 
   MediaCategory _category = MediaCategory.audiobooks;
+
+  late final LibraryFolds _folds = widget.folds ?? LibraryFolds.standard();
+
+  /// The groups of the owners: the person's own first and open, every other closed until opened. [category] names the list in the stored choice.
+  List<Widget> _ownerGroups(
+    AppLocalizations l,
+    String? me,
+    String category,
+    List<Book> books,
+    String Function(String) titleOf,
+    String nobody,
+  ) => [
+    for (final (owner, items) in groupByOwner(books, first: me)) ...[
+      SliverToBoxAdapter(
+        child: FoldHeader(
+          key: Key('fold-$category-${owner ?? ''}'),
+          title: owner == null ? nobody : titleOf(owner),
+          count: items.length,
+          open: _folds.isOpen(me, category, owner),
+          tooltip: _folds.isOpen(me, category, owner) ? l.groupCollapse : l.groupExpand,
+          onToggle: () => setState(() => _folds.toggle(me, category, owner)),
+        ),
+      ),
+      if (_folds.isOpen(me, category, owner)) _grid(items),
+    ],
+  ];
 
   // The lists of podcasts and stations are the same as on the pages of their own; the library
   // makes them when the category is first chosen and keeps them.
@@ -203,15 +233,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ),
           )
         else if (_category == MediaCategory.music && shown.any((b) => (b.owner ?? '').isNotEmpty))
-          // Music of the family members: "Music of Anna" ... and what belongs to nobody. The chosen genre narrows every group.
-          for (final (owner, books) in groupByOwner(
+          // Music of the family members, the own first and open, the others closed. The chosen genre narrows every group.
+          ..._ownerGroups(
+            l,
+            p.userName,
+            'music',
             shown.where((b) => _matchesGenre(b)).toList(),
-          )) ...[
-            SliverToBoxAdapter(
-              child: SectionHeader(owner == null ? l.musicOfNobody : l.musicOf(owner)),
-            ),
-            _grid(books),
-          ]
+            l.musicOf,
+            l.musicOfNobody,
+          )
         else if (_category == MediaCategory.music)
           // Music is shown by genre, in the order of the administration.
           for (final (genre, books) in groups.where(
@@ -219,13 +249,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
           )) ...[SliverToBoxAdapter(child: SectionHeader(genre ?? l.genreOther)), _grid(books)]
         else if (_category == MediaCategory.audiobooks &&
             shown.any((b) => (b.owner ?? '').isNotEmpty))
-          // Audiobooks of the family members: "Audiobooks of Anna" ... and what belongs to nobody.
-          for (final (owner, books) in groupByOwner(shown)) ...[
-            SliverToBoxAdapter(
-              child: SectionHeader(owner == null ? l.audiobooksOfNobody : l.audiobooksOf(owner)),
-            ),
-            _grid(books),
-          ]
+          // Audiobooks of the family members, the own first and open, the others closed.
+          ..._ownerGroups(l, p.userName, 'audiobooks', shown, l.audiobooksOf, l.audiobooksOfNobody)
         else
           _grid(shown),
       ],

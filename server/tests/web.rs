@@ -3662,6 +3662,20 @@ async fn every_member_has_a_folder_for_every_medium_chosen_in_a_dialog_that_list
     let d = send(&a, get("/admin/rpc/folders?target=x%22%3E%3Cscript", &hx)).await;
     assert_ne!(d.status, StatusCode::OK);
 
+    // A folder is created in the dialog: the dialog then shows the new folder; a bad or taken name is refused with the reason.
+    let parent = root.path().join("Anni").to_string_lossy().into_owned();
+    let t = format!("folder-{anna}-music");
+    let made = send(&a, post("/admin/rpc/folders.create", &form(&[("path", &parent), ("name", "Neu"), ("target", &t)]), &hx)).await;
+    assert_eq!(made.status, StatusCode::OK, "{}", made.body);
+    assert!(root.path().join("Anni/Neu").is_dir() && made.body.contains("Neu") && made.body.contains("data-pick-folder="), "{}", made.body);
+    let again = send(&a, post("/admin/rpc/folders.create", &form(&[("path", &parent), ("name", "Neu"), ("target", &t)]), &hx)).await;
+    assert!(again.body.contains("of this name already"), "{}", again.body);
+    let bad_name = send(&a, post("/admin/rpc/folders.create", &form(&[("path", &parent), ("name", "../x"), ("target", &t)]), &hx)).await;
+    assert!(bad_name.body.contains("not a usable folder name") && !root.path().join("x").exists(), "{}", bad_name.body);
+    let no_csrf = send(&a, post("/admin/rpc/folders.create", &form(&[("path", &parent), ("name", "X"), ("target", &t)]), &Opts { cookie: Some(&cookie), htmx: true, ..Default::default() })).await;
+    assert_eq!(no_csrf.status, StatusCode::FORBIDDEN);
+    assert!(!root.path().join("Anni/X").exists());
+
     // Saving: the folder is checked; a wrong one is refused and nothing of the form changes; an empty line removes the folder.
     let base = |extra: &str| format!("csrf={csrf}&id={anna}&name=Anni&role=member{extra}");
     let ok = send(&a, post("/admin/rpc/user.update", &base(&format!("&folder_music={}", enc(&musik.to_string_lossy()).trim_start_matches("path="))), &hx)).await;

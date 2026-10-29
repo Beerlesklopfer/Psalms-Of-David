@@ -1393,7 +1393,46 @@ pub async fn folder_picker(State(state): State<AppState>, s: AdminSession, Query
     if q.target.is_empty() || !q.target.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
         return plain_failure(StatusCode::UNPROCESSABLE_ENTITY, "err.input", s.lang, true);
     }
-    match state.ui.folder_picker(&state.store, view(&s), &q.path, &q.target, state.library.as_deref()).await {
+    match state.ui.folder_picker(&state.store, view(&s), &q.path, &q.target, state.library.as_deref(), None).await {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "the folder dialog failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct FolderCreate {
+    /// The folder the new one goes into.
+    path: String,
+    name: String,
+    target: String,
+}
+
+/// Creates a folder in the folder dialog, then shows the dialog inside the new folder (or in the parent with the reason it failed).
+pub async fn folder_create(State(state): State<AppState>, s: AdminSession, Form(f): Form<FolderCreate>) -> Response {
+    if f.target.is_empty() || !f.target.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return plain_failure(StatusCode::UNPROCESSABLE_ENTITY, "err.input", s.lang, true);
+    }
+    let (path, reason) = {
+        let (parent, name) = (f.path.clone(), f.name.clone());
+        match tokio::task::spawn_blocking(move || crate::folders::create(&parent, &name)).await {
+            Ok(Ok(made)) => (made.to_string_lossy().into_owned(), None),
+            Ok(Err(e)) => {
+                tracing::info!(error = %e, parent = %f.path, "a folder was not created");
+                let key = match e {
+                    crate::folders::CreateError::BadName => "folders.err_name",
+                    crate::folders::CreateError::Exists => "folders.err_exists",
+                    crate::folders::CreateError::Parent(_) => "folders.err_parent",
+                    crate::folders::CreateError::Failed => "folders.err_failed",
+                };
+                (f.path.clone(), Some(key))
+            }
+            Err(_) => (f.path.clone(), Some("folders.err_failed")),
+        }
+    };
+    match state.ui.folder_picker(&state.store, view(&s), &path, &f.target, state.library.as_deref(), reason).await {
         Ok(html) => Html(html).into_response(),
         Err(e) => {
             tracing::error!(error = %e, "the folder dialog failed");

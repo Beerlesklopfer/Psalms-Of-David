@@ -1373,4 +1373,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get audiobooksOfNobody => 'Other audiobooks';
+
+  @override
+  String get groupExpand => 'Expand';
+
+  @override
+  String get groupCollapse => 'Collapse';
 }

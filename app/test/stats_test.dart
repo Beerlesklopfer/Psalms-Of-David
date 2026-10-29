@@ -45,7 +45,11 @@ Map<String, Object?> _item(int id, {bool stats = true}) => {
 };
 
 /// A tiny stand-in for David. [newBody] null answers 404 on `/new` (an older server).
-Future<(HttpServer, ApiClient)> _server({Object? newBody, bool stats = true, bool newBroken = false}) async {
+Future<(HttpServer, ApiClient)> _server({
+  Object? newBody,
+  bool stats = true,
+  bool newBroken = false,
+}) async {
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
   server.listen((req) {
     final path = req.uri.path;
@@ -111,37 +115,43 @@ void main() {
   group('loading', () {
     // The test binding blocks real HTTP; these tests talk to a stand-in server on loopback.
     setUpAll(() => HttpOverrides.global = null);
-    test('plays and last played come from the detail answer; the new ids keep the server order', () async {
-      final (server, api) = await _server(
-        newBody: {
-          'days': 7,
-          'items': [
-            {'id': 2, 'new_at': 5},
-            {'id': 1, 'new_at': 4},
-          ],
-        },
-      );
-      addTearDown(() => server.close(force: true));
-      final lib = await loadLibrary(api);
-      final b = lib.books.first;
-      expect(b.plays, 0);
-      expect(b.lastPlayedAt, DateTime.fromMillisecondsSinceEpoch(1793000000000));
-      expect(b.tracks[0].plays, 3);
-      expect(b.tracks[0].lastPlayedAt, DateTime.fromMillisecondsSinceEpoch(1793000000000));
-      expect(b.tracks[1].plays, 0);
-      expect(b.tracks[1].lastPlayedAt, isNull);
-      expect(lib.newIds, ['2', '1']);
-    });
+    test(
+      'plays and last played come from the detail answer; the new ids keep the server order',
+      () async {
+        final (server, api) = await _server(
+          newBody: {
+            'days': 7,
+            'items': [
+              {'id': 2, 'new_at': 5},
+              {'id': 1, 'new_at': 4},
+            ],
+          },
+        );
+        addTearDown(() => server.close(force: true));
+        final lib = await loadLibrary(api);
+        final b = lib.books.first;
+        expect(b.plays, 0);
+        expect(b.lastPlayedAt, DateTime.fromMillisecondsSinceEpoch(1793000000000));
+        expect(b.tracks[0].plays, 3);
+        expect(b.tracks[0].lastPlayedAt, DateTime.fromMillisecondsSinceEpoch(1793000000000));
+        expect(b.tracks[1].plays, 0);
+        expect(b.tracks[1].lastPlayedAt, isNull);
+        expect(lib.newIds, ['2', '1']);
+      },
+    );
 
-    test('an older server without the fields: 0 and null; without /new: no ids and no error', () async {
-      final (server, api) = await _server(stats: false);
-      addTearDown(() => server.close(force: true));
-      final lib = await loadLibrary(api);
-      expect(lib.books.first.plays, 0);
-      expect(lib.books.first.lastPlayedAt, isNull);
-      expect(lib.books.first.tracks.first.plays, 0);
-      expect(lib.newIds, isEmpty);
-    });
+    test(
+      'an older server without the fields: 0 and null; without /new: no ids and no error',
+      () async {
+        final (server, api) = await _server(stats: false);
+        addTearDown(() => server.close(force: true));
+        final lib = await loadLibrary(api);
+        expect(lib.books.first.plays, 0);
+        expect(lib.books.first.lastPlayedAt, isNull);
+        expect(lib.books.first.tracks.first.plays, 0);
+        expect(lib.newIds, isEmpty);
+      },
+    );
 
     test('newItems: answer, 404 and a broken answer', () async {
       final (s1, a1) = await _server(
@@ -188,22 +198,23 @@ void main() {
       p.dispose();
     });
 
-    testWidgets('without a backend the demo ticks mark the track heard; updateLibrary takes the server back', (
-      tester,
-    ) async {
-      final b = _book('1');
-      final p = PlayerController([b]);
-      p.open(b, track: 0);
-      p.seek(const Duration(seconds: 56));
-      expect(p.isTrackPlayed(b, 0), isFalse);
-      await tester.pump(const Duration(milliseconds: 500));
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(p.isTrackPlayed(b, 0), isTrue, reason: 'within 3 s of the end');
-      expect(p.isTrackPlayed(b, 1), isFalse);
-      p.updateLibrary(LoadedLibrary([_book('1')], {}));
-      expect(p.isTrackPlayed(p.library.first, 0), isFalse, reason: 'the server decides again');
-      p.dispose();
-    });
+    testWidgets(
+      'without a backend the demo ticks mark the track heard; updateLibrary takes the server back',
+      (tester) async {
+        final b = _book('1');
+        final p = PlayerController([b]);
+        p.open(b, track: 0);
+        p.seek(const Duration(seconds: 56));
+        expect(p.isTrackPlayed(b, 0), isFalse);
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(p.isTrackPlayed(b, 0), isTrue, reason: 'within 3 s of the end');
+        expect(p.isTrackPlayed(b, 1), isFalse);
+        p.updateLibrary(LoadedLibrary([_book('1')], {}));
+        expect(p.isTrackPlayed(p.library.first, 0), isFalse, reason: 'the server decides again');
+        p.dispose();
+      },
+    );
   });
 
   group('plays line', () {
@@ -228,7 +239,10 @@ void main() {
       final b = _book('1', plays: 3, last: last);
       final p = PlayerController([b]);
       await tester.pumpWidget(_app(p, BookScreen(book: b), locale: 'de'));
-      expect(find.textContaining('3-mal vollständig gehört · zuletzt gespielt am '), findsOneWidget);
+      expect(
+        find.textContaining('3-mal vollständig gehört · zuletzt gespielt am '),
+        findsOneWidget,
+      );
       expect(find.textContaining('2026'), findsWidgets);
       p.dispose();
     });
@@ -250,7 +264,9 @@ void main() {
       await tester.pumpWidget(_app(p, const Scaffold(body: HomeScreen()), locale: locale));
     }
 
-    testWidgets('appears with the books of the list, in server order, unknown ids skipped', (tester) async {
+    testWidgets('appears with the books of the list, in server order, unknown ids skipped', (
+      tester,
+    ) async {
       final p = PlayerController([_book('1'), _book('2'), _book('3')]);
       p.newIds = ['3', '99', '1'];
       expect(p.newBooks().map((b) => b.id), ['3', '1']);

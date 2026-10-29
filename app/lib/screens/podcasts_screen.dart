@@ -37,15 +37,37 @@ class PodcastsController extends ChangeNotifier {
 
   Future<void> add(BuildContext context) async {
     final l = AppLocalizations.of(context);
-    final url = await askText(context, title: l.podcastAdd, label: l.podcastAddress, hint: 'https://example.org/feed.xml', action: l.podcastFollow);
+    final url = await askText(
+      context,
+      title: l.podcastAdd,
+      label: l.podcastAddress,
+      hint: 'https://example.org/feed.xml',
+      action: l.podcastFollow,
+    );
     if (url == null || !context.mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
       final r = await api!.followPodcast(url);
-      messenger.showSnackBar(SnackBar(content: Text(r['approved'] == true ? l.podcastFollowed(r['title'] as String) : l.askToRelease)));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            r['approved'] == true ? l.podcastFollowed(r['title'] as String) : l.askToRelease,
+          ),
+        ),
+      );
       await load();
     } on ApiException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.code == 'invalid_feed' ? l.podcastInvalid : e.code == 'forbidden' ? l.notAllowed : l.serverUnreachableShort)));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            e.code == 'invalid_feed'
+                ? l.podcastInvalid
+                : e.code == 'forbidden'
+                ? l.notAllowed
+                : l.serverUnreachableShort,
+          ),
+        ),
+      );
     }
   }
 
@@ -69,10 +91,22 @@ class PodcastsActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     if (controller.api == null) return const SizedBox.shrink();
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      IconButton(tooltip: l.podcastAdd, icon: const Icon(Icons.add), onPressed: () => controller.add(context)),
-      if (withRefresh) IconButton(tooltip: l.tooltipRefresh, icon: const Icon(Icons.refresh), onPressed: controller.load),
-    ]);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: l.podcastAdd,
+          icon: const Icon(Icons.add),
+          onPressed: () => controller.add(context),
+        ),
+        if (withRefresh)
+          IconButton(
+            tooltip: l.tooltipRefresh,
+            icon: const Icon(Icons.refresh),
+            onPressed: controller.load,
+          ),
+      ],
+    );
   }
 }
 
@@ -89,10 +123,26 @@ class PodcastsBody extends StatelessWidget {
       listenable: controller,
       builder: (context, _) {
         final list = controller.podcasts;
-        if (controller.api == null) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.needsServer)));
-        if (controller.error != null) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.serverUnreachableShort)));
-        if (list == null) return const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator()));
-        if (list.isEmpty) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.noPodcastsYet)));
+        if (controller.api == null)
+          return SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: Text(l.needsServer)),
+          );
+        if (controller.error != null)
+          return SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: Text(l.serverUnreachableShort)),
+          );
+        if (list == null)
+          return const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: CircularProgressIndicator()),
+          );
+        if (list.isEmpty)
+          return SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: Text(l.noPodcastsYet)),
+          );
         return SliverList.builder(
           itemCount: list.length,
           itemBuilder: (context, i) {
@@ -100,11 +150,25 @@ class PodcastsBody extends StatelessWidget {
             return ListTile(
               leading: const Icon(Icons.podcasts),
               title: Text(p.title),
-              subtitle: Text(!p.approved ? l.waitingForRelease : (p.error != null ? l.feedProblem : p.description), maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                !p.approved
+                    ? l.waitingForRelease
+                    : (p.error != null ? l.feedProblem : p.description),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
               trailing: p.approved && p.unheard > 0 ? Badge(label: Text('${p.unheard}')) : null,
               enabled: p.approved,
               onTap: p.approved
-                  ? () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => EpisodesScreen(api: controller.api!, podcast: p, onUnfollowed: controller.load)))
+                  ? () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => EpisodesScreen(
+                          api: controller.api!,
+                          podcast: p,
+                          onUnfollowed: controller.load,
+                        ),
+                      ),
+                    )
                   : null,
             );
           },
@@ -153,7 +217,12 @@ class _PodcastsScreenState extends State<PodcastsScreen> {
 
 /// The episodes of one podcast, newest first.
 class EpisodesScreen extends StatefulWidget {
-  const EpisodesScreen({super.key, required this.api, required this.podcast, required this.onUnfollowed});
+  const EpisodesScreen({
+    super.key,
+    required this.api,
+    required this.podcast,
+    required this.onUnfollowed,
+  });
 
   final FeedApi api;
   final Podcast podcast;
@@ -176,7 +245,11 @@ class _EpisodesScreenState extends State<EpisodesScreen> {
   Future<void> _load() async {
     try {
       final rows = await widget.api.episodes(widget.podcast.id);
-      if (mounted) setState(() { _episodes = rows.map(Episode.fromJson).toList(); _failed = false; });
+      if (mounted)
+        setState(() {
+          _episodes = rows.map(Episode.fromJson).toList();
+          _failed = false;
+        });
     } on ApiException {
       if (mounted) setState(() => _failed = true);
     }
@@ -206,28 +279,42 @@ class _EpisodesScreenState extends State<EpisodesScreen> {
       body: _failed
           ? Center(child: Text(l.serverUnreachableShort))
           : list == null
-              ? const Center(child: CircularProgressIndicator())
-              : list.isEmpty
-                  ? Center(child: Text(l.noEpisodesYet))
-                  : ListView.builder(
-                      itemCount: list.length,
-                      itemBuilder: (context, i) {
-                        final e = list[i];
-                        final date = e.published;
-                        return ListTile(
-                          leading: Icon(e.finished ? Icons.check_circle_outline : Icons.play_circle_outline),
-                          title: Text(e.title, style: e.finished ? TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant) : null),
-                          subtitle: Text([
-                            if (date != null) '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
-                            if (e.duration > Duration.zero) formatDuration(e.duration),
-                            if (!e.finished && e.position > Duration.zero) l.episodeAt(formatDuration(e.position)),
-                          ].join(' · ')),
-                          onTap: () {
-                            p.open(e.asBook(widget.podcast.title), start: e.finished ? Duration.zero : e.position);
-                          },
-                        );
-                      },
-                    ),
+          ? const Center(child: CircularProgressIndicator())
+          : list.isEmpty
+          ? Center(child: Text(l.noEpisodesYet))
+          : ListView.builder(
+              itemCount: list.length,
+              itemBuilder: (context, i) {
+                final e = list[i];
+                final date = e.published;
+                return ListTile(
+                  leading: Icon(
+                    e.finished ? Icons.check_circle_outline : Icons.play_circle_outline,
+                  ),
+                  title: Text(
+                    e.title,
+                    style: e.finished
+                        ? TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)
+                        : null,
+                  ),
+                  subtitle: Text(
+                    [
+                      if (date != null)
+                        '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+                      if (e.duration > Duration.zero) formatDuration(e.duration),
+                      if (!e.finished && e.position > Duration.zero)
+                        l.episodeAt(formatDuration(e.position)),
+                    ].join(' · '),
+                  ),
+                  onTap: () {
+                    p.open(
+                      e.asBook(widget.podcast.title),
+                      start: e.finished ? Duration.zero : e.position,
+                    );
+                  },
+                );
+              },
+            ),
     );
   }
 }

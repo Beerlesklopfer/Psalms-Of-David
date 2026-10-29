@@ -147,7 +147,10 @@ void main() {
     addTearDown(() => dir.deleteSync(recursive: true));
     final file = File('${dir.path}/clip.mp3')..writeAsBytesSync(mp3.sublist(0, 80000));
     backend.load(file.path);
-    await waitFor(() => backend.state == BackendState.playing && backend.duration != null, 'the file');
+    await waitFor(
+      () => backend.state == BackendState.playing && backend.duration != null,
+      'the file',
+    );
     expect(backend.streamTitle.value, isNull);
     backend.seek(const Duration(seconds: 2)); // works for a file
     await Future<void>.delayed(const Duration(milliseconds: 500));
@@ -166,18 +169,22 @@ void main() {
     expect(backend.errorKind, AudioErrorKind.streamUnsupported);
   });
 
-  test('a page that pretends to be MP3 ends in a failure, not in endless waiting', skip: skip, () async {
-    handler = (r) async {
-      r.response.bufferOutput = false;
-      r.response.headers.contentType = ContentType.parse('audio/mpeg'); // a lie
-      r.response.add(Uint8List.fromList('<html>nothing to hear</html>'.codeUnits));
-      await r.response.close();
-    };
-    backend.load(url());
-    // The server hangs up each time, so the session gives up after its reconnects.
-    await waitFor(() => backend.state == BackendState.failed, 'failure', seconds: 20);
-    expect(backend.errorMessage, isNotNull);
-  });
+  test(
+    'a page that pretends to be MP3 ends in a failure, not in endless waiting',
+    skip: skip,
+    () async {
+      handler = (r) async {
+        r.response.bufferOutput = false;
+        r.response.headers.contentType = ContentType.parse('audio/mpeg'); // a lie
+        r.response.add(Uint8List.fromList('<html>nothing to hear</html>'.codeUnits));
+        await r.response.close();
+      };
+      backend.load(url());
+      // The server hangs up each time, so the session gives up after its reconnects.
+      await waitFor(() => backend.state == BackendState.failed, 'failure', seconds: 20);
+      expect(backend.errorMessage, isNotNull);
+    },
+  );
 
   test('an HTTP error becomes the error text', skip: skip, () async {
     handler = (r) async {
@@ -199,7 +206,9 @@ void main() {
       await waitFor(() => backend.state == BackendState.playing, 'playing', seconds: 15);
       await Future<void>.delayed(const Duration(seconds: 8));
       // ignore: avoid_print
-      print('real station: state ${backend.state}, position ${backend.position}, title ${backend.streamTitle.value}');
+      print(
+        'real station: state ${backend.state}, position ${backend.position}, title ${backend.streamTitle.value}',
+      );
       expect(backend.state, BackendState.playing);
       expect(backend.position, greaterThan(const Duration(seconds: 4)));
       expect(backend.duration, isNull);

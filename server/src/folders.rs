@@ -72,6 +72,40 @@ pub fn check(path: &str) -> std::result::Result<PathBuf, FolderError> {
     Ok(real)
 }
 
+/// Why a folder cannot be created.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum CreateError {
+    #[error("the parent folder cannot be used")]
+    Parent(#[from] FolderError),
+    #[error("the name is not a plain folder name")]
+    BadName,
+    #[error("there is a folder or file of this name already")]
+    Exists,
+    #[error("the folder could not be created")]
+    Failed,
+}
+
+/// A name for a new folder: one path component, no separators, no dots-only name, no control characters.
+pub fn valid_name(name: &str) -> bool {
+    let n = name.trim();
+    !n.is_empty() && n.len() <= 255 && n != "." && n != ".." && !n.chars().any(|c| c == '/' || c == '\\' || c.is_control())
+}
+
+/// Creates the folder `name` below `parent` (which must be usable) and returns its path (blocking). A folder that exists is not an error
+/// for the person's purpose, but it is reported, so that nothing is taken over by accident.
+pub fn create(parent: &str, name: &str) -> std::result::Result<PathBuf, CreateError> {
+    let parent = check(parent)?;
+    if !valid_name(name) {
+        return Err(CreateError::BadName);
+    }
+    let path = parent.join(name.trim());
+    match std::fs::create_dir(&path) {
+        Ok(()) => Ok(path),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(CreateError::Exists),
+        Err(_) => Err(CreateError::Failed),
+    }
+}
+
 /// The usable folders directly below `dir` (blocking), by name, without hidden ones (a name that starts with a dot).
 fn children(dir: &Path) -> Vec<Entry> {
     let Ok(read) = std::fs::read_dir(dir) else { return Vec::new() };
@@ -204,6 +238,20 @@ mod tests {
         assert_eq!(inside.parent.as_deref(), std::fs::canonicalize(root.path()).unwrap().to_str(), "the parent is usable, so the way up is offered");
         // A folder the server may not write is not shown and cannot be entered by its path either.
         assert_eq!(browse("/proc", &[]).map(|b| b.choosable).unwrap_or(false), false);
+    }
+
+    #[test]
+    fn a_folder_is_created_below_a_usable_folder_with_a_plain_name_only() {
+        let root = tempfile::tempdir().unwrap();
+        let base = root.path().to_str().unwrap();
+        let made = create(base, " Neu ").unwrap();
+        assert!(made.is_dir() && made.ends_with("Neu"));
+        assert_eq!(create(base, "Neu"), Err(CreateError::Exists));
+        for bad in ["", "  ", ".", "..", "a/b", "../x", "a\\b", "tab\there"] {
+            assert_eq!(create(base, bad), Err(CreateError::BadName), "{bad:?}");
+        }
+        assert_eq!(create("relativ", "x"), Err(CreateError::Parent(FolderError::NotAbsolute)));
+        assert_eq!(create(root.path().join("gibt-es-nicht").to_str().unwrap(), "x"), Err(CreateError::Parent(FolderError::NoSuchFolder)));
     }
 
     trait RootCheck {

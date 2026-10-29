@@ -109,31 +109,54 @@ void main() {
     },
   );
 
-  testWidgets('the card shows artist, track and what the station says about itself, and waits when there is nothing yet', (tester) async {
-    final backend = _StationBackend();
-    final p = PlayerController([station.asBook()], backend: backend, source: _Source());
-    Future<void> show() => tester.pumpWidget(
-      PlayerScope(
-        controller: p,
-        child: MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(body: StreamInfoCard(player: p)),
+  testWidgets(
+    'the card shows artist, track and what the station says about itself, and waits when there is nothing yet',
+    (tester) async {
+      final backend = _StationBackend();
+      final p = PlayerController([station.asBook()], backend: backend, source: _Source());
+      Future<void> show() => tester.pumpWidget(
+        PlayerScope(
+          controller: p,
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(body: StreamInfoCard(player: p)),
+          ),
         ),
-      ),
-    );
-    p.open(station.asBook());
-    await tester.pump(const Duration(milliseconds: 100));
-    await show();
-    expect(find.text('Waiting for the information of the station …'), findsOneWidget);
+      );
+      p.open(station.asBook());
+      await tester.pump(const Duration(milliseconds: 100));
+      await show();
+      expect(find.text('Waiting for the information of the station …'), findsOneWidget);
 
-    backend.describe(const StreamDetails(name: 'DWG Radio', genre: 'Christian', bitrateKbps: 128, format: 'MP3', website: 'https://radio.dwgradio.net/'));
-    backend.announce('Axel Volk - Pfingsten hat alles neu gemacht');
-    await tester.pump(const Duration(milliseconds: 700));
-    await show();
-    for (final t in ['Artist', 'Axel Volk', 'Track', 'Pfingsten hat alles neu gemacht', 'Station', 'DWG Radio', 'Genre', 'Christian', 'Quality', '128 kbit/s · MP3', 'https://radio.dwgradio.net/']) {
-      expect(find.text(t), findsOneWidget, reason: t);
-    }
-    p.dispose();
-  });
+      backend.describe(
+        const StreamDetails(
+          name: 'DWG Radio',
+          genre: 'Christian',
+          bitrateKbps: 128,
+          format: 'MP3',
+          website: 'https://radio.dwgradio.net/',
+        ),
+      );
+      backend.announce('Axel Volk - Pfingsten hat alles neu gemacht');
+      await tester.pump(const Duration(milliseconds: 700));
+      await show();
+      for (final t in [
+        'Artist',
+        'Axel Volk',
+        'Track',
+        'Pfingsten hat alles neu gemacht',
+        'Station',
+        'DWG Radio',
+        'Genre',
+        'Christian',
+        'Quality',
+        '128 kbit/s · MP3',
+        'https://radio.dwgradio.net/',
+      ]) {
+        expect(find.text(t), findsOneWidget, reason: t);
+      }
+      p.dispose();
+    },
+  );
 }

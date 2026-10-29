@@ -71,7 +71,13 @@ void main() {
       color: const Color(0xFF000000),
       tracks: [
         for (var i = 1; i <= 2; i++)
-          Track(disc: 1, number: i, title: 'T$i', length: const Duration(minutes: 1), path: '/music/$i.mp3'),
+          Track(
+            disc: 1,
+            number: i,
+            title: 'T$i',
+            length: const Duration(minutes: 1),
+            path: '/music/$i.mp3',
+          ),
       ],
     );
     final p = PlayerController([book], backend: backend);
@@ -83,24 +89,36 @@ void main() {
     p.dispose();
   });
 
-  test('a radio station is played by the engine from its address and does not end at once', () async {
-    final backend = FakeBackend();
-    final station = Book(
-      id: 'st:1',
-      title: 'Station',
-      author: '',
-      kind: 'radio',
-      color: const Color(0xFF000000),
-      tracks: [Track(disc: 1, number: 1, title: 'Station', length: Duration.zero, url: 'https://radio.example.org/live.mp3', live: true)],
-    );
-    final p = PlayerController([station], backend: backend, source: _AddressSource());
-    p.open(station);
-    await Future<void>.delayed(const Duration(milliseconds: 1300));
-    expect(backend.loadedPath, 'https://radio.example.org/live.mp3');
-    expect(p.playing, isTrue, reason: 'a station of length zero is not over');
-    expect(p.error, isNull);
-    p.dispose();
-  });
+  test(
+    'a radio station is played by the engine from its address and does not end at once',
+    () async {
+      final backend = FakeBackend();
+      final station = Book(
+        id: 'st:1',
+        title: 'Station',
+        author: '',
+        kind: 'radio',
+        color: const Color(0xFF000000),
+        tracks: [
+          Track(
+            disc: 1,
+            number: 1,
+            title: 'Station',
+            length: Duration.zero,
+            url: 'https://radio.example.org/live.mp3',
+            live: true,
+          ),
+        ],
+      );
+      final p = PlayerController([station], backend: backend, source: _AddressSource());
+      p.open(station);
+      await Future<void>.delayed(const Duration(milliseconds: 1300));
+      expect(backend.loadedPath, 'https://radio.example.org/live.mp3');
+      expect(p.playing, isTrue, reason: 'a station of length zero is not over');
+      expect(p.error, isNull);
+      p.dispose();
+    },
+  );
 
   testWidgets('settings show the server and ask before disconnecting', (tester) async {
     var disconnected = 0;
@@ -153,7 +171,11 @@ void main() {
       findsNWidgets(2),
       reason: 'as the contact and as the address for security reports',
     );
-    expect(find.textContaining('has not been set yet'), findsOneWidget, reason: 'no invented support date');
+    expect(
+      find.textContaining('has not been set yet'),
+      findsOneWidget,
+      reason: 'no invented support date',
+    );
     await tester.ensureVisible(find.text('License'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('License'));
@@ -185,7 +207,12 @@ class _AddressSource extends MediaSource {
   Future<String> fetchPart(Track track) async => track.url!;
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {}
+  Future<void> saveProgress(
+    Book book,
+    Track track,
+    Duration position, {
+    required bool finished,
+  }) async {}
 
   @override
   Future<PassageHit?> resolvePassage(String text) async => null;

@@ -27,7 +27,13 @@ class ApiException implements Exception {
 
 /// The contents of a pairing code: `david://pair?v=1&id=..&addr=..&fp=..&code=..`.
 class PairingAddress {
-  PairingAddress({required this.serverId, required this.address, required this.fingerprint, required this.code, this.ca = false});
+  PairingAddress({
+    required this.serverId,
+    required this.address,
+    required this.fingerprint,
+    required this.code,
+    this.ca = false,
+  });
 
   final String serverId;
   final String address;
@@ -60,8 +66,15 @@ class PairingAddress {
     final q = uri.queryParameters;
     final address = q['addr'];
     final code = q['code'];
-    if (q['v'] != '1' || address == null || address.isEmpty || code == null || code.isEmpty) return null;
-    return PairingAddress(serverId: q['id'] ?? '', address: address, fingerprint: q['fp'], code: code, ca: q['ca'] == '1');
+    if (q['v'] != '1' || address == null || address.isEmpty || code == null || code.isEmpty)
+      return null;
+    return PairingAddress(
+      serverId: q['id'] ?? '',
+      address: address,
+      fingerprint: q['fp'],
+      code: code,
+      ca: q['ca'] == '1',
+    );
   }
 }
 
@@ -80,8 +93,13 @@ class PairResult {
 /// connection is HTTPS and only the server whose certificate has exactly this
 /// fingerprint is accepted; no other certificate is, whoever signed it.
 class ApiClient implements FeedApi {
-  ApiClient({required this.address, this.fingerprint, this.ca = false, this.token, HttpClient? client})
-      : _http = client ?? _pinnedClient(fingerprint, ca);
+  ApiClient({
+    required this.address,
+    this.fingerprint,
+    this.ca = false,
+    this.token,
+    HttpClient? client,
+  }) : _http = client ?? _pinnedClient(fingerprint, ca);
 
   final String address;
   final String? fingerprint;
@@ -96,7 +114,8 @@ class ApiClient implements FeedApi {
     client.connectionTimeout = const Duration(seconds: 10);
     if (!ca && fingerprint != null) {
       final expected = fingerprint.toLowerCase();
-      client.badCertificateCallback = (cert, host, port) => sha256.convert(cert.der).toString() == expected;
+      client.badCertificateCallback = (cert, host, port) =>
+          sha256.convert(cert.der).toString() == expected;
     }
     return client;
   }
@@ -105,30 +124,47 @@ class ApiClient implements FeedApi {
   String get scheme => (ca || fingerprint != null) ? 'https' : 'http';
 
   Uri _uri(String path, [Map<String, String>? query]) => Uri(
-        scheme: scheme,
-        host: Uri.parse('x://$address').host,
-        port: Uri.parse('x://$address').port,
-        path: path,
-        queryParameters: query,
-      );
+    scheme: scheme,
+    host: Uri.parse('x://$address').host,
+    port: Uri.parse('x://$address').port,
+    path: path,
+    queryParameters: query,
+  );
 
   /// Pairs this device with the code from [pairing] and returns a client that holds
   /// the token. The WireGuard tunnel does not exist yet, so the key is random.
-  static Future<(ApiClient, PairResult)> pair(PairingAddress pairing, String deviceName, {HttpClient? client}) async {
-    final api = ApiClient(address: pairing.address, fingerprint: pairing.fingerprint, ca: pairing.ca, client: client);
+  static Future<(ApiClient, PairResult)> pair(
+    PairingAddress pairing,
+    String deviceName, {
+    HttpClient? client,
+  }) async {
+    final api = ApiClient(
+      address: pairing.address,
+      fingerprint: pairing.fingerprint,
+      ca: pairing.ca,
+      client: client,
+    );
     final random = Random.secure();
     final key = base64.encode(List<int>.generate(32, (_) => random.nextInt(256)));
-    final j = await api._json('POST', '/api/v1/pair', body: {
-      'code': pairing.code,
-      'device_name': deviceName,
-      'public_key': key,
-    }) as Map<String, dynamic>;
+    final j = await api._json(
+      'POST',
+      '/api/v1/pair',
+      body: {'code': pairing.code, 'device_name': deviceName, 'public_key': key},
+    ) as Map<String, dynamic>;
     api.token = j['token'] as String;
     final user = j['user'] as Map<String, dynamic>;
-    return (api, PairResult(api.token!, j['device_id'] as int, user['name'] as String, user['role'] as String));
+    return (
+      api,
+      PairResult(api.token!, j['device_id'] as int, user['name'] as String, user['role'] as String),
+    );
   }
 
-  Future<HttpClientResponse> _send(String method, Uri uri, {Object? body, Map<String, String>? headers}) async {
+  Future<HttpClientResponse> _send(
+    String method,
+    Uri uri, {
+    Object? body,
+    Map<String, String>? headers,
+  }) async {
     try {
       final req = await _http.openUrl(method, uri);
       if (token != null) req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
@@ -160,14 +196,20 @@ class ApiClient implements FeedApi {
     throw ApiException(res.statusCode, code);
   }
 
-  Future<Object?> _json(String method, String path, {Object? body, Map<String, String>? query}) async {
+  Future<Object?> _json(
+    String method,
+    String path, {
+    Object? body,
+    Map<String, String>? query,
+  }) async {
     final res = await _send(method, _uri(path, query), body: body);
     if (res.statusCode >= 400) await _fail(res);
     final text = await utf8.decodeStream(res);
     return text.isEmpty ? null : jsonDecode(text);
   }
 
-  Future<Map<String, dynamic>> me() async => await _json('GET', '/api/v1/me') as Map<String, dynamic>;
+  Future<Map<String, dynamic>> me() async =>
+      await _json('GET', '/api/v1/me') as Map<String, dynamic>;
 
   Future<void> logout() => _json('POST', '/api/v1/logout');
 
@@ -176,7 +218,8 @@ class ApiClient implements FeedApi {
 
   @override
   Future<List<Map<String, dynamic>>> podcasts() async =>
-      ((await _json('GET', '/api/v1/podcasts') as Map<String, dynamic>)['podcasts'] as List).cast<Map<String, dynamic>>();
+      ((await _json('GET', '/api/v1/podcasts') as Map<String, dynamic>)['podcasts'] as List)
+          .cast<Map<String, dynamic>>();
 
   /// Follows a feed; the answer says whether it is released (`approved`) or waits for a parent.
   @override
@@ -188,25 +231,41 @@ class ApiClient implements FeedApi {
 
   @override
   Future<List<Map<String, dynamic>>> episodes(int podcastId) async =>
-      ((await _json('GET', '/api/v1/podcasts/$podcastId/episodes') as Map<String, dynamic>)['episodes'] as List).cast<Map<String, dynamic>>();
+      ((await _json('GET', '/api/v1/podcasts/$podcastId/episodes')
+                  as Map<String, dynamic>)['episodes']
+              as List)
+          .cast<Map<String, dynamic>>();
 
-  Future<void> putEpisodeState(int episodeId, Duration position, {required bool finished}) =>
-      _json('PUT', '/api/v1/episodes/$episodeId/state', body: {'position_ms': position.inMilliseconds, 'finished': finished});
+  Future<void> putEpisodeState(int episodeId, Duration position, {required bool finished}) => _json(
+    'PUT',
+    '/api/v1/episodes/$episodeId/state',
+    body: {'position_ms': position.inMilliseconds, 'finished': finished},
+  );
 
   @override
   Future<List<Map<String, dynamic>>> stations() async =>
-      ((await _json('GET', '/api/v1/radio') as Map<String, dynamic>)['stations'] as List).cast<Map<String, dynamic>>();
+      ((await _json('GET', '/api/v1/radio') as Map<String, dynamic>)['stations'] as List)
+          .cast<Map<String, dynamic>>();
 
   @override
-  Future<Map<String, dynamic>> addStation(String name, String streamUrl, {String? homepage}) async =>
-      await _json('POST', '/api/v1/radio', body: {'name': name, 'stream_url': streamUrl, 'homepage': ?homepage}) as Map<String, dynamic>;
+  Future<Map<String, dynamic>> addStation(
+    String name,
+    String streamUrl, {
+    String? homepage,
+  }) async => await _json(
+    'POST',
+    '/api/v1/radio',
+    body: {'name': name, 'stream_url': streamUrl, 'homepage': ?homepage},
+  ) as Map<String, dynamic>;
 
   @override
   Future<void> removeStation(int id) => _json('DELETE', '/api/v1/radio/$id');
 
   /// The genres of the list, in the order the administrator gave them.
-  Future<List<String>> genres() async =>
-      [for (final g in (await _json('GET', '/api/v1/genres')) as List) (g as Map<String, dynamic>)['name'] as String];
+  Future<List<String>> genres() async => [
+    for (final g in (await _json('GET', '/api/v1/genres')) as List)
+      (g as Map<String, dynamic>)['name'] as String,
+  ];
 
   /// A short value that changes when the library does (a new CD, a release, a blurb).
   Future<String> libraryVersion() async =>
@@ -215,10 +274,15 @@ class ApiClient implements FeedApi {
   /// The version of the library, the fingerprint of this profile's playlists and of what it hid (`null` from an older server).
   Future<({String version, String? playlists, String? hidden})> libraryVersions() async {
     final j = await _json('GET', '/api/v1/library/version') as Map<String, dynamic>;
-    return (version: j['version'] as String, playlists: j['playlists'] as String?, hidden: j['hidden'] as String?);
+    return (
+      version: j['version'] as String,
+      playlists: j['playlists'] as String?,
+      hidden: j['hidden'] as String?,
+    );
   }
 
-  Future<Map<String, dynamic>> item(int id) async => await _json('GET', '/api/v1/items/$id') as Map<String, dynamic>;
+  Future<Map<String, dynamic>> item(int id) async =>
+      await _json('GET', '/api/v1/items/$id') as Map<String, dynamic>;
 
   /// The product picture of an item, or null if it has none (or may not be seen).
   Future<Uint8List?> cover(int itemId) async {
@@ -238,17 +302,26 @@ class ApiClient implements FeedApi {
   Future<List<Map<String, dynamic>>> continueListening() async =>
       ((await _json('GET', '/api/v1/continue')) as List).cast<Map<String, dynamic>>();
 
-  Future<void> putProgress({required int itemId, required int partId, required Duration position, bool finished = false}) =>
-      _json('PUT', '/api/v1/progress', body: {
-        'item_id': itemId,
-        'part_id': partId,
-        'position_ms': position.inMilliseconds,
-        'finished': finished,
-      });
+  Future<void> putProgress({
+    required int itemId,
+    required int partId,
+    required Duration position,
+    bool finished = false,
+  }) => _json(
+    'PUT',
+    '/api/v1/progress',
+    body: {
+      'item_id': itemId,
+      'part_id': partId,
+      'position_ms': position.inMilliseconds,
+      'finished': finished,
+    },
+  );
 
   /// Where an audio Bible opens the passage [text]. Empty if no item can.
   Future<List<Map<String, dynamic>>> resolvePassage(String text) async {
-    final j = await _json('GET', '/api/v1/bible/resolve', query: {'q': text}) as Map<String, dynamic>;
+    final j =
+        await _json('GET', '/api/v1/bible/resolve', query: {'q': text}) as Map<String, dynamic>;
     return (j['matches'] as List).cast<Map<String, dynamic>>();
   }
 
@@ -270,15 +343,24 @@ class ApiClient implements FeedApi {
   }
 
   /// Sends a request and returns the response without reading it.
-  Future<HttpClientResponse> sendRaw(String method, String path, {Object? body, Map<String, String>? query, Map<String, String>? headers}) =>
-      _send(method, _uri(path, query), body: body, headers: headers);
+  Future<HttpClientResponse> sendRaw(
+    String method,
+    String path, {
+    Object? body,
+    Map<String, String>? query,
+    Map<String, String>? headers,
+  }) => _send(method, _uri(path, query), body: body, headers: headers);
 
   /// A WebSocket to [path] (`ws`/`wss` instead of `http`/`https`) over the same HttpClient, so the
   /// pinned fingerprint or the CA mode applies to it too, with the bearer token as header.
   Future<WebSocket> openSocket(String path) {
     final u = _uri(path);
     final url = u.replace(scheme: u.scheme == 'https' ? 'wss' : 'ws').toString();
-    return WebSocket.connect(url, headers: {if (token != null) HttpHeaders.authorizationHeader: 'Bearer $token'}, customClient: _http);
+    return WebSocket.connect(
+      url,
+      headers: {if (token != null) HttpHeaders.authorizationHeader: 'Bearer $token'},
+      customClient: _http,
+    );
   }
 
   /// The URL [openSocket] uses, for display and tests.

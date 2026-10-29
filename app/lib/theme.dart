@@ -25,13 +25,7 @@ class Palette {
 
 /// Serif fonts for headings. Nothing is downloaded; if the first font is missing
 /// on the device, Flutter falls back to the next one.
-const serifFallback = [
-  'Georgia',
-  'Source Serif 4',
-  'Noto Serif',
-  'DejaVu Serif',
-  'serif',
-];
+const serifFallback = ['Georgia', 'Source Serif 4', 'Noto Serif', 'DejaVu Serif', 'serif'];
 
 class PsalmTheme {
   static final dark = _build(
@@ -70,10 +64,7 @@ class PsalmTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: scheme.surface,
     );
-    final text = base.textTheme.apply(
-      bodyColor: scheme.onSurface,
-      displayColor: scheme.onSurface,
-    );
+    final text = base.textTheme.apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface);
     TextStyle? serif(TextStyle? s) =>
         s?.copyWith(fontFamilyFallback: serifFallback, fontWeight: FontWeight.w600);
 
@@ -86,9 +77,7 @@ class PsalmTheme {
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: scheme.surfaceContainer,
         indicatorColor: scheme.secondary.withValues(alpha: 0.35),
-        labelTextStyle: WidgetStatePropertyAll(
-          TextStyle(fontSize: 12, color: scheme.onSurface),
-        ),
+        labelTextStyle: WidgetStatePropertyAll(TextStyle(fontSize: 12, color: scheme.onSurface)),
       ),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: scheme.surfaceContainer,

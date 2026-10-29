@@ -17,7 +17,10 @@ String? readQrCode(Uint8List pictureBytes) {
   final pixels = rgba.getBytes(order: img.ChannelOrder.abgr).buffer.asInt32List();
   final source = RGBLuminanceSource(rgba.width, rgba.height, pixels);
   final hints = DecodeHints()..put(DecodeHintType.tryHarder);
-  for (final bitmap in [BinaryBitmap(HybridBinarizer(source)), BinaryBitmap(GlobalHistogramBinarizer(source))]) {
+  for (final bitmap in [
+    BinaryBitmap(HybridBinarizer(source)),
+    BinaryBitmap(GlobalHistogramBinarizer(source)),
+  ]) {
     try {
       return QRCodeReader().decode(bitmap, hints: hints).text;
     } on ReaderException {

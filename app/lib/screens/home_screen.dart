@@ -37,7 +37,9 @@ class HomeScreen extends StatelessWidget {
           floating: true,
           backgroundColor: Theme.of(context).colorScheme.surface,
           title: Text(
-            p.userName == null || p.userName!.trim().isEmpty ? _greeting(l) : l.greetingNamed(_greeting(l), p.userName!),
+            p.userName == null || p.userName!.trim().isEmpty
+                ? _greeting(l)
+                : l.greetingNamed(_greeting(l), p.userName!),
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           actions: [RefreshButton()],
@@ -68,20 +70,23 @@ class HomeScreen extends StatelessWidget {
 
 /// A heading and a row of covers that scrolls sideways.
 List<Widget> _strip(String title, List<Book> books, {String? badge}) => [
-      SliverToBoxAdapter(child: SectionHeader(title)),
-      SliverToBoxAdapter(
-        child: SizedBox(
-          height: 230,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            itemCount: books.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 4),
-            itemBuilder: (_, i) => SizedBox(width: 156, child: BookCard(book: books[i], badge: badge)),
-          ),
+  SliverToBoxAdapter(child: SectionHeader(title)),
+  SliverToBoxAdapter(
+    child: SizedBox(
+      height: 230,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        itemCount: books.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 4),
+        itemBuilder: (_, i) => SizedBox(
+          width: 156,
+          child: BookCard(book: books[i], badge: badge),
         ),
       ),
-    ];
+    ),
+  ),
+];
 
 /// Tile with a small cover, like the quick-access shortcuts on Spotify.
 class _Shortcut extends StatelessWidget {
@@ -107,9 +112,7 @@ class _Shortcut extends StatelessWidget {
                 book.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
+                style: Theme.of(context).textTheme.titleSmall
                     ?.copyWith(fontWeight: FontWeight.w600),
               ),
             ),
@@ -153,13 +156,11 @@ class _Resume extends StatelessWidget {
                     children: [
                       Text(
                         book.title,
-                        style: text.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                        style: text.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       Text(
                         '${book.author} · ${l.discTrack(track.disc, track.title)}',
-                        style: text.bodySmall
-                            ?.copyWith(color: cs.onSurfaceVariant),
+                        style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                       ),
                       const SizedBox(height: 10),
                       ClipRRect(

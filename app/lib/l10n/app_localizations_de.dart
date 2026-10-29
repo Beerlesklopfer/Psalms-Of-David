@@ -1388,4 +1388,10 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get audiobooksOfNobody => 'Weitere Hörbücher';
+
+  @override
+  String get groupExpand => 'Aufklappen';
+
+  @override
+  String get groupCollapse => 'Zuklappen';
 }

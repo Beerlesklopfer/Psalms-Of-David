@@ -58,7 +58,12 @@ class _FolderSource extends MediaSource {
   }
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {}
+  Future<void> saveProgress(
+    Book book,
+    Track track,
+    Duration position, {
+    required bool finished,
+  }) async {}
 
   @override
   Future<PassageHit?> resolvePassage(String text) async => null;
@@ -70,7 +75,8 @@ Book _book() => Book(
   author: 'Ken Follett',
   color: const Color(0xFF000000),
   tracks: [
-    for (var i = 1; i <= 4; i++) Track(disc: 1, number: i, title: 'T$i', length: const Duration(minutes: 5), partId: i),
+    for (var i = 1; i <= 4; i++)
+      Track(disc: 1, number: i, title: 'T$i', length: const Duration(minutes: 5), partId: i),
   ],
 );
 
@@ -152,7 +158,9 @@ void main() {
     expect(formatBytes('en', 250000000), '250 MB');
   });
 
-  testWidgets('About shows what the downloads take and removes them all after asking', (tester) async {
+  testWidgets('About shows what the downloads take and removes them all after asking', (
+    tester,
+  ) async {
     final source = _FolderSource(dir);
     final b = _book();
     final p = PlayerController([b], source: source);

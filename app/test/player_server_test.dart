@@ -24,7 +24,12 @@ class FakeSource extends MediaSource {
   }
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {
+  Future<void> saveProgress(
+    Book book,
+    Track track,
+    Duration position, {
+    required bool finished,
+  }) async {
     progress.add('${book.id}/${track.partId}@${position.inSeconds}${finished ? ' finished' : ''}');
   }
 
@@ -39,7 +44,13 @@ Book _book(String id, int firstPart) => Book(
   color: const Color(0xFF000000),
   tracks: [
     for (var i = 0; i < 3; i++)
-      Track(disc: 1, number: i + 1, title: 'T$i', length: const Duration(seconds: 20), partId: firstPart + i),
+      Track(
+        disc: 1,
+        number: i + 1,
+        title: 'T$i',
+        length: const Duration(seconds: 20),
+        partId: firstPart + i,
+      ),
   ],
 );
 
@@ -87,7 +98,11 @@ void main() {
     p.toggle();
     await pumpEventQueue();
     p.next();
-    expect(source.progress.last.startsWith('1/10@'), isTrue, reason: 'the track that was left is reported');
+    expect(
+      source.progress.last.startsWith('1/10@'),
+      isTrue,
+      reason: 'the track that was left is reported',
+    );
   });
 
   test('a failing fetch pauses and shows the error', () async {
@@ -118,7 +133,10 @@ void main() {
   });
 
   test('attaching the server replaces the demo library and restores the resume point', () {
-    final loaded = LoadedLibrary([_book('7', 70)], {'7': (track: 2, position: const Duration(seconds: 5))});
+    final loaded = LoadedLibrary(
+      [_book('7', 70)],
+      {'7': (track: 2, position: const Duration(seconds: 5))},
+    );
     p.attachServer(source, loaded);
     expect(p.library.single.id, '7');
     expect(p.book!.id, '7');
@@ -134,7 +152,12 @@ class _Failing extends MediaSource {
   @override
   Future<String> fetchPart(Track track) => Future.error(Exception('network'));
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {}
+  Future<void> saveProgress(
+    Book book,
+    Track track,
+    Duration position, {
+    required bool finished,
+  }) async {}
   @override
   Future<PassageHit?> resolvePassage(String text) async => null;
 }

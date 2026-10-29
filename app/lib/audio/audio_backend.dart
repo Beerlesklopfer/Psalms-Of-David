@@ -107,7 +107,14 @@ const int kBufferDefaultSeconds = 2;
 
 /// What a station says about itself when the connection is made (the `icy-*` headers and the content type).
 class StreamDetails {
-  const StreamDetails({this.name, this.genre, this.description, this.website, this.bitrateKbps, this.format});
+  const StreamDetails({
+    this.name,
+    this.genre,
+    this.description,
+    this.website,
+    this.bitrateKbps,
+    this.format,
+  });
 
   final String? name;
   final String? genre;
@@ -118,7 +125,9 @@ class StreamDetails {
   /// The short name of the audio format, "MP3".
   final String? format;
 
-  bool get isEmpty => [name, genre, description, website, format].every((e) => e == null || e.isEmpty) && bitrateKbps == null;
+  bool get isEmpty =>
+      [name, genre, description, website, format].every((e) => e == null || e.isEmpty) &&
+      bitrateKbps == null;
 
   @override
   bool operator ==(Object other) =>

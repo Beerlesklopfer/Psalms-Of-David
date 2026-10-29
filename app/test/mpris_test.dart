@@ -13,7 +13,8 @@ Book _book() => Book(
   author: 'Ken Follett',
   color: const Color(0xFF000000),
   tracks: [
-    for (var i = 1; i <= 3; i++) Track(disc: 1, number: i, title: 'Teil $i', length: const Duration(minutes: 10)),
+    for (var i = 1; i <= 3; i++)
+      Track(disc: 1, number: i, title: 'Teil $i', length: const Duration(minutes: 10)),
   ],
 );
 
@@ -35,7 +36,11 @@ void main() {
     expect(playerProperties(p)['PlaybackStatus'], DBusString('Playing'));
     p.next();
     p.next();
-    expect(playerProperties(p)['CanGoNext'], DBusBoolean(false), reason: 'the last track has no next');
+    expect(
+      playerProperties(p)['CanGoNext'],
+      DBusBoolean(false),
+      reason: 'the last track has no next',
+    );
   });
 
   test('the media keys play, pause, skip and seek', () {
@@ -54,7 +59,9 @@ void main() {
     performPlayerMethod(p, 'Seek', [DBusInt64(30 * 1000 * 1000)]);
     expect(p.position, const Duration(seconds: 30));
     // A position for the track that plays is taken; for another track it is not.
-    final id = playerProperties(p)['Metadata']!.asStringVariantDict()['mpris:trackid']!.asObjectPath();
+    final id = playerProperties(
+      p,
+    )['Metadata']!.asStringVariantDict()['mpris:trackid']!.asObjectPath();
     performPlayerMethod(p, 'SetPosition', [id, DBusInt64(90 * 1000 * 1000)]);
     expect(p.position, const Duration(seconds: 90));
     performPlayerMethod(p, 'SetPosition', [
@@ -63,7 +70,11 @@ void main() {
     ]);
     expect(p.position, const Duration(seconds: 90));
     performPlayerMethod(p, 'Previous', const []);
-    expect(p.trackIndex, 1, reason: 'after the first seconds, Previous goes to the start of the track');
+    expect(
+      p.trackIndex,
+      1,
+      reason: 'after the first seconds, Previous goes to the start of the track',
+    );
     expect(p.position, Duration.zero);
     expect(performPlayerMethod(p, 'Unknown', const []), isFalse);
   });
@@ -80,29 +91,48 @@ void main() {
 }
 
 void busTest() {
-  test('on the real session bus a media key reaches the player and a change is announced', () async {
-    final p = PlayerController([_book()]);
-    final service = await MprisService.start(p);
-    if (service == null) {
-      markTestSkipped('no session bus');
-      return;
-    }
-    final client = DBusClient.session();
-    try {
-      final remote = DBusRemoteObject(client, name: mprisName, path: DBusObjectPath('/org/mpris/MediaPlayer2'));
-      expect((await remote.getProperty('org.mpris.MediaPlayer2', 'Identity')).asString(), 'Psalm');
-      expect((await remote.getProperty('org.mpris.MediaPlayer2.Player', 'PlaybackStatus')).asString(), 'Paused');
-      // What the media key of the keyboard (or `playerctl play-pause`) sends.
-      await remote.callMethod('org.mpris.MediaPlayer2.Player', 'PlayPause', []);
-      expect(p.playing, isTrue);
-      expect((await remote.getProperty('org.mpris.MediaPlayer2.Player', 'PlaybackStatus')).asString(), 'Playing');
-      await remote.callMethod('org.mpris.MediaPlayer2.Player', 'Next', []);
-      expect(p.trackIndex, 1);
-      final meta = (await remote.getProperty('org.mpris.MediaPlayer2.Player', 'Metadata')).asStringVariantDict();
-      expect(meta['xesam:title']!.asString(), 'Teil 2');
-    } finally {
-      await client.close();
-      await service.stop();
-    }
-  });
+  test(
+    'on the real session bus a media key reaches the player and a change is announced',
+    () async {
+      final p = PlayerController([_book()]);
+      final service = await MprisService.start(p);
+      if (service == null) {
+        markTestSkipped('no session bus');
+        return;
+      }
+      final client = DBusClient.session();
+      try {
+        final remote = DBusRemoteObject(
+          client,
+          name: mprisName,
+          path: DBusObjectPath('/org/mpris/MediaPlayer2'),
+        );
+        expect(
+          (await remote.getProperty('org.mpris.MediaPlayer2', 'Identity')).asString(),
+          'Psalm',
+        );
+        expect(
+          (await remote.getProperty('org.mpris.MediaPlayer2.Player', 'PlaybackStatus')).asString(),
+          'Paused',
+        );
+        // What the media key of the keyboard (or `playerctl play-pause`) sends.
+        await remote.callMethod('org.mpris.MediaPlayer2.Player', 'PlayPause', []);
+        expect(p.playing, isTrue);
+        expect(
+          (await remote.getProperty('org.mpris.MediaPlayer2.Player', 'PlaybackStatus')).asString(),
+          'Playing',
+        );
+        await remote.callMethod('org.mpris.MediaPlayer2.Player', 'Next', []);
+        expect(p.trackIndex, 1);
+        final meta = (await remote.getProperty(
+          'org.mpris.MediaPlayer2.Player',
+          'Metadata',
+        )).asStringVariantDict();
+        expect(meta['xesam:title']!.asString(), 'Teil 2');
+      } finally {
+        await client.close();
+        await service.stop();
+      }
+    },
+  );
 }

@@ -2389,6 +2389,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Other audiobooks'**
   String get audiobooksOfNobody;
+
+  /// No description provided for @groupExpand.
+  ///
+  /// In en, this message translates to:
+  /// **'Expand'**
+  String get groupExpand;
+
+  /// No description provided for @groupCollapse.
+  ///
+  /// In en, this message translates to:
+  /// **'Collapse'**
+  String get groupCollapse;
 }
 
 class _AppLocalizationsDelegate

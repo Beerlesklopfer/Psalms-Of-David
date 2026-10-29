@@ -27,7 +27,9 @@ Widget _app(Book book) => PlayerScope(
 
 void main() {
   testWidgets('the book screen shows the blurb', (tester) async {
-    await tester.pumpWidget(_app(_book(blurb: 'Berlin, 1961: zwei Familien, zwei Seiten einer Mauer.')));
+    await tester.pumpWidget(
+      _app(_book(blurb: 'Berlin, 1961: zwei Familien, zwei Seiten einer Mauer.')),
+    );
     expect(find.textContaining('zwei Seiten einer Mauer'), findsOneWidget);
   });
 
