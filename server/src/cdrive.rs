@@ -1476,8 +1476,15 @@ async fn run_rip(
         (result, skipped, concealed)
     });
     let mut done = plan.done_before;
+    // The row of the job says "alive" by its time of change; the first pass can take longer than `cdimport::STALE`
+    // without a track being verified, so every event renews it, at most once a minute.
+    let mut last_beat = std::time::Instant::now();
     while let Some(event) = rx.recv().await {
         cd.drives.live_update(job_id, |l| l.apply(&event));
+        if last_beat.elapsed() >= std::time::Duration::from_secs(60) {
+            last_beat = std::time::Instant::now();
+            let _ = store.update_cd_job(user_id, job_id, &JobPatch::default()).await;
+        }
         match event {
             RipEvent::Encoded { track, sha1, size } => {
                 let file = format!("{track:02}.{}", set.extension);
