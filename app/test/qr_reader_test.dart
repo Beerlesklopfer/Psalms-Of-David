@@ -11,7 +11,8 @@ import 'package:psalm/screens/connect_screen.dart';
 import 'package:psalm/server/qr_reader.dart';
 import 'package:zxing2/qrcode.dart';
 
-const _address = 'david://pair?v=1&id=1ba36f04-1652-4962-8596-4eb7c0d23cea&addr=192.168.24.127%3A8484&fp=e74d9b5ec1ff8e0a&code=0123456789abcdef0123456789abcdef';
+const _address =
+    'david://pair?v=1&id=1ba36f04-1652-4962-8596-4eb7c0d23cea&addr=192.168.24.127%3A8484&fp=e74d9b5ec1ff8e0a&code=0123456789abcdef0123456789abcdef';
 
 /// A picture of the QR code of [text]: [scale] pixels per module, a quiet zone around it,
 /// on a [canvas] of white that is [canvas] pixels wide (a screenshot with the code somewhere in it).
@@ -26,10 +27,14 @@ Uint8List _qrPicture(String text, {int scale = 6, int canvas = 0}) {
   for (var y = 0; y < m.height; y++) {
     for (var x = 0; x < m.width; x++) {
       if (m.get(x, y) == 1) {
-        img.fillRect(image,
-            x1: offset + (x + 4) * scale, y1: offset + (y + 4) * scale,
-            x2: offset + (x + 5) * scale - 1, y2: offset + (y + 5) * scale - 1,
-            color: img.ColorRgb8(0, 0, 0));
+        img.fillRect(
+          image,
+          x1: offset + (x + 4) * scale,
+          y1: offset + (y + 4) * scale,
+          x2: offset + (x + 5) * scale - 1,
+          y2: offset + (y + 5) * scale - 1,
+          color: img.ColorRgb8(0, 0, 0),
+        );
       }
     }
   }
@@ -56,27 +61,33 @@ void main() {
 
   // The picture that the real server's pairing page gives (see the comment of server_e2e_test).
   final real = Platform.environment['PSALM_TEST_QR_PICTURE'];
-  test('the QR code of a real pairing page is read', skip: real == null ? 'set PSALM_TEST_QR_PICTURE to a screenshot of the pairing page' : null, () {
-    final text = readQrCode(File(real!).readAsBytesSync());
-    expect(text, isNotNull);
-    expect(text, startsWith('david://pair?v=1'));
-  });
+  test(
+    'the QR code of a real pairing page is read',
+    skip: real == null ? 'set PSALM_TEST_QR_PICTURE to a screenshot of the pairing page' : null,
+    () {
+      final text = readQrCode(File(real!).readAsBytesSync());
+      expect(text, isNotNull);
+      expect(text, startsWith('david://pair?v=1'));
+    },
+  );
 
   Widget screen(Future<Uint8List?> Function(String) pick) => MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('en'),
-        home: ConnectScreen(deviceName: 'Laptop', pickPicture: pick, onPair: (a, n) async => null, onDemo: () {}),
-      );
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    locale: const Locale('en'),
+    home: ConnectScreen(deviceName: 'Laptop', pickPicture: pick, onPair: (a, n) async => null, onDemo: () {}),
+  );
 
   testWidgets('the QR button reads the chosen picture into the address field', (tester) async {
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async => null);
     addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
     String? title;
-    await tester.pumpWidget(screen((t) async {
-      title = t;
-      return _qrPicture(_address);
-    }));
+    await tester.pumpWidget(
+      screen((t) async {
+        title = t;
+        return _qrPicture(_address);
+      }),
+    );
     await tester.tap(find.byIcon(Icons.qr_code_scanner));
     await tester.pumpAndSettle();
     expect(title, 'Choose a picture of the QR code');

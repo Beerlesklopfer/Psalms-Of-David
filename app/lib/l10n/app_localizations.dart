@@ -482,6 +482,162 @@ abstract class AppLocalizations {
   /// **'Forgets the pairing with the server on this device. To connect again you need a new pairing code.'**
   String get settingsDisconnectHint;
 
+  /// No description provided for @settingsPlayback.
+  ///
+  /// In en, this message translates to:
+  /// **'Playback'**
+  String get settingsPlayback;
+
+  /// No description provided for @settingsBuffer.
+  ///
+  /// In en, this message translates to:
+  /// **'Audio buffer'**
+  String get settingsBuffer;
+
+  /// No description provided for @settingsBufferSeconds.
+  ///
+  /// In en, this message translates to:
+  /// **'{seconds} s'**
+  String settingsBufferSeconds(int seconds);
+
+  /// No description provided for @settingsBufferHint.
+  ///
+  /// In en, this message translates to:
+  /// **'How much audio is kept ready before it is played. A larger buffer bridges a slow network or disk, a smaller one lets a change of track be heard sooner. It applies from the next track.'**
+  String get settingsBufferHint;
+
+  /// No description provided for @settingsDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Devices'**
+  String get settingsDevices;
+
+  /// No description provided for @settingsDevicesCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{used} of {max} devices connected'**
+  String settingsDevicesCount(int used, int max);
+
+  /// No description provided for @settingsDevicesNoLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'{used} devices connected'**
+  String settingsDevicesNoLimit(int used);
+
+  /// No description provided for @settingsConnectDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect another device'**
+  String get settingsConnectDevice;
+
+  /// No description provided for @settingsConnectDeviceHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Shows a QR code that the other device scans. The code works once and only for a short time.'**
+  String get settingsConnectDeviceHint;
+
+  /// No description provided for @pairQrScan.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan this code with Psalm on the other device.'**
+  String get pairQrScan;
+
+  /// No description provided for @pairQrExpires.
+  ///
+  /// In en, this message translates to:
+  /// **'Valid for {time}'**
+  String pairQrExpires(String time);
+
+  /// No description provided for @pairQrExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'The code has expired.'**
+  String get pairQrExpired;
+
+  /// No description provided for @pairQrNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New code'**
+  String get pairQrNew;
+
+  /// No description provided for @pairQrFull.
+  ///
+  /// In en, this message translates to:
+  /// **'All devices are connected. Remove one in the administration of the server to connect another.'**
+  String get pairQrFull;
+
+  /// No description provided for @pairQrError.
+  ///
+  /// In en, this message translates to:
+  /// **'The code could not be made. Try again.'**
+  String get pairQrError;
+
+  /// No description provided for @pairQrClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get pairQrClose;
+
+  /// No description provided for @pairQrCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy the address'**
+  String get pairQrCopy;
+
+  /// No description provided for @pairQrCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Address copied. Paste it into the connect screen of the other device.'**
+  String get pairQrCopied;
+
+  /// No description provided for @streamArtist.
+  ///
+  /// In en, this message translates to:
+  /// **'Artist'**
+  String get streamArtist;
+
+  /// No description provided for @streamTrack.
+  ///
+  /// In en, this message translates to:
+  /// **'Track'**
+  String get streamTrack;
+
+  /// No description provided for @streamStation.
+  ///
+  /// In en, this message translates to:
+  /// **'Station'**
+  String get streamStation;
+
+  /// No description provided for @streamGenre.
+  ///
+  /// In en, this message translates to:
+  /// **'Genre'**
+  String get streamGenre;
+
+  /// No description provided for @streamDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get streamDescription;
+
+  /// No description provided for @streamQuality.
+  ///
+  /// In en, this message translates to:
+  /// **'Quality'**
+  String get streamQuality;
+
+  /// No description provided for @streamWebsite.
+  ///
+  /// In en, this message translates to:
+  /// **'Website'**
+  String get streamWebsite;
+
+  /// No description provided for @streamWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the information of the station …'**
+  String get streamWaiting;
+
   /// No description provided for @cancel.
   ///
   /// In en, this message translates to:
@@ -799,6 +955,1440 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Recently listened'**
   String get sectionRecent;
+
+  /// No description provided for @genreOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get genreOther;
+
+  /// No description provided for @sectionAlbums.
+  ///
+  /// In en, this message translates to:
+  /// **'Albums'**
+  String get sectionAlbums;
+
+  /// No description provided for @sectionBooks.
+  ///
+  /// In en, this message translates to:
+  /// **'Books'**
+  String get sectionBooks;
+
+  /// No description provided for @sectionNarrators.
+  ///
+  /// In en, this message translates to:
+  /// **'Narrators'**
+  String get sectionNarrators;
+
+  /// No description provided for @sectionAlbumsAndBooks.
+  ///
+  /// In en, this message translates to:
+  /// **'Albums and books'**
+  String get sectionAlbumsAndBooks;
+
+  /// No description provided for @navPodcasts.
+  ///
+  /// In en, this message translates to:
+  /// **'Podcasts'**
+  String get navPodcasts;
+
+  /// No description provided for @navRadio.
+  ///
+  /// In en, this message translates to:
+  /// **'Radio'**
+  String get navRadio;
+
+  /// No description provided for @podcastAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow a podcast'**
+  String get podcastAdd;
+
+  /// No description provided for @podcastAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Address of the feed or the web page'**
+  String get podcastAddress;
+
+  /// No description provided for @podcastFollow.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow'**
+  String get podcastFollow;
+
+  /// No description provided for @podcastFollowed.
+  ///
+  /// In en, this message translates to:
+  /// **'Now following “{title}”'**
+  String podcastFollowed(String title);
+
+  /// No description provided for @askToRelease.
+  ///
+  /// In en, this message translates to:
+  /// **'Please ask to have it released. It waits until a parent allows it.'**
+  String get askToRelease;
+
+  /// No description provided for @podcastInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'That address gives no podcast feed.'**
+  String get podcastInvalid;
+
+  /// No description provided for @notAllowed.
+  ///
+  /// In en, this message translates to:
+  /// **'You are not allowed to do that.'**
+  String get notAllowed;
+
+  /// No description provided for @serverUnreachableShort.
+  ///
+  /// In en, this message translates to:
+  /// **'The server cannot be reached.'**
+  String get serverUnreachableShort;
+
+  /// No description provided for @needsServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Podcasts and radio need a connection to your server.'**
+  String get needsServer;
+
+  /// No description provided for @noPodcastsYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No podcasts yet. Tap + to follow one.'**
+  String get noPodcastsYet;
+
+  /// No description provided for @waitingForRelease.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for a release. Please ask to have it released.'**
+  String get waitingForRelease;
+
+  /// No description provided for @feedProblem.
+  ///
+  /// In en, this message translates to:
+  /// **'The feed could not be read the last time.'**
+  String get feedProblem;
+
+  /// No description provided for @podcastUnfollow.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop following'**
+  String get podcastUnfollow;
+
+  /// No description provided for @noEpisodesYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No episodes yet.'**
+  String get noEpisodesYet;
+
+  /// No description provided for @episodeAt.
+  ///
+  /// In en, this message translates to:
+  /// **'stopped at {time}'**
+  String episodeAt(String time);
+
+  /// No description provided for @stationAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a station'**
+  String get stationAdd;
+
+  /// No description provided for @stationName.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get stationName;
+
+  /// No description provided for @stationAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Address of the stream'**
+  String get stationAddress;
+
+  /// No description provided for @stationSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get stationSave;
+
+  /// No description provided for @stationAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'“{name}” added'**
+  String stationAdded(String name);
+
+  /// No description provided for @stationInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'A station needs a name and the address of its stream (http or https).'**
+  String get stationInvalid;
+
+  /// No description provided for @noStationsYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No stations yet. Tap + to add one.'**
+  String get noStationsYet;
+
+  /// No description provided for @stationRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from the favourites'**
+  String get stationRemove;
+
+  /// No description provided for @radioLive.
+  ///
+  /// In en, this message translates to:
+  /// **'Live'**
+  String get radioLive;
+
+  /// No description provided for @cdImportButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Import CD'**
+  String get cdImportButton;
+
+  /// No description provided for @cdImportTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Import the CD in the drive into the library'**
+  String get cdImportTooltip;
+
+  /// No description provided for @cdIdentifying.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading the disc…'**
+  String get cdIdentifying;
+
+  /// No description provided for @cdFound.
+  ///
+  /// In en, this message translates to:
+  /// **'This disc was found online. Check the details.'**
+  String get cdFound;
+
+  /// No description provided for @cdNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'This disc was not found online. Please enter the details.'**
+  String get cdNotFound;
+
+  /// No description provided for @cdCandidate.
+  ///
+  /// In en, this message translates to:
+  /// **'Match'**
+  String get cdCandidate;
+
+  /// No description provided for @cdSearchLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Not the right match? Search MusicBrainz (title, author)'**
+  String get cdSearchLabel;
+
+  /// No description provided for @cdSearchGo.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get cdSearchGo;
+
+  /// No description provided for @cdSearchNothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing found.'**
+  String get cdSearchNothing;
+
+  /// No description provided for @cdAuthor.
+  ///
+  /// In en, this message translates to:
+  /// **'Author'**
+  String get cdAuthor;
+
+  /// No description provided for @cdTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get cdTitle;
+
+  /// No description provided for @cdDiscNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'CD number'**
+  String get cdDiscNumber;
+
+  /// No description provided for @cdDiscsTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Number of CDs'**
+  String get cdDiscsTotal;
+
+  /// No description provided for @cdKind.
+  ///
+  /// In en, this message translates to:
+  /// **'Type'**
+  String get cdKind;
+
+  /// No description provided for @cdKindAudiobook.
+  ///
+  /// In en, this message translates to:
+  /// **'Audiobook'**
+  String get cdKindAudiobook;
+
+  /// No description provided for @cdKindMusic.
+  ///
+  /// In en, this message translates to:
+  /// **'Music'**
+  String get cdKindMusic;
+
+  /// No description provided for @cdEjectAfter.
+  ///
+  /// In en, this message translates to:
+  /// **'Eject the CD afterwards'**
+  String get cdEjectAfter;
+
+  /// No description provided for @cdTracks.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} tracks'**
+  String cdTracks(int count);
+
+  /// No description provided for @cdSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Import'**
+  String get cdSave;
+
+  /// No description provided for @cdClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get cdClose;
+
+  /// No description provided for @cdStopImport.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop import'**
+  String get cdStopImport;
+
+  /// No description provided for @cdReading.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading track {track} of {total}'**
+  String cdReading(int track, int total);
+
+  /// No description provided for @cdDone.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD is now in the library.'**
+  String get cdDone;
+
+  /// No description provided for @cdEjected.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD was ejected.'**
+  String get cdEjected;
+
+  /// No description provided for @cdCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'The import was cancelled. Nothing was added to the library.'**
+  String get cdCancelled;
+
+  /// No description provided for @cdErrNoDisc.
+  ///
+  /// In en, this message translates to:
+  /// **'There is no readable audio CD in the drive.'**
+  String get cdErrNoDisc;
+
+  /// No description provided for @cdErrUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'The server asks for a format or tag version that this app cannot create yet.'**
+  String get cdErrUnsupported;
+
+  /// No description provided for @cdErrRead.
+  ///
+  /// In en, this message translates to:
+  /// **'The disc could not be read reliably. It may be scratched or dirty.'**
+  String get cdErrRead;
+
+  /// No description provided for @cdErrDriveGone.
+  ///
+  /// In en, this message translates to:
+  /// **'The drive of the server stopped answering.'**
+  String get cdErrDriveGone;
+
+  /// No description provided for @cdErrEncode.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not convert the audio.'**
+  String get cdErrEncode;
+
+  /// No description provided for @cdErrForbidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Your account may not add CDs to the library.'**
+  String get cdErrForbidden;
+
+  /// No description provided for @cdErrDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Details'**
+  String get cdErrDetails;
+
+  /// No description provided for @cdErrVerify.
+  ///
+  /// In en, this message translates to:
+  /// **'Two readings of a track never gave the same result. The disc may be scratched or dirty.'**
+  String get cdErrVerify;
+
+  /// No description provided for @cdErrCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'The import was cancelled. Nothing was added to the library.'**
+  String get cdErrCancelled;
+
+  /// No description provided for @cdErrIo.
+  ///
+  /// In en, this message translates to:
+  /// **'A file could not be written on the server.'**
+  String get cdErrIo;
+
+  /// No description provided for @cdErrNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'The server does not answer.'**
+  String get cdErrNetwork;
+
+  /// No description provided for @cdErrCertificate.
+  ///
+  /// In en, this message translates to:
+  /// **'The server\'s certificate is not the one this device was paired with.'**
+  String get cdErrCertificate;
+
+  /// No description provided for @cdErrUnauthorized.
+  ///
+  /// In en, this message translates to:
+  /// **'This device is no longer signed in to the server.'**
+  String get cdErrUnauthorized;
+
+  /// No description provided for @cdErrInvalidToc.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not use the table of contents of this disc.'**
+  String get cdErrInvalidToc;
+
+  /// No description provided for @cdErrInvalidQuery.
+  ///
+  /// In en, this message translates to:
+  /// **'The search needs at least two letters.'**
+  String get cdErrInvalidQuery;
+
+  /// No description provided for @cdErrNoContact.
+  ///
+  /// In en, this message translates to:
+  /// **'The administrator has not set a contact address for MusicBrainz yet, so discs cannot be looked up. You can enter the details by hand.'**
+  String get cdErrNoContact;
+
+  /// No description provided for @cdErrLookupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The online lookup of the disc did not work. You can enter the details by hand.'**
+  String get cdErrLookupFailed;
+
+  /// No description provided for @cdErrNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'The server does not know this item.'**
+  String get cdErrNotFound;
+
+  /// No description provided for @cdErrInvalidRelease.
+  ///
+  /// In en, this message translates to:
+  /// **'The server did not accept the release.'**
+  String get cdErrInvalidRelease;
+
+  /// No description provided for @cdErrTrackNumbers.
+  ///
+  /// In en, this message translates to:
+  /// **'The track numbers are not complete or appear twice.'**
+  String get cdErrTrackNumbers;
+
+  /// No description provided for @cdErrInvalidMeta.
+  ///
+  /// In en, this message translates to:
+  /// **'The server did not accept the author, title or numbers.'**
+  String get cdErrInvalidMeta;
+
+  /// No description provided for @cdErrUnreadableFile.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not read one of the files.'**
+  String get cdErrUnreadableFile;
+
+  /// No description provided for @cdErrFormatMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'A file does not have the format that the server\'s settings ask for.'**
+  String get cdErrFormatMismatch;
+
+  /// No description provided for @cdErrBadExtension.
+  ///
+  /// In en, this message translates to:
+  /// **'A file has an ending that the server does not accept.'**
+  String get cdErrBadExtension;
+
+  /// No description provided for @cdErrUnknownFile.
+  ///
+  /// In en, this message translates to:
+  /// **'The server received a file it did not expect.'**
+  String get cdErrUnknownFile;
+
+  /// No description provided for @cdErrMissingFile.
+  ///
+  /// In en, this message translates to:
+  /// **'A file is missing in what was sent to the server.'**
+  String get cdErrMissingFile;
+
+  /// No description provided for @cdErrBadCover.
+  ///
+  /// In en, this message translates to:
+  /// **'The cover picture was not accepted.'**
+  String get cdErrBadCover;
+
+  /// No description provided for @cdErrBadTags.
+  ///
+  /// In en, this message translates to:
+  /// **'The tags of a file could not be written by the server.'**
+  String get cdErrBadTags;
+
+  /// No description provided for @cdErrNoImportFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'The server has no import folder for this kind of media.'**
+  String get cdErrNoImportFolder;
+
+  /// No description provided for @cdErrNoSpace.
+  ///
+  /// In en, this message translates to:
+  /// **'There is not enough room on the server.'**
+  String get cdErrNoSpace;
+
+  /// No description provided for @cdErrDiscExists.
+  ///
+  /// In en, this message translates to:
+  /// **'This CD is already in the library; the server does not overwrite it.'**
+  String get cdErrDiscExists;
+
+  /// No description provided for @cdErrTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'The upload is larger than the server accepts.'**
+  String get cdErrTooLarge;
+
+  /// No description provided for @cdErrBadRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'The server did not understand the request.'**
+  String get cdErrBadRequest;
+
+  /// No description provided for @cdErrInvalidJob.
+  ///
+  /// In en, this message translates to:
+  /// **'The server did not accept the import job.'**
+  String get cdErrInvalidJob;
+
+  /// No description provided for @cdErrJobClosed.
+  ///
+  /// In en, this message translates to:
+  /// **'The import job is already finished.'**
+  String get cdErrJobClosed;
+
+  /// No description provided for @cdErrImportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not add the CD to the library.'**
+  String get cdErrImportFailed;
+
+  /// No description provided for @cdErrInterrupted.
+  ///
+  /// In en, this message translates to:
+  /// **'The import was interrupted, for example by a restart of the server.'**
+  String get cdErrInterrupted;
+
+  /// No description provided for @cdErrStale.
+  ///
+  /// In en, this message translates to:
+  /// **'The import stopped sending news and was given up.'**
+  String get cdErrStale;
+
+  /// No description provided for @cdErrClient.
+  ///
+  /// In en, this message translates to:
+  /// **'The device that started the import gave it up.'**
+  String get cdErrClient;
+
+  /// No description provided for @cdErrUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD import failed ({code}).'**
+  String cdErrUnknown(String code);
+
+  /// No description provided for @sectionNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New'**
+  String get sectionNew;
+
+  /// No description provided for @badgeNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New'**
+  String get badgeNew;
+
+  /// No description provided for @tooltipPlayed.
+  ///
+  /// In en, this message translates to:
+  /// **'Played'**
+  String get tooltipPlayed;
+
+  /// No description provided for @playsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Played once} other{Played {count} times}}'**
+  String playsCount(int count);
+
+  /// No description provided for @lastPlayedOn.
+  ///
+  /// In en, this message translates to:
+  /// **'last played on {date}'**
+  String lastPlayedOn(DateTime date);
+
+  /// No description provided for @cdStarting.
+  ///
+  /// In en, this message translates to:
+  /// **'Starting…'**
+  String get cdStarting;
+
+  /// No description provided for @cdEncoding.
+  ///
+  /// In en, this message translates to:
+  /// **'Converting the audio…'**
+  String get cdEncoding;
+
+  /// No description provided for @cdAddingToLibrary.
+  ///
+  /// In en, this message translates to:
+  /// **'Adding the CD to the library…'**
+  String get cdAddingToLibrary;
+
+  /// No description provided for @cdImportingTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Importing the CD'**
+  String get cdImportingTooltip;
+
+  /// No description provided for @cdEjectTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Eject CD'**
+  String get cdEjectTooltip;
+
+  /// No description provided for @cdNothingToEject.
+  ///
+  /// In en, this message translates to:
+  /// **'There is nothing to eject.'**
+  String get cdNothingToEject;
+
+  /// No description provided for @cdErrNoDrive.
+  ///
+  /// In en, this message translates to:
+  /// **'The server has no CD drive.'**
+  String get cdErrNoDrive;
+
+  /// No description provided for @cdErrDriveDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'The server may not use its CD drive. The administrator has to allow it.'**
+  String get cdErrDriveDenied;
+
+  /// No description provided for @cdErrTrayOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'The tray of the drive is open. Close it by hand first.'**
+  String get cdErrTrayOpen;
+
+  /// No description provided for @cdErrBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'The drive is busy with another CD.'**
+  String get cdErrBusy;
+
+  /// No description provided for @cdErrEjectFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The drive did not open its tray.'**
+  String get cdErrEjectFailed;
+
+  /// No description provided for @cdErrInternal.
+  ///
+  /// In en, this message translates to:
+  /// **'The server had an internal problem.'**
+  String get cdErrInternal;
+
+  /// No description provided for @cdErrInvalidSelection.
+  ///
+  /// In en, this message translates to:
+  /// **'A chosen track is not on the disc, or is chosen twice.'**
+  String get cdErrInvalidSelection;
+
+  /// No description provided for @cdSelectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all tracks'**
+  String get cdSelectAll;
+
+  /// No description provided for @cdSelectNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Select no track'**
+  String get cdSelectNone;
+
+  /// No description provided for @cdSelectInvert.
+  ///
+  /// In en, this message translates to:
+  /// **'Invert the selection'**
+  String get cdSelectInvert;
+
+  /// No description provided for @cdTrackDefault.
+  ///
+  /// In en, this message translates to:
+  /// **'Track {number}'**
+  String cdTrackDefault(String number);
+
+  /// No description provided for @cdTracksSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'{selected} of {total} tracks, {duration}'**
+  String cdTracksSummary(int selected, int total, String duration);
+
+  /// No description provided for @cdErrEmptySelection.
+  ///
+  /// In en, this message translates to:
+  /// **'No track is chosen.'**
+  String get cdErrEmptySelection;
+
+  /// No description provided for @cdErrTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'Tracks {numbers} are already in the library.'**
+  String cdErrTaken(String numbers);
+
+  /// No description provided for @cdBarHead.
+  ///
+  /// In en, this message translates to:
+  /// **'{title}, CD {disc}'**
+  String cdBarHead(String title, int disc);
+
+  /// No description provided for @cdBarTrack.
+  ///
+  /// In en, this message translates to:
+  /// **'Track {track} of {total}'**
+  String cdBarTrack(int track, int total);
+
+  /// No description provided for @cdPhaseReading.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading'**
+  String get cdPhaseReading;
+
+  /// No description provided for @cdPhaseChecking.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking'**
+  String get cdPhaseChecking;
+
+  /// No description provided for @cdPhaseEncoding.
+  ///
+  /// In en, this message translates to:
+  /// **'Converting'**
+  String get cdPhaseEncoding;
+
+  /// No description provided for @cdPhasePlacing.
+  ///
+  /// In en, this message translates to:
+  /// **'Filing'**
+  String get cdPhasePlacing;
+
+  /// No description provided for @cdPhaseImporting.
+  ///
+  /// In en, this message translates to:
+  /// **'Importing'**
+  String get cdPhaseImporting;
+
+  /// No description provided for @cdPhaseWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Working'**
+  String get cdPhaseWorking;
+
+  /// No description provided for @cdBarDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done: {count} tracks'**
+  String cdBarDone(int count);
+
+  /// No description provided for @cdBarDoneNoCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get cdBarDoneNoCount;
+
+  /// No description provided for @cdBarImporting.
+  ///
+  /// In en, this message translates to:
+  /// **'Importing: {line}'**
+  String cdBarImporting(String line);
+
+  /// No description provided for @cdErrDiscPresent.
+  ///
+  /// In en, this message translates to:
+  /// **'This CD is in the library already.'**
+  String get cdErrDiscPresent;
+
+  /// No description provided for @cdErrNotPresent.
+  ///
+  /// In en, this message translates to:
+  /// **'This CD is not in the library, so there is nothing to repair.'**
+  String get cdErrNotPresent;
+
+  /// No description provided for @cdErrNothingToHeal.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD is whole in the library; there is nothing to repair.'**
+  String get cdErrNothingToHeal;
+
+  /// No description provided for @cdErrUnreadableTrack.
+  ///
+  /// In en, this message translates to:
+  /// **'Some tracks could not be read from the CD (it may be scratched).'**
+  String get cdErrUnreadableTrack;
+
+  /// No description provided for @cdStateUnverified.
+  ///
+  /// In en, this message translates to:
+  /// **'Taken, not confirmed'**
+  String get cdStateUnverified;
+
+  /// No description provided for @cdErrUnverifiedTrack.
+  ///
+  /// In en, this message translates to:
+  /// **'A track was not read the same way twice and was taken with its first reading (not confirmed).'**
+  String get cdErrUnverifiedTrack;
+
+  /// No description provided for @cdErrResumeMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'The settings or the choice of tracks changed, so the CD is read again from the start.'**
+  String get cdErrResumeMismatch;
+
+  /// No description provided for @cdErrHealNeeded.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD is in the library, but tracks are missing or damaged. Repair it from the import dialog.'**
+  String get cdErrHealNeeded;
+
+  /// No description provided for @cdErrResumePending.
+  ///
+  /// In en, this message translates to:
+  /// **'An interrupted reading of this CD is waiting. Continue it from the import dialog.'**
+  String get cdErrResumePending;
+
+  /// No description provided for @cdErrAmbiguousMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Several releases fit this CD. Please choose one.'**
+  String get cdErrAmbiguousMatch;
+
+  /// No description provided for @cdErrNoMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'The online database does not know this CD.'**
+  String get cdErrNoMatch;
+
+  /// No description provided for @cdErrNoTarget.
+  ///
+  /// In en, this message translates to:
+  /// **'The server has no import folder that it may write to.'**
+  String get cdErrNoTarget;
+
+  /// No description provided for @cdErrUdevOff.
+  ///
+  /// In en, this message translates to:
+  /// **'The automatic import needs the detection of drives by system events to be switched on.'**
+  String get cdErrUdevOff;
+
+  /// No description provided for @cdErrNotAudio.
+  ///
+  /// In en, this message translates to:
+  /// **'This is not an audio CD.'**
+  String get cdErrNotAudio;
+
+  /// No description provided for @cdErrStartFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The import could not be started.'**
+  String get cdErrStartFailed;
+
+  /// No description provided for @cdErrLocked.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD was added, but the import of the library is locked. It shows up when the lock is lifted.'**
+  String get cdErrLocked;
+
+  /// No description provided for @cdContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get cdContinue;
+
+  /// No description provided for @cdResumeNote.
+  ///
+  /// In en, this message translates to:
+  /// **'This CD was read to {done} of {total} tracks already (interrupted {when}).'**
+  String cdResumeNote(int done, int total, String when);
+
+  /// No description provided for @cdRereadFromStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Read again from the start'**
+  String get cdRereadFromStart;
+
+  /// No description provided for @cdResumeLost.
+  ///
+  /// In en, this message translates to:
+  /// **'An earlier reading of this CD cannot be continued, because the settings changed. The CD is read again.'**
+  String get cdResumeLost;
+
+  /// No description provided for @cdResumed.
+  ///
+  /// In en, this message translates to:
+  /// **'Continuing an earlier reading.'**
+  String get cdResumed;
+
+  /// No description provided for @cdImportAnyway.
+  ///
+  /// In en, this message translates to:
+  /// **'Import anyway'**
+  String get cdImportAnyway;
+
+  /// No description provided for @cdHeal.
+  ///
+  /// In en, this message translates to:
+  /// **'Check and repair'**
+  String get cdHeal;
+
+  /// No description provided for @cdForceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Import the CD again?'**
+  String get cdForceTitle;
+
+  /// No description provided for @cdForceBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This CD is in the library already. This adds it a second time, as a new copy. Only do that if you really want two copies.'**
+  String get cdForceBody;
+
+  /// No description provided for @cdForceConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Import as a new copy'**
+  String get cdForceConfirm;
+
+  /// No description provided for @cdPresentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This CD is in the library already'**
+  String get cdPresentTitle;
+
+  /// No description provided for @cdPresentBookDisc.
+  ///
+  /// In en, this message translates to:
+  /// **'{book}, CD {disc}'**
+  String cdPresentBookDisc(String book, int disc);
+
+  /// No description provided for @cdPresentBookAuthorDisc.
+  ///
+  /// In en, this message translates to:
+  /// **'{book} by {author}, CD {disc}'**
+  String cdPresentBookAuthorDisc(String book, String author, int disc);
+
+  /// No description provided for @cdPresentComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD is whole in the library ({inLibrary} of {onDisc} tracks).'**
+  String cdPresentComplete(int inLibrary, int onDisc);
+
+  /// No description provided for @cdPresentCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{inLibrary} of {onDisc} tracks are in the library.'**
+  String cdPresentCount(int inLibrary, int onDisc);
+
+  /// No description provided for @cdMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Missing'**
+  String get cdMissing;
+
+  /// No description provided for @cdDamaged.
+  ///
+  /// In en, this message translates to:
+  /// **'Damaged'**
+  String get cdDamaged;
+
+  /// No description provided for @cdDamagedEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'the file is empty'**
+  String get cdDamagedEmpty;
+
+  /// No description provided for @cdDamagedUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'the file cannot be read'**
+  String get cdDamagedUnreadable;
+
+  /// No description provided for @cdDamagedLength.
+  ///
+  /// In en, this message translates to:
+  /// **'the file is {have} long, the CD has {want}'**
+  String cdDamagedLength(String have, String want);
+
+  /// No description provided for @cdDamagedOther.
+  ///
+  /// In en, this message translates to:
+  /// **'the file does not match the CD'**
+  String get cdDamagedOther;
+
+  /// No description provided for @cdHealHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the missing and damaged tracks are read from the CD. A damaged file is kept in the quarantine folder.'**
+  String get cdHealHint;
+
+  /// No description provided for @cdStateWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting'**
+  String get cdStateWaiting;
+
+  /// No description provided for @cdStateRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Read, waits for the check'**
+  String get cdStateRead;
+
+  /// No description provided for @cdSpeed.
+  ///
+  /// In en, this message translates to:
+  /// **'Drive reads at {x}x'**
+  String cdSpeed(String x);
+
+  /// No description provided for @cdStateRereading.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading again'**
+  String get cdStateRereading;
+
+  /// No description provided for @cdStateRereadingPercent.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading again {percent} %'**
+  String cdStateRereadingPercent(int percent);
+
+  /// No description provided for @cdStateReading.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading'**
+  String get cdStateReading;
+
+  /// No description provided for @cdStateReadingPercent.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading {percent} %'**
+  String cdStateReadingPercent(int percent);
+
+  /// No description provided for @cdStateVerifying.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking'**
+  String get cdStateVerifying;
+
+  /// No description provided for @cdStateEncoding.
+  ///
+  /// In en, this message translates to:
+  /// **'Converting'**
+  String get cdStateEncoding;
+
+  /// No description provided for @cdStateDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get cdStateDone;
+
+  /// No description provided for @cdStateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Error'**
+  String get cdStateFailed;
+
+  /// No description provided for @cdBuffer.
+  ///
+  /// In en, this message translates to:
+  /// **'Buffer {seconds} s of {max} s'**
+  String cdBuffer(int seconds, int max);
+
+  /// No description provided for @filterPlaylists.
+  ///
+  /// In en, this message translates to:
+  /// **'Playlists'**
+  String get filterPlaylists;
+
+  /// No description provided for @playlistNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New playlist'**
+  String get playlistNew;
+
+  /// No description provided for @playlistNewItem.
+  ///
+  /// In en, this message translates to:
+  /// **'New playlist…'**
+  String get playlistNewItem;
+
+  /// No description provided for @playlistName.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get playlistName;
+
+  /// No description provided for @playlistSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get playlistSave;
+
+  /// No description provided for @playlistsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No playlists yet. Tap + to make one.'**
+  String get playlistsEmpty;
+
+  /// No description provided for @playlistMeta.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} titles · {duration}'**
+  String playlistMeta(int count, String duration);
+
+  /// No description provided for @playlistAddTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to playlist'**
+  String get playlistAddTo;
+
+  /// No description provided for @playlistAddedTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Added to “{name}”.'**
+  String playlistAddedTo(String name);
+
+  /// No description provided for @playlistChoose.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to which playlist?'**
+  String get playlistChoose;
+
+  /// No description provided for @playlistPlay.
+  ///
+  /// In en, this message translates to:
+  /// **'Play'**
+  String get playlistPlay;
+
+  /// No description provided for @playlistRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get playlistRename;
+
+  /// No description provided for @playlistRenameTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename the playlist'**
+  String get playlistRenameTitle;
+
+  /// No description provided for @playlistDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete playlist'**
+  String get playlistDelete;
+
+  /// No description provided for @playlistDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this playlist?'**
+  String get playlistDeleteTitle;
+
+  /// No description provided for @playlistDeleteText.
+  ///
+  /// In en, this message translates to:
+  /// **'“{name}” is deleted from your profile. The titles stay in the library.'**
+  String playlistDeleteText(String name);
+
+  /// No description provided for @playlistRemoveEntry.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from the playlist'**
+  String get playlistRemoveEntry;
+
+  /// No description provided for @playlistUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available'**
+  String get playlistUnavailable;
+
+  /// No description provided for @playlistEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'This playlist is empty. Use “Add to playlist” on a title or a book.'**
+  String get playlistEmpty;
+
+  /// No description provided for @playlistDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Download the playlist'**
+  String get playlistDownload;
+
+  /// No description provided for @plErrNameTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'You have a playlist with this name already.'**
+  String get plErrNameTaken;
+
+  /// No description provided for @plErrInvalidName.
+  ///
+  /// In en, this message translates to:
+  /// **'The name must not be empty and at most 100 characters.'**
+  String get plErrInvalidName;
+
+  /// No description provided for @plErrUnknownPart.
+  ///
+  /// In en, this message translates to:
+  /// **'A title is not there any more, or you may not use it.'**
+  String get plErrUnknownPart;
+
+  /// No description provided for @plErrUnknownBook.
+  ///
+  /// In en, this message translates to:
+  /// **'The book is not there any more, or you may not use it.'**
+  String get plErrUnknownBook;
+
+  /// No description provided for @plErrInvalidOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'The order could not be used. The list is shown as it is on the server.'**
+  String get plErrInvalidOrder;
+
+  /// No description provided for @plErrInvalidPosition.
+  ///
+  /// In en, this message translates to:
+  /// **'That place in the playlist does not exist.'**
+  String get plErrInvalidPosition;
+
+  /// No description provided for @plErrInvalidRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'The request was not valid.'**
+  String get plErrInvalidRequest;
+
+  /// No description provided for @plErrPlaylistFull.
+  ///
+  /// In en, this message translates to:
+  /// **'The playlist is full (at most 5000 titles).'**
+  String get plErrPlaylistFull;
+
+  /// No description provided for @plErrTooManyPlaylists.
+  ///
+  /// In en, this message translates to:
+  /// **'You have the most playlists you can have (100).'**
+  String get plErrTooManyPlaylists;
+
+  /// No description provided for @plErrNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'The playlist is not there any more.'**
+  String get plErrNotFound;
+
+  /// No description provided for @plErrNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'The server does not answer.'**
+  String get plErrNetwork;
+
+  /// No description provided for @plErrUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'The playlist could not be changed ({code}).'**
+  String plErrUnknown(String code);
+
+  /// No description provided for @hideMenuTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide or show'**
+  String get hideMenuTooltip;
+
+  /// No description provided for @hideBook.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide this book'**
+  String get hideBook;
+
+  /// No description provided for @showBook.
+  ///
+  /// In en, this message translates to:
+  /// **'Show this book again'**
+  String get showBook;
+
+  /// No description provided for @hideAuthorAudiobooks.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide all audiobooks by {name}'**
+  String hideAuthorAudiobooks(String name);
+
+  /// No description provided for @showAuthorAudiobooks.
+  ///
+  /// In en, this message translates to:
+  /// **'Show the audiobooks by {name} again'**
+  String showAuthorAudiobooks(String name);
+
+  /// No description provided for @hideAuthorMusic.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide all music by {name}'**
+  String hideAuthorMusic(String name);
+
+  /// No description provided for @showAuthorMusic.
+  ///
+  /// In en, this message translates to:
+  /// **'Show the music by {name} again'**
+  String showAuthorMusic(String name);
+
+  /// No description provided for @hideAuthorAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide everything by {name}'**
+  String hideAuthorAll(String name);
+
+  /// No description provided for @showAuthorAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Show everything by {name} again'**
+  String showAuthorAll(String name);
+
+  /// No description provided for @hiddenMark.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden'**
+  String get hiddenMark;
+
+  /// No description provided for @hidingFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The change could not be saved.'**
+  String get hidingFailed;
+
+  /// No description provided for @settingsMyLibrary.
+  ///
+  /// In en, this message translates to:
+  /// **'My library'**
+  String get settingsMyLibrary;
+
+  /// No description provided for @settingsShowHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Show what I hid'**
+  String get settingsShowHidden;
+
+  /// No description provided for @settingsShowHiddenHint.
+  ///
+  /// In en, this message translates to:
+  /// **'What you hide leaves your lists, only yours. With this switch it is listed again, dimmed, so that you can show it again.'**
+  String get settingsShowHiddenHint;
+
+  /// No description provided for @settingsHiddenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden'**
+  String get settingsHiddenTitle;
+
+  /// No description provided for @settingsHiddenNone.
+  ///
+  /// In en, this message translates to:
+  /// **'You have not hidden anything. Long-press a book, or open it and use the menu at the top.'**
+  String get settingsHiddenNone;
+
+  /// No description provided for @settingsHiddenAuthorAudiobooks.
+  ///
+  /// In en, this message translates to:
+  /// **'Audiobooks by {name}'**
+  String settingsHiddenAuthorAudiobooks(String name);
+
+  /// No description provided for @settingsHiddenAuthorMusic.
+  ///
+  /// In en, this message translates to:
+  /// **'Music by {name}'**
+  String settingsHiddenAuthorMusic(String name);
+
+  /// No description provided for @settingsHiddenAuthorAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything by {name}'**
+  String settingsHiddenAuthorAll(String name);
+
+  /// No description provided for @settingsShowAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Show again'**
+  String get settingsShowAgain;
+
+  /// No description provided for @musicOf.
+  ///
+  /// In en, this message translates to:
+  /// **'Music of {name}'**
+  String musicOf(String name);
+
+  /// No description provided for @musicOfNobody.
+  ///
+  /// In en, this message translates to:
+  /// **'Other music'**
+  String get musicOfNobody;
+
+  /// No description provided for @ownerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Owner: {name}'**
+  String ownerLabel(String name);
+
+  /// No description provided for @audiobooksOf.
+  ///
+  /// In en, this message translates to:
+  /// **'Audiobooks of {name}'**
+  String audiobooksOf(String name);
+
+  /// No description provided for @audiobooksOfNobody.
+  ///
+  /// In en, this message translates to:
+  /// **'Other audiobooks'**
+  String get audiobooksOfNobody;
 }
 
 class _AppLocalizationsDelegate

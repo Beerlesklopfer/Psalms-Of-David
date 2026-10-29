@@ -75,6 +75,11 @@ impl Uploads {
         self.dir.join(id.to_string()).join(format!("archive.{ending}"))
     }
 
+    /// Where the files of a job that was dropped as loose files and folders (no archive) are kept.
+    pub fn files_dir(&self, id: i64) -> PathBuf {
+        self.dir.join(id.to_string()).join("unpacked")
+    }
+
     pub fn enqueue(&self, id: i64) {
         let _ = self.tx.send(id);
     }
@@ -86,15 +91,27 @@ pub fn archive_ending(name: &str) -> Option<String> {
     ARCHIVE_ENDINGS.contains(&ending.as_str()).then_some(ending)
 }
 
+/// A path that was dropped as a file of a folder (`Album/CD 1/01.mp3`), as safe components below the job's folder:
+/// no `..`, no empty parts, cleaned names, at most 8 levels. `None` if it is no audio file or picture.
+pub fn dropped_path(raw: &str) -> Option<Vec<String>> {
+    let parts: Vec<String> = raw.split(['/', '\\']).filter(|p| !p.is_empty() && *p != ".").map(|p| clean_name(p, "file")).collect();
+    let last = parts.last()?;
+    let ending = Path::new(last).extension()?.to_string_lossy().to_ascii_lowercase();
+    ((AUDIO.contains(&ending.as_str()) || PICTURES.contains(&ending.as_str())) && parts.len() <= 8).then_some(parts)
+}
+
 /// Does the whole job; the text is the result shown to the administrator.
 async fn process(store: &Store, dir: &Path, id: i64) -> Result<String, String> {
     store.set_upload_state(id, "working", "").await.map_err(|e| e.to_string())?;
     let job_dir = dir.join(id.to_string());
+    // An archive, or (when files and folders were dropped) the files already lying in `unpacked`.
     let archive = fs::read_dir(&job_dir)
         .map_err(|_| "the uploaded file is gone".to_owned())?
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .find(|p| p.file_stem().is_some_and(|s| s == "archive"))
-        .ok_or_else(|| "the uploaded file is gone".to_owned())?;
+        .find(|p| p.file_stem().is_some_and(|s| s == "archive"));
+    if archive.is_none() && !job_dir.join("unpacked").is_dir() {
+        return Err("the uploaded file is gone".to_owned());
+    }
 
     let state = store.import_state().await.map_err(|e| e.to_string())?;
     let target_root = if store.upload_kind(id).await.map_err(|e| e.to_string())? == "music" { &state.music_roots } else { &state.roots }
@@ -130,13 +147,15 @@ async fn process(store: &Store, dir: &Path, id: i64) -> Result<String, String> {
     };
     let target = root.clone();
     let albums = tokio::task::spawn_blocking(move || -> Result<Vec<String>, String> {
-        unpack(&archive, &unpacked, &roomy)?;
+        if let Some(archive) = &archive {
+            unpack(archive, &unpacked, &roomy)?;
+        }
         place(&unpacked, &target)
     })
     .await
     .map_err(|_| "internal error".to_owned())??;
     if albums.is_empty() {
-        return Err("the archive holds no audio files".to_owned());
+        return Err("the upload holds no audio files".to_owned());
     }
     let list = albums.join(", ");
     if !state.enabled {

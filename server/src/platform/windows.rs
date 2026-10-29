@@ -35,7 +35,7 @@ static CONFIG: OnceLock<Config> = OnceLock::new();
 
 /// Console run (for development); the service itself uses `run_service`.
 pub fn run_foreground(config: Config) -> u8 {
-    app::init_stderr_logging();
+    app::init_stderr_logging(config.log);
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
@@ -144,11 +144,7 @@ fn run_as_service() -> Result<(), Box<dyn std::error::Error>> {
 fn init_file_logging(config: &Config) {
     let _ = std::fs::create_dir_all(&config.data_dir);
     if let Ok(file) = std::fs::OpenOptions::new().create(true).append(true).open(config.data_dir.join("david.log")) {
-        let _ = tracing_subscriber::fmt()
-            .with_max_level(app::log_level())
-            .with_ansi(false)
-            .with_writer(Mutex::new(file))
-            .try_init();
+        crate::logging::init(config.log, Mutex::new(file), false);
     }
 }
 

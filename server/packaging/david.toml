@@ -1,0 +1,46 @@
+# /etc/david.toml - the machine's settings of the David server.
+#
+# A value comes from, in this order: the command line, the environment (DAVID_...), this file, the
+# built-in default. Everything the family decides in the pages (import folders, rules) lives in the
+# database, not here. Changes apply at the next start: systemctl restart david
+
+# The account the server runs as. The service starts as root, gives this user the rights on the
+# library folders (POSIX ACLs), hands it the data folder and then drops to it for good.
+user = "david"
+
+# The numeric IDs of the account. The package creates the account with them; without them the
+# system picks its own. Set both before the first install if the IDs must be the same on every
+# machine (a NAS that maps them).
+# uid = 10050
+# gid = 10050
+
+# Give the user the rights on the audiobook and music folders at every start
+# (like `setfacl -R -m u:UID:rwX` plus a default entry). Needs the start as root.
+acl = true
+
+# data_dir = "/var/lib/david"
+# mcp = false
+
+# Where the interface listens: one address, or a list that is served at the same time. IPv4 and IPv6 are
+# separate addresses; the packaged service listens on both. Without TLS-capable addresses (loopback only) there
+# is no HTTPS. The flag --listen and DAVID_LISTEN take the same list, separated by commas.
+# listen = ["0.0.0.0:8484", "[::]:8484"]
+
+# Log level: error, warn, info, debug or trace. Also a setting in the pages, where it applies at once.
+# log = "info"
+
+# A certificate from a certificate authority (Let's Encrypt, ...) instead of the self-made one. Both
+# files, in PEM; the service user has to be able to read them (see FAQ.md: a group that may read the
+# certificates, and the service user is a member). tls_host is the name that devices connect to: with such a
+# certificate they check the name, not a fingerprint, and the pairing code carries the name. A renewed
+# certificate is loaded without a restart, looked for every tls_reload_s seconds (default 300).
+# These can also be set in the pages (Settings > Certificate); the flags, DAVID_TLS_* and this file win.
+# tls_cert = "/path/to/fullchain.pem"
+# tls_key = "/path/to/privkey.pem"
+# tls_host = "david.example.org"
+# tls_reload_s = 300
+
+# Groups the service is a member of in addition to those of its account. A group may read the certificates
+# (see FAQ.md) or use the CD drive (FAQ.md, "audio CDs in the drive of the server"): the administrator adds the
+# user to the group (usermod -aG), the server sets no rights on files that are not its own.
+# groups = ["ssl-cert", "cdrom"]

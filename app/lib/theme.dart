@@ -13,6 +13,9 @@ class Palette {
   static const gold = Color(0xFFC4A265);
   static const bordeaux = Color(0xFF7B2332);
 
+  /// The check mark of a track that was heard to the end. A fixed green, readable on both the dark and the paper surface.
+  static const played = Color(0xFF2E9E5B);
+
   static const paper = Color(0xFFF6F0E3);
   static const paperSurface = Color(0xFFEDE5D3);
   static const paperHigh = Color(0xFFE4DAC4);

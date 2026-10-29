@@ -26,6 +26,89 @@ pub struct TlsMaterial {
     pub fingerprint: String,
 }
 
+/// A certificate and key that somebody else looks after (Let's Encrypt, a company CA). Every value comes
+/// from the settings of the machine: nothing about the place or the names is built in. `host` is the
+/// name devices connect to; with a certificate from a CA it replaces the fingerprint in the pairing
+/// code, because such a certificate is renewed and with it the fingerprint changes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct External {
+    pub cert: Option<PathBuf>,
+    pub key: Option<PathBuf>,
+    pub host: Option<String>,
+    /// How often the files are looked at for a renewed certificate, in seconds; `None` is the default
+    /// (`DEFAULT_RELOAD_S`).
+    pub reload_s: Option<u64>,
+}
+
+/// Looked at every this many seconds when nothing else is set (a renewal is not urgent to the second).
+pub const DEFAULT_RELOAD_S: u64 = 300;
+
+impl External {
+    /// Values that are not set here are taken from `other` (the database settings).
+    pub fn or(self, other: External) -> External {
+        External { cert: self.cert.or(other.cert), key: self.key.or(other.key), host: self.host.or(other.host), reload_s: self.reload_s.or(other.reload_s) }
+    }
+
+    /// Both files are named: the server uses them instead of its own certificate.
+    pub fn is_set(&self) -> bool {
+        self.cert.is_some() && self.key.is_some()
+    }
+}
+
+/// Reads a certificate and a key that somebody else provides. The error names the file and says what to
+/// check, most often the rights: the service has to be in the group that may read the files.
+pub fn load_external(ext: &External) -> Result<TlsMaterial> {
+    let (cert, key) = match (&ext.cert, &ext.key) {
+        (Some(c), Some(k)) => (c, k),
+        _ => return Err(tls_error("the certificate and the key have to be named together")),
+    };
+    let read = |path: &Path| -> Result<Vec<u8>> {
+        std::fs::read(path).map_err(|e| {
+            let hint = if e.kind() == std::io::ErrorKind::PermissionDenied { " (the service user may not read it: is it in the group that owns the file, and may that group read the folders above it?)" } else { "" };
+            tls_error(format!("{}: {e}{hint}", path.display()))
+        })
+    };
+    let cert_pem = read(cert)?;
+    let key_pem = read(key)?;
+    let fingerprint = fingerprint_of_pem(&cert_pem)?;
+    // The key must be one that rustls can use; better to learn it here than at the first connection.
+    install_crypto_provider();
+    rustls::pki_types::PrivateKeyDer::from_pem_slice(&key_pem).map_err(|e| tls_error(format!("{}: not a private key: {e}", key.display())))?;
+    Ok(TlsMaterial { cert_pem, key_pem, fingerprint })
+}
+
+/// When the two files were last changed, as one number (the newer of both), to notice a renewal.
+fn changed_at(ext: &External) -> Option<std::time::SystemTime> {
+    let m = |p: &Option<PathBuf>| p.as_ref().and_then(|p| std::fs::metadata(p).ok()).and_then(|m| m.modified().ok());
+    m(&ext.cert).into_iter().chain(m(&ext.key)).max()
+}
+
+/// Looks at the files from time to time and loads a renewed certificate into the running server, so that
+/// a renewal needs no restart. A file that cannot be read keeps the certificate in use.
+pub fn watch_external(config: axum_server::tls_rustls::RustlsConfig, ext: External) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let every = std::time::Duration::from_secs(ext.reload_s.unwrap_or(DEFAULT_RELOAD_S).max(5));
+        let mut last = changed_at(&ext);
+        loop {
+            tokio::time::sleep(every).await;
+            let now = changed_at(&ext);
+            if now == last {
+                continue;
+            }
+            match load_external(&ext) {
+                Ok(m) => match config.reload_from_pem(m.cert_pem, m.key_pem).await {
+                    Ok(()) => {
+                        tracing::info!(fingerprint = %m.fingerprint, "renewed certificate loaded");
+                        last = now;
+                    }
+                    Err(e) => tracing::warn!(error = %e, "the renewed certificate could not be loaded; the old one stays"),
+                },
+                Err(e) => tracing::warn!(error = %e, "the renewed certificate cannot be read yet; the old one stays"),
+            }
+        }
+    })
+}
+
 /// Does a server listening on `addr` speak TLS? Everything that other machines can
 /// reach does. Loopback stays plain HTTP, so local tools and tests need no trust setup.
 pub fn wanted(addr: SocketAddr) -> bool {
@@ -74,10 +157,7 @@ pub fn ensure_certificate(data_dir: &Path, listen: SocketAddr) -> Result<TlsMate
         }
         (false, false) => {
             std::fs::create_dir_all(&dir)?;
-            let mut names = vec!["localhost".to_owned(), "127.0.0.1".to_owned()];
-            if !listen.ip().is_unspecified() && !listen.ip().is_loopback() {
-                names.push(listen.ip().to_string());
-            }
+            let names = certificate_names(listen);
             let key = rcgen::KeyPair::generate().map_err(tls_error)?;
             let mut params = rcgen::CertificateParams::new(names).map_err(tls_error)?;
             params.distinguished_name.push(rcgen::DnType::CommonName, "David server");
@@ -97,6 +177,61 @@ pub fn ensure_certificate(data_dir: &Path, listen: SocketAddr) -> Result<TlsMate
             dir.display()
         ))),
     }
+}
+
+/// The names a certificate must carry so that a client can check the host it connects to: this
+/// machine (`localhost`), the address it listens on or, when it listens on every interface, all
+/// addresses of this machine, and its host name (also as `<name>.local`, which mDNS resolves).
+pub fn certificate_names(listen: SocketAddr) -> Vec<String> {
+    let mut names = vec!["localhost".to_owned(), "127.0.0.1".to_owned(), "::1".to_owned()];
+    let mut add = |name: String| {
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    };
+    if listen.ip().is_unspecified() {
+        for interface in if_addrs::get_if_addrs().unwrap_or_default() {
+            let ip = interface.ip();
+            // A link-local IPv6 address needs a zone to be used; nobody connects to it by name.
+            let link_local = matches!(ip, std::net::IpAddr::V6(v6) if (v6.segments()[0] & 0xffc0) == 0xfe80);
+            if !ip.is_loopback() && !link_local {
+                add(ip.to_string());
+            }
+        }
+        if let Some(host) = host_name() {
+            add(format!("{host}.local"));
+            add(host);
+        }
+    } else if !listen.ip().is_loopback() {
+        add(listen.ip().to_string());
+    }
+    names
+}
+
+/// The host name of this machine, if it can be found.
+fn host_name() -> Option<String> {
+    #[cfg(unix)]
+    let name = std::fs::read_to_string("/proc/sys/kernel/hostname").or_else(|_| std::fs::read_to_string("/etc/hostname")).ok();
+    #[cfg(windows)]
+    let name = std::env::var("COMPUTERNAME").ok();
+    let name = name?.trim().to_owned();
+    // Only a plain host name: it becomes a DNS name in the certificate.
+    (!name.is_empty() && name.len() <= 63 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')).then_some(name)
+}
+
+/// Replaces the certificate by a new one with the current names (`david renew-cert`). The old files
+/// are kept as `cert.pem.old` and `key.pem.old`. Every paired device pins the fingerprint of the
+/// certificate, so each one has to be paired again afterwards.
+pub fn renew_certificate(data_dir: &Path, listen: SocketAddr) -> Result<TlsMaterial> {
+    let (_, cert_path, key_path) = paths(data_dir);
+    for path in [&cert_path, &key_path] {
+        if path.exists() {
+            let mut old = path.clone().into_os_string();
+            old.push(".old");
+            std::fs::rename(path, old)?;
+        }
+    }
+    ensure_certificate(data_dir, listen)
 }
 
 /// Writes the private key so that only the owner can read it.
@@ -185,5 +320,31 @@ mod tests {
         let bytes = der.as_ref();
         assert!(bytes.windows(9).any(|w| w == b"localhost"));
         assert!(bytes.windows(12).any(|w| w == b"David server"));
+    }
+
+    #[test]
+    fn listening_on_every_interface_names_the_addresses_of_the_machine() {
+        let names = certificate_names("0.0.0.0:8484".parse().unwrap());
+        assert!(names.iter().any(|n| n == "localhost") && names.iter().any(|n| n == "127.0.0.1"));
+        let own: Vec<String> = if_addrs::get_if_addrs().unwrap().into_iter().map(|i| i.ip()).filter(|ip| ip.is_ipv4() && !ip.is_loopback()).map(|ip| ip.to_string()).collect();
+        for ip in &own {
+            assert!(names.contains(ip), "{ip} is missing in {names:?}");
+        }
+        // One address: that one, and no other machine's.
+        let one = certificate_names("192.168.24.250:8484".parse().unwrap());
+        assert!(one.contains(&"192.168.24.250".to_owned()) && one.len() == 4, "{one:?}");
+        assert_eq!(certificate_names("127.0.0.1:8484".parse().unwrap()).len(), 3);
+    }
+
+    #[test]
+    fn renewing_makes_a_new_certificate_and_keeps_the_old_one_aside() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let first = ensure_certificate(dir.path(), addr()).unwrap();
+        let second = renew_certificate(dir.path(), addr()).unwrap();
+        assert_ne!(first.fingerprint, second.fingerprint);
+        assert_eq!(std::fs::read(dir.path().join("tls/cert.pem.old")).unwrap(), first.cert_pem);
+        assert!(dir.path().join("tls/key.pem.old").exists());
+        // Afterwards the new one is the one that is loaded.
+        assert_eq!(ensure_certificate(dir.path(), addr()).unwrap().fingerprint, second.fingerprint);
     }
 }

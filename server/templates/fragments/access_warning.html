@@ -1,0 +1,26 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% if access and (access.findings or access.unreadable_roots) %}<section id="access-warning" class="card warning" role="alert">
+  <h2>{{ t("access.title") }}</h2>
+  <p>{{ t("access.intro") }} <code>{{ access.user }}</code></p>
+  {% for root in access.unreadable_roots %}
+  <p class="form-error"><code>{{ root }}</code>: {{ t("access.root_unreadable") }}</p>
+  {% endfor %}
+  {% if access.findings %}
+  <ul class="access-list">
+    {% for f in access.findings %}
+    <li><code>{{ f.path }}</code>
+      {% if not f.folder_writable %}<span class="badge">{{ t("access.folder_ro") }}</span>{% endif %}
+      {% if f.not_readable %}<span class="badge">{{ f.not_readable }}/{{ f.files }} {{ t("access.unreadable") }}</span>{% endif %}
+      {% if f.not_writable %}<span class="badge muted">{{ f.not_writable }}/{{ f.files }} {{ t("access.unwritable") }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if access.folders_with_problems > access.findings|length %}<p class="unit">{{ t("access.more") }}: {{ access.folders_with_problems - access.findings|length }}</p>{% endif %}
+  {% endif %}
+  <p>{{ t("access.fix") }}</p>
+  {% for cmd in access.fixes %}<pre class="json-box"><code>{{ cmd }}</code></pre>{% endfor %}
+  <form method="post" action="/admin/rpc/access.check" hx-post="/admin/rpc/access.check" hx-target="#access-warning" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="btn outline">{{ t("access.recheck") }}</button>
+  </form>
+</section>{% else %}<div id="access-warning"></div>{% endif %}

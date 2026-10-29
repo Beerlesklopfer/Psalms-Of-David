@@ -69,9 +69,14 @@ fn connector(pinned: &str) -> TlsConnector {
 }
 
 async fn https(addr: SocketAddr, pinned: &str, request: &str) -> Result<String, String> {
+    https_as(addr, pinned, "david", request).await
+}
+
+/// Like `https`, asking for the name `name` (what a browser or a device that connects by a name does).
+async fn https_as(addr: SocketAddr, pinned: &str, name: &str, request: &str) -> Result<String, String> {
     let tcp = TcpStream::connect(addr).await.map_err(|e| e.to_string())?;
     let mut tls = connector(pinned)
-        .connect(ServerName::try_from("david").unwrap(), tcp)
+        .connect(ServerName::try_from(name.to_owned()).unwrap(), tcp)
         .await
         .map_err(|e| format!("handshake: {e}"))?;
     tls.write_all(request.as_bytes()).await.map_err(|e| e.to_string())?;
@@ -91,6 +96,10 @@ async fn a_device_that_pins_the_fingerprint_connects_and_any_other_server_is_ref
         library: None,
         allow_import: false,
         announce: false,
+        mcp: false,
+        log: None,
+        tls: Default::default(),
+        also_listen: Vec::new(),
         // Not loopback, so the server speaks TLS. Port 0 lets the system choose.
         listen: "0.0.0.0:0".parse().unwrap(),
     };
@@ -156,4 +165,121 @@ async fn a_device_that_pins_the_fingerprint_connects_and_any_other_server_is_ref
     let again = david_server::tls::ensure_certificate(dir.path(), "0.0.0.0:0".parse().unwrap()).unwrap();
     assert_eq!(again.fingerprint, fp, "paired devices must still recognise the server");
     let _ = std::io::stdout().flush();
+}
+
+/// A certificate for `name`, as a certificate authority would hand it out (here made by us).
+fn issue(name: &str) -> (String, String, String) {
+    let key = rcgen::KeyPair::generate().unwrap();
+    let cert = rcgen::CertificateParams::new(vec![name.to_owned()]).unwrap().self_signed(&key).unwrap();
+    (cert.pem(), key.serialize_pem(), fingerprint_of_der(cert.der().as_ref()))
+}
+
+#[tokio::test]
+async fn a_certificate_from_somebody_else_is_served_and_a_renewal_is_loaded_without_a_restart() {
+    use david_server::tls::External;
+    let dir = tempfile::TempDir::new().unwrap();
+    init_admin(dir.path(), "Boss", "483920").await.unwrap();
+    let certs = tempfile::TempDir::new().unwrap();
+    let (cert_file, key_file) = (certs.path().join("fullchain.pem"), certs.path().join("privkey.pem"));
+    let (cert, key, first) = issue("david.example.test");
+    std::fs::write(&cert_file, cert).unwrap();
+    std::fs::write(&key_file, key).unwrap();
+
+    let config = Config {
+        data_dir: dir.path().to_owned(),
+        library: None,
+        allow_import: false,
+        announce: false,
+        mcp: false,
+        log: None,
+        tls: External { cert: Some(cert_file.clone()), key: Some(key_file.clone()), host: Some("david.example.test".into()), reload_s: Some(5) },
+        also_listen: Vec::new(),
+        listen: "0.0.0.0:0".parse().unwrap(),
+    };
+    let (ready_tx, ready_rx) = oneshot::channel();
+    let (stop, stop_rx) = oneshot::channel::<()>();
+    let task = tokio::spawn(run(config, async move { let _ = stop_rx.await; }, move |addr| { let _ = ready_tx.send(addr); }));
+    let bound = tokio::time::timeout(Duration::from_secs(20), ready_rx).await.expect("server did not start").unwrap();
+    let addr: SocketAddr = ([127, 0, 0, 1], bound.port()).into();
+    let get = "GET /admin/login HTTP/1.1\r\nHost: david\r\nConnection: close\r\n\r\n";
+
+    // The server shows the certificate of the files, not one of its own.
+    let name = "david.example.test";
+    assert!(https_as(addr, &first, name, get).await.expect("the certificate from the files").starts_with("HTTP/1.1 200"));
+    assert!(!dir.path().join("tls/cert.pem").exists(), "no self-signed certificate is made");
+
+    // A renewal: new files; within a few seconds the running server shows the new certificate.
+    let (cert, key, second) = issue("david.example.test");
+    assert_ne!(first, second);
+    std::thread::sleep(Duration::from_millis(1100)); // so that the files are newer
+    std::fs::write(&key_file, key).unwrap();
+    std::fs::write(&cert_file, cert).unwrap();
+    let mut loaded = false;
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        if https_as(addr, &second, name, get).await.is_ok() {
+            loaded = true;
+            break;
+        }
+    }
+    assert!(loaded, "the renewed certificate was not loaded");
+    assert!(https_as(addr, &first, name, get).await.is_err(), "the old certificate is gone");
+
+    let _ = stop.send(());
+    let _ = tokio::time::timeout(Duration::from_secs(10), task).await;
+}
+
+#[test]
+fn files_that_cannot_be_used_are_named_with_a_hint() {
+    use david_server::tls::{External, load_external};
+    let dir = tempfile::TempDir::new().unwrap();
+    let (cert, key, _) = issue("david.example.test");
+    let (c, k) = (dir.path().join("c.pem"), dir.path().join("k.pem"));
+    std::fs::write(&c, &cert).unwrap();
+    // The key is missing.
+    let err = load_external(&External { cert: Some(c.clone()), key: Some(k.clone()), ..Default::default() }).err().unwrap().to_string();
+    assert!(err.contains("k.pem"), "{err}");
+    // Not a key.
+    std::fs::write(&k, "hello").unwrap();
+    let err = load_external(&External { cert: Some(c.clone()), key: Some(k.clone()), ..Default::default() }).err().unwrap().to_string();
+    assert!(err.contains("not a private key"), "{err}");
+    // Both there: fine; only one named: refused.
+    std::fs::write(&k, key).unwrap();
+    assert!(load_external(&External { cert: Some(c.clone()), key: Some(k), ..Default::default() }).is_ok());
+    assert!(load_external(&External { cert: Some(c), key: None, ..Default::default() }).is_err());
+}
+
+#[tokio::test]
+async fn a_list_of_addresses_serves_ipv4_and_ipv6_at_the_same_time() {
+    let dir = tempfile::TempDir::new().unwrap();
+    init_admin(dir.path(), "Boss", "483920").await.unwrap();
+    // A free port that both addresses use.
+    let port = std::net::TcpListener::bind("0.0.0.0:0").unwrap().local_addr().unwrap().port();
+    let config = Config {
+        data_dir: dir.path().to_owned(),
+        library: None,
+        allow_import: false,
+        announce: false,
+        mcp: false,
+        log: None,
+        tls: Default::default(),
+        also_listen: vec![format!("[::]:{port}").parse().unwrap()],
+        listen: format!("0.0.0.0:{port}").parse().unwrap(),
+    };
+    let (ready_tx, ready_rx) = oneshot::channel();
+    let (stop, stop_rx) = oneshot::channel::<()>();
+    let task = tokio::spawn(run(config, async move { let _ = stop_rx.await; }, move |addr| { let _ = ready_tx.send(addr); }));
+    tokio::time::timeout(Duration::from_secs(20), ready_rx).await.expect("server did not start").unwrap();
+    let fp = fingerprint_of_pem(&std::fs::read(dir.path().join("tls/cert.pem")).unwrap()).unwrap();
+    let get = "GET /healthz HTTP/1.1\r\nHost: david\r\nConnection: close\r\n\r\n";
+
+    let v4: SocketAddr = ([127, 0, 0, 1], port).into();
+    let page = https(v4, &fp, get).await.expect("IPv4");
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    let v6: SocketAddr = (std::net::Ipv6Addr::LOCALHOST, port).into();
+    let page = https(v6, &fp, get).await.expect("IPv6");
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+
+    let _ = stop.send(());
+    let _ = tokio::time::timeout(Duration::from_secs(10), task).await;
 }

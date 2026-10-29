@@ -11,16 +11,22 @@ import 'package:psalm/player_controller.dart';
 import 'package:psalm/about_info.dart';
 import 'package:psalm/screens/settings_screen.dart';
 import 'package:psalm/server/credentials.dart';
+import 'package:psalm/server/server_source.dart' show MediaSource, PassageHit;
 import 'package:psalm/widgets.dart';
 
 Widget _app(PlayerController p, Widget child, {double width = 800}) => PlayerScope(
-      controller: p,
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(body: Align(alignment: Alignment.bottomCenter, child: SizedBox(width: width, child: child))),
+  controller: p,
+  child: MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: Scaffold(
+      body: Align(
+        alignment: Alignment.bottomCenter,
+        child: SizedBox(width: width, child: child),
       ),
-    );
+    ),
+  ),
+);
 
 void main() {
   testWidgets('the mini player has previous, back, forward, next and a speed menu', (tester) async {
@@ -77,18 +83,45 @@ void main() {
     p.dispose();
   });
 
+  test('a radio station is played by the engine from its address and does not end at once', () async {
+    final backend = FakeBackend();
+    final station = Book(
+      id: 'st:1',
+      title: 'Station',
+      author: '',
+      kind: 'radio',
+      color: const Color(0xFF000000),
+      tracks: [Track(disc: 1, number: 1, title: 'Station', length: Duration.zero, url: 'https://radio.example.org/live.mp3', live: true)],
+    );
+    final p = PlayerController([station], backend: backend, source: _AddressSource());
+    p.open(station);
+    await Future<void>.delayed(const Duration(milliseconds: 1300));
+    expect(backend.loadedPath, 'https://radio.example.org/live.mp3');
+    expect(p.playing, isTrue, reason: 'a station of length zero is not over');
+    expect(p.error, isNull);
+    p.dispose();
+  });
+
   testWidgets('settings show the server and ask before disconnecting', (tester) async {
     var disconnected = 0;
-    await tester.pumpWidget(MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(
-        body: SettingsScreen(
-          credentials: Credentials(serverId: 'x', address: 'https://192.168.1.5:8484', fingerprint: 'ab', token: 't', deviceName: 'Laptop'),
-          onDisconnect: () => disconnected++,
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: SettingsScreen(
+            credentials: Credentials(
+              serverId: 'x',
+              address: 'https://192.168.1.5:8484',
+              fingerprint: 'ab',
+              token: 't',
+              deviceName: 'Laptop',
+            ),
+            onDisconnect: () => disconnected++,
+          ),
         ),
       ),
-    ));
+    );
     expect(find.text('https://192.168.1.5:8484'), findsOneWidget);
     expect(find.text('Laptop'), findsOneWidget);
     await tester.tap(find.text('Disconnect'));
@@ -106,6 +139,8 @@ void main() {
   testWidgets('the navigation has Settings and About, in English and German', (tester) async {
     await tester.pumpWidget(const PsalmApp(demo: true, locale: Locale('en')));
     await tester.pump();
+    // The rail scrolls in a low window, so the last entry has to be brought into view first.
+    await tester.ensureVisible(find.text('About'));
     await tester.tap(find.text('About'));
     await tester.pumpAndSettle();
     expect(find.text('Version $appVersion'), findsOneWidget);
@@ -113,7 +148,11 @@ void main() {
     expect(find.textContaining('Cyber Resilience Act'), findsOneWidget);
     expect(find.text(manufacturerName), findsOneWidget);
     expect(find.text(manufacturerWebsite), findsOneWidget);
-    expect(find.text(manufacturerEmail), findsNWidgets(2), reason: 'as the contact and as the address for security reports');
+    expect(
+      find.text(manufacturerEmail),
+      findsNWidgets(2),
+      reason: 'as the contact and as the address for security reports',
+    );
     expect(find.textContaining('has not been set yet'), findsOneWidget, reason: 'no invented support date');
     await tester.ensureVisible(find.text('License'));
     await tester.pumpAndSettle();
@@ -122,7 +161,10 @@ void main() {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
     await tester.pumpAndSettle();
     expect(find.byType(SelectableText), findsOneWidget);
-    expect(tester.widget<SelectableText>(find.byType(SelectableText)).data, contains('GNU AFFERO GENERAL PUBLIC LICENSE'));
+    expect(
+      tester.widget<SelectableText>(find.byType(SelectableText)).data,
+      contains('GNU AFFERO GENERAL PUBLIC LICENSE'),
+    );
     await tester.pageBack();
     await tester.pumpAndSettle();
     await tester.tap(find.text('Settings'));
@@ -135,4 +177,16 @@ void main() {
     expect(find.text('Über'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
+}
+
+/// Hands the address of a station back as it is (the real source does the same for a live track).
+class _AddressSource extends MediaSource {
+  @override
+  Future<String> fetchPart(Track track) async => track.url!;
+
+  @override
+  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {}
+
+  @override
+  Future<PassageHit?> resolvePassage(String text) async => null;
 }

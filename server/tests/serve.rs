@@ -26,6 +26,10 @@ async fn start(prepare: impl AsyncFnOnce(&std::path::Path)) -> Running {
         library: None,
         allow_import: false,
         announce: false,
+        mcp: false,
+        log: None,
+        tls: Default::default(),
+        also_listen: Vec::new(),
         listen: "127.0.0.1:0".parse().unwrap(),
     };
     let (ready_tx, ready_rx) = oneshot::channel();

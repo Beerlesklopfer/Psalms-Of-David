@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/admin/static/admin.css">
   <script src="/admin/static/htmx.min.js" defer></script>
   <script src="/admin/static/ui.js" defer></script>
+  <script src="/admin/static/crop.js" defer></script>
 </head>
 <body{% if csrf %} hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'{% endif %}>
   <div class="frame">
@@ -19,13 +20,16 @@
       {% if me.role == "admin" %}
       <nav class="menu" aria-label="Menu">
         <a href="/admin/users"{% if page == "users" %} aria-current="page"{% endif %}>{{ icon("users") }}<span>{{ t("nav.users") }}</span></a>
-        {% call popup("media", "media", t("nav.media"), page == "books" or page == "music", "up") %}
+        {% call popup("media", "media", t("nav.media"), page == "books" or page == "music" or page == "genres" or page == "releases", "up") %}
           <a role="menuitem" href="/admin/books"{% if page == "books" %} aria-current="page"{% endif %}>{{ icon("books") }}<span>{{ t("nav.books") }}</span></a>
           <a role="menuitem" href="/admin/music"{% if page == "music" %} aria-current="page"{% endif %}>{{ icon("music") }}<span>{{ t("nav.music") }}</span></a>
+          <a role="menuitem" href="/admin/releases"{% if page == "releases" %} aria-current="page"{% endif %}>{{ icon("check") }}<span>{{ t("nav.releases") }}</span></a>
+          <a role="menuitem" href="/admin/genres"{% if page == "genres" %} aria-current="page"{% endif %}>{{ icon("tag") }}<span>{{ t("nav.genres") }}</span></a>
           <span role="menuitem" class="menu-item disabled" aria-disabled="true">{{ icon("video") }}<span>{{ t("nav.videos") }}</span><small class="badge">{{ t("nav.soon") }}</small></span>
         {% endcall %}
         <a href="/admin/pairing"{% if page == "pairing" %} aria-current="page"{% endif %}>{{ icon("pairing") }}<span>{{ t("nav.pairing") }}</span></a>
         <a href="/admin/import"{% if page == "import" %} aria-current="page"{% endif %}>{{ icon("import") }}<span>{{ t("nav.import") }}</span></a>
+        <a href="/admin/cd"{% if page == "cd" %} aria-current="page"{% endif %}>{{ icon("disc") }}<span>{{ t("nav.cd") }}</span></a>
         <a href="/admin/settings"{% if page == "settings" %} aria-current="page"{% endif %}>{{ icon("settings") }}<span>{{ t("nav.settings") }}</span></a>
       </nav>
       {% endif %}
@@ -46,6 +50,7 @@
     </header>
     <main>
       <div id="messages" role="status">{% include "fragments/message.html" %}</div>
+      {% if access is defined %}{% include "fragments/access_warning.html" %}{% endif %}
       {% block content %}{% endblock %}
     </main>
     <footer class="site-foot"><a href="https://github.com/Beerlesklopfer/Psalms-Of-David" rel="noopener">{{ t("app.source") }}</a> &middot; AGPL-3.0-or-later</footer>

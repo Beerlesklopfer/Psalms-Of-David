@@ -1,6 +1,6 @@
 # Spec: administration interface
 
-Status: **built and tested** (`server/src/admin/`, `server/src/web/`, `server/templates/`): sign-in with PIN and lockout, sessions, CSRF protection, security headers, HTMX, and these pages and procedures: overview, users (create, change role, age limit, device limit, PIN, delete), books (release with age rating, withdraw, quota-exempt flag, guard rail below the recommendation), settings (confirm proposed values), import (criteria, unlock, lock, run), the weekly planner editor, and pairing with a QR code plus the device list. TLS is built (section 7 of the roles spec is settled: HTTPS with a pinned self-signed certificate for everything but loopback). **Not built:** the WireGuard tunnel itself, device marking as shared after pairing, avatars in the apps' profile list. See `autonomous-session-log.md` for the decisions taken. Open items are marked **open**.
+Status: **built and tested** (`server/src/admin/`, `server/src/web/`, `server/templates/`): sign-in with PIN and lockout, sessions, CSRF protection, security headers, HTMX, and these pages and procedures: overview, users (create, change role, age limit, device limit, PIN, delete), books (release with age rating, withdraw, quota-exempt flag, guard rail below the recommendation), settings (confirm proposed values), import (criteria, unlock, lock, run), the weekly planner editor, and pairing with a QR code plus the device list. TLS is built (section 7 of the roles spec is settled: HTTPS with a pinned self-signed certificate for everything but loopback). **Not built:** the WireGuard tunnel itself, device marking as shared after pairing, avatars in the apps' profile list. Open items are marked **open**.
 
 ## Decision (project owner, 2026-10-27)
 
@@ -249,4 +249,45 @@ The templates are meant to be adapted **per distribution** (and per machine). Th
   "Unknown"). The identity of a book is its path below the import folder, so existing two-level libraries keep
   their identities. Disc folders (`CD 1`, `Disc 2`, `Disk3`, `Teil 4`) of a folder without audio files of its own are
   one book with those discs. Hidden folders (`.recyclebin`), `@eaDir` and `lost+found` are never read.
+
+## Visibility matrix in the media list (2026-10-29)
+
+The lists "Audiobooks" and "Music" have a narrow column for every member of the family that is **no administrator** (administrators see everything) and a
+checkbox in every row: ticked = the member sees the book. The mark is what the rule of the lists gives (`VISIBLE`: release, age, exceptions to the person or
+the role), minus what is closed to the member (`book_block`, schema 0039). A change posts `book.visibility` (book, profile, visible) and draws the row again:
+**opening** takes away a closing and, if release and age would not show the book, adds an exception for the member (`book_release`); **closing** takes away
+that exception and closes the book to the member, whatever release, age or an exception of the role says. Every change is written to the change log
+(`Visibility`, the member, `open`/`closed`). This is an administrator's decision and applies to that member's lists on every device; what a member hides for
+themselves is another thing (`docs/spec-library-hiding.md`).
+
+### Two kinds of columns, and the search (2026-10-29)
+
+The matrix has **two groups of columns** with their own header: **Owner** (one box per row: whom the book belongs to; this is not access) and, under
+**May see** (access), a checkbox for **every person**. Administrators are there too: they see everything **unless a box is cleared for them** (decision of the project owner, 2026-10-29: a couple that are both administrators must be able to keep their own things apart; without this an administrator would see everything whether they want it or not). The box of an administrator is ticked by default and can be cleared like any other; the administration pages themselves still list every book (they manage the library), only the lists of the apps follow the boxes. A change of the owner
+posts `book.owner`; a change of a box posts `book.visibility`.
+
+The **search** of the media lists (and `list_albums` of the MCP interface) knows more than plain words: `*` is any run of characters, `?` is one character, and
+text between slashes is a regular expression (`/^der .* welt$/`, `/(bach|händel)/`); case is ignored. The text searched is title, author and narrator joined by
+spaces. A broken expression finds nothing and says why. The search while typing in the browser (`static/ui.js`) follows the same rules as the server
+(`server/src/search.rs`).
+
+### Folders of a profile (schema 0041, 2026-10-29)
+
+In the window of a profile (Users → Edit) every member has **a folder for every kind of medium**: audiobooks, music and pictures. Behind each input line there is a
+button that opens a **dialog** with the folders; the dialog lists **only what the server can read, write and enter** (`access(2)` with `R_OK | W_OK | X_OK`, the
+"0777" of the user the server runs as); hidden folders (a name with a leading dot) are left out. It starts with the places the server works in (the import
+folders, the development library and the folders chosen already), so that the way is found even where the parents of those places are closed to the server;
+one level up is offered only to a folder that is usable itself. "Use this folder" puts the path into the line. On saving the path is checked again (absolute,
+an existing folder, usable, symbolic links resolved); a wrong one answers `422 err.folder` and nothing of the form changes; an empty line removes the folder; a form
+that does not send the fields leaves them alone. The folders are stored in `profile_folder` (one per profile and kind). They are the ground of the personal
+structure: the music and audiobooks of a member, the target of an import for them, and the folder of the picture sync (`docs/spec-photo-sync.md`).
+
+### Pages of the media lists (schema 0042, 2026-10-29)
+
+The lists "Audiobooks" and "Music" come in **pages**. The books of the list (after the search) are cut into pages; the tree of folders/authors is built from the books of
+the page. A bar above and below the list has the count (`21-25 of 25`), "previous" / "next", the numbers of the first, the last and the pages around the current one,
+and a box for the **size of a page**. A page beyond the last shows the last, a nonsense number the first; the search runs over **all** pages (the server searches;
+while a list is in pages the browser does not filter the rows while typing, because the rows of one page are not all there are) and the links carry it.
+**The size of a page is set per browser, by cookie:** the box (or `?per=`, 10 to 500) sets the cookie `david_page_size` (`/admin`, a year, `HttpOnly`, `SameSite=Lax`);
+without `?per=` the cookie decides, and without a valid cookie the setting `list_page_size` (default 50, 10 to 500) of the settings page.
 

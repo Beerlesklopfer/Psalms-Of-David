@@ -65,14 +65,14 @@ class _FolderSource extends MediaSource {
 }
 
 Book _book() => Book(
-      id: '1',
-      title: 'Winter der Welt',
-      author: 'Ken Follett',
-      color: const Color(0xFF000000),
-      tracks: [
-        for (var i = 1; i <= 4; i++) Track(disc: 1, number: i, title: 'T$i', length: const Duration(minutes: 5), partId: i),
-      ],
-    );
+  id: '1',
+  title: 'Winter der Welt',
+  author: 'Ken Follett',
+  color: const Color(0xFF000000),
+  tracks: [
+    for (var i = 1; i <= 4; i++) Track(disc: 1, number: i, title: 'T$i', length: const Duration(minutes: 5), partId: i),
+  ],
+);
 
 void main() {
   late Directory dir;
@@ -126,14 +126,16 @@ void main() {
     final source = _FolderSource(dir);
     final b = _book();
     final p = PlayerController([b], source: source);
-    await tester.pumpWidget(PlayerScope(
-      controller: p,
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: BookScreen(book: b),
+    await tester.pumpWidget(
+      PlayerScope(
+        controller: p,
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: BookScreen(book: b),
+        ),
       ),
-    ));
+    );
     await tester.tap(find.byTooltip('Download for listening without the server'));
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
     await tester.pumpAndSettle();
@@ -155,14 +157,16 @@ void main() {
     final b = _book();
     final p = PlayerController([b], source: source);
     await p.downloadBook(b);
-    await tester.pumpWidget(PlayerScope(
-      controller: p,
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: const Scaffold(body: AboutScreen()),
+    await tester.pumpWidget(
+      PlayerScope(
+        controller: p,
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(body: AboutScreen()),
+        ),
       ),
-    ));
+    );
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
     await tester.pumpAndSettle();
     expect(find.text('Storage on this device'), findsOneWidget);

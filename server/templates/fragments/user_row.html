@@ -16,6 +16,11 @@
       <div class="window-body" id="dlg-planner-body-{{ user.id }}"></div>
     </dialog>
 
+    <dialog id="dlg-folders-{{ user.id }}" class="window folder-window" aria-labelledby="dlg-folders-title-{{ user.id }}">
+      <div class="window-head"><h3 id="dlg-folders-title-{{ user.id }}">{{ t("folders.title") }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+      <div class="window-body" id="folders-body-{{ user.id }}"></div>
+    </dialog>
+
     <dialog id="dlg-edit-{{ user.id }}" class="window edit-window" aria-labelledby="dlg-edit-title-{{ user.id }}">
       <div class="window-head"><h3 id="dlg-edit-title-{{ user.id }}">{{ t("users.edit") }}: {{ user.name }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
       <div class="window-body">
@@ -29,6 +34,14 @@
           <label class="field"><input type="date" name="birth_date" min="1900-01-01"{% if user.birth_date %} value="{{ user.birth_date }}"{% endif %}><span class="raised">{{ t("users.birthday") }}</span></label>
           <label class="field"><input type="number" name="max_devices" min="0" max="50"{% if user.max_devices is not none %} value="{{ user.max_devices }}"{% endif %} placeholder=" "><span>{{ t("users.device_limit") }}</span></label>
           <label class="field"><input type="password" name="pin" maxlength="64" autocomplete="new-password" placeholder=" "><span>{{ t("users.new_pin") }}</span></label>
+          {# A folder for every kind of medium of this person; the button behind the line opens the dialog that lists what the server can read, write and enter. #}
+          {% for kind in ["audiobook", "music", "photo"] %}
+          <div class="field folder-line span-all">
+            <input type="text" id="folder-{{ user.id }}-{{ kind }}" name="folder_{{ kind }}" maxlength="500" autocomplete="off" spellcheck="false" placeholder=" " value="{% if folders is defined and (user.id|string) in folders and kind in folders[user.id|string] %}{{ folders[user.id|string][kind] }}{% endif %}">
+            <span>{{ t("users.folder_" ~ kind) }}</span>
+            <button type="button" class="btn outline folder-choose" data-dialog="dlg-folders-{{ user.id }}" hx-get="/admin/rpc/folders?target=folder-{{ user.id }}-{{ kind }}" hx-target="#folders-body-{{ user.id }}" hx-swap="innerHTML" title="{{ t('folders.choose') }}" aria-label="{{ t('folders.choose') }}: {{ t('users.folder_' ~ kind) }}">{{ icon("books") }}<span class="sr-only">{{ t("folders.choose") }}</span></button>
+          </div>
+          {% endfor %}
           <small class="span-all">{% if user.birth_date %}{{ t("users.age_from_birthday") }}: {{ user.max_age }}.{% endif %}</small>
           <div class="form-error span-all" role="alert"></div>
         </form>

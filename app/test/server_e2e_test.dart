@@ -21,7 +21,12 @@ void main() {
     expect(pairing.fingerprint, isNotNull, reason: 'the server speaks TLS');
 
     // A server that shows another certificate than the pinned one is refused.
-    final wrong = PairingAddress(serverId: pairing.serverId, address: pairing.address, fingerprint: 'ab' * 32, code: pairing.code);
+    final wrong = PairingAddress(
+      serverId: pairing.serverId,
+      address: pairing.address,
+      fingerprint: 'ab' * 32,
+      code: pairing.code,
+    );
     await expectLater(
       ApiClient.pair(wrong, 'Test'),
       throwsA(isA<ApiException>().having((e) => e.code, 'code', 'certificate')),
@@ -46,8 +51,11 @@ void main() {
     final passage = await ServerSource(api, Directory.systemTemp).resolvePassage('Johannes 3,16');
     expect(passage!.position, const Duration(seconds: 12));
     expect(passage.allowed, isTrue);
-    expect(await ServerSource(api, Directory.systemTemp).resolvePassage('Hobbit 1,1'), isNull,
-        reason: 'an unknown book is no match, not a crash');
+    expect(
+      await ServerSource(api, Directory.systemTemp).resolvePassage('Hobbit 1,1'),
+      isNull,
+      reason: 'an unknown book is no match, not a crash',
+    );
 
     final cache = Directory.systemTemp.createTempSync('psalm-e2e');
     addTearDown(() => cache.deleteSync(recursive: true));
@@ -55,7 +63,10 @@ void main() {
     expect(File(path).lengthSync(), File(audio!).lengthSync());
     expect(File(path).readAsBytesSync(), File(audio).readAsBytesSync());
 
-    await ServerSource(api, cache).saveProgress(library.books.single, track, const Duration(seconds: 21), finished: false);
+    await ServerSource(
+      api,
+      cache,
+    ).saveProgress(library.books.single, track, const Duration(seconds: 21), finished: false);
     await Future<void>.delayed(const Duration(seconds: 2)); // the server writes within a short window
     final again = await loadLibrary(api);
     expect(again.resume[library.books.single.id]!.position, const Duration(seconds: 21));

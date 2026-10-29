@@ -10,21 +10,21 @@ import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
 
 Book _book({bool withFiles = true}) => Book(
-      id: 'b',
-      title: 'Book',
-      author: 'Author',
-      color: const Color(0xFF000000),
-      tracks: [
-        for (var i = 1; i <= 3; i++)
-          Track(
-            disc: 1,
-            number: i,
-            title: 'T$i',
-            length: const Duration(seconds: 20),
-            path: withFiles ? '/music/$i.mp3' : null,
-          ),
-      ],
-    );
+  id: 'b',
+  title: 'Book',
+  author: 'Author',
+  color: const Color(0xFF000000),
+  tracks: [
+    for (var i = 1; i <= 3; i++)
+      Track(
+        disc: 1,
+        number: i,
+        title: 'T$i',
+        length: const Duration(seconds: 20),
+        path: withFiles ? '/music/$i.mp3' : null,
+      ),
+  ],
+);
 
 void main() {
   late Duration now;

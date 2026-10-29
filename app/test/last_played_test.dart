@@ -11,14 +11,15 @@ import 'package:psalm/server/last_played.dart';
 import 'package:psalm/server/server_source.dart';
 
 Book _book(String id) => Book(
-      id: id,
-      title: 'Book $id',
-      author: 'A',
-      color: const Color(0xFF000000),
-      tracks: [
-        for (var i = 1; i <= 4; i++) Track(disc: 1, number: i, title: 'T$i', length: const Duration(minutes: 5), partId: int.parse(id) * 10 + i),
-      ],
-    );
+  id: id,
+  title: 'Book $id',
+  author: 'A',
+  color: const Color(0xFF000000),
+  tracks: [
+    for (var i = 1; i <= 4; i++)
+      Track(disc: 1, number: i, title: 'T$i', length: const Duration(minutes: 5), partId: int.parse(id) * 10 + i),
+  ],
+);
 
 class _Source extends MediaSource {
   @override
@@ -40,7 +41,8 @@ void main() {
   });
   tearDown(() => dir.deleteSync(recursive: true));
 
-  PlayerController make() => PlayerController([_book('1'), _book('2'), _book('3')], backend: FakeBackend(), lastStore: store);
+  PlayerController make() =>
+      PlayerController([_book('1'), _book('2'), _book('3')], backend: FakeBackend(), lastStore: store);
 
   test('what was playing is written down, and the next start opens on it', () {
     final p = make();
@@ -62,7 +64,10 @@ void main() {
     final books = [_book('1'), _book('2'), _book('3')];
 
     final laterElsewhere = make()
-      ..attachServer(_Source(), LoadedLibrary(books, {'3': (track: 3, position: const Duration(minutes: 2))}, lastBookId: '3', lastAt: 5000));
+      ..attachServer(
+        _Source(),
+        LoadedLibrary(books, {'3': (track: 3, position: const Duration(minutes: 2))}, lastBookId: '3', lastAt: 5000),
+      );
     expect(laterElsewhere.book!.id, '3');
     expect((laterElsewhere.trackIndex, laterElsewhere.position), (3, const Duration(minutes: 2)));
     laterElsewhere.dispose();

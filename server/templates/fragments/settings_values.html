@@ -2,7 +2,7 @@
    SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<form id="values-form" class="settings-form" method="post" action="/admin/rpc/settings.save"
       hx-post="/admin/rpc/settings.save" hx-target="#values-form" hx-swap="outerHTML" hx-disabled-elt="find button">
   <input type="hidden" name="csrf" value="{{ csrf }}">
-  {% for group in ["library", "signin", "pairing", "guests", "general"] %}
+  {% for group in ["library", "podcasts", "signin", "pairing", "guests", "tls", "general"] %}
   <fieldset class="line-group">
     <legend>{{ t("settings.group." ~ group) }}</legend>
     {% for setting in settings if setting.group == group %}
@@ -12,6 +12,15 @@
         {% if setting.key == "time_zone" %}
         <input name="time_zone" value="{{ setting.shown }}" required list="zone-list" autocomplete="off" spellcheck="false" size="28" maxlength="64" placeholder="{{ t('settings.zone_search') }}">
         <datalist id="zone-list">{% for zone in zones %}<option value="{{ zone }}">{% endfor %}</datalist>
+        {% elif setting.key == "tree_audiobook" or setting.key == "tree_music" %}
+        <select name="{{ setting.key }}">{% for m in ["flat", "author", "folder", "letter_author"] %}<option value="{{ m }}"{% if m == setting.value %} selected{% endif %}>{{ t("tree." ~ m) }}</option>{% endfor %}</select>
+        {% elif setting.key in ["tls_cert", "tls_key", "tls_host", "quarantine_folder", "audiobook_genres", "placeholder_tags", "radio_directory_url"] %}
+        <input type="text" name="{{ setting.key }}" value="{{ setting.value }}" size="{{ 48 if setting.key != 'tls_host' else 28 }}" maxlength="500" autocomplete="off" spellcheck="false" placeholder="{{ t('setting.ph.' ~ setting.key) }}">
+        {% elif setting.key == "tls_reload_s" %}
+        <input name="tls_reload_s" value="{{ setting.value }}" inputmode="numeric" pattern="[0-9]*" size="6" placeholder="{{ t('settings.tls_default') }}">
+        {% elif setting.key == "log_level" %}
+        <select name="log_level">{% for l in ["error", "warn", "info", "debug", "trace"] %}<option value="{{ l }}"{% if l == setting.value %} selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+        {% if setting.fixed %}<span class="unit">{{ t("settings.log_fixed") }}: {{ setting.fixed }}</span>{% endif %}
         {% else %}
         <input name="{{ setting.key }}" value="{{ setting.shown }}" required inputmode="numeric" pattern="[0-9]+" size="6">
         {% endif %}
@@ -19,6 +28,7 @@
       </span>
     </label>
     {% endfor %}
+    {% if group == "tls" %}<p class="unit">{{ t("settings.tls_hint") }}</p>{% if tls_problem is defined and tls_problem %}<p class="form-error" role="note">{{ tls_problem }}</p>{% endif %}{% endif %}
   </fieldset>
   {% endfor %}
   <div class="form-error" role="alert"></div>

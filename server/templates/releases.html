@@ -1,0 +1,38 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "releases" %}
+
+{% block title %}{{ t("releases.title") }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>{{ t("releases.title") }}</h1>
+</div>
+
+<p class="lead">{{ t("releases.intro") }}</p>
+
+{% if pending %}
+<table class="stack">
+  <thead>
+    <tr>
+      <th>{{ t("releases.what") }}</th>
+      <th>{{ t("releases.who") }}</th>
+      <th><span class="sr-only">{{ t("users.actions") }}</span></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for p in pending %}
+    <tr>
+      <td><strong>{{ p.title }}</strong> <span class="badge">{{ t("releases.kind." ~ p.kind) }}</span></td>
+      <td data-label="{{ t('releases.who') }}">{{ p.profile }}</td>
+      <td class="actions">
+        <form method="post" action="/admin/rpc/release.decide"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="{{ p.kind }}"><input type="hidden" name="profile" value="{{ p.profile_id }}"><input type="hidden" name="target" value="{{ p.target_id }}"><input type="hidden" name="release" value="1"><button type="submit" class="btn">{{ t("releases.release") }}</button></form>
+        <form method="post" action="/admin/rpc/release.decide" data-confirm="{{ t('releases.confirm_refuse') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="{{ p.kind }}"><input type="hidden" name="profile" value="{{ p.profile_id }}"><input type="hidden" name="target" value="{{ p.target_id }}"><input type="hidden" name="release" value="0"><button type="submit" class="btn outline danger-outline">{{ t("releases.refuse") }}</button></form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>{{ t("releases.none") }}</p>
+{% endif %}
+{% endblock %}

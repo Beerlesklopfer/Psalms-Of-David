@@ -8,17 +8,20 @@ import 'app_paths.dart';
 /// What the device keeps after pairing: where the server is, which certificate it
 /// must show, and the token. Stored in a file only the user can read.
 class Credentials {
-  Credentials({required this.serverId, required this.address, required this.fingerprint, required this.token, required this.deviceName});
+  Credentials({required this.serverId, required this.address, required this.fingerprint, required this.token, required this.deviceName, this.ca = false});
 
   /// The id of the server, to find it again by mDNS when its address changes.
   final String serverId;
   final String address;
   final String? fingerprint;
+
+  /// The server has a certificate from a certificate authority: its name is checked, there is no fingerprint.
+  final bool ca;
   final String token;
   final String deviceName;
 
   Map<String, Object?> toJson() =>
-      {'server_id': serverId, 'address': address, 'fingerprint': fingerprint, 'token': token, 'device_name': deviceName};
+      {'server_id': serverId, 'address': address, 'fingerprint': fingerprint, 'ca': ca, 'token': token, 'device_name': deviceName};
 
   static Credentials? fromJson(Object? j) {
     if (j is! Map) return null;
@@ -29,6 +32,7 @@ class Credentials {
       serverId: j['server_id'] as String? ?? '',
       address: address,
       fingerprint: j['fingerprint'] as String?,
+      ca: j['ca'] == true,
       token: token,
       deviceName: j['device_name'] as String? ?? '',
     );

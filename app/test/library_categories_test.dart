@@ -11,23 +11,23 @@ import 'package:psalm/screens/library_screen.dart';
 import 'package:psalm/screens/search_screen.dart';
 
 Book _book(String id, String title, {String kind = 'audiobook', String? narrator}) => Book(
-      id: id,
-      title: title,
-      author: 'Author $id',
-      color: const Color(0xFF000000),
-      kind: kind,
-      narrator: narrator,
-      tracks: [Track(disc: 1, number: 1, title: 'T1', length: const Duration(minutes: 5), partId: int.parse(id))],
-    );
+  id: id,
+  title: title,
+  author: 'Author $id',
+  color: const Color(0xFF000000),
+  kind: kind,
+  narrator: narrator,
+  tracks: [Track(disc: 1, number: 1, title: 'T1', length: const Duration(minutes: 5), partId: int.parse(id))],
+);
 
 Widget _app(PlayerController p, Widget home) => PlayerScope(
-      controller: p,
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(body: home),
-      ),
-    );
+  controller: p,
+  child: MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: Scaffold(body: home),
+  ),
+);
 
 void main() {
   testWidgets('the library has music, audiobooks, videos and e-books; videos and e-books are a stub', (tester) async {
@@ -136,7 +136,11 @@ void main() {
     tester.view.physicalSize = const Size(1000, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    final p = PlayerController([_book('1', 'First Book'), _book('2', 'Second Book'), _book('3', 'Third Book', kind: 'music')]);
+    final p = PlayerController([
+      _book('1', 'First Book'),
+      _book('2', 'Second Book'),
+      _book('3', 'Third Book', kind: 'music'),
+    ]);
     p.recentIds.addAll(['3', '1']);
     await tester.pumpWidget(_app(p, const HomeScreen()));
     expect(find.text('Recently listened'), findsOneWidget);

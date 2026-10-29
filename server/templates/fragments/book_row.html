@@ -1,9 +1,31 @@
 {# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
-   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<tr id="book-{{ book.id }}">
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<tr id="book-{{ book.id }}"{% if parents is defined %} data-parents="{{ parents }}" class="depth-{{ depth }}"{% endif %} data-search="{{ (book.title ~ ' ' ~ book.author ~ ' ' ~ (book.narrator or ''))|lower }}">
   <td class="cover-cell"><span class="thumb">{{ icon("books") }}<img src="/admin/cover/{{ book.id }}" alt="" loading="lazy"></span></td>
-  <td><strong>{{ book.title }}</strong><br><small>{{ book.author }}{% if book.narrator %} &middot; {{ t("books.read_by") }} {{ book.narrator }}{% endif %}</small></td>
+  <td>{% set has_gap = gaps is defined and (book.id|string) in gaps %}{% set has_nocover = nocover is defined and (book.id|string) in nocover %}{% if has_gap or has_nocover %}{% set why %}{% if has_gap %}{{ t('books.missing_tracks') }} {{ gaps[book.id|string] }}{% endif %}{% if has_gap and has_nocover %}; {% endif %}{% if has_nocover %}{{ t('books.missing_cover') }}{% endif %}{% endset %}<span class="problem-mark" role="img" title="{{ why }}" aria-label="{{ why }}">!</span> {% endif %}<strong>{{ book.title }}</strong>{% if dupes is defined and (book.id|string) in dupes %} <a class="badge" href="#book-{{ dupes[book.id|string][0].id }}" title="{% for o in dupes[book.id|string] %}#{{ o.id }} {{ o.author }}, {{ o.discs }} {{ t('books.discs') }}, {{ o.duration_ms // 3600000 }} h {{ (o.duration_ms // 60000) % 60 }} min{% if not loop.last %}; {% endif %}{% endfor %}">{{ t("books.dupe") }}</a>
+    <details class="ignore-menu"><summary>{{ t("ignore.button") }}</summary>
+      <div class="ignore-options">
+        {% for scope in ["album", "title", "work"] %}
+        <form method="post" action="/admin/rpc/ignore.add"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}"><input type="hidden" name="scope" value="{{ scope }}"><input type="hidden" name="what" value="duplicate"><input type="hidden" name="back" value="{{ book.kind }}">
+          <button type="submit" class="btn outline">{{ t("ignore." ~ scope) }}</button></form>
+        {% endfor %}
+        <form method="post" action="/admin/rpc/quarantine.add" data-confirm="{{ t('quarantine.confirm') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}"><input type="hidden" name="back" value="{{ book.kind }}">
+          <button type="submit" class="btn outline danger-outline">{{ t("quarantine.button") }}</button></form>
+      </div>
+    </details>{% endif %}<br><small>{{ book.author }}{% if book.owner %} &middot; {{ t("books.owner_of") }} {{ book.owner }}{% endif %}{% if book.narrator %} &middot; {{ t("books.read_by") }} {{ book.narrator }}{% endif %}</small>
+    <details class="track-details"><summary>{{ book.tracks }} {{ t("books.tracks") }}</summary>
+      <div id="tracks-{{ book.id }}" hx-get="/admin/rpc/book.tracks?id={{ book.id }}" hx-trigger="toggle from:closest details once" hx-swap="innerHTML"></div>
+    </details>
+  </td>
   <td data-label="{{ t('books.state') }}">
-    {% if book.released %}<span class="badge ok">{{ t("books.released_from") }} {{ book.min_age }}</span>{% else %}<span class="badge muted">{{ t("books.unreleased") }}</span>{% endif %}
+    {% if book.released %}
+    <form class="toggle-form" method="post" action="/admin/rpc/book.unrelease" hx-post="/admin/rpc/book.unrelease" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-disabled-elt="find button"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}">
+      <button type="submit" class="badge ok toggle" aria-pressed="true" title="{{ t('books.toggle_off') }}">{{ t("books.released_from") }} {{ book.min_age }}</button></form>
+    {% elif book.recommended_age is not none %}
+    <form class="toggle-form" method="post" action="/admin/rpc/book.release" hx-post="/admin/rpc/book.release" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-disabled-elt="find button"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}"><input type="hidden" name="min_age" value="{{ book.recommended_age }}">
+      <button type="submit" class="badge muted toggle" aria-pressed="false" title="{{ t('books.toggle_on') }}">{{ t("books.unreleased") }}</button></form>
+    {% else %}
+    <button type="button" class="badge muted toggle" aria-pressed="false" data-dialog="dlg-book-{{ book.id }}" title="{{ t('books.toggle_need_age') }}">{{ t("books.unreleased") }}</button>
+    {% endif %}
     {% if book.quota_exempt %}<span class="badge">{{ t("books.learning") }}</span>{% endif %}
   </td>
   <td data-label="{{ t('books.content') }}">{{ book.discs }} {{ t("books.discs") }} &middot; {{ book.tracks }} {{ t("books.tracks") }} &middot; {{ book.duration_ms // 3600000 }} h {{ (book.duration_ms // 60000) % 60 }} min</td>
@@ -26,6 +48,8 @@
       <div class="window-body">
         <form id="book-form-{{ book.id }}" class="dialog-form" method="post" action="/admin/rpc/book.update" hx-post="/admin/rpc/book.update" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-disabled-elt="find button" data-close-window>
           <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}">
+          {% if owners is defined %}<label class="field span-all"><select name="owner"><option value=""{% if book.owner_id is none %} selected{% endif %}>&ndash;</option>{% for o in owners %}<option value="{{ o.id }}"{% if book.owner_id == o.id %} selected{% endif %}>{{ o.name }}</option>{% endfor %}</select><span>{{ t("books.owner") }}</span></label>
+          <small class="span-all">{{ t("books.owner_hint") }}</small>{% endif %}
           <label class="check span-all"><input type="checkbox" name="released" value="1"{% if book.released %} checked{% endif %}> <span>{{ t("books.released") }}</span></label>
           <label class="field"><input type="number" name="min_age" min="0" max="21" placeholder=" " value="{% if book.min_age is not none %}{{ book.min_age }}{% elif book.recommended_age is not none %}{{ book.recommended_age }}{% else %}0{% endif %}"><span>{{ t("books.age") }}</span></label>
           <label class="field span-all"><textarea name="description" rows="6" maxlength="4000" placeholder=" ">{% if book.description %}{{ book.description }}{% endif %}</textarea><span>{{ t("books.description") }}</span></label>
@@ -48,4 +72,19 @@
       </div>
     </dialog>
   </td>
+  {% if members is defined %}
+  <td class="owner-cell" data-label="{{ t('books.col_owner') }}">
+    <form method="post" action="/admin/rpc/book.owner" hx-post="/admin/rpc/book.owner" hx-trigger="change" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-disabled-elt="find select">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="book" value="{{ book.id }}">
+      <select name="owner" aria-label="{{ t('books.col_owner') }}: {{ book.title }}"><option value=""{% if book.owner_id is none %} selected{% endif %}>&ndash;</option>{% for m in members %}<option value="{{ m.id }}"{% if book.owner_id == m.id %} selected{% endif %}>{{ m.name }}</option>{% endfor %}</select>
+    </form>
+  </td>
+  {% for m in members %}
+  <td class="member-cell" data-label="{{ t('books.col_access') }}: {{ m.name }}">
+    <form method="post" action="/admin/rpc/book.visibility" hx-post="/admin/rpc/book.visibility" hx-trigger="change" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-disabled-elt="find input">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="book" value="{{ book.id }}"><input type="hidden" name="profile" value="{{ m.id }}">
+      <input type="checkbox" name="visible" value="1" aria-label="{{ m.name }}: {{ book.title }}" title="{{ m.name }}{% if m.admin %} ({{ t('books.admin_sees_all') }}){% endif %}"{% if (book.id ~ ':' ~ m.id) in seen %} checked{% endif %}>
+    </form>
+  </td>
+  {% endfor %}{% endif %}
 </tr>

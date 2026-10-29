@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../library_groups.dart';
 import '../models.dart';
 import '../player_controller.dart';
 import '../widgets.dart';
@@ -25,6 +26,16 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
+  /// A name from the hits; a tap searches for exactly this name, which brings all their albums.
+  Widget _names(List<String> names, IconData icon) => SliverList.builder(
+        itemCount: names.length,
+        itemBuilder: (_, i) => ListTile(
+          leading: Icon(icon),
+          title: Text(names[i]),
+          onTap: () => setState(() => _controller.text = names[i]),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
@@ -33,13 +44,7 @@ class _SearchScreenState extends State<SearchScreen> {
     final query = _controller.text.trim().toLowerCase();
     // The books of the chosen media category; null for one David does not manage yet.
     final pool = _category.pick(p.library);
-    final hits = (pool ?? const <Book>[])
-        .where(
-          (b) =>
-              b.title.toLowerCase().contains(query) ||
-              b.author.toLowerCase().contains(query),
-        )
-        .toList();
+    final found = searchGroups(pool ?? const <Book>[], query);
     final authors = {for (final b in pool ?? const <Book>[]) b.author}.toList()..sort();
 
     return CustomScrollView(
@@ -77,7 +82,7 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          sliver: SliverToBoxAdapter(child: CategoryChips(value: _category, withAll: true, onChanged: (c) => setState(() => _category = c))),
+          sliver: SliverToBoxAdapter(child: CategoryChips(value: _category, forSearch: true, onChanged: (c) => setState(() => _category = c))),
         ),
         // With a server, the text may be a passage of an audio Bible ("Johannes 3,16").
         if (query.isNotEmpty && p.source != null)
@@ -137,24 +142,49 @@ class _SearchScreenState extends State<SearchScreen> {
               ],
             ),
           ),
-        ] else if (hits.isEmpty)
+        ] else if (found.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
             child: Center(child: Text(l.nothingFound)),
           )
-        else
-          SliverList.builder(
-            itemCount: hits.length,
-            itemBuilder: (context, i) {
-              final b = hits[i];
-              return ListTile(
-                leading: SizedBox.square(dimension: 48, child: Cover(book: b)),
-                title: Text(b.title),
-                subtitle: Text(b.author),
-                onTap: () => openBook(context, b),
-              );
-            },
-          ),
+        else ...[
+          // The hits in groups: the albums (books) by title, then the artists (authors) and the narrators.
+          if (found.albums.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: SectionHeader(switch (_category) {
+                MediaCategory.music => l.sectionAlbums,
+                MediaCategory.audiobooks => l.sectionBooks,
+                _ => l.sectionAlbumsAndBooks,
+              }),
+            ),
+            SliverList.builder(
+              itemCount: found.albums.length,
+              itemBuilder: (context, i) {
+                final b = found.albums[i];
+                return ListTile(
+                  leading: SizedBox.square(dimension: 48, child: Cover(book: b)),
+                  title: Text(b.title),
+                  subtitle: Text(b.author),
+                  onTap: () => openBook(context, b),
+                );
+              },
+            ),
+          ],
+          if (found.creators.isNotEmpty) ...[
+            SliverToBoxAdapter(
+              child: SectionHeader(switch (_category) {
+                MediaCategory.music => l.sectionArtists,
+                MediaCategory.audiobooks => l.sectionAuthors,
+                _ => l.sectionAuthorsAndArtists,
+              }),
+            ),
+            _names(found.creators, Icons.person_outline),
+          ],
+          if (found.narrators.isNotEmpty) ...[
+            SliverToBoxAdapter(child: SectionHeader(l.sectionNarrators)),
+            _names(found.narrators, Icons.record_voice_over_outlined),
+          ],
+        ],
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],
     );

@@ -139,6 +139,63 @@
   "settingsDevice": "This device",
   "settingsDisconnect": "Disconnect",
   "settingsDisconnectHint": "Forgets the pairing with the server on this device. To connect again you need a new pairing code.",
+  "settingsPlayback": "Playback",
+  "settingsBuffer": "Audio buffer",
+  "settingsBufferSeconds": "{seconds} s",
+  "@settingsBufferSeconds": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsBufferHint": "How much audio is kept ready before it is played. A larger buffer bridges a slow network or disk, a smaller one lets a change of track be heard sooner. It applies from the next track.",
+  "settingsDevices": "Devices",
+  "settingsDevicesCount": "{used} of {max} devices connected",
+  "@settingsDevicesCount": {
+    "placeholders": {
+      "used": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsDevicesNoLimit": "{used} devices connected",
+  "@settingsDevicesNoLimit": {
+    "placeholders": {
+      "used": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsConnectDevice": "Connect another device",
+  "settingsConnectDeviceHint": "Shows a QR code that the other device scans. The code works once and only for a short time.",
+  "pairQrScan": "Scan this code with Psalm on the other device.",
+  "pairQrExpires": "Valid for {time}",
+  "@pairQrExpires": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "pairQrExpired": "The code has expired.",
+  "pairQrNew": "New code",
+  "pairQrFull": "All devices are connected. Remove one in the administration of the server to connect another.",
+  "pairQrError": "The code could not be made. Try again.",
+  "pairQrClose": "Close",
+  "pairQrCopy": "Copy the address",
+  "pairQrCopied": "Address copied. Paste it into the connect screen of the other device.",
+  "streamArtist": "Artist",
+  "streamTrack": "Track",
+  "streamStation": "Station",
+  "streamGenre": "Genre",
+  "streamDescription": "About",
+  "streamQuality": "Quality",
+  "streamWebsite": "Website",
+  "streamWaiting": "Waiting for the information of the station …",
   "cancel": "Cancel",
   "aboutVersion": "Version {version}",
   "aboutDescription": "Psalm plays audiobooks, music and more from your own David server, for the whole family.",
@@ -249,5 +306,577 @@
       }
     }
   },
-  "sectionRecent": "Recently listened"
+  "sectionRecent": "Recently listened",
+  "genreOther": "Other",
+  "sectionAlbums": "Albums",
+  "sectionBooks": "Books",
+  "sectionNarrators": "Narrators",
+  "sectionAlbumsAndBooks": "Albums and books",
+  "navPodcasts": "Podcasts",
+  "navRadio": "Radio",
+  "podcastAdd": "Follow a podcast",
+  "podcastAddress": "Address of the feed or the web page",
+  "podcastFollow": "Follow",
+  "podcastFollowed": "Now following “{title}”",
+  "@podcastFollowed": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "askToRelease": "Please ask to have it released. It waits until a parent allows it.",
+  "podcastInvalid": "That address gives no podcast feed.",
+  "notAllowed": "You are not allowed to do that.",
+  "serverUnreachableShort": "The server cannot be reached.",
+  "needsServer": "Podcasts and radio need a connection to your server.",
+  "noPodcastsYet": "No podcasts yet. Tap + to follow one.",
+  "waitingForRelease": "Waiting for a release. Please ask to have it released.",
+  "feedProblem": "The feed could not be read the last time.",
+  "podcastUnfollow": "Stop following",
+  "noEpisodesYet": "No episodes yet.",
+  "episodeAt": "stopped at {time}",
+  "@episodeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "stationAdd": "Add a station",
+  "stationName": "Name",
+  "stationAddress": "Address of the stream",
+  "stationSave": "Save",
+  "stationAdded": "“{name}” added",
+  "@stationAdded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "stationInvalid": "A station needs a name and the address of its stream (http or https).",
+  "noStationsYet": "No stations yet. Tap + to add one.",
+  "stationRemove": "Remove from the favourites",
+  "radioLive": "Live",
+  "cdImportButton": "Import CD",
+  "cdImportTooltip": "Import the CD in the drive into the library",
+  "cdIdentifying": "Reading the disc…",
+  "cdFound": "This disc was found online. Check the details.",
+  "cdNotFound": "This disc was not found online. Please enter the details.",
+  "cdCandidate": "Match",
+  "cdSearchLabel": "Not the right match? Search MusicBrainz (title, author)",
+  "cdSearchGo": "Search",
+  "cdSearchNothing": "Nothing found.",
+  "cdAuthor": "Author",
+  "cdTitle": "Title",
+  "cdDiscNumber": "CD number",
+  "cdDiscsTotal": "Number of CDs",
+  "cdKind": "Type",
+  "cdKindAudiobook": "Audiobook",
+  "cdKindMusic": "Music",
+  "cdEjectAfter": "Eject the CD afterwards",
+  "cdTracks": "{count} tracks",
+  "@cdTracks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cdSave": "Import",
+  "cdClose": "Close",
+  "cdStopImport": "Stop import",
+  "cdReading": "Reading track {track} of {total}",
+  "@cdReading": {
+    "placeholders": {
+      "track": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "cdDone": "The CD is now in the library.",
+  "cdEjected": "The CD was ejected.",
+  "cdCancelled": "The import was cancelled. Nothing was added to the library.",
+  "cdErrNoDisc": "There is no readable audio CD in the drive.",
+  "cdErrUnsupported": "The server asks for a format or tag version that this app cannot create yet.",
+  "cdErrRead": "The disc could not be read reliably. It may be scratched or dirty.",
+  "cdErrDriveGone": "The drive of the server stopped answering.",
+  "cdErrEncode": "The server could not convert the audio.",
+  "cdErrForbidden": "Your account may not add CDs to the library.",
+  "cdErrDetails": "Details",
+  "cdErrVerify": "Two readings of a track never gave the same result. The disc may be scratched or dirty.",
+  "cdErrCancelled": "The import was cancelled. Nothing was added to the library.",
+  "cdErrIo": "A file could not be written on the server.",
+  "cdErrNetwork": "The server does not answer.",
+  "cdErrCertificate": "The server's certificate is not the one this device was paired with.",
+  "cdErrUnauthorized": "This device is no longer signed in to the server.",
+  "cdErrInvalidToc": "The server could not use the table of contents of this disc.",
+  "cdErrInvalidQuery": "The search needs at least two letters.",
+  "cdErrNoContact": "The administrator has not set a contact address for MusicBrainz yet, so discs cannot be looked up. You can enter the details by hand.",
+  "cdErrLookupFailed": "The online lookup of the disc did not work. You can enter the details by hand.",
+  "cdErrNotFound": "The server does not know this item.",
+  "cdErrInvalidRelease": "The server did not accept the release.",
+  "cdErrTrackNumbers": "The track numbers are not complete or appear twice.",
+  "cdErrInvalidMeta": "The server did not accept the author, title or numbers.",
+  "cdErrUnreadableFile": "The server could not read one of the files.",
+  "cdErrFormatMismatch": "A file does not have the format that the server's settings ask for.",
+  "cdErrBadExtension": "A file has an ending that the server does not accept.",
+  "cdErrUnknownFile": "The server received a file it did not expect.",
+  "cdErrMissingFile": "A file is missing in what was sent to the server.",
+  "cdErrBadCover": "The cover picture was not accepted.",
+  "cdErrBadTags": "The tags of a file could not be written by the server.",
+  "cdErrNoImportFolder": "The server has no import folder for this kind of media.",
+  "cdErrNoSpace": "There is not enough room on the server.",
+  "cdErrDiscExists": "This CD is already in the library; the server does not overwrite it.",
+  "cdErrTooLarge": "The upload is larger than the server accepts.",
+  "cdErrBadRequest": "The server did not understand the request.",
+  "cdErrInvalidJob": "The server did not accept the import job.",
+  "cdErrJobClosed": "The import job is already finished.",
+  "cdErrImportFailed": "The server could not add the CD to the library.",
+  "cdErrInterrupted": "The import was interrupted, for example by a restart of the server.",
+  "cdErrStale": "The import stopped sending news and was given up.",
+  "cdErrClient": "The device that started the import gave it up.",
+  "cdErrUnknown": "The CD import failed ({code}).",
+  "@cdErrUnknown": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "sectionNew": "New",
+  "badgeNew": "New",
+  "tooltipPlayed": "Played",
+  "playsCount": "{count, plural, =1{Played once} other{Played {count} times}}",
+  "@playsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "lastPlayedOn": "last played on {date}",
+  "@lastPlayedOn": {
+    "placeholders": {
+      "date": {
+        "type": "DateTime",
+        "format": "yMMMd"
+      }
+    }
+  },
+  "cdStarting": "Starting…",
+  "cdEncoding": "Converting the audio…",
+  "cdAddingToLibrary": "Adding the CD to the library…",
+  "cdImportingTooltip": "Importing the CD",
+  "cdEjectTooltip": "Eject CD",
+  "cdNothingToEject": "There is nothing to eject.",
+  "cdErrNoDrive": "The server has no CD drive.",
+  "cdErrDriveDenied": "The server may not use its CD drive. The administrator has to allow it.",
+  "cdErrTrayOpen": "The tray of the drive is open. Close it by hand first.",
+  "cdErrBusy": "The drive is busy with another CD.",
+  "cdErrEjectFailed": "The drive did not open its tray.",
+  "cdErrInternal": "The server had an internal problem.",
+  "cdErrInvalidSelection": "A chosen track is not on the disc, or is chosen twice.",
+  "cdSelectAll": "Select all tracks",
+  "cdSelectNone": "Select no track",
+  "cdSelectInvert": "Invert the selection",
+  "cdTrackDefault": "Track {number}",
+  "@cdTrackDefault": {
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "cdTracksSummary": "{selected} of {total} tracks, {duration}",
+  "@cdTracksSummary": {
+    "placeholders": {
+      "selected": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "cdErrEmptySelection": "No track is chosen.",
+  "cdErrTaken": "Tracks {numbers} are already in the library.",
+  "@cdErrTaken": {
+    "placeholders": {
+      "numbers": {
+        "type": "String"
+      }
+    }
+  },
+  "cdBarHead": "{title}, CD {disc}",
+  "@cdBarHead": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "disc": {
+        "type": "int"
+      }
+    }
+  },
+  "cdBarTrack": "Track {track} of {total}",
+  "@cdBarTrack": {
+    "placeholders": {
+      "track": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "cdPhaseReading": "Reading",
+  "cdPhaseChecking": "Checking",
+  "cdPhaseEncoding": "Converting",
+  "cdPhasePlacing": "Filing",
+  "cdPhaseImporting": "Importing",
+  "cdPhaseWorking": "Working",
+  "cdBarDone": "Done: {count} tracks",
+  "@cdBarDone": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cdBarDoneNoCount": "Done",
+  "cdBarImporting": "Importing: {line}",
+  "@cdBarImporting": {
+    "placeholders": {
+      "line": {
+        "type": "String"
+      }
+    }
+  },
+  "cdErrDiscPresent": "This CD is in the library already.",
+  "cdErrNotPresent": "This CD is not in the library, so there is nothing to repair.",
+  "cdErrNothingToHeal": "The CD is whole in the library; there is nothing to repair.",
+  "cdErrUnreadableTrack": "Some tracks could not be read from the CD (it may be scratched).",
+  "cdStateUnverified": "Taken, not confirmed",
+  "cdErrUnverifiedTrack": "A track was not read the same way twice and was taken with its first reading (not confirmed).",
+  "cdErrResumeMismatch": "The settings or the choice of tracks changed, so the CD is read again from the start.",
+  "cdErrHealNeeded": "The CD is in the library, but tracks are missing or damaged. Repair it from the import dialog.",
+  "cdErrResumePending": "An interrupted reading of this CD is waiting. Continue it from the import dialog.",
+  "cdErrAmbiguousMatch": "Several releases fit this CD. Please choose one.",
+  "cdErrNoMatch": "The online database does not know this CD.",
+  "cdErrNoTarget": "The server has no import folder that it may write to.",
+  "cdErrUdevOff": "The automatic import needs the detection of drives by system events to be switched on.",
+  "cdErrNotAudio": "This is not an audio CD.",
+  "cdErrStartFailed": "The import could not be started.",
+  "cdErrLocked": "The CD was added, but the import of the library is locked. It shows up when the lock is lifted.",
+  "cdContinue": "Continue",
+  "cdResumeNote": "This CD was read to {done} of {total} tracks already (interrupted {when}).",
+  "@cdResumeNote": {
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "cdRereadFromStart": "Read again from the start",
+  "cdResumeLost": "An earlier reading of this CD cannot be continued, because the settings changed. The CD is read again.",
+  "cdResumed": "Continuing an earlier reading.",
+  "cdImportAnyway": "Import anyway",
+  "cdHeal": "Check and repair",
+  "cdForceTitle": "Import the CD again?",
+  "cdForceBody": "This CD is in the library already. This adds it a second time, as a new copy. Only do that if you really want two copies.",
+  "cdForceConfirm": "Import as a new copy",
+  "cdPresentTitle": "This CD is in the library already",
+  "cdPresentBookDisc": "{book}, CD {disc}",
+  "@cdPresentBookDisc": {
+    "placeholders": {
+      "book": {
+        "type": "String"
+      },
+      "disc": {
+        "type": "int"
+      }
+    }
+  },
+  "cdPresentBookAuthorDisc": "{book} by {author}, CD {disc}",
+  "@cdPresentBookAuthorDisc": {
+    "placeholders": {
+      "book": {
+        "type": "String"
+      },
+      "author": {
+        "type": "String"
+      },
+      "disc": {
+        "type": "int"
+      }
+    }
+  },
+  "cdPresentComplete": "The CD is whole in the library ({inLibrary} of {onDisc} tracks).",
+  "@cdPresentComplete": {
+    "placeholders": {
+      "inLibrary": {
+        "type": "int"
+      },
+      "onDisc": {
+        "type": "int"
+      }
+    }
+  },
+  "cdPresentCount": "{inLibrary} of {onDisc} tracks are in the library.",
+  "@cdPresentCount": {
+    "placeholders": {
+      "inLibrary": {
+        "type": "int"
+      },
+      "onDisc": {
+        "type": "int"
+      }
+    }
+  },
+  "cdMissing": "Missing",
+  "cdDamaged": "Damaged",
+  "cdDamagedEmpty": "the file is empty",
+  "cdDamagedUnreadable": "the file cannot be read",
+  "cdDamagedLength": "the file is {have} long, the CD has {want}",
+  "@cdDamagedLength": {
+    "placeholders": {
+      "have": {
+        "type": "String"
+      },
+      "want": {
+        "type": "String"
+      }
+    }
+  },
+  "cdDamagedOther": "the file does not match the CD",
+  "cdHealHint": "Only the missing and damaged tracks are read from the CD. A damaged file is kept in the quarantine folder.",
+  "cdStateWaiting": "Waiting",
+  "cdStateRead": "Read, waits for the check",
+  "cdSpeed": "Drive reads at {x}x",
+  "@cdSpeed": {
+    "placeholders": {
+      "x": {
+        "type": "String"
+      }
+    }
+  },
+  "cdStateRereading": "Reading again",
+  "cdStateRereadingPercent": "Reading again {percent} %",
+  "@cdStateRereadingPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "cdStateReading": "Reading",
+  "cdStateReadingPercent": "Reading {percent} %",
+  "@cdStateReadingPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "cdStateVerifying": "Checking",
+  "cdStateEncoding": "Converting",
+  "cdStateDone": "Done",
+  "cdStateFailed": "Error",
+  "cdBuffer": "Buffer {seconds} s of {max} s",
+  "@cdBuffer": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "filterPlaylists": "Playlists",
+  "playlistNew": "New playlist",
+  "playlistNewItem": "New playlist…",
+  "playlistName": "Name",
+  "playlistSave": "Save",
+  "playlistsEmpty": "No playlists yet. Tap + to make one.",
+  "playlistMeta": "{count} titles · {duration}",
+  "@playlistMeta": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistAddTo": "Add to playlist",
+  "playlistAddedTo": "Added to “{name}”.",
+  "@playlistAddedTo": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistChoose": "Add to which playlist?",
+  "playlistPlay": "Play",
+  "playlistRename": "Rename",
+  "playlistRenameTitle": "Rename the playlist",
+  "playlistDelete": "Delete playlist",
+  "playlistDeleteTitle": "Delete this playlist?",
+  "playlistDeleteText": "“{name}” is deleted from your profile. The titles stay in the library.",
+  "@playlistDeleteText": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "playlistRemoveEntry": "Remove from the playlist",
+  "playlistUnavailable": "Not available",
+  "playlistEmpty": "This playlist is empty. Use “Add to playlist” on a title or a book.",
+  "playlistDownload": "Download the playlist",
+  "plErrNameTaken": "You have a playlist with this name already.",
+  "plErrInvalidName": "The name must not be empty and at most 100 characters.",
+  "plErrUnknownPart": "A title is not there any more, or you may not use it.",
+  "plErrUnknownBook": "The book is not there any more, or you may not use it.",
+  "plErrInvalidOrder": "The order could not be used. The list is shown as it is on the server.",
+  "plErrInvalidPosition": "That place in the playlist does not exist.",
+  "plErrInvalidRequest": "The request was not valid.",
+  "plErrPlaylistFull": "The playlist is full (at most 5000 titles).",
+  "plErrTooManyPlaylists": "You have the most playlists you can have (100).",
+  "plErrNotFound": "The playlist is not there any more.",
+  "plErrNetwork": "The server does not answer.",
+  "plErrUnknown": "The playlist could not be changed ({code}).",
+  "@plErrUnknown": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "hideMenuTooltip": "Hide or show",
+  "hideBook": "Hide this book",
+  "showBook": "Show this book again",
+  "hideAuthorAudiobooks": "Hide all audiobooks by {name}",
+  "@hideAuthorAudiobooks": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "showAuthorAudiobooks": "Show the audiobooks by {name} again",
+  "@showAuthorAudiobooks": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hideAuthorMusic": "Hide all music by {name}",
+  "@hideAuthorMusic": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "showAuthorMusic": "Show the music by {name} again",
+  "@showAuthorMusic": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hideAuthorAll": "Hide everything by {name}",
+  "@hideAuthorAll": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "showAuthorAll": "Show everything by {name} again",
+  "@showAuthorAll": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hiddenMark": "Hidden",
+  "hidingFailed": "The change could not be saved.",
+  "settingsMyLibrary": "My library",
+  "settingsShowHidden": "Show what I hid",
+  "settingsShowHiddenHint": "What you hide leaves your lists, only yours. With this switch it is listed again, dimmed, so that you can show it again.",
+  "settingsHiddenTitle": "Hidden",
+  "settingsHiddenNone": "You have not hidden anything. Long-press a book, or open it and use the menu at the top.",
+  "settingsHiddenAuthorAudiobooks": "Audiobooks by {name}",
+  "@settingsHiddenAuthorAudiobooks": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsHiddenAuthorMusic": "Music by {name}",
+  "@settingsHiddenAuthorMusic": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsHiddenAuthorAll": "Everything by {name}",
+  "@settingsHiddenAuthorAll": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsShowAgain": "Show again",
+  "musicOf": "Music of {name}",
+  "@musicOf": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "musicOfNobody": "Other music",
+  "ownerLabel": "Owner: {name}",
+  "@ownerLabel": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "audiobooksOf": "Audiobooks of {name}",
+  "@audiobooksOf": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "audiobooksOfNobody": "Other audiobooks"
 }

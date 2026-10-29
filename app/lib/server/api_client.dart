@@ -8,13 +8,18 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
+import '../podcasts.dart';
+
 /// An answer of the server that is not a success. [code] is the server's error
 /// code (`outside_schedule`, `not_found`, ...) or `network` if there was no answer.
 class ApiException implements Exception {
-  ApiException(this.status, this.code);
+  ApiException(this.status, this.code, [this.body]);
 
   final int status;
   final String code;
+
+  /// The whole JSON answer, when it had more than the code (for instance `taken` of `disc_exists`).
+  final Map<String, dynamic>? body;
 
   @override
   String toString() => 'ApiException($status, $code)';
@@ -22,7 +27,7 @@ class ApiException implements Exception {
 
 /// The contents of a pairing code: `david://pair?v=1&id=..&addr=..&fp=..&code=..`.
 class PairingAddress {
-  PairingAddress({required this.serverId, required this.address, required this.fingerprint, required this.code});
+  PairingAddress({required this.serverId, required this.address, required this.fingerprint, required this.code, this.ca = false});
 
   final String serverId;
   final String address;
@@ -31,6 +36,24 @@ class PairingAddress {
   final String? fingerprint;
   final String code;
 
+  /// The server has a certificate from a certificate authority (Let's Encrypt, ...): there is no
+  /// fingerprint, the device checks the name in [address] and the usual trust instead.
+  final bool ca;
+
+  /// The address of the QR code (the same form the server makes): `david://pair?v=1&id=..&addr=..[&fp=..][&ca=1]&code=..`.
+  String toUri() => Uri(
+    scheme: 'david',
+    host: 'pair',
+    queryParameters: {
+      'v': '1',
+      'id': serverId,
+      'addr': address,
+      if (fingerprint != null && fingerprint!.isNotEmpty) 'fp': fingerprint!,
+      if (ca) 'ca': '1',
+      'code': code,
+    },
+  ).toString();
+
   static PairingAddress? parse(String text) {
     final uri = Uri.tryParse(text.trim());
     if (uri == null || uri.scheme != 'david' || uri.host != 'pair') return null;
@@ -38,7 +61,7 @@ class PairingAddress {
     final address = q['addr'];
     final code = q['code'];
     if (q['v'] != '1' || address == null || address.isEmpty || code == null || code.isEmpty) return null;
-    return PairingAddress(serverId: q['id'] ?? '', address: address, fingerprint: q['fp'], code: code);
+    return PairingAddress(serverId: q['id'] ?? '', address: address, fingerprint: q['fp'], code: code, ca: q['ca'] == '1');
   }
 }
 
@@ -52,30 +75,37 @@ class PairResult {
   final String role;
 }
 
-/// Talks to the David server (`docs/spec-app-api.md`). With a fingerprint the
+/// Talks to the David server (`docs/spec-app-api.md`). With a certificate authority ([ca]) the name
+/// of the server is checked against the certificate and the trust of the system. With a fingerprint the
 /// connection is HTTPS and only the server whose certificate has exactly this
 /// fingerprint is accepted; no other certificate is, whoever signed it.
-class ApiClient {
-  ApiClient({required this.address, this.fingerprint, this.token, HttpClient? client})
-      : _http = client ?? _pinnedClient(fingerprint);
+class ApiClient implements FeedApi {
+  ApiClient({required this.address, this.fingerprint, this.ca = false, this.token, HttpClient? client})
+      : _http = client ?? _pinnedClient(fingerprint, ca);
 
   final String address;
   final String? fingerprint;
+  final bool ca;
   String? token;
   final HttpClient _http;
 
-  static HttpClient _pinnedClient(String? fingerprint) {
-    final client = HttpClient(context: SecurityContext(withTrustedRoots: false));
+  static HttpClient _pinnedClient(String? fingerprint, bool ca) {
+    // With a certificate authority the roots of the system count and the host name is checked, as usual.
+    // Otherwise no authority is trusted: only the pinned certificate is.
+    final client = HttpClient(context: SecurityContext(withTrustedRoots: ca));
     client.connectionTimeout = const Duration(seconds: 10);
-    if (fingerprint != null) {
+    if (!ca && fingerprint != null) {
       final expected = fingerprint.toLowerCase();
       client.badCertificateCallback = (cert, host, port) => sha256.convert(cert.der).toString() == expected;
     }
     return client;
   }
 
+  /// `https` for a server with a pinned certificate or one from a certificate authority, else `http`.
+  String get scheme => (ca || fingerprint != null) ? 'https' : 'http';
+
   Uri _uri(String path, [Map<String, String>? query]) => Uri(
-        scheme: fingerprint == null ? 'http' : 'https',
+        scheme: scheme,
         host: Uri.parse('x://$address').host,
         port: Uri.parse('x://$address').port,
         path: path,
@@ -85,7 +115,7 @@ class ApiClient {
   /// Pairs this device with the code from [pairing] and returns a client that holds
   /// the token. The WireGuard tunnel does not exist yet, so the key is random.
   static Future<(ApiClient, PairResult)> pair(PairingAddress pairing, String deviceName, {HttpClient? client}) async {
-    final api = ApiClient(address: pairing.address, fingerprint: pairing.fingerprint, client: client);
+    final api = ApiClient(address: pairing.address, fingerprint: pairing.fingerprint, ca: pairing.ca, client: client);
     final random = Random.secure();
     final key = base64.encode(List<int>.generate(32, (_) => random.nextInt(256)));
     final j = await api._json('POST', '/api/v1/pair', body: {
@@ -144,9 +174,49 @@ class ApiClient {
   Future<List<Map<String, dynamic>>> items() async =>
       ((await _json('GET', '/api/v1/items')) as List).cast<Map<String, dynamic>>();
 
+  @override
+  Future<List<Map<String, dynamic>>> podcasts() async =>
+      ((await _json('GET', '/api/v1/podcasts') as Map<String, dynamic>)['podcasts'] as List).cast<Map<String, dynamic>>();
+
+  /// Follows a feed; the answer says whether it is released (`approved`) or waits for a parent.
+  @override
+  Future<Map<String, dynamic>> followPodcast(String url) async =>
+      await _json('POST', '/api/v1/podcasts', body: {'url': url}) as Map<String, dynamic>;
+
+  @override
+  Future<void> unfollowPodcast(int id) => _json('DELETE', '/api/v1/podcasts/$id');
+
+  @override
+  Future<List<Map<String, dynamic>>> episodes(int podcastId) async =>
+      ((await _json('GET', '/api/v1/podcasts/$podcastId/episodes') as Map<String, dynamic>)['episodes'] as List).cast<Map<String, dynamic>>();
+
+  Future<void> putEpisodeState(int episodeId, Duration position, {required bool finished}) =>
+      _json('PUT', '/api/v1/episodes/$episodeId/state', body: {'position_ms': position.inMilliseconds, 'finished': finished});
+
+  @override
+  Future<List<Map<String, dynamic>>> stations() async =>
+      ((await _json('GET', '/api/v1/radio') as Map<String, dynamic>)['stations'] as List).cast<Map<String, dynamic>>();
+
+  @override
+  Future<Map<String, dynamic>> addStation(String name, String streamUrl, {String? homepage}) async =>
+      await _json('POST', '/api/v1/radio', body: {'name': name, 'stream_url': streamUrl, 'homepage': ?homepage}) as Map<String, dynamic>;
+
+  @override
+  Future<void> removeStation(int id) => _json('DELETE', '/api/v1/radio/$id');
+
+  /// The genres of the list, in the order the administrator gave them.
+  Future<List<String>> genres() async =>
+      [for (final g in (await _json('GET', '/api/v1/genres')) as List) (g as Map<String, dynamic>)['name'] as String];
+
   /// A short value that changes when the library does (a new CD, a release, a blurb).
   Future<String> libraryVersion() async =>
       (await _json('GET', '/api/v1/library/version') as Map<String, dynamic>)['version'] as String;
+
+  /// The version of the library, the fingerprint of this profile's playlists and of what it hid (`null` from an older server).
+  Future<({String version, String? playlists, String? hidden})> libraryVersions() async {
+    final j = await _json('GET', '/api/v1/library/version') as Map<String, dynamic>;
+    return (version: j['version'] as String, playlists: j['playlists'] as String?, hidden: j['hidden'] as String?);
+  }
 
   Future<Map<String, dynamic>> item(int id) async => await _json('GET', '/api/v1/items/$id') as Map<String, dynamic>;
 
@@ -199,5 +269,41 @@ class ApiClient {
     await partial.rename(dest.path);
   }
 
+  /// Sends a request and returns the response without reading it.
+  Future<HttpClientResponse> sendRaw(String method, String path, {Object? body, Map<String, String>? query, Map<String, String>? headers}) =>
+      _send(method, _uri(path, query), body: body, headers: headers);
+
+  /// A WebSocket to [path] (`ws`/`wss` instead of `http`/`https`) over the same HttpClient, so the
+  /// pinned fingerprint or the CA mode applies to it too, with the bearer token as header.
+  Future<WebSocket> openSocket(String path) {
+    final u = _uri(path);
+    final url = u.replace(scheme: u.scheme == 'https' ? 'wss' : 'ws').toString();
+    return WebSocket.connect(url, headers: {if (token != null) HttpHeaders.authorizationHeader: 'Bearer $token'}, customClient: _http);
+  }
+
+  /// The URL [openSocket] uses, for display and tests.
+  String socketUrl(String path) {
+    final u = _uri(path);
+    return u.replace(scheme: u.scheme == 'https' ? 'wss' : 'ws').toString();
+  }
+
   void close() => _http.close(force: true);
+
+  /// The ids of the items that became visible to this user recently and that they have not begun,
+  /// newest first, as the server decides ("new" window and maximum are server settings).
+  /// An older server without the route, or any failure, is an empty list: this is no error to show.
+  Future<List<int>> newItems() async {
+    try {
+      final j = await _json('GET', '/api/v1/new');
+      if (j is! Map) return const [];
+      final items = j['items'];
+      if (items is! List) return const [];
+      return [
+        for (final i in items)
+          if (i is Map && i['id'] is int) i['id'] as int,
+      ];
+    } on Object {
+      return const [];
+    }
+  }
 }

@@ -17,20 +17,20 @@ void main() {
       title: 'B',
       author: 'A',
       color: const Color(0xFF000000),
-      tracks: [
-        Track(disc: 1, number: 1, title: 'T1', length: const Duration(minutes: 6), path: '/a.mp3'),
-      ],
+      tracks: [Track(disc: 1, number: 1, title: 'T1', length: const Duration(minutes: 6), path: '/a.mp3')],
     );
     final p = PlayerController([book], backend: backend);
     addTearDown(p.dispose);
-    await tester.pumpWidget(PlayerScope(
-      controller: p,
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: const Scaffold(body: MiniPlayer()),
+    await tester.pumpWidget(
+      PlayerScope(
+        controller: p,
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(body: MiniPlayer()),
+        ),
       ),
-    ));
+    );
     p.open(book, track: 0);
     await tester.pump();
     final start = tester.widget<Slider>(find.byType(Slider)).value;

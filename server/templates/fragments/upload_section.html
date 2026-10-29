@@ -5,6 +5,17 @@
     <button type="button" class="btn" data-dialog="dlg-upload">{{ icon("import") }}<span>{{ t("upload.button") }}</span></button>
   </div>
   <p class="lead">{{ t("upload.intro") }}</p>
+  <div class="dropzone" tabindex="0" data-dropzone data-csrf="{{ csrf }}" data-queue="#upload-queue">
+    <p><strong>{{ t("upload.drop") }}</strong></p>
+    <label class="field"><select data-drop-kind><option value="audiobook">{{ t("upload.kind.audiobook") }}</option><option value="music">{{ t("upload.kind.music") }}</option></select><span class="raised">{{ t("upload.kind") }}</span></label>
+    <small>{{ t("upload.drop_hint") }}</small>
+    <div class="upload-progress" hidden data-drop-progress>
+      <span class="progress-label">{{ t("upload.progress") }} <b class="progress-percent">0%</b></span>
+      <progress max="100" value="0"></progress>
+      <small>{{ t("upload.stay") }}</small>
+    </div>
+    <div class="form-error" role="alert" data-drop-error></div>
+  </div>
   {% include "fragments/upload_queue.html" %}
 
   <dialog id="dlg-upload" class="window edit-window" aria-labelledby="dlg-upload-title">

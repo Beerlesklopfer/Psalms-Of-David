@@ -31,14 +31,16 @@ void main() {
     );
     final p = PlayerController([book], backend: backend, source: _Source());
     addTearDown(p.dispose);
-    await tester.pumpWidget(PlayerScope(
-      controller: p,
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: const Scaffold(body: MiniPlayer()),
+    await tester.pumpWidget(
+      PlayerScope(
+        controller: p,
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(body: MiniPlayer()),
+        ),
       ),
-    ));
+    );
     // The person presses play on the book that is already selected.
     await tester.tap(find.byIcon(Icons.play_arrow));
     await tester.pump();

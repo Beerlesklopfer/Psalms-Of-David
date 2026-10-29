@@ -43,7 +43,7 @@ async fn api() -> Api {
     let (dir, store) = open().await;
     let admin = store.create_profile("Boss", true).await.unwrap();
     let library = tempfile::TempDir::new().unwrap();
-    let state = ApiState { store: store.clone(), library: Some(library.path().to_owned()) };
+    let state = ApiState { store: store.clone(), library: Some(library.path().to_owned()), cd: david_server::cdimport::CdService::new(dir.path()) };
     Api { router: router(state), store, admin, library, _dir: dir }
 }
 
@@ -478,5 +478,218 @@ async fn every_route_but_pairing_needs_a_token() {
         assert_eq!(none.status, StatusCode::UNAUTHORIZED, "{method} {uri} without a token");
         let wrong = call(&a, method, uri, Some("not-a-token"), body, None).await;
         assert_eq!(wrong.status, StatusCode::UNAUTHORIZED, "{method} {uri} with a wrong token");
+    }
+}
+
+const FEED: &str = r#"<?xml version="1.0"?><rss version="2.0"><channel><title>Kinderfunk</title><link>https://example.org/</link><description>Geschichten</description>
+  <item><title>Folge 1</title><guid>a</guid><enclosure url="https://example.org/1.mp3" type="audio/mpeg"/><pubDate>Tue, 13 Oct 2026 10:00:00 GMT</pubDate></item></channel></rss>"#;
+
+#[tokio::test]
+async fn podcasts_and_radio_are_the_accounts_and_a_childs_additions_wait_for_a_parent() {
+    let a = api().await;
+    let mut daytime = Schedule::none();
+    daytime.allow_every_day(7 * 60, 19 * 60);
+    let child = a.store.create_user(NewProfile::child("Kid", 8, daytime)).await.unwrap();
+    let guest = a.store.create_user(NewProfile::new("Visitor", Role::Guest)).await.unwrap();
+    let (parent_phone, parent_tablet, kid, visitor) = (pair(&a, a.admin, 1).await, pair(&a, a.admin, 2).await, pair(&a, child, 3).await, pair(&a, guest, 4).await);
+    assert_eq!(call(&a, "GET", "/api/v1/podcasts", None, None, None).await.status, StatusCode::UNAUTHORIZED);
+
+    // A feed that is known (the fetch from the internet is not tried here) and followed by the parent.
+    let feed = a.store.save_feed("https://example.org/feed.xml", &david_server::podcast::parse(FEED).unwrap()).await.unwrap();
+    a.store.subscribe(a.admin, feed, true).await.unwrap();
+    let r = call(&a, "GET", "/api/v1/podcasts", Some(&parent_phone), None, None).await;
+    assert_eq!((r.json()["podcasts"][0]["title"].as_str(), r.json()["podcasts"][0]["approved"].as_bool()), (Some("Kinderfunk"), Some(true)));
+    let kid_list = call(&a, "GET", "/api/v1/podcasts", Some(&kid), None, None).await;
+    assert!(kid_list.json()["podcasts"].as_array().unwrap().is_empty());
+    assert_eq!(call(&a, "GET", &format!("/api/v1/podcasts/{feed}/episodes"), Some(&kid), None, None).await.status, StatusCode::NOT_FOUND, "the child does not follow it yet");
+
+    // Where the account stopped is read by the other device of the account.
+    let eps = call(&a, "GET", &format!("/api/v1/podcasts/{feed}/episodes"), Some(&parent_phone), None, None).await.json();
+    let ep = eps["episodes"][0]["id"].as_i64().unwrap();
+    assert_eq!(eps["episodes"][0]["audio_url"], "https://example.org/1.mp3");
+    let r = call(&a, "PUT", &format!("/api/v1/episodes/{ep}/state"), Some(&parent_phone), Some(json!({ "position_ms": 61_000 })), None).await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT);
+    let seen = call(&a, "GET", &format!("/api/v1/podcasts/{feed}/episodes"), Some(&parent_tablet), None, None).await.json();
+    assert_eq!((seen["episodes"][0]["position_ms"].as_i64(), seen["episodes"][0]["finished"].as_bool()), (Some(61_000), Some(false)));
+    assert_eq!(call(&a, "PUT", &format!("/api/v1/episodes/{ep}/state"), Some(&parent_phone), Some(json!({ "position_ms": -1 })), None).await.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(call(&a, "PUT", &format!("/api/v1/episodes/{ep}/state"), Some(&kid), Some(json!({ "position_ms": 1 })), None).await.status, StatusCode::NOT_FOUND);
+
+    // A parent gives the feed to the child at once; a child may not give anything, and a guest may not add.
+    let r = call(&a, "POST", &format!("/api/v1/podcasts/{feed}/assign"), Some(&kid), Some(json!({ "profile_id": child })), None).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    let r = call(&a, "POST", &format!("/api/v1/podcasts/{feed}/assign"), Some(&parent_phone), Some(json!({ "profile_id": child })), None).await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT);
+    assert_eq!(call(&a, "GET", "/api/v1/podcasts", Some(&kid), None, None).await.json()["podcasts"].as_array().unwrap().len(), 1);
+    assert_eq!(call(&a, "POST", "/api/v1/podcasts", Some(&visitor), Some(json!({ "url": "https://example.org/feed.xml" })), None).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(call(&a, "POST", "/api/v1/podcasts", Some(&parent_phone), Some(json!({ "url": "ftp://example.org/feed.xml" })), None).await.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(call(&a, "DELETE", &format!("/api/v1/podcasts/{feed}"), Some(&kid), None, None).await.status, StatusCode::NO_CONTENT);
+
+    // Radio: the parent adds a station at once, the child's addition waits and shows as not released.
+    let r = call(&a, "POST", "/api/v1/radio", Some(&parent_phone), Some(json!({ "stream_url": "https://stream.example.org/a", "name": "Radio A" })), None).await;
+    assert_eq!(r.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&r.bytes));
+    let station = r.json()["id"].as_i64().unwrap();
+    let r = call(&a, "POST", "/api/v1/radio", Some(&kid), Some(json!({ "stream_url": "https://stream.example.org/b", "name": "Radio B" })), None).await;
+    assert_eq!((r.status, r.json()["approved"].as_bool()), (StatusCode::ACCEPTED, Some(false)));
+    let kid_radio = call(&a, "GET", "/api/v1/radio", Some(&kid), None, None).await.json();
+    assert_eq!((kid_radio["stations"].as_array().unwrap().len(), kid_radio["stations"][0]["approved"].as_bool()), (1, Some(false)));
+    assert_eq!(call(&a, "POST", "/api/v1/radio", Some(&parent_phone), Some(json!({ "stream_url": "not an address", "name": "X" })), None).await.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let r = call(&a, "POST", &format!("/api/v1/radio/{station}/assign"), Some(&parent_phone), Some(json!({ "profile_id": child })), None).await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT);
+    assert_eq!(call(&a, "GET", "/api/v1/radio", Some(&kid), None, None).await.json()["stations"].as_array().unwrap().len(), 2);
+    assert_eq!(call(&a, "GET", "/api/v1/radio", Some(&parent_tablet), None, None).await.json()["stations"].as_array().unwrap().len(), 1, "the tablet of the parent sees the station of the phone");
+}
+
+#[tokio::test]
+async fn the_station_search_needs_a_directory_in_the_settings() {
+    let a = api().await;
+    let phone = pair(&a, a.admin, 1).await;
+    assert_eq!(call(&a, "GET", "/api/v1/radio/search?q=jazz", None, None, None).await.status, StatusCode::UNAUTHORIZED);
+    // No directory set: the app is told, so that it can say why there is no search.
+    let r = call(&a, "GET", "/api/v1/radio/search?q=jazz", Some(&phone), None, None).await;
+    assert_eq!((r.status, r.json()["error"].as_str()), (StatusCode::NOT_FOUND, Some("no_directory")));
+    // With one, an empty search finds nothing and asks nobody; a directory in the own network is refused.
+    a.store.save_settings(&[("radio_directory_url".to_owned(), "https://directory.example.org".to_owned())]).await.unwrap();
+    let r = call(&a, "GET", "/api/v1/radio/search?q=", Some(&phone), None, None).await;
+    assert_eq!((r.status, r.json()["stations"].as_array().map(Vec::len)), (StatusCode::OK, Some(0)));
+    a.store.save_settings(&[("radio_directory_url".to_owned(), "http://127.0.0.1:9".to_owned())]).await.unwrap();
+    let r = call(&a, "GET", "/api/v1/radio/search?q=jazz", Some(&phone), None, None).await;
+    assert_eq!((r.status, r.json()["error"].as_str()), (StatusCode::BAD_GATEWAY, Some("directory_unreachable")));
+}
+
+async fn report(a: &Api, token: &str, book: i64, track: i64, position_ms: i64) {
+    let r = call(a, "PUT", "/api/v1/progress", Some(token), Some(json!({ "item_id": book, "part_id": track, "position_ms": position_ms, "finished": false })), None).await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&r.bytes));
+}
+
+#[tokio::test]
+async fn a_track_heard_to_the_end_counts_once_per_pass_and_the_book_counts_as_often_as_its_least_played_track() {
+    let a = api().await;
+    let me = pair(&a, a.admin, 1).await;
+    let b = two_track_book(&a).await;
+    let (book, t1, t2) = (b.0, b.1, b.2);
+    let detail = || async { call(&a, "GET", &format!("/api/v1/items/{book}"), Some(&me), None, None).await.json() };
+    let d = detail().await;
+    assert_eq!((d["plays"].as_i64(), d["parts"][0]["plays"].as_i64(), d["last_played_at"].is_null()), (Some(0), Some(0), true));
+
+    // Reports in the middle count nothing; one near the end counts the track once, however often it is repeated.
+    report(&a, &me, book, t1, 100_000).await;
+    report(&a, &me, book, t1, 239_000).await;
+    report(&a, &me, book, t1, 240_000).await;
+    report(&a, &me, book, t1, 240_000).await;
+    let d = detail().await;
+    assert_eq!((d["parts"][0]["plays"].as_i64(), d["parts"][1]["plays"].as_i64(), d["plays"].as_i64()), (Some(1), Some(0), Some(0)), "the book needs every track");
+    assert!(d["parts"][0]["last_played_at"].as_i64().is_some_and(|t| t > 1_700_000_000_000) && d["last_played_at"].as_i64().is_some());
+
+    // Both tracks heard: the book was played once. Going back before the middle arms the track again.
+    report(&a, &me, book, t2, 239_500).await;
+    assert_eq!(detail().await["plays"].as_i64(), Some(1));
+    report(&a, &me, book, t1, 10_000).await;
+    report(&a, &me, book, t1, 240_000).await;
+    let d = detail().await;
+    assert_eq!((d["parts"][0]["plays"].as_i64(), d["plays"].as_i64()), (Some(2), Some(1)), "track 2 was heard once");
+}
+
+/// A book of two tracks of four minutes each. Returns (book id, first track id, second track id).
+async fn two_track_book(a: &Api) -> (i64, i64, i64) {
+    let b = book("Author", "Two", &[2]);
+    let folder = a.library.path().join(&b.folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    for t in &b.tracks {
+        std::fs::write(folder.join(&t.file), vec![0u8; 100]).unwrap();
+    }
+    let folder_name = b.folder.clone();
+    a.store.import_books(vec![b]).await.unwrap();
+    let id = a.store.find_book(&folder_name).await.unwrap().unwrap().id;
+    a.store.release_book(id, 0).await.unwrap();
+    let tracks = a.store.tracks_of(id).await.unwrap();
+    (id, tracks[0].id, tracks[1].id)
+}
+
+#[tokio::test]
+async fn the_start_page_section_new_follows_what_became_visible_to_each_user_and_has_not_been_started() {
+    let a = api().await;
+    let mut daytime = Schedule::none();
+    daytime.allow_every_day(0, 24 * 60 - 1);
+    let kid = a.store.create_user(NewProfile::child("Kid", 8, daytime)).await.unwrap();
+    let (parent, child) = (pair(&a, a.admin, 1).await, pair(&a, kid, 2).await);
+    let (fresh, fresh_track) = add_book(&a, "Fresh", None).await;
+    let (old, _) = add_book(&a, "Old", None).await;
+    let ids = |r: &Reply| r.json()["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect::<Vec<_>>();
+
+    // A parent can use everything, so what was added is new for them; a child sees nothing before a release.
+    let r = call(&a, "GET", "/api/v1/new", Some(&parent), None, None).await;
+    assert_eq!((r.json()["days"].as_i64(), ids(&r).len()), (Some(30), 2));
+    assert!(ids(&call(&a, "GET", "/api/v1/new", Some(&child), None, None).await).is_empty());
+
+    // Released to the child, it is new for the child from then on; the book that is not released stays out.
+    a.store.release_book(fresh, 0).await.unwrap();
+    let r = call(&a, "GET", "/api/v1/new", Some(&child), None, None).await;
+    assert_eq!(ids(&r), [fresh]);
+    assert!(r.json()["items"][0]["new_at"].as_i64().is_some_and(|t| t > 1_700_000_000_000));
+
+    // Starting a book takes it out of "new" for that user only.
+    report(&a, &child, fresh, fresh_track, 1_000).await;
+    a.store.flush().await.unwrap(); // the position is written after a short pause
+    assert!(ids(&call(&a, "GET", "/api/v1/new", Some(&child), None, None).await).is_empty());
+    assert_eq!(ids(&call(&a, "GET", "/api/v1/new", Some(&parent), None, None).await).len(), 2);
+
+    // The window is a setting: a book that became visible longer ago is not new any more.
+    a.store.save_settings(&[("new_days".to_owned(), "1".to_owned())]).await.unwrap();
+    let past = 10 * 24 * 3_600_000_i64;
+    a.store.backdate_book(old, past).await.unwrap();
+    let r = call(&a, "GET", "/api/v1/new", Some(&parent), None, None).await;
+    assert_eq!((r.json()["days"].as_i64(), ids(&r)), (Some(1), vec![fresh]), "only the book added just now is new");
+}
+
+#[tokio::test]
+async fn a_parent_makes_a_code_for_a_further_device_until_the_limit_is_reached() {
+    let a = api().await;
+    let anna = a.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    a.store.set_profile_max_devices(anna, Some(2)).await.unwrap();
+    let first = pair(&a, anna, 1).await;
+
+    let usage = call(&a, "GET", "/api/v1/devices/pairing", Some(&first), None, None).await;
+    assert_eq!(usage.status, StatusCode::OK, "{}", String::from_utf8_lossy(&usage.bytes));
+    assert_eq!((usage.json()["used"].as_i64(), usage.json()["max"].as_i64(), usage.json()["full"].as_bool()), (Some(1), Some(2), Some(false)));
+
+    // The code is for the own profile, works once, and the new device is a device of Anna.
+    let made = call(&a, "POST", "/api/v1/devices/pairing", Some(&first), None, None).await;
+    assert_eq!(made.status, StatusCode::OK, "{}", String::from_utf8_lossy(&made.bytes));
+    let j = made.json();
+    let code = j["code"].as_str().unwrap().to_owned();
+    assert!(!code.is_empty() && j["expires_in_s"].as_i64().unwrap() > 0 && j["server_id"].as_str().is_some_and(|s| !s.is_empty()), "{j}");
+    let second = call(&a, "POST", "/api/v1/pair", None, Some(json!({ "code": code, "device_name": "Tablet", "public_key": key(2) })), None).await;
+    assert_eq!(second.status, StatusCode::OK);
+    assert_eq!(second.json()["user"]["name"], "Anna", "a device of the profile that made the code");
+    assert_eq!(a.store.devices_of(anna).await.unwrap().len(), 2);
+
+    // Now it is full: no code, and the usage says so (also for the new device).
+    let full = call(&a, "POST", "/api/v1/devices/pairing", Some(&first), None, None).await;
+    assert_eq!((full.status, full.json()["error"].as_str()), (StatusCode::CONFLICT, Some("device_limit_reached")));
+    let usage = call(&a, "GET", "/api/v1/devices/pairing", Some(second.json()["token"].as_str().unwrap()), None, None).await;
+    assert_eq!((usage.json()["used"].as_i64(), usage.json()["full"].as_bool()), (Some(2), Some(true)));
+
+    // A device that is revoked frees its place.
+    let id = a.store.devices_of(anna).await.unwrap()[1].id;
+    a.store.revoke_device(id).await.unwrap();
+    assert_eq!(call(&a, "POST", "/api/v1/devices/pairing", Some(&first), None, None).await.status, StatusCode::OK);
+
+    // Without a token there is nothing.
+    assert_eq!(call(&a, "POST", "/api/v1/devices/pairing", None, None, None).await.status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a_child_and_a_guest_do_not_connect_further_devices() {
+    let a = api().await;
+    let kid = NewProfile::child("Kid", 12, Schedule::always());
+    let guest = NewProfile { name: "Visitor".into(), role: Role::Guest, max_age: Some(6), schedule: None };
+    for (n, (name, profile)) in [("Kid", kid), ("Visitor", guest)].into_iter().enumerate() {
+        let id = a.store.create_user(profile).await.unwrap();
+        let token = pair(&a, id, 5 + n as u8).await; // every device has a key of its own
+        for method in ["GET", "POST"] {
+            let r = call(&a, method, "/api/v1/devices/pairing", Some(&token), None, None).await;
+            assert_eq!((r.status, r.json()["error"].as_str()), (StatusCode::FORBIDDEN, Some("forbidden")), "{name} {method}");
+        }
+        assert_eq!(a.store.devices_of(id).await.unwrap().len(), 1, "{name}: no code was made");
     }
 }

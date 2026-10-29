@@ -1,0 +1,184 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<div id="cd-drive" class="cd-drive"
+     hx-get="/admin/rpc/cd.drive?sig={{ drive.sig }}" hx-trigger="every 3s" hx-swap="outerHTML"
+     hx-include="#cd-rip-form input:not([name=csrf]), #cd-rip-form textarea, #cd-rip-form select" hx-disinherit="hx-include">
+  <h2>{{ t("cd.drive.title") }}</h2>
+  {% if drive.rip_error == "resume_mismatch" %}<p class="message" role="status">{{ t("cd.err.resume_mismatch") }}</p>
+  {% elif drive.rip_error %}<p class="message error" role="alert">{{ t("cd.err." ~ drive.rip_error) }} ({{ drive.rip_error }}){% if drive.taken %} {{ t("cd.list.taken") }} {{ drive.taken }}{% endif %}</p>{% endif %}
+  {% if not drive.drives %}
+  <p class="unit">{{ t("cd.drive.none") }}</p>
+  {% endif %}
+  {% for d in drive.drives %}
+  <p class="cd-drive-line">
+    <strong>{{ d.device }}</strong>:
+    {% if d.denied %}<span class="message error">{{ t("cd.drive.denied") }}</span>
+    {% elif d.ripping %}{{ t("cd.drive.ripping") }}
+    {% elif d.tray == "open" %}{{ t("cd.drive.tray_open") }}
+    {% elif d.tray == "unknown" %}{{ t("cd.drive.not_ready") }}
+    {% elif d.medium == "none" %}{{ t("cd.drive.no_disc") }}
+    {% elif d.medium == "audio" %}{{ t("cd.drive.audio") }}, {{ d.tracks }} {{ t("cd.drive.tracks") }}, {{ (d.seconds / 60) | int }} {{ t("unit.minutes") }}{% if d.disc_id %}, {{ t("cd.drive.disc_id") }} <code>{{ d.disc_id }}</code>{% endif %}
+    {% elif d.medium == "other" %}{{ t("cd.drive.other") }}
+    {% else %}{{ t("cd.drive.not_ready") }}{% endif %}
+  </p>
+  {% endfor %}
+
+  {% if drive.rip %}
+  <div class="cd-job cd-rip" data-job="{{ drive.rip.job_id }}">
+    <p><strong>{{ drive.rip.book }}</strong>{% if drive.rip.author %} ({{ drive.rip.author }}){% endif %}, {{ t("cd.col.disc") }} {{ drive.rip.disc }} / {{ drive.rip.discs_total }}</p>
+    {% if drive.rip.active %}
+    <p>{{ t("cd.rip.line") | replace("{n}", drive.rip.current) | replace("{m}", drive.rip.total) | replace("{phase}", t("cd.step." ~ drive.rip.phase)) }}</p>
+    <p><progress value="{{ drive.rip.percent }}" max="100">{{ drive.rip.percent }} %</progress> {{ drive.rip.percent }} %</p>
+    {% if drive.rip.buffer %}
+    {# The buffer is told only when something waits in it: an empty one is the normal case (the encoder is faster than the drive) and no news. #}
+    {% if drive.rip.buffer.state != "empty" %}<p class="unit cd-buffer" data-buffer="{{ drive.rip.buffer.state }}">{{ t("cd.rip.buffer") | replace("{s}", drive.rip.buffer.seconds) | replace("{max}", drive.rip.buffer.max) | replace("{p}", drive.rip.buffer.percent) }}{% if drive.rip.buffer.state == "full" %} · {{ t("cd.rip.buffer_full") }}{% endif %}</p>{% endif %}
+    {% if drive.rip.buffer.speed %}<p class="unit cd-speed">{{ t("cd.rip.speed") | replace("{x}", drive.rip.buffer.speed) }}</p>{% endif %}
+    {% if drive.rip.buffer.waits %}<p class="unit cd-waits">{{ t("cd.rip.waits") | replace("{n}", drive.rip.buffer.waits) | replace("{w}", drive.rip.buffer.longest) }}</p>{% endif %}{% endif %}
+    {% elif drive.rip.error_key %}
+    <p class="message error" role="alert">{{ t(drive.rip.error_key) }}{% if drive.rip.error == "unreadable_track" %} ({{ t("cd.list.default_title") }} {% for r in drive.rip.rows if r.state == "failed" %}{{ r.nn }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %} ({{ drive.rip.error }})</p>
+    {% else %}
+    <p class="message">{{ t("cd.rip.finished") }}</p>
+    {% endif %}
+    <table class="list cd-live">
+      <thead><tr><th>#</th><th>{{ t("cd.list.track_title") }}</th><th>{{ t("cd.list.length") }}</th><th>{{ t("cd.col.state") }}</th></tr></thead>
+      <tbody>
+      {% for r in drive.rip.rows %}
+      <tr data-state="{{ r.state }}">
+        <td>{{ r.nn }}</td>
+        <td>{% if r.title %}{{ r.title }}{% else %}{{ t("cd.list.default_title") }} {{ r.nn }}{% endif %}</td>
+        <td>{{ r.length }}</td>
+        <td>{% if r.state == "done" or r.state == "unverified" %}{{ icon("check") }} {% endif %}{% if r.state == "failed" %}<span class="form-error">{% if r.error == "unreadable_track" %}{{ t("cd.state.unreadable") }}{% else %}{{ t("cd.state.failed") }}{% if r.error_key %}: {{ t(r.error_key) }} ({{ r.error }}){% endif %}{% endif %}</span>{% else %}{{ t("cd.state." ~ r.state) }}{% if r.state == "reading" or r.state == "verifying" or r.state == "rereading" %} {{ r.percent }} %{% endif %}{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if drive.rip.can_cancel %}
+    <form method="post" action="/admin/rpc/cd.cancel" hx-post="/admin/rpc/cd.cancel" hx-target="#cd-drive" hx-swap="outerHTML" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ drive.rip.job_id }}">
+      <button type="submit" class="btn outline">{{ t("cd.drive.cancel_rip") }}</button>
+    </form>
+    {% elif not drive.rip.active %}
+    <form method="post" action="/admin/rpc/cd.dismiss" hx-post="/admin/rpc/cd.dismiss" hx-target="#cd-drive" hx-swap="outerHTML" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="device" value="{{ drive.rip.device }}">
+      <button type="submit" class="btn outline">{{ t("cd.rip.close") }}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% for j in drive.jobs %}
+  <div class="cd-job">
+    <p>{{ j.book }}{% if j.author %} ({{ j.author }}){% endif %}, {{ t("cd.col.disc") }} {{ j.disc }} / {{ j.discs_total }}: {{ t("cd.phase." ~ j.phase) }}{% if j.tracks_total %}, {{ j.track }} / {{ j.tracks_total }}{% endif %}</p>
+    <progress value="{{ j.percent }}" max="100">{{ j.percent }} %</progress> {{ j.percent }} %
+  </div>
+  {% endfor %}
+
+  {% if drive.can_rip and drive.present %}
+  <div class="cd-present" role="status">
+    <h3>{{ t("cd.present.title") }}</h3>
+    <p>{{ drive.present.author }}: {{ drive.present.book }}, {{ t("cd.col.disc") }} {{ drive.present.disc }}</p>
+    {% if drive.present.complete %}
+    <p>{{ t("cd.present.complete") | replace("{n}", drive.present.in_library) | replace("{m}", drive.present.on_disc) }}</p>
+    {% else %}
+    <p class="message">
+      {% if drive.present.missing %}{{ t("cd.present.missing") }} {{ drive.present.missing }}. {% endif %}
+      {% for x in drive.present.damaged %}{% if loop.first %}{{ t("cd.present.damaged") }} {% endif %}{{ t("cd.list.default_title") }} {{ x.number }} ({{ t("cd.damage." ~ x.reason) }}{% if x.reason == "length" %}: {{ x.have }} {{ t("cd.present.instead") }} {{ x.want }}{% endif %}){% if not loop.last %}, {% endif %}{% endfor %}
+    </p>
+    <form method="post" action="/admin/rpc/cd.rip" hx-post="/admin/rpc/cd.rip" hx-target="#cd-drive" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="mode" value="heal">
+      <input type="hidden" name="device" value="{{ drive.device }}">
+      <p class="unit">{{ t("cd.present.heal_hint") }}</p>
+      <div class="form-foot">
+        <a class="btn outline" href="/admin/cd" hx-get="/admin/rpc/cd.drive?reset=1" hx-target="#cd-drive" hx-swap="outerHTML">{{ t("cd.form.cancel") }}</a>
+        {% if drive.can_eject %}<button type="submit" class="btn outline" form="cd-eject-form" data-cd-eject>{{ t("cd.drive.eject") }}</button>{% endif %}
+        <button type="submit" class="btn">{{ t("cd.present.repair") }}</button>
+      </div>
+    </form>
+    {% endif %}
+    {% if not drive.show_import %}
+    <p><a href="/admin/cd" hx-get="/admin/rpc/cd.drive?force=1" hx-target="#cd-drive" hx-swap="outerHTML">{{ t("cd.present.anyway") }}</a></p>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if drive.can_rip and drive.show_import %}
+    {% if drive.lookup_error %}<p class="message">{{ t("cd.err." ~ drive.lookup_error) }} ({{ drive.lookup_error }})</p>{% endif %}
+    {% if drive.candidates %}
+    <h3>{{ t("cd.drive.candidates") }}</h3>
+    <ul class="cd-candidates">
+      {% for c in drive.candidates %}
+      <li>{{ c.author }}: {{ c.title }}{% if c.audiobook %} ({{ t("cd.opt.audiobook") }}){% endif %}{% if c.disc %}, {{ t("cd.col.disc") }} {{ c.disc }} / {{ c.discs_total }}{% endif %}
+        <a href="/admin/cd" hx-get="/admin/rpc/cd.drive?pick={{ c.index }}{% if drive.mbq_param %}&{{ drive.mbq_param }}{% endif %}" hx-target="#cd-drive" hx-swap="outerHTML">{{ t("cd.drive.use") }}</a></li>
+      {% endfor %}
+    </ul>
+    {% elif not drive.lookup_error %}<p class="unit">{{ t("cd.drive.no_candidates") }}</p>{% endif %}
+    <form class="cd-search" method="get" action="/admin/cd" hx-get="/admin/rpc/cd.drive" hx-target="#cd-drive" hx-swap="outerHTML" hx-include="this" role="search">
+      <label class="unit" for="cd-mbq">{{ t("cd.search.label") }}</label>
+      <div class="form-foot cd-search-row">
+        <input id="cd-mbq" type="search" name="mbq" value="{{ drive.mbq }}" maxlength="200" autocomplete="off" placeholder="{{ t('cd.search.placeholder') }}">
+        <button type="submit" class="btn outline">{{ t("cd.search.go") }}</button>
+      </div>
+    </form>
+    {% if drive.resume %}
+    <div class="cd-resume" role="status">
+      <p>{{ t("cd.resume.notice") | replace("{done}", drive.resume.done) | replace("{total}", drive.resume.total) | replace("{when}", drive.resume.when) }}
+        {{ t("cd.resume.keep") | replace("{until}", drive.resume.keep_until) | replace("{hours}", drive.resume.hours) }}</p>
+      {% if not drive.resume.settings_match %}<p class="message">{{ t("cd.resume.changed") }}</p>
+      {% else %}<p class="unit">{{ t("cd.resume.takes") | replace("{kept}", drive.resume.kept) | replace("{rest}", drive.resume.rest) }}{% if drive.resume.dropped %} {{ t("cd.resume.drops") | replace("{n}", drive.resume.dropped) }}{% endif %}</p>{% endif %}
+    </div>
+    {% endif %}
+    <form id="cd-rip-form" class="settings-form" method="post" action="/admin/rpc/cd.rip" hx-post="/admin/rpc/cd.rip" hx-target="#cd-drive" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="mbq" value="{{ drive.mbq }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% if drive.present %}<input type="hidden" name="force" value="1">{% endif %}
+      <input type="hidden" name="sel" value="1">
+      <input type="hidden" name="disc_id" value="{{ drive.disc_id }}">
+      <input type="hidden" name="mbid" value="{{ drive.form.mbid }}">
+      <input type="hidden" name="narrator" value="{{ drive.form.narrator }}">
+      <input type="hidden" name="device" value="{{ drive.device }}">
+      <textarea name="tracks" hidden>{{ drive.form.tracks }}</textarea>
+      <div class="cd-tracks" data-cd-tracks>
+        <h3>{{ t("cd.list.title") }}</h3>
+        <p class="cd-select-buttons">
+          <button type="button" class="btn outline" data-cd-select="all" data-cd-js hidden>{{ t("cd.list.all") }}</button>
+          <button type="button" class="btn outline" data-cd-select="none" data-cd-js hidden>{{ t("cd.list.none") }}</button>
+          <button type="button" class="btn outline" data-cd-select="invert" data-cd-js hidden>{{ t("cd.list.invert") }}</button>
+        </p>
+        <table class="list">
+          <thead><tr><th>{{ t("cd.list.take") }}</th><th>#</th><th>{{ t("cd.list.track_title") }}</th><th>{{ t("cd.list.length") }}</th></tr></thead>
+          <tbody>
+          {% for r in drive.rows %}
+          <tr>
+            <td><input type="checkbox" name="only" value="{{ r.number }}" data-seconds="{{ r.seconds }}" aria-label="{{ t('cd.list.take') }} {{ r.nn }}"{% if r.checked %} checked{% endif %}></td>
+            <td>{{ r.nn }}</td>
+            <td>{% if r.title %}{{ r.title }}{% else %}{{ t("cd.list.default_title") }} {{ r.nn }}{% endif %}{% if r.read %} <span class="cd-read">{{ t("cd.state.read") }}</span>{% endif %}</td>
+            <td>{{ r.length }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <p class="unit" data-cd-summary data-cd-format="{{ t('cd.list.summary') }}" data-cd-total="{{ drive.total_count }}">{{ t("cd.list.summary") | replace("{n}", drive.selected_count) | replace("{m}", drive.total_count) | replace("{time}", drive.selected_time) }}</p>
+      </div>
+      <label class="line"><span class="line-label">{{ t("cd.form.author") }}</span><span class="line-field"><input name="author" value="{{ drive.form.author }}" required maxlength="200" size="40"></span></label>
+      <label class="line"><span class="line-label">{{ t("cd.form.title") }}</span><span class="line-field"><input name="title" value="{{ drive.form.title }}" required maxlength="200" size="40"></span></label>
+      <label class="line"><span class="line-label">{{ t("cd.form.disc") }}</span><span class="line-field"><input name="disc" value="{{ drive.form.disc }}" required inputmode="numeric" pattern="[0-9]+" size="3"> / <input name="discs_total" value="{{ drive.form.discs_total }}" inputmode="numeric" pattern="[0-9]*" size="3"></span></label>
+      <label class="line"><span class="line-label">{{ t("cd.form.kind") }}</span><span class="line-field"><select name="kind">{% for k in ["audiobook", "music"] %}<option value="{{ k }}"{% if k == drive.form.kind %} selected{% endif %}>{{ t("cd.opt." ~ k) }}</option>{% endfor %}</select></span></label>
+      <label class="line"><span class="line-label">{{ t("cd.form.eject") }}</span><span class="line-field"><input type="checkbox" name="eject" value="1"{% if drive.form.eject %} checked{% endif %}></span></label>
+      <div class="form-foot">
+        <a class="btn outline" href="/admin/cd" hx-get="/admin/rpc/cd.drive?reset=1" hx-target="#cd-drive" hx-swap="outerHTML">{{ t("cd.form.cancel") }}</a>
+        {% if drive.resume and drive.resume.settings_match %}
+        <button type="submit" class="btn outline" name="resume" value="0" data-cd-import{% if drive.selected_count == 0 %} disabled{% endif %}>{{ t("cd.resume.reread") }}</button>
+        <button type="submit" class="btn" name="resume" value="1" data-cd-import{% if drive.selected_count == 0 %} disabled{% endif %}>{{ t("cd.resume.continue") }}</button>
+        {% else %}
+        <button type="submit" class="btn" data-cd-import{% if drive.selected_count == 0 %} disabled{% endif %}>{{ t("cd.form.import") }}</button>
+        {% endif %}
+      </div>
+    </form>
+  {% endif %}
+  {% if drive.can_eject %}
+  {# In the row of the repair buttons when there is one (the button names this form by `form=`), else a button of its own. #}
+  {% set eject_in_row = drive.can_rip and drive.present and not drive.present.complete %}
+  <form id="cd-eject-form" method="post" action="/admin/rpc/cd.eject" hx-post="/admin/rpc/cd.eject" hx-target="#cd-drive" hx-swap="outerHTML" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if not eject_in_row %}<button type="submit" class="btn outline">{{ t("cd.drive.eject") }}</button>{% endif %}
+  </form>
+  {% endif %}
+</div>

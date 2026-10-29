@@ -28,10 +28,18 @@ use spa::pod::Pod;
 
 use crate::Error;
 use crate::source::Source;
+use crate::stream::{self, ByteQueue, PushError};
 use crate::stretch::Stretcher;
 
-/// About 2 seconds of audio at 48 kHz stereo; the decoder stays this far ahead.
-const RING_SAMPLES: usize = 48_000 * 2 * 2;
+/// Samples of one second of audio at 48 kHz stereo; the ring is sized in these.
+const RING_SAMPLES_PER_SECOND: usize = 48_000 * 2;
+/// The buffer, in seconds of audio, when nobody has set it (`Engine::set_buffer_seconds`).
+pub const DEFAULT_BUFFER_SECONDS: u32 = 2;
+/// The range of the buffer, in seconds.
+pub const BUFFER_SECONDS: std::ops::RangeInclusive<u32> = 1..=30;
+/// A live stream's ring holds this many times the buffer, so that the pre-buffer (the buffer itself) fits with room to spare and
+/// short network stalls are bridged.
+const STREAM_RING_FACTOR: usize = 4;
 const UNKNOWN: u64 = u64::MAX;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +52,8 @@ pub enum State {
     Ended,
     /// Loading or decoding failed; see `Engine::error`.
     Failed,
+    /// A live stream is collecting audio before it (re)starts; it plays by itself.
+    Buffering,
 }
 
 impl State {
@@ -53,6 +63,7 @@ impl State {
             2 => State::Paused,
             3 => State::Ended,
             4 => State::Failed,
+            5 => State::Buffering,
             _ => State::Idle,
         }
     }
@@ -87,9 +98,15 @@ struct Shared {
     volume_set: AtomicBool,
     /// The playback speed as f32 bits; the decoder thread stretches the audio to it.
     speed: AtomicU32,
+    /// Seconds of audio the ring between the decoder and PipeWire holds (applies from the next load).
+    buffer_s: AtomicU32,
     /// Maps frames handed to PipeWire to frames of the file, which differ at another speed.
     marks: Mutex<Marks>,
     underruns: AtomicU64,
+    /// Frames the decoder has written to the ring in this session.
+    queued_frames: AtomicU64,
+    /// Set by the callback when the ring was empty and the decoder is not done.
+    starved: AtomicBool,
     error: Mutex<Option<String>>,
 }
 
@@ -133,6 +150,7 @@ enum Command {
     Load { path: PathBuf, start: Duration, play: bool, media_name: String, reply: mpsc::Sender<Result<(), String>> },
     Play,
     Pause,
+    LoadStream { queue: Arc<ByteQueue>, play: bool, media_name: String, reply: mpsc::Sender<Result<(), String>> },
     Seek(Duration),
     Volume(f32),
     Stop,
@@ -143,6 +161,8 @@ pub struct Engine {
     tx: pw::channel::Sender<Command>,
     shared: Arc<Shared>,
     thread: Option<JoinHandle<()>>,
+    /// The byte queue of the live stream in use, if any.
+    stream: Mutex<Option<Arc<ByteQueue>>>,
 }
 
 impl Engine {
@@ -157,8 +177,11 @@ impl Engine {
             volume: AtomicU32::new(1.0f32.to_bits()),
             volume_set: AtomicBool::new(false),
             speed: AtomicU32::new(1.0f32.to_bits()),
+            buffer_s: AtomicU32::new(DEFAULT_BUFFER_SECONDS),
             marks: Mutex::new(Marks::default()),
             underruns: AtomicU64::new(0),
+            queued_frames: AtomicU64::new(0),
+            starved: AtomicBool::new(false),
             error: Mutex::new(None),
         });
         let (tx, rx) = pw::channel::channel::<Command>();
@@ -171,7 +194,7 @@ impl Engine {
                 .map_err(|e| Error::PipeWire(format!("cannot start the audio thread: {e}")))?
         };
         match ready_rx.recv_timeout(Duration::from_secs(10)) {
-            Ok(Ok(())) => Ok(Engine { tx, shared, thread: Some(thread) }),
+            Ok(Ok(())) => Ok(Engine { tx, shared, thread: Some(thread), stream: Mutex::new(None) }),
             Ok(Err(e)) => Err(Error::PipeWire(e)),
             Err(_) => Err(Error::PipeWire("PipeWire did not answer".into())),
         }
@@ -185,6 +208,7 @@ impl Engine {
     /// Opens a file and starts at `start`, playing or paused. Returns when the
     /// stream is set up (or the file could not be opened).
     pub fn load(&self, path: &Path, start: Duration, play: bool, media_name: &str) -> Result<(), Error> {
+        self.drop_stream();
         let (reply, answer) = mpsc::channel();
         self.send(Command::Load { path: path.to_owned(), start, play, media_name: media_name.to_owned(), reply });
         match answer.recv_timeout(Duration::from_secs(20)) {
@@ -192,6 +216,51 @@ impl Engine {
             Ok(Err(e)) => Err(Error::Decode(e)),
             Err(_) => Err(Error::PipeWire("the audio thread did not answer".into())),
         }
+    }
+
+    fn drop_stream(&self) {
+        if let Some(q) = self.stream.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            q.close();
+        }
+    }
+
+    fn queue(&self) -> Result<Arc<ByteQueue>, Error> {
+        self.stream.lock().unwrap_or_else(|e| e.into_inner()).clone().ok_or_else(|| Error::Decode("no stream is open".into()))
+    }
+
+    /// Opens a live stream (MP3) that the caller feeds with [`Engine::stream_push`].
+    /// Returns at once: the PipeWire stream is built when enough data has arrived to
+    /// know the format, and the state is `Buffering` until then. Errors in the data
+    /// show up later as the state `Failed` and [`Engine::error`].
+    pub fn load_stream(&self, play: bool, media_name: &str) -> Result<(), Error> {
+        self.drop_stream();
+        let queue = ByteQueue::new(stream::QUEUE_BYTES);
+        *self.stream.lock().unwrap_or_else(|e| e.into_inner()) = Some(queue.clone());
+        let (reply, answer) = mpsc::channel();
+        self.send(Command::LoadStream { queue, play, media_name: media_name.to_owned(), reply });
+        match answer.recv_timeout(Duration::from_secs(20)) {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(Error::Decode(e)),
+            Err(_) => Err(Error::PipeWire("the audio thread did not answer".into())),
+        }
+    }
+
+    /// Offers stream bytes; returns how many were taken. Fewer than offered (or 0)
+    /// means the queue is full: wait a moment and offer the rest again. Never blocks.
+    pub fn stream_push(&self, data: &[u8]) -> Result<usize, Error> {
+        self.queue()?.push(data).map_err(|PushError::Closed| Error::Decode("the stream is closed".into()))
+    }
+
+    /// The stream is over; what was pushed is still played, then the state is `Ended`.
+    pub fn stream_end(&self) -> Result<(), Error> {
+        self.queue()?.end();
+        Ok(())
+    }
+
+    /// The stream failed on the sender's side: the state becomes `Failed` with `message`.
+    pub fn stream_fail(&self, message: &str) -> Result<(), Error> {
+        self.queue()?.fail(message);
+        Ok(())
     }
 
     pub fn play(&self) {
@@ -203,6 +272,7 @@ impl Engine {
     }
 
     /// Jumps to `to`. Keeps playing or staying paused, whichever the engine was.
+    /// A live stream cannot seek: the call does nothing.
     pub fn seek(&self, to: Duration) {
         self.send(Command::Seek(to));
     }
@@ -226,11 +296,25 @@ impl Engine {
         self.shared.speed.store(speed.to_bits(), Ordering::Release);
     }
 
+    /// How many seconds of audio the engine keeps ready between the decoder and the output (1 to 30, 2 if never set). A bigger buffer
+    /// bridges a slow disk or network, a smaller one lets a change of track be heard sooner. A live stream holds four times as much
+    /// and starts, and starts again after running dry, when one buffer is full. It applies from the next load; what plays is not
+    /// changed. The ring is thrown away at a change of track, so the size never delays one.
+    pub fn set_buffer_seconds(&self, seconds: u32) {
+        let seconds = seconds.clamp(*BUFFER_SECONDS.start(), *BUFFER_SECONDS.end());
+        self.shared.buffer_s.store(seconds, Ordering::Release);
+    }
+
+    pub fn buffer_seconds(&self) -> u32 {
+        self.shared.buffer_s.load(Ordering::Acquire)
+    }
+
     pub fn speed(&self) -> f32 {
         f32::from_bits(self.shared.speed.load(Ordering::Acquire))
     }
 
     pub fn stop(&self) {
+        self.drop_stream();
         self.send(Command::Stop);
     }
 
@@ -295,6 +379,7 @@ impl Engine {
 
 impl Drop for Engine {
     fn drop(&mut self) {
+        self.drop_stream();
         let _ = self.tx.send(Command::Shutdown);
         if let Some(t) = self.thread.take() {
             let _ = t.join();
@@ -324,9 +409,30 @@ struct Session {
     stop: Arc<AtomicBool>,
     decoder: Option<JoinHandle<()>>,
     finished: Arc<AtomicBool>,
+    /// The decoder has no more audio to give.
+    done: Arc<AtomicBool>,
     drained: Arc<AtomicBool>,
     flushed: bool,
     deadline: Option<Instant>,
+    /// Set for a live stream.
+    live: bool,
+}
+
+/// A source and its first decoded block, or why it could not be opened.
+type Opened = Result<(Source, Vec<f32>), Error>;
+
+/// The first block of a stream, decoded on its own thread while we wait for data.
+struct Opening {
+    stop: Arc<AtomicBool>,
+    slot: Arc<Mutex<Option<Opened>>>,
+    thread: JoinHandle<()>,
+}
+
+/// The live stream in use: kept while paused (no session then, the queue discards).
+struct StreamCtl {
+    queue: Arc<ByteQueue>,
+    media_name: String,
+    opening: Option<Opening>,
 }
 
 /// Everything the loop thread works with.
@@ -337,6 +443,7 @@ struct Ctx {
     target: Option<String>,
     role: String,
     session: RefCell<Option<Session>>,
+    stream: RefCell<Option<StreamCtl>>,
 }
 
 fn run(options: EngineOptions, rx: pw::channel::Receiver<Command>, shared: Arc<Shared>, ready: mpsc::Sender<Result<(), String>>) {
@@ -355,7 +462,7 @@ fn run(options: EngineOptions, rx: pw::channel::Receiver<Command>, shared: Arc<S
         }
     };
     let role = options.role.or_else(|| std::env::var("PSALM_AUDIO_ROLE").ok()).unwrap_or_else(|| "Music".to_owned());
-    let ctx = Rc::new(Ctx { core, mainloop: mainloop.clone(), shared, target: options.target, role, session: RefCell::new(None) });
+    let ctx = Rc::new(Ctx { core, mainloop: mainloop.clone(), shared, target: options.target, role, session: RefCell::new(None), stream: RefCell::new(None) });
 
     let handler = ctx.clone();
     let _attached = rx.attach(mainloop.loop_(), move |cmd| handler.handle(cmd));
@@ -379,6 +486,29 @@ impl Ctx {
                 }
                 let _ = reply.send(result.map_err(|e| e.to_string()));
             }
+            Command::LoadStream { queue, play, media_name, reply } => {
+                self.end_session();
+                *self.shared.error.lock().unwrap() = None;
+                self.reset_counters(0, 0, UNKNOWN);
+                *self.stream.borrow_mut() = Some(StreamCtl { queue, media_name, opening: None });
+                if play {
+                    self.start_live();
+                } else {
+                    self.suspend_live();
+                }
+                let _ = reply.send(Ok(()));
+            }
+            Command::Play if self.stream.borrow().is_some() => {
+                if self.state() == State::Paused {
+                    self.start_live();
+                }
+            }
+            Command::Pause if self.stream.borrow().is_some() => {
+                if matches!(self.state(), State::Playing | State::Buffering) {
+                    self.suspend_live();
+                }
+            }
+            Command::Seek(_) if self.stream.borrow().is_some() => {}
             Command::Play => {
                 if let Some(s) = self.session.borrow().as_ref()
                     && self.state() == State::Paused {
@@ -423,8 +553,21 @@ impl Ctx {
         State::from_u8(self.shared.state.load(Ordering::Acquire))
     }
 
-    /// Stops the decoder and removes the stream of the current session, if any.
+    /// Ends everything, including the live stream and its queue.
     fn end_session(&self) {
+        self.stop_audio();
+        if let Some(ctl) = self.stream.borrow_mut().take() {
+            ctl.queue.close();
+        }
+    }
+
+    /// Stops the decoder and removes the PipeWire stream, if any; a live stream's
+    /// queue stays open. Also cancels a stream that is still opening.
+    fn stop_audio(&self) {
+        if let Some(op) = self.stream.borrow_mut().as_mut().and_then(|c| c.opening.take()) {
+            op.stop.store(true, Ordering::Release);
+            let _ = op.thread.join();
+        }
         if let Some(mut s) = self.session.borrow_mut().take() {
             s.stop.store(true, Ordering::Release);
             let _ = s.stream.disconnect();
@@ -439,25 +582,48 @@ impl Ctx {
         *self.shared.error.lock().unwrap() = None;
 
         let (source, first) = Source::open(path, start)?;
+        self.begin(source, first, start, play, media_name, path.to_owned(), None)
+    }
+
+    fn reset_counters(&self, start_ms: u64, rate: u32, duration_ms: u64) {
+        self.shared.frames.store(0, Ordering::Release);
+        self.shared.start_ms.store(start_ms, Ordering::Release);
+        self.shared.rate.store(rate, Ordering::Release);
+        self.shared.duration_ms.store(duration_ms, Ordering::Release);
+        self.shared.underruns.store(0, Ordering::Release);
+        self.shared.queued_frames.store(0, Ordering::Release);
+        self.shared.starved.store(false, Ordering::Release);
+        *self.shared.marks.lock().unwrap() = Marks::default();
+    }
+
+    /// Builds the PipeWire stream and the decoder thread for an opened source.
+    /// A live stream starts inactive and waits in `Buffering` for its pre-buffer.
+    #[allow(clippy::too_many_arguments)]
+    fn begin(&self, source: Source, first: Vec<f32>, start: Duration, play: bool, media_name: &str, path: PathBuf, live_stop: Option<Arc<AtomicBool>>) -> Result<(), Error> {
+        let live = live_stop.is_some();
         let (rate, channels) = (source.rate, source.channels);
-        let (producer, consumer) = RingBuffer::<f32>::new(RING_SAMPLES);
-        let stop = Arc::new(AtomicBool::new(false));
+        let seconds = self.shared.buffer_s.load(Ordering::Acquire) as usize;
+        let ring = RING_SAMPLES_PER_SECOND * seconds * if live { STREAM_RING_FACTOR } else { 1 };
+        let (producer, consumer) = RingBuffer::<f32>::new(ring);
+        // A live stream's reader already watches the flag of its opening; reuse it so that
+        // stopping the session also ends a read that waits for network data.
+        let stop = live_stop.unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
         let decoder_done = Arc::new(AtomicBool::new(false));
         let finished = Arc::new(AtomicBool::new(false));
         let drained = Arc::new(AtomicBool::new(false));
 
-        self.shared.frames.store(0, Ordering::Release);
-        self.shared.start_ms.store(start.as_millis() as u64, Ordering::Release);
-        self.shared.rate.store(rate, Ordering::Release);
-        self.shared.duration_ms.store(source.duration.map_or(UNKNOWN, |d| d.as_millis() as u64), Ordering::Release);
-        self.shared.underruns.store(0, Ordering::Release);
-        *self.shared.marks.lock().unwrap() = Marks::default();
+        self.reset_counters(
+            start.as_millis() as u64,
+            rate,
+            if live { UNKNOWN } else { source.duration.map_or(UNKNOWN, |d| d.as_millis() as u64) },
+        );
 
+        let decoder_done_flag = decoder_done.clone();
         let decoder = {
             let (stop, done, shared) = (stop.clone(), decoder_done.clone(), self.shared.clone());
             thread::Builder::new()
                 .name("psalm-decoder".into())
-                .spawn(move || feed(source, first, producer, stop, done, shared))
+                .spawn(move || feed(source, first, producer, stop, done, shared, live))
                 .map_err(|e| Error::Decode(format!("cannot start the decoder: {e}")))?
         };
 
@@ -478,7 +644,7 @@ impl Ctx {
             consumer,
             channels: channels as usize,
             shared: self.shared.clone(),
-            decoder_done,
+            decoder_done: decoder_done.clone(),
             finished: finished.clone(),
             drained: drained.clone(),
         };
@@ -507,7 +673,7 @@ impl Ctx {
         let values = format_pod(rate, channels)?;
         let mut params = [Pod::from_bytes(&values).ok_or_else(|| Error::PipeWire("bad format pod".into()))?];
         let mut flags = StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS | StreamFlags::RT_PROCESS;
-        if !play {
+        if !play || live {
             flags |= StreamFlags::INACTIVE;
         }
         stream.connect(spa::utils::Direction::Output, None, flags, &mut params)?;
@@ -516,9 +682,9 @@ impl Ctx {
             let _ = stream.set_control(spa::sys::SPA_PROP_volume, &[f32::from_bits(self.shared.volume.load(Ordering::Acquire))]);
         }
 
-        self.shared.set_state(if play { State::Playing } else { State::Paused });
+        self.shared.set_state(if live { State::Buffering } else if play { State::Playing } else { State::Paused });
         *self.session.borrow_mut() = Some(Session {
-            path: path.to_owned(),
+            path,
             media_name: media_name.to_owned(),
             stream,
             _listener: listener,
@@ -526,22 +692,110 @@ impl Ctx {
             stop,
             decoder: Some(decoder),
             finished,
+            done: decoder_done_flag,
             drained,
             flushed: false,
             deadline: None,
+            live,
         });
         Ok(())
+    }
+
+    /// (Re)starts a live stream at the live edge: forgets queued bytes and opens again.
+    fn start_live(&self) {
+        self.stop_audio();
+        let mut guard = self.stream.borrow_mut();
+        let Some(ctl) = guard.as_mut() else { return };
+        ctl.queue.set_discarding(false);
+        ctl.queue.clear();
+        let stop = Arc::new(AtomicBool::new(false));
+        let slot = Arc::new(Mutex::new(None));
+        let (queue, out, abort) = (ctl.queue.clone(), slot.clone(), stop.clone());
+        match thread::Builder::new().name("psalm-stream-open".into()).spawn(move || {
+            let result = Source::open_stream(queue, abort);
+            *out.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
+        }) {
+            Ok(thread) => {
+                ctl.opening = Some(Opening { stop, slot, thread });
+                self.shared.set_state(State::Buffering);
+            }
+            Err(e) => self.fail(format!("cannot start the stream reader: {e}")),
+        }
+    }
+
+    /// Pauses a live stream: the connection and queue stay, old data is thrown away.
+    fn suspend_live(&self) {
+        self.stop_audio();
+        if let Some(ctl) = self.stream.borrow().as_ref() {
+            ctl.queue.set_discarding(true);
+        }
+        self.shared.set_state(State::Paused);
+    }
+
+    fn fail(&self, message: String) {
+        *self.shared.error.lock().unwrap() = Some(message);
+        self.shared.set_state(State::Failed);
+    }
+
+    /// Takes the result of a finished `Opening` and starts the session.
+    fn poll_opening(&self) {
+        let (result, name, stop) = {
+            let mut guard = self.stream.borrow_mut();
+            let Some(ctl) = guard.as_mut() else { return };
+            let Some(op) = ctl.opening.as_ref() else { return };
+            let Some(result) = op.slot.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
+            let mut stop = None;
+            if let Some(op) = ctl.opening.take() {
+                let _ = op.thread.join();
+                stop = Some(op.stop);
+            }
+            (result, ctl.media_name.clone(), stop)
+        };
+        match result {
+            Ok((source, first)) => {
+                if let Err(e) = self.begin(source, first, Duration::ZERO, true, &name, PathBuf::new(), stop) {
+                    self.fail(e.to_string());
+                }
+            }
+            Err(e) => {
+                let text = match e {
+                    Error::Decode(t) => t,
+                    other => other.to_string(),
+                };
+                self.fail(text);
+            }
+        }
     }
 
     /// Every 50 ms, on the loop thread: notices the end of the file and the first
     /// failure of the decoder. Quitting at once at the end would cut off what is
     /// already queued in PipeWire, so the stream is drained first, with a deadline.
     fn tick(&self) {
+        self.poll_opening();
         let mut guard = self.session.borrow_mut();
         let Some(s) = guard.as_mut() else { return };
         if self.shared.error.lock().map(|e| e.is_some()).unwrap_or(false) {
             self.shared.set_state(State::Failed);
             return;
+        }
+        if s.live {
+            let rate = self.shared.rate.load(Ordering::Acquire) as u64;
+            match self.state() {
+                State::Playing if self.shared.starved.swap(false, Ordering::AcqRel) && !s.finished.load(Ordering::Acquire) => {
+                    // The network could not keep up: wait for the pre-buffer, then go on.
+                    let _ = s.stream.set_active(false);
+                    self.shared.set_state(State::Buffering);
+                }
+                State::Buffering => {
+                    let buffered = self.shared.queued_frames.load(Ordering::Acquire).saturating_sub(self.shared.frames.load(Ordering::Acquire));
+                    if buffered >= rate * u64::from(self.shared.buffer_s.load(Ordering::Acquire)) || s.done.load(Ordering::Acquire) {
+                        self.shared.starved.store(false, Ordering::Release);
+                        let _ = s.stream.set_active(true);
+                        self.shared.set_state(State::Playing);
+                    }
+                }
+                _ => {}
+            }
         }
         if !matches!(self.state(), State::Playing | State::Paused) || !s.finished.load(Ordering::Acquire) {
             return;
@@ -588,6 +842,9 @@ fn process(stream: &pw::stream::Stream, rt: &mut Rt) {
                 rt.finished.store(true, Ordering::Release);
                 frames = real;
             } else {
+                if have == 0 {
+                    rt.shared.starved.store(true, Ordering::Release);
+                }
                 rt.shared.underruns.fetch_add((capacity - real) as u64, Ordering::Relaxed);
             }
         }
@@ -637,6 +894,7 @@ impl Writer {
             }
         }
         self.written += (samples.len() / self.channels) as u64;
+        self.shared.queued_frames.store(self.written, Ordering::Release);
         if let Ok(mut marks) = self.shared.marks.lock() {
             marks.advance(self.shared.frames.load(Ordering::Acquire));
             marks.next.push_back((self.written, source_end));
@@ -647,7 +905,7 @@ impl Writer {
 
 /// The decoder thread: stays ahead of the callback until the file ends or it is told to stop.
 /// At a speed other than 1.0 the audio goes through the time stretcher on its way.
-fn feed(mut source: Source, first: Vec<f32>, producer: Producer<f32>, stop: Arc<AtomicBool>, done: Arc<AtomicBool>, shared: Arc<Shared>) {
+fn feed(mut source: Source, first: Vec<f32>, producer: Producer<f32>, stop: Arc<AtomicBool>, done: Arc<AtomicBool>, shared: Arc<Shared>, live: bool) {
     let channels = source.channels as usize;
     let rate = source.rate;
     let mut writer = Writer { producer, channels, stop, shared: shared.clone(), written: 0 };
@@ -658,7 +916,8 @@ fn feed(mut source: Source, first: Vec<f32>, producer: Producer<f32>, stop: Arc<
     let mut pending = first;
     loop {
         let frames = (pending.len() / channels) as u64;
-        let speed = f32::from_bits(shared.speed.load(Ordering::Acquire));
+        // A live stream cannot be stretched: it would run dry.
+        let speed = if live { 1.0 } else { f32::from_bits(shared.speed.load(Ordering::Acquire)) };
         if (speed - 1.0).abs() < 0.01 {
             if let Some(mut st) = stretcher.take() {
                 let rest = st.take_rest();
@@ -687,6 +946,10 @@ fn feed(mut source: Source, first: Vec<f32>, producer: Producer<f32>, stop: Arc<
             Ok(Some(samples)) => pending = samples,
             Ok(None) => break,
             Err(e) => {
+                // A read that was cut short because the session ended is not a failure.
+                if writer.stop.load(Ordering::Acquire) {
+                    return;
+                }
                 *shared.error.lock().unwrap() = Some(e.to_string());
                 break;
             }

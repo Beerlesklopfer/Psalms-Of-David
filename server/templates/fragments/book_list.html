@@ -1,7 +1,12 @@
 {# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
-   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% if books %}
-<table id="book-list" class="stack books">
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}{% if books %}
+<table id="book-list" class="stack books"{% if pager is defined and pager.pages > 1 %} data-paged="1"{% endif %}>
   <thead>
+    {% if members is defined %}<tr class="matrix-groups">
+      <td colspan="6"></td>
+      <th scope="colgroup" class="matrix-group owner-col">{{ t("books.col_owner") }}</th>
+      <th scope="colgroup" class="matrix-group" colspan="{{ members|length }}" title="{{ t('books.col_access_hint') }}">{{ t("books.col_access") }}</th>
+    </tr>{% endif %}
     <tr>
       <th><span class="sr-only">{{ t("books.cover") }}</span></th>
       <th>{{ t("books.book") }}</th>
@@ -9,12 +14,24 @@
       <th>{{ t("books.content") }}</th>
       <th>{{ t("books.recommended") }}</th>
       <th><span class="sr-only">{{ t("users.actions") }}</span></th>
+      {% if members is defined %}<th class="owner-col" scope="col"><span class="sr-only">{{ t("books.col_owner") }}</span></th>{% for m in members %}<th class="member-col" scope="col"><span title="{{ m.name }}">{{ m.name }}</span></th>{% endfor %}{% endif %}
     </tr>
   </thead>
   <tbody>
+  {% if items is defined %}
+  {% for item in items %}
+    {% if item.kind == "node" %}
+    <tr class="tree-node depth-{{ item.depth }}" data-node="n{{ item.id }}" data-parents="{{ item.parents }}"><th colspan="{{ 6 + (members|length + 1 if members is defined else 0) }}" scope="colgroup"><button type="button" class="tree-toggle" aria-expanded="true">{{ icon("chevron") }}<span>{{ item.name }}</span> <small>({{ item.books }})</small></button></th></tr>
+    {% else %}
+    {% set book = item.book %}{% set parents = item.parents %}{% set depth = item.depth %}
+    {% include "fragments/book_row.html" %}
+    {% endif %}
+  {% endfor %}
+  {% else %}
   {% for book in books %}
     {% include "fragments/book_row.html" %}
   {% endfor %}
+  {% endif %}
   </tbody>
 </table>
 {% else %}

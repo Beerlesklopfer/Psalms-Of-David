@@ -14,15 +14,19 @@ final Uint8List _png = base64Decode(
 );
 
 Book _book({Uint8List? cover}) => Book(
-      id: '1',
-      title: 'Kinder der Freiheit',
-      author: 'Ken Follett',
-      color: const Color(0xFF6E1F2B),
-      tracks: const [Track(disc: 1, number: 1, title: 'T', length: Duration(minutes: 1))],
-      cover: cover,
-    );
+  id: '1',
+  title: 'Kinder der Freiheit',
+  author: 'Ken Follett',
+  color: const Color(0xFF6E1F2B),
+  tracks: const [Track(disc: 1, number: 1, title: 'T', length: Duration(minutes: 1))],
+  cover: cover,
+);
 
-Widget _host(Widget child) => MaterialApp(home: Scaffold(body: Center(child: SizedBox.square(dimension: 200, child: child))));
+Widget _host(Widget child) => MaterialApp(
+  home: Scaffold(
+    body: Center(child: SizedBox.square(dimension: 200, child: child)),
+  ),
+);
 
 void main() {
   testWidgets('a book with a product picture shows the picture', (tester) async {

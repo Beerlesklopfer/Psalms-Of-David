@@ -50,10 +50,15 @@ const DEVICE_ROWS: &str = "SELECT d.id, p.name AS user_name, d.name, d.tunnel_ip
 /// The address that goes into the QR code (spec section 4). `fingerprint` is the
 /// SHA-256 fingerprint of the server certificate; the device accepts only a server
 /// that shows exactly this certificate. It is left out for a server without TLS.
-pub fn pairing_uri(server_id: &str, address: &str, code: &str, fingerprint: Option<&str>) -> String {
+pub fn pairing_uri(server_id: &str, address: &str, code: &str, fingerprint: Option<&str>, ca: bool) -> String {
     let mut fields = vec![("v", "1"), ("id", server_id), ("addr", address)];
     if let Some(fp) = fingerprint {
         fields.push(("fp", fp));
+    }
+    // A certificate from a certificate authority: the device checks the name in `addr` against the
+    // certificate and the usual trust, there is no fingerprint to pin (it changes with each renewal).
+    if ca {
+        fields.push(("ca", "1"));
     }
     fields.push(("code", code));
     let query = serde_urlencoded::to_string(fields).expect("plain strings always encode");
@@ -90,6 +95,23 @@ fn tunnel_ip(n: usize) -> String {
 }
 
 impl Store {
+    /// How many active devices `user_id` has and how many it may have (`None`: no limit is set): the limit of the profile, else that of its role.
+    pub async fn device_usage(&self, user_id: i64) -> Result<(i64, Option<i64>)> {
+        let row = self
+            .db
+            .writer
+            .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT (SELECT count(*) FROM device d WHERE d.user_id = p.id AND d.revoked_at IS NULL), \
+                   coalesce(p.max_devices, (SELECT rp.max_devices FROM role_policy rp WHERE rp.role = p.role)) \
+                 FROM profile p WHERE p.id = ?",
+                [Value::from(user_id)],
+            ))
+            .await?
+            .ok_or_else(|| Error::WriteFailed("no such user".into()))?;
+        Ok((row.try_get_by_index(0)?, row.try_get_by_index(1)?))
+    }
+
     /// Creates a one-time pairing code for `user_id`. Refuses if the user already
     /// owns as many active devices as allowed, so no code is handed out that could
     /// not be used.
@@ -235,13 +257,13 @@ mod tests {
 
     #[test]
     fn the_pairing_address_carries_what_a_device_needs_and_survives_odd_input() {
-        let uri = pairing_uri("0b9f-1", "192.168.24.250:8484", "abc123", None);
+        let uri = pairing_uri("0b9f-1", "192.168.24.250:8484", "abc123", None, false);
         assert_eq!(uri, "david://pair?v=1&id=0b9f-1&addr=192.168.24.250%3A8484&code=abc123");
         // With TLS the certificate fingerprint travels in the code, before the one-time code.
-        let pinned = pairing_uri("0b9f-1", "192.168.24.250:8484", "abc123", Some("ab12"));
+        let pinned = pairing_uri("0b9f-1", "192.168.24.250:8484", "abc123", Some("ab12"), false);
         assert_eq!(pinned, "david://pair?v=1&id=0b9f-1&addr=192.168.24.250%3A8484&fp=ab12&code=abc123");
         // Characters that would break a query are encoded, not passed on.
-        let odd = pairing_uri("a&b=c", "h", "x y", None);
+        let odd = pairing_uri("a&b=c", "h", "x y", None, false);
         assert!(odd.contains("id=a%26b%3Dc") && odd.contains("code=x+y"), "{odd}");
     }
 

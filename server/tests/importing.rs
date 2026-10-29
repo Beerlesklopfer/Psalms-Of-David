@@ -208,3 +208,86 @@ async fn a_renamed_file_keeps_its_track_and_one_bad_album_does_not_stop_the_rest
     assert!(store.find_book("Ken Follett/Kinder der Freiheit").await.unwrap().is_some());
     assert_eq!(store.tracks_of(store.find_book("Ken Follett/Kinder der Freiheit").await.unwrap().unwrap().id).await.unwrap().len(), 2);
 }
+
+#[tokio::test]
+async fn tags_come_first_but_a_placeholder_tag_is_no_tag_and_the_words_are_a_setting() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let (_d, store) = open().await;
+    let lib = tempfile::TempDir::new().unwrap();
+    make_mp3(&lib.path().join("Folder Artist/Folder Title/01.mp3"), &[("artist", "Kein Künstler"), ("album", "Kein Titel")]);
+    make_mp3(&lib.path().join("Other Artist/Other Title/01.mp3"), &[("artist", "Tag Artist"), ("album", "Tag Title (CD 2)")]);
+    store.scan(lib.path()).await.unwrap();
+
+    // The placeholders are ignored (the folder speaks); a real tag wins over the folder, without its CD number.
+    let a = store.find_book("Folder Artist/Folder Title").await.unwrap().unwrap();
+    let a = store.admin_book_row(a.id).await.unwrap().unwrap();
+    assert_eq!((a.author.as_str(), a.title.as_str()), ("Folder Artist", "Folder Title"));
+    let b = store.find_book("Other Artist/Other Title").await.unwrap().unwrap();
+    let b = store.admin_book_row(b.id).await.unwrap().unwrap();
+    assert_eq!((b.author.as_str(), b.title.as_str()), ("Tag Artist", "Tag Title"));
+
+    // The words are a setting: with another list "Kein Künstler" is a name like any other.
+    store.save_settings(&[("placeholder_tags".to_owned(), "nothing".to_owned())]).await.unwrap();
+    store.scan(lib.path()).await.unwrap();
+    let a = store.find_book("Folder Artist/Folder Title").await.unwrap().unwrap();
+    let a = store.admin_book_row(a.id).await.unwrap().unwrap();
+    assert_eq!((a.author.as_str(), a.title.as_str()), ("Kein Künstler", "Kein Titel"));
+}
+
+#[tokio::test]
+async fn the_composer_tag_is_a_narrator_only_for_audiobooks() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let (_d, store) = open().await;
+    let (books, music) = (tempfile::TempDir::new().unwrap(), tempfile::TempDir::new().unwrap());
+    make_mp3(&books.path().join("A/Book/01.mp3"), &[("composer", "Reader")]);
+    make_mp3(&music.path().join("B/Album/01.mp3"), &[("composer", "Composer")]);
+    store.scan_kind(books.path(), "audiobook").await.unwrap();
+    store.scan_kind(music.path(), "music").await.unwrap();
+    let narrator = |folder: &'static str| {
+        let store = store.clone();
+        async move {
+            let id = store.find_book(folder).await.unwrap().unwrap().id;
+            store.admin_book_row(id).await.unwrap().unwrap().narrator
+        }
+    };
+    assert_eq!(narrator("A/Book").await.as_deref(), Some("Reader"));
+    assert_eq!(narrator("B/Album").await, None);
+}
+
+/// A file that is only an ID3 tag and no sound (what is left of a copy that went wrong).
+fn write_tag_without_sound(path: &Path) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let mut bytes = b"ID3\x04\x00\x00\x00\x00\x00\x40".to_vec(); // version 2.4, 64 bytes of tag
+    bytes.extend(vec![0u8; 64]);
+    std::fs::write(path, bytes).unwrap();
+}
+
+#[tokio::test]
+async fn one_file_without_sound_is_left_out_and_said_and_the_rest_of_the_album_is_imported() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let (_d, store) = open().await;
+    let lib = tempfile::TempDir::new().unwrap();
+    make_mp3(&lib.path().join("Band/Album/01.mp3"), &[("album", "Album"), ("artist", "Band"), ("title", "One")]);
+    make_mp3(&lib.path().join("Band/Album/03.mp3"), &[("album", "Album"), ("artist", "Band"), ("title", "Three")]);
+    write_tag_without_sound(&lib.path().join("Band/Album/02.mp3"));
+    // A folder with nothing readable at all is no album, as before, and says why.
+    write_tag_without_sound(&lib.path().join("Band/Empty/01.mp3"));
+
+    let report = store.scan(lib.path()).await.unwrap();
+    let book = store.find_book("Band/Album").await.unwrap().expect("the album is there although one file is not");
+    assert_eq!(store.tracks_of(book.id).await.unwrap().len(), 2, "the two readable files");
+    assert!(store.find_book("Band/Empty").await.unwrap().is_none());
+    assert!(report.problems.iter().any(|p| p.contains("02.mp3") && p.contains("left out")), "{:?}", report.problems);
+    assert!(report.problems.iter().any(|p| p.contains("Empty")), "{:?}", report.problems);
+
+    // Taking the file away changes nothing for the album; a second scan is quiet about the tracks.
+    std::fs::remove_file(lib.path().join("Band/Album/02.mp3")).unwrap();
+    let again = store.scan(lib.path()).await.unwrap();
+    assert_eq!((again.tracks_added, again.tracks_removed), (0, 0), "{again:?}");
+}

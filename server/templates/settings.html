@@ -6,11 +6,13 @@
 {% block content %}
 <h1>{{ t("settings.title") }}</h1>
 <nav class="tabs" aria-label="{{ t('settings.title') }}">
-  {% for id in ["import", "roles", "values"] %}
+  {% for id in ["import", "roles", "values", "cdimport", "llm"] %}
   <a class="tab" href="/admin/settings?tab={{ id }}"{% if tab == id %} aria-current="page"{% endif %}>{{ t("settings.tab." ~ id) }}</a>
   {% endfor %}
 </nav>
 {% if tab == "roles" %}{% include "fragments/settings_roles.html" %}
+{% elif tab == "llm" %}{% include "fragments/settings_llm.html" %}
+{% elif tab == "cdimport" %}{% include "fragments/settings_cdimport.html" %}
 {% elif tab == "values" %}{% include "fragments/settings_values.html" %}
 {% else %}{% include "fragments/import_settings.html" %}{% endif %}
 {% endblock %}

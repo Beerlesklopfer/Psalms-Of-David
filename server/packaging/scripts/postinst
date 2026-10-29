@@ -1,7 +1,18 @@
 #!/bin/sh
-# Creates the fixed system user "david" (home /var/lib/david), so that file permissions and ACLs
-# on the music folders can name it. Also runs for an update; an existing user stays untouched.
+# Creates the fixed system user "david" (home /var/lib/david), with the IDs of /etc/david.toml if it
+# names them. The service gives that user the rights on the music folders itself (ACLs) when it
+# starts as root. Also runs for an update; an existing user stays untouched.
 set -e
+# The IDs the administrator fixed in /etc/david.toml (the file is optional and so are the keys).
+toml_id() { sed -n "s/^$1[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p" /etc/david.toml 2>/dev/null | head -n 1; }
+want_uid=$(toml_id uid)
+want_gid=$(toml_id gid)
+if [ -n "$want_uid" ] && [ -n "$want_gid" ] && ! getent passwd david >/dev/null 2>&1; then
+    if command -v groupadd >/dev/null 2>&1 && command -v useradd >/dev/null 2>&1; then
+        getent group david >/dev/null 2>&1 || groupadd --system --gid "$want_gid" david
+        useradd --system --uid "$want_uid" --gid david --home-dir /var/lib/david --no-create-home --shell /usr/sbin/nologin --comment "David audio server" david
+    fi
+fi
 if command -v systemd-sysusers >/dev/null 2>&1; then
     systemd-sysusers /usr/lib/sysusers.d/david.conf || true
 fi
@@ -12,6 +23,11 @@ if ! getent passwd david >/dev/null 2>&1; then
     else
         adduser --system --group --home /var/lib/david --no-create-home --shell /usr/sbin/nologin david
     fi
+fi
+# The udev rule for the CD drive (61-david-cdrom.rules) takes effect for the drives that are there already.
+if command -v udevadm >/dev/null 2>&1 && [ -d /run/udev ]; then
+    udevadm control --reload-rules || true
+    udevadm trigger --subsystem-match=block --sysname-match='sr*' --action=change || true
 fi
 # systemd moves the state of an earlier dynamic user and hands it to "david" when the service starts.
 if [ -d /run/systemd/system ]; then

@@ -36,6 +36,7 @@ pub fn book(author: &str, title: &str, per_disc: &[usize]) -> FoundBook {
         folder: format!("{author}/{title}"),
         recommended_age: None,
         narrator: None,
+        genre: None,
         tracks,
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use sea_orm::sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
@@ -26,6 +27,32 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0014_music.sql"),
     include_str!("../migrations/0015_narrator.sql"),
     include_str!("../migrations/0016_upload_kind.sql"),
+    include_str!("../migrations/0017_mcp.sql"),
+    include_str!("../migrations/0018_mcp_prompt.sql"),
+    include_str!("../migrations/0019_ignore.sql"),
+    include_str!("../migrations/0020_log_level.sql"),
+    include_str!("../migrations/0021_tree.sql"),
+    include_str!("../migrations/0022_tls_and_names.sql"),
+    include_str!("../migrations/0023_podcasts_and_radio.sql"),
+    include_str!("../migrations/0024_genres.sql"),
+    include_str!("../migrations/0025_placeholder_tags.sql"),
+    include_str!("../migrations/0026_cd_import.sql"),
+    include_str!("../migrations/0027_track_play.sql"),
+    include_str!("../migrations/0028_audit_fields.sql"),
+    include_str!("../migrations/0029_cd_rip.sql"),
+    include_str!("../migrations/0030_cd_read_speed.sql"),
+    include_str!("../migrations/0031_cd_resume.sql"),
+    include_str!("../migrations/0032_cd_present.sql"),
+    include_str!("../migrations/0033_cd_buffer.sql"),
+    include_str!("../migrations/0034_cd_encoder_priority.sql"),
+    include_str!("../migrations/0035_playlists.sql"),
+    include_str!("../migrations/0036_cd_verify_shift.sql"),
+    include_str!("../migrations/0037_cd_accept_unverified.sql"),
+    include_str!("../migrations/0038_library_hiding.sql"),
+    include_str!("../migrations/0039_book_block.sql"),
+    include_str!("../migrations/0040_book_owner.sql"),
+    include_str!("../migrations/0041_profile_folder.sql"),
+    include_str!("../migrations/0042_list_page_size.sql"),
 ];
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -47,9 +74,32 @@ impl Db {
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)
             .busy_timeout(BUSY_TIMEOUT)
-            .foreign_keys(true);
+            .foreign_keys(true)
+            // The audit triggers (schema 0028) change the row they fire on; with this on they would fire themselves.
+            .pragma("recursive_triggers", "0");
+        // Who acts is told to the triggers through the table `actor`: set before each statement, when it changed.
+        let told = Arc::new(Mutex::new(String::new()));
+        let (on_connect, on_acquire) = (told.clone(), told);
         let writer = SqlitePoolOptions::new()
             .max_connections(1)
+            .min_connections(1)
+            // The one writer must not be replaced behind our back, a new connection would not know who acts.
+            .idle_timeout(None)
+            .max_lifetime(None)
+            .after_connect(move |conn, _| {
+                let told = on_connect.clone();
+                Box::pin(async move {
+                    tell_actor(conn, &told).await;
+                    Ok(())
+                })
+            })
+            .before_acquire(move |conn, _| {
+                let told = on_acquire.clone();
+                Box::pin(async move {
+                    tell_actor(conn, &told).await;
+                    Ok(true)
+                })
+            })
             .connect_with(write_opts)
             .await?;
         let writer = SqlxSqliteConnector::from_sqlx_sqlite_pool(writer);
@@ -68,6 +118,18 @@ impl Db {
         let reader = SqlxSqliteConnector::from_sqlx_sqlite_pool(reader);
 
         Ok(Db { writer, reader })
+    }
+}
+
+/// Writes the actor of the running request into the table `actor`, if it is not the one that stands there already.
+/// Before the table exists (the first start) this does nothing.
+async fn tell_actor(conn: &mut sea_orm::sqlx::SqliteConnection, told: &Mutex<String>) {
+    let label = crate::actor::current();
+    if *told.lock().unwrap_or_else(std::sync::PoisonError::into_inner) == label {
+        return;
+    }
+    if sea_orm::sqlx::query("UPDATE actor SET label = ? WHERE id = 1").bind(&label).execute(&mut *conn).await.is_ok() {
+        *told.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = label;
     }
 }
 

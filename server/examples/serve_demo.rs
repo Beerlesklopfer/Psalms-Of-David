@@ -38,6 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .import_books(vec![FoundBook {
             kind: "audiobook".into(),
             narrator: None,
+            genre: None,
             author: "Test".into(),
             title: "Bible".into(),
             folder: "Test/Bible".into(),
@@ -67,12 +68,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     let code = store.create_enrollment(anna, false, admin).await?.code;
     let address = std::env::var("DEMO_ADDRESS").unwrap_or_else(|_| listen.to_string());
-    let uri = pairing_uri(&store.server_id().await?, &address, &code, tls.as_ref().map(|t| t.fingerprint.as_str()));
+    let uri = pairing_uri(&store.server_id().await?, &address, &code, tls.as_ref().map(|t| t.fingerprint.as_str()), false);
     std::fs::write(&pairing_file, &uri)?;
     println!("pairing address: {uri}");
     drop(store);
 
-    let config = Config { data_dir, library: Some(library), allow_import: false, listen, announce: true };
+    let config = Config { data_dir, library: Some(library), allow_import: false, listen, announce: true, mcp: false, log: None, tls: Default::default(), also_listen: Vec::new() };
     run(config, async { let _ = tokio::signal::ctrl_c().await; }, |addr| println!("listening on {addr}")).await?;
     Ok(())
 }

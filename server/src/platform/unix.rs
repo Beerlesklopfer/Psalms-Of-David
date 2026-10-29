@@ -10,7 +10,7 @@ use crate::app::{self, Config};
 /// Runs until Ctrl-C or SIGTERM. Tells systemd when startup is complete and when
 /// shutdown begins; outside systemd these notifications are silently ignored.
 pub fn run_foreground(config: Config) -> u8 {
-    app::init_stderr_logging();
+    app::init_stderr_logging(config.log);
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {

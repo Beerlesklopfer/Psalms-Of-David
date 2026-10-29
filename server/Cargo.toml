@@ -12,6 +12,7 @@ repository = "https://github.com/Beerlesklopfer/Psalms-Of-David"
 homepage = "https://github.com/Beerlesklopfer/Psalms-Of-David"
 
 [dependencies]
+regex = "1"
 sea-orm = { version = "2.0", default-features = false, features = [
     "sqlx-sqlite",
     "runtime-tokio-rustls",
@@ -21,13 +22,17 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 lofty = "0.25"
 thiserror = "2"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "ansi"] }
 uuid = { version = "1", features = ["v4"] }
 minijinja = { version = "3.0.4", features = ["serde"] }
 serde = { version = "1.0.229", features = ["derive"] }
 axum = { version = "0.8.9", features = ["multipart"] }
 argon2 = "0.6.0"
 sha2 = "0.11.1"
+sha1 = "0.11"
+cdrip = { path = "cdrip" }
+hyper = { version = "1", default-features = false }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
 serde_urlencoded = "0.7.1"
 mdns-sd = "0.21.6"
 qrcode = "0.14.1"
@@ -41,6 +46,11 @@ jiff = "0.2"
 tower = { version = "0.5.3", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs"] }
 fs4 = "1.1.0"
+if-addrs = "0.15.0"
+ureq = "3"
+roxmltree = "0.21"
+socket2 = { version = "0.6", features = ["all"] }
+toml = "0.9"
 
 [[bin]]
 name = "david"
@@ -49,12 +59,13 @@ path = "src/main.rs"
 # Platform specific: the Windows service API on Windows, systemd notification on Unix.
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.8"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem"] }
 
 [target.'cfg(unix)'.dependencies]
 sd-notify = "0.5"
+libc = "0.2"
 
 [dev-dependencies]
-if-addrs = "0.15.0"
 image = { version = "0.25.10", default-features = false }
 rqrr = "0.11.0"
 tempfile = "3"
@@ -73,7 +84,9 @@ extended-description = "Self-hosted audiobook and music server for the family (D
 assets = [
     ["target/release/david", "usr/bin/david", "755"],
     ["packaging/david-deb.service", "usr/lib/systemd/system/david.service", "644"],
+    ["packaging/david.toml", "etc/david.toml", "644"],
     ["packaging/david.sysusers", "usr/lib/sysusers.d/david.conf", "644"],
+    ["packaging/udev/61-david-cdrom.rules", "usr/lib/udev/rules.d/61-david-cdrom.rules", "644"],
     ["../LICENSE", "usr/share/doc/david-server/LICENSE", "644"],
     ["packaging/io.onesimus.david-admin.desktop", "usr/share/applications/io.onesimus.david-admin.desktop", "644"],
     ["packaging/icons/hicolor/scalable/apps/io.onesimus.david.svg", "usr/share/icons/hicolor/scalable/apps/io.onesimus.david.svg", "644"],
@@ -91,7 +104,9 @@ post_install_script = "packaging/scripts/postinst"
 assets = [
     { source = "target/release/david", dest = "/usr/bin/david", mode = "755" },
     { source = "packaging/david-deb.service", dest = "/usr/lib/systemd/system/david.service", mode = "644" },
+    { source = "packaging/david.toml", dest = "/etc/david.toml", mode = "644", config = true },
     { source = "packaging/david.sysusers", dest = "/usr/lib/sysusers.d/david.conf", mode = "644" },
+    { source = "packaging/udev/61-david-cdrom.rules", dest = "/usr/lib/udev/rules.d/61-david-cdrom.rules", mode = "644" },
     { source = "../LICENSE", dest = "/usr/share/licenses/david-server/LICENSE", mode = "644", doc = false },
     { source = "packaging/io.onesimus.david-admin.desktop", dest = "/usr/share/applications/io.onesimus.david-admin.desktop", mode = "644" },
     { source = "packaging/icons/hicolor/scalable/apps/io.onesimus.david.svg", dest = "/usr/share/icons/hicolor/scalable/apps/io.onesimus.david.svg", mode = "644" },
@@ -99,3 +114,6 @@ assets = [
     { source = "packaging/icons/hicolor/128x128/apps/io.onesimus.david.png", dest = "/usr/share/icons/hicolor/128x128/apps/io.onesimus.david.png", mode = "644" },
     { source = "packaging/icons/hicolor/256x256/apps/io.onesimus.david.png", dest = "/usr/share/icons/hicolor/256x256/apps/io.onesimus.david.png", mode = "644" },
 ]
+
+[package.metadata.generate-rpm.requires]
+libacl = "*"

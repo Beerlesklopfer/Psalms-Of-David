@@ -36,8 +36,18 @@ pub struct Config {
     /// Address of the administration interface. Anything but loopback is served
     /// with TLS (see `tls`).
     pub listen: SocketAddr,
+    /// Further addresses the interface listens on at the same time (`/etc/david.toml`: `listen = [...]`),
+    /// for example `[::]:8484` next to `0.0.0.0:8484`.
+    pub also_listen: Vec<SocketAddr>,
     /// Announce the server on the network (mDNS) when it is reachable from there.
     pub announce: bool,
+    /// Serve the MCP endpoint (`/mcp`) for a remote LLM; off unless `--mcp` or `DAVID_MCP=1`.
+    pub mcp: bool,
+    /// The log level the start fixes (flag, `DAVID_LOG` or the file); without one the setting in the
+    /// pages decides.
+    pub log: Option<tracing::Level>,
+    /// A certificate and key of somebody else (Let's Encrypt, ...), instead of the self-signed one.
+    pub tls: crate::tls::External,
 }
 
 impl Config {
@@ -80,11 +90,19 @@ pub fn create_data_dir(path: &std::path::Path) -> std::io::Result<()> {
 /// returning.
 pub async fn run(
     config: Config,
-    shutdown: impl Future<Output = ()> + Send + 'static,
+    shutdown_future: impl Future<Output = ()> + Send + 'static,
     on_ready: impl FnOnce(SocketAddr),
 ) -> Result<()> {
+    crate::buildinfo::mark_started();
+    tracing::info!(version = %crate::buildinfo::describe(), "starting");
     create_data_dir(&config.data_dir)?;
     let store = Store::open(&config.db_path()).await?;
+    // Without a level fixed at the start, the setting of the pages decides.
+    if config.log.is_none()
+        && let Some(level) = store.setting("log_level").await?.as_deref().and_then(crate::logging::parse)
+    {
+        crate::logging::set(level);
+    }
 
     // The import. Belt and braces: even a Config built by other code cannot use the
     // development switch in a release build.
@@ -146,31 +164,55 @@ pub async fn run(
         })
     };
 
-    // Everything but loopback speaks TLS, with a certificate made at the first start.
-    let tls = if crate::tls::wanted(config.listen) {
-        Some(crate::tls::ensure_certificate(&config.data_dir, config.listen)?)
-    } else {
+    // Everything but loopback speaks TLS: with a certificate made at the first start (devices pin its fingerprint) or,
+    // if the settings name files, with the certificate from somebody else (a certificate authority: devices check the
+    // name instead). What the settings of the pages say is the lowest level; the flags, the environment and the file win.
+    let external = config.tls.clone().or(store.external_tls().await?);
+    let wants_tls = crate::tls::wanted(config.listen) || config.also_listen.iter().any(|a| crate::tls::wanted(*a));
+    let tls = if !wants_tls {
         None
+    } else if external.is_set() {
+        if external.host.as_deref().is_none_or(|h| h.trim().is_empty()) {
+            return Err(Error::WriteFailed("TLS: a certificate from somebody else needs the name that devices connect to (tls_host)".into()));
+        }
+        Some(crate::tls::load_external(&external)?)
+    } else {
+        Some(crate::tls::ensure_certificate(&config.data_dir, config.listen)?)
     };
+    // With a certificate from a certificate authority devices check the name, not the fingerprint.
+    let ca_host = external.is_set().then(|| external.host.clone().unwrap_or_default().trim().to_owned()).filter(|_| tls.is_some());
     let ui = AdminUi::with_override_dirs(crate::admin::pages::default_template_dirs())?;
     for path in &ui.overrides {
         tracing::info!(template = %path.display(), "using a template that replaces the built-in one");
     }
+    crate::feeds::start_refresher(store.clone());
+    let cd = crate::cdimport::CdService::new(&config.data_dir).with_library(config.library.clone());
+    cd.start(&store).await;
+    tokio::spawn(crate::cdrive::monitor(cd.clone(), store.clone(), config.library.clone()));
     let state = AppState {
         store: store.clone(),
+        mcp: config.mcp,
         listen: config.listen,
         ui: Arc::new(ui),
         secure_cookie: tls.is_some(),
-        fingerprint: tls.as_ref().map(|t| t.fingerprint.clone()),
+        fingerprint: tls.as_ref().filter(|_| ca_host.is_none()).map(|t| t.fingerprint.clone()),
+        ca_host: ca_host.clone(),
         library: config.library.clone(),
         uploads: crate::upload::Uploads::start(store.clone(), &config.data_dir),
+        cd: cd.clone(),
     };
-    let std_listener = std::net::TcpListener::bind(config.listen)?;
-    std_listener.set_nonblocking(true)?;
+    // Every address of the list, each its own socket: `[::]` listens on IPv6 only, so that it can sit next to
+    // `0.0.0.0` (IPv4). A machine without IPv6 skips the IPv6 address with a warning, as long as another one is left.
+    let mut all = vec![config.listen];
+    all.extend(config.also_listen.iter().copied().filter(|a| *a != config.listen));
+    let std_listeners = bind_all(&all)?;
+    let std_listener = std_listeners.first().ok_or_else(|| Error::WriteFailed("no address to listen on".into()))?;
     let addr = std_listener.local_addr()?;
+    let others: Vec<SocketAddr> = std_listeners.iter().skip(1).filter_map(|l| l.local_addr().ok()).collect();
     match &tls {
-        None => tracing::info!(%addr, "administration interface is listening (this machine only, plain HTTP)"),
-        Some(t) => tracing::info!(%addr, fingerprint = %t.fingerprint, "administration interface is listening (HTTPS, self-signed certificate)"),
+        None => tracing::info!(%addr, ?others, "administration interface is listening (this machine only, plain HTTP)"),
+        Some(t) if ca_host.is_some() => tracing::info!(%addr, ?others, host = ca_host.as_deref().unwrap_or_default(), fingerprint = %t.fingerprint, "administration interface is listening (HTTPS, certificate from a certificate authority)"),
+        Some(t) => tracing::info!(%addr, ?others, fingerprint = %t.fingerprint, "administration interface is listening (HTTPS, self-signed certificate)"),
     }
     // Announce on the network, but only if the network can reach the interface. The
     // announcement is withdrawn when the server stops.
@@ -192,29 +234,62 @@ pub async fn run(
     };
     on_ready(addr);
 
-    let router = web::router(state).merge(crate::api::router(crate::api::ApiState {
+    let cd_stop = cd.clone();
+    let mut router = web::router(state).merge(crate::api::router(crate::api::ApiState {
         store: store.clone(),
         library: config.library.clone(),
+        cd,
     }));
+    if config.mcp {
+        tracing::info!("MCP endpoint on /mcp (tokens are made in the settings)");
+        router = router.merge(crate::mcp::router(crate::mcp::McpState { store: store.clone(), library: config.library.clone() }));
+    }
     match tls {
         None => {
-            let listener = tokio::net::TcpListener::from_std(std_listener)?;
-            axum::serve(listener, router).with_graceful_shutdown(shutdown).await?;
+            // One server per address, all with the same router; the first to stop ends them all.
+            let shutdown = std::sync::Arc::new(tokio::sync::Notify::new());
+            let stopper = shutdown.clone();
+            tokio::spawn(async move {
+                shutdown_future.await;
+                // A CD that is being read finishes the track it is on (if that takes a few seconds), writes down what is
+                // finished and ends; the next start can resume it.
+                cd_stop.drives.stop_gracefully(crate::cdrive::STOP_GRACE, crate::cdrive::STOP_PATIENCE).await;
+                stopper.notify_waiters();
+            });
+            let mut servers = tokio::task::JoinSet::new();
+            for l in std_listeners {
+                let listener = tokio::net::TcpListener::from_std(l)?;
+                let router = router.clone();
+                let stop = shutdown.clone();
+                servers.spawn(async move { axum::serve(listener, router).with_graceful_shutdown(async move { stop.notified().await }).await });
+            }
+            while let Some(done) = servers.join_next().await {
+                done.map_err(|e| Error::WriteFailed(e.to_string()))??;
+            }
         }
         Some(material) => {
             crate::tls::install_crypto_provider();
             let rustls = axum_server::tls_rustls::RustlsConfig::from_pem(material.cert_pem, material.key_pem).await?;
+            let watcher = ca_host.is_some().then(|| crate::tls::watch_external(rustls.clone(), external.clone()));
             let handle = axum_server::Handle::new();
             let stopper = handle.clone();
             tokio::spawn(async move {
-                shutdown.await;
+                shutdown_future.await;
+                cd_stop.drives.stop_gracefully(crate::cdrive::STOP_GRACE, crate::cdrive::STOP_PATIENCE).await;
                 // Let running requests finish, but not for ever.
                 stopper.graceful_shutdown(Some(Duration::from_secs(5)));
             });
-            axum_server::from_tcp_rustls(std_listener, rustls)?
-                .handle(handle)
-                .serve(router.into_make_service())
-                .await?;
+            let mut servers = tokio::task::JoinSet::new();
+            for l in std_listeners {
+                let (rustls, handle, router) = (rustls.clone(), handle.clone(), router.clone());
+                servers.spawn(async move { axum_server::from_tcp_rustls(l, rustls)?.handle(handle).serve(router.into_make_service()).await });
+            }
+            while let Some(done) = servers.join_next().await {
+                done.map_err(|e| Error::WriteFailed(e.to_string()))??;
+            }
+            if let Some(w) = watcher {
+                w.abort();
+            }
         }
     }
 
@@ -223,6 +298,35 @@ pub async fn run(
     auto_import.abort();
     store.flush().await?;
     Ok(())
+}
+
+/// Binds every address of the list. An IPv6 address listens for IPv6 only (so that `[::]` and `0.0.0.0` can
+/// both be bound); a machine that has no IPv6 skips it with a warning if another address is left.
+fn bind_all(addresses: &[SocketAddr]) -> Result<Vec<std::net::TcpListener>> {
+    let mut out = Vec::new();
+    for addr in addresses {
+        match bind_one(*addr) {
+            Ok(l) => out.push(l),
+            Err(e) if addr.is_ipv6() && matches!(e.raw_os_error(), Some(97) | Some(99)) && addresses.len() > 1 => {
+                tracing::warn!(address = %addr, error = %e, "this machine cannot listen on IPv6, skipping that address");
+            }
+            Err(e) => return Err(Error::WriteFailed(format!("cannot listen on {addr}: {e}"))),
+        }
+    }
+    Ok(out)
+}
+
+fn bind_one(addr: SocketAddr) -> std::io::Result<std::net::TcpListener> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    let socket = Socket::new(Domain::for_address(addr), Type::STREAM, Some(Protocol::TCP))?;
+    if addr.is_ipv6() {
+        socket.set_only_v6(true)?;
+    }
+    socket.set_reuse_address(true)?;
+    socket.bind(&addr.into())?;
+    socket.listen(1024)?;
+    socket.set_nonblocking(true)?;
+    Ok(socket.into())
 }
 
 /// Creates the first administrator. Refuses if an administrator exists already, so
@@ -287,14 +391,6 @@ pub async fn shutdown_signal() {
     }
 }
 
-/// Log level from `DAVID_LOG` (error, warn, info, debug, trace); default info.
-pub fn log_level() -> tracing::Level {
-    std::env::var("DAVID_LOG")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(tracing::Level::INFO)
-}
-
-pub fn init_stderr_logging() {
-    let _ = tracing_subscriber::fmt().with_max_level(log_level()).with_writer(std::io::stderr).try_init();
+pub fn init_stderr_logging(requested: Option<tracing::Level>) {
+    crate::logging::init_stderr(requested);
 }

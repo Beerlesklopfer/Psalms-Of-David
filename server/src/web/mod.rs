@@ -34,9 +34,18 @@ const MAX_BODY: usize = 256 * 1024;
 /// Largest upload body: a picture of the largest allowed size plus the form around it.
 const AVATAR_BODY: usize = crate::profile::MAX_AVATAR_BYTES + 16 * 1024;
 
+impl AppState {
+    /// Does the server speak HTTPS (with its own certificate or one from a certificate authority)?
+    pub fn https(&self) -> bool {
+        self.fingerprint.is_some() || self.ca_host.is_some()
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub store: Store,
+    /// Whether the server was started with `--mcp` (the settings then say where to connect).
+    pub mcp: bool,
     /// The address the interface listens on; the pairing page offers it as the
     /// address devices connect to, until the administrator types another.
     pub listen: std::net::SocketAddr,
@@ -46,11 +55,16 @@ pub struct AppState {
     /// SHA-256 fingerprint of the server certificate, put into pairing codes. `None`
     /// when the server speaks plain HTTP (loopback only).
     pub fingerprint: Option<String>,
+    /// The name devices connect to when the certificate comes from a certificate authority: devices
+    /// check the name, so the pairing code carries it instead of a fingerprint. `None` otherwise.
+    pub ca_host: Option<String>,
     /// The development library folder (`--library`), where covers and audio are looked up
     /// besides the import folders of the database.
     pub library: Option<std::path::PathBuf>,
     /// The queue of uploaded archives.
     pub uploads: crate::upload::Uploads,
+    /// The CD drive of the server and the import of CDs.
+    pub cd: crate::cdimport::CdService,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -63,8 +77,20 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/users", get(handlers::users_page))
         .route("/admin/books", get(handlers::books_page))
         .route("/admin/music", get(handlers::music_page))
+        .route("/admin/genres", get(handlers::genres_page))
+        .route("/admin/releases", get(handlers::releases_page))
+        .route("/admin/rpc/release.decide", post(handlers::release_decide))
+        .route("/admin/rpc/genre.add", post(handlers::genre_add))
+        .route("/admin/rpc/genre.rename", post(handlers::genre_rename))
+        .route("/admin/rpc/genre.visible", post(handlers::genre_visible))
+        .route("/admin/rpc/genre.move", post(handlers::genre_move))
+        .route("/admin/rpc/genre.delete", post(handlers::genre_delete))
+        .route("/admin/rpc/genre.assign", post(handlers::genre_assign))
+        .route("/admin/rpc/genre.from_tag", post(handlers::genre_from_tag))
+        .route("/admin/rpc/genre.unassign", post(handlers::genre_unassign))
         .route("/admin/settings", get(handlers::settings_page))
         .route("/admin/import", get(handlers::import_page))
+        .route("/admin/cd", get(handlers::cd_page))
         .route("/admin/schedule", get(handlers::schedule_page))
         .route("/admin/fragments/schedule", get(handlers::schedule_fragment))
         .route("/admin/pairing", get(handlers::pairing_page))
@@ -87,15 +113,35 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/rpc/book.unrelease", post(handlers::book_unrelease))
         .route("/admin/rpc/book.set_exempt", post(handlers::book_set_exempt))
         .route("/admin/rpc/book.delete", post(handlers::book_delete))
+        .route("/admin/rpc/book.visibility", post(handlers::book_visibility))
+        .route("/admin/rpc/book.owner", post(handlers::book_owner))
+        .route("/admin/rpc/folders", get(handlers::folder_picker))
         .route("/admin/rpc/book.tags_form", get(handlers::book_tags_form))
+        .route("/admin/rpc/book.tracks", get(handlers::book_tracks))
         .route("/admin/rpc/book.tags", post(handlers::book_tags).layer(DefaultBodyLimit::max(crate::tags::MAX_COVER_BYTES + 64 * 1024)))
         .route("/admin/rpc/import.save_criteria", post(handlers::import_save))
         .route("/admin/rpc/import.unlock", post(handlers::import_unlock))
         .route("/admin/rpc/import.lock", post(handlers::import_lock))
         .route("/admin/rpc/import.run", post(handlers::import_run))
         .route("/admin/rpc/upload.create", post(handlers::upload_create).layer(DefaultBodyLimit::max(crate::upload::MAX_UPLOAD_BYTES as usize + 1024 * 1024)))
+        .route("/admin/rpc/upload.files", post(handlers::upload_files).layer(DefaultBodyLimit::max(crate::upload::MAX_UPLOAD_BYTES as usize + 1024 * 1024)))
         .route("/admin/rpc/upload.list", get(handlers::upload_list))
         .route("/admin/rpc/settings.save", post(handlers::settings_save))
+        .route("/admin/rpc/settings.cd", post(handlers::cd_settings_save))
+        .route("/admin/rpc/cd.drive", get(handlers::cd_drive_panel))
+        .route("/admin/rpc/cd.rip", post(handlers::cd_rip))
+        .route("/admin/rpc/cd.preview", get(handlers::cd_preview))
+        .route("/admin/rpc/cd.cancel", post(handlers::cd_cancel))
+        .route("/admin/rpc/cd.dismiss", post(handlers::cd_dismiss))
+        .route("/admin/rpc/cd.log_clear", post(handlers::cd_log_clear))
+        .route("/admin/rpc/cd.eject", post(handlers::cd_eject))
+        .route("/admin/rpc/mcp.token_create", post(handlers::mcp_token_create))
+        .route("/admin/rpc/mcp.prompt_save", post(handlers::mcp_prompt_save))
+        .route("/admin/rpc/access.check", post(handlers::access_check))
+        .route("/admin/rpc/ignore.add", post(handlers::ignore_add))
+        .route("/admin/rpc/quarantine.add", post(handlers::quarantine_add))
+        .route("/admin/rpc/ignore.remove", post(handlers::ignore_remove))
+        .route("/admin/rpc/mcp.token_revoke", post(handlers::mcp_token_revoke))
         .route("/admin/rpc/policies.save", post(handlers::policies_save))
         .route("/profile", get(handlers::profile_page).post(handlers::profile_save).layer(DefaultBodyLimit::max(AVATAR_BODY)))
         .route("/profile/pin", post(handlers::profile_pin))
@@ -106,9 +152,11 @@ pub fn router(state: AppState) -> Router {
         .route("/avatar/{id}", get(handlers::avatar_image))
         .route("/admin/static/admin.css", get(handlers::stylesheet))
         .route("/admin/static/ui.js", get(handlers::ui_js))
+        .route("/admin/static/crop.js", get(handlers::crop_js))
         .route("/admin/static/logo.svg", get(handlers::logo))
         .route("/admin/static/favicon.svg", get(handlers::favicon))
         .route("/admin/static/htmx.min.js", get(handlers::htmx))
+        .layer(middleware::from_fn(crate::actor::scope))
         .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn(csrf_check))
         .with_state(state)
@@ -141,7 +189,7 @@ fn cookies(headers: &HeaderMap, name: &str) -> Vec<String> {
 }
 
 /// The value of one cookie of the request.
-fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
+pub(crate) fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get_all(header::COOKIE)
         .iter()
@@ -316,6 +364,7 @@ impl FromRequestParts<AppState> for Session {
         if let Some(chosen) = profile.language.as_deref().and_then(Lang::from_code) {
             lang = chosen;
         }
+        crate::actor::set(crate::actor::profile(info.user_id));
         let has_avatar = state.store.has_avatar(info.user_id).await.unwrap_or(false);
         let me = Me::new(info.user_id, &profile.name, info.role, has_avatar);
         Ok(Session { user_id: info.user_id, role: info.role, csrf: csrf_token(&token), token, lang, htmx, me })

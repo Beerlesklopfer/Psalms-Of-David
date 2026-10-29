@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# udev rule of the David server (installed by the package into /usr/lib/udev/rules.d/).
+#
+# The kernel asks an optical drive every couple of seconds whether the disc has changed ("disk events"). While a CD is being read
+# that query makes the drive stop reading and start again, and the rip pumps. The value below is the time between two such queries
+# in milliseconds (600000 = 10 minutes); it was measured on the drive of the family server and made the reading even. -1 gives the
+# kernel's own default back.
+#
+# A disc that is put in is then noticed by the kernel only after that time at the latest. The server does not depend on it:
+# leave the setting "Detect CD drives with udev" (cd_udev) switched OFF in the CD import tab, then the server looks at the drive
+# itself every "cd_poll_seconds". With cd_udev switched on, a new disc is seen late.
+#
+# To change the value without touching this file, copy it to /etc/udev/rules.d/61-david-cdrom.rules (a file with the same name there
+# wins), edit it, and run: udevadm control --reload-rules && udevadm trigger --subsystem-match=block --sysname-match='sr*' --action=change
+# To switch it off, make /etc/udev/rules.d/61-david-cdrom.rules a link to /dev/null.
+ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="sr[0-9]*", ATTR{events_poll_msecs}="600000"

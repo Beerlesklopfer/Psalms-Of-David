@@ -39,18 +39,27 @@ CI), which could not be tried on this machine.
 
 ## The David service and its folders
 
-The packaged unit (`server/packaging/david-deb.service`) runs David as the fixed system user `david` (created by the package via `sysusers.d` and the post-install script) in a sandbox
-(`ProtectSystem=strict`, `ProtectHome=read-only`). David writes into the library: uploads are put there, tags and
-covers are written into the files, deleted books lose their files. Two things must then be true for every library
-folder: the user `david` has write permission on it (an ACL such as `setfacl -R -m u:david:rwX /srv/music` and a default ACL with `-d`, or an owning group added with `SupplementaryGroups=`),
-and the sandbox lets the write through. The library lives in the service's state directory, `/var/lib/david/library` (`StateDirectory=david david/library`):
+The packaged unit (`server/packaging/david-deb.service`) starts David as root, in a sandbox
+(`ProtectSystem=strict`, `ProtectHome=read-only`). Before it serves anything, David gives the fixed system user `david` (created by the
+package via `sysusers.d` and the post-install script) read and write rights on every audiobook and music folder of the import
+settings, with POSIX ACLs through libacl (the same as `setfacl -R -m u:UID:rwX` plus a default entry for new files), hands the
+data folder to that user and drops to it for good. No `setfacl` is needed; a folder added in the admin pages is covered at the next start
+(`systemctl restart david`). The admin pages warn about folders where the rights are still missing and name the command that fixes them.
+
+`/etc/david.toml` holds what belongs to the machine: the account (`user`, optional numeric `uid` and `gid`, which the post-install script uses when it
+creates the account), `acl = false` to switch the ACL step off, and `data_dir`, `listen`, `mcp`. A value comes from the command line, else the
+environment (`DAVID_...`), else the file, else the default; what the family decides in the pages is in the database. The package marks the file as
+configuration, so an update keeps it. A process that is not root (a development run) skips the rights and the switch of user.
+
+The sandbox must let the writes through: `ProtectSystem=strict` makes everything but the state directory read-only, for root's ACL step too.
+The library lives in the service's state directory, `/var/lib/david/library` (`StateDirectory=david david/library`):
 it belongs to the service user and is writable, so nothing more is needed there; put albums into it with the
-upload page or `rsync` as root and set it as the import folder. For other folders, and for a library below `/home`
-(add `ProtectHome=false`), use a drop-in: `systemctl edit david`.
+upload page or `rsync` as root and set it as the import folder. For other folders (and for a library below `/home`: add `ProtectHome=false`)
+use a drop-in: `systemctl edit david` with `ReadWritePaths=/srv/Musik`.
 
 ### Network
 
-The packaged unit sets `DAVID_LISTEN=0.0.0.0:8484`: the server listens on every interface and speaks TLS with a
+The packaged unit sets `DAVID_LISTEN=[::]:8484`: the server listens on every interface, over IPv6 and over IPv4 (on Linux `[::]` serves both; a machine without IPv6 falls back to `0.0.0.0` by itself, with a warning in the log), and speaks TLS with a
 certificate it makes itself (the pairing code carries the fingerprint, so the apps accept only this server; browsers
 warn once). Open port 8484 in the firewall. To keep it on the machine, for example behind nginx with a real
 certificate, set `DAVID_LISTEN=127.0.0.1:8484` in a drop-in. The pairing page offers the address of the machine in the
@@ -76,6 +85,21 @@ directory belongs to `david`, so run the command as that user:
 
 A forgotten PIN or password is replaced with `david reset-pin --name <name>` (same data directory as above); the user
 is signed out everywhere and a lock after wrong attempts is lifted.
+
+## MCP: a remote LLM corrects the tags
+
+`david run --mcp` (or `DAVID_MCP=1`, e.g. in a drop-in of the unit) serves `POST /mcp` on the same port and with the same
+TLS as the rest. Without the switch the path does not exist. Access needs a token from Settings, tab *LLM access*; it is
+shown once, only its hash is kept, and a token either only reads or may change tags too. The LLM sends it as
+`Authorization: Bearer <token>`.
+
+Tools: `list_albums`, `get_album`, `get_tags`, `field_names`, `set_tags` (with `dry_run`), `set_cover_from_folder`,
+`set_cover_from_url` (an https picture of a public host, at most 8 MiB, JPEG or PNG: written as `cover.jpg`/`cover.png`
+in the album folder and embedded in every track), `find_problems` (missing artist/album/year/genre/narrator/cover, tracks
+that disagree, stray spaces, gaps in the track numbers) and `change_log`. `set_tags` answers in groups (field, old,
+new, number of files), not one line per file. Every changed value is logged with its old and new value (table `tag_change`, shown in the tab,
+and in the server log). Fields have the same names for every file format (`TrackTitle`, `AlbumArtist`, `Genre`, ...);
+a format that cannot keep a field refuses it, and then nothing is written to that file.
 
 ## Desktop entries
 

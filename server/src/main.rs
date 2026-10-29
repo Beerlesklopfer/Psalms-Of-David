@@ -6,7 +6,16 @@ use david_server::cli::{self, Command, usage};
 use david_server::platform;
 
 fn main() -> ExitCode {
-    let command = match cli::parse(std::env::args().skip(1), |k| std::env::var(k).ok()) {
+    // The file stands in for the environment: a flag or a variable beats it.
+    let file_name = david_server::system::file_path(|k| std::env::var(k).ok());
+    let file = match david_server::system::FileConfig::load(&file_name) {
+        Ok(f) => f,
+        Err(message) => {
+            eprintln!("david: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    let command = match cli::parse(std::env::args().skip(1), |k| std::env::var(k).ok().or_else(|| file.as_env(k))) {
         Ok(c) => c,
         Err(message) => {
             eprintln!("david: {message}\n\n{}", usage());
@@ -14,13 +23,37 @@ fn main() -> ExitCode {
         }
     };
     let code = match command {
+        Command::Version => {
+            println!("david {}", david_server::buildinfo::describe());
+            0
+        }
         Command::Help => {
             println!("{}", usage());
             0
         }
         Command::Init { data_dir, name } => init(&data_dir, &name),
         Command::ResetPin { data_dir, name } => reset_pin(&data_dir, &name),
-        Command::Run(config) => platform::run_foreground(config),
+        Command::RenewCert { data_dir, listen } => match david_server::tls::renew_certificate(&data_dir, listen) {
+            Ok(m) => {
+                println!("New certificate in {}/tls, fingerprint {}", data_dir.display(), m.fingerprint);
+                println!("Names: {}", david_server::tls::certificate_names(listen).join(", "));
+                println!("The old one is kept as cert.pem.old. Restart the server and pair every device again.");
+                0
+            }
+            Err(e) => {
+                eprintln!("david: {e}");
+                1
+            }
+        },
+        Command::Run(config) => {
+            // Started as root, the server first sets the rights and then drops to the service user.
+            #[cfg(unix)]
+            if let Err(message) = david_server::system::become_service_user(&file, &config) {
+                eprintln!("david: {message}");
+                return ExitCode::from(1);
+            }
+            platform::run_foreground(config)
+        }
         Command::Service(config) => platform::run_service(config),
         Command::Install(config) => platform::install(config),
         Command::Uninstall => platform::uninstall(),

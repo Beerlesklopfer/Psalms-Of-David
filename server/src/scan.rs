@@ -48,6 +48,8 @@ pub struct FoundBook {
     pub recommended_age: Option<i64>,
     /// Read from the tags of the first track (the composer field); `None` if they do not say.
     pub narrator: Option<String>,
+    /// The genre as the tags of the first track write it (free text), `None` if they do not say.
+    pub genre: Option<String>,
     pub tracks: Vec<FoundTrack>,
 }
 
@@ -110,9 +112,10 @@ impl Store {
     /// Like [`Store::scan_kind`], leaving out `skip`: other import folders inside this one.
     pub async fn scan_skipping(&self, root: &Path, kind: &'static str, skip: &[PathBuf]) -> Result<ScanReport> {
         let (root, skip) = (root.to_owned(), skip.to_vec());
+        let placeholders = self.placeholder_tags().await?;
         let (found, problems) = tokio::task::spawn_blocking(move || {
             let mut problems = Vec::new();
-            collect(&root, kind, &skip, &mut problems).map(|books| (books, problems))
+            collect(&root, kind, &skip, &placeholders, &mut problems).map(|books| (books, problems))
         })
         .await??;
         let mut report = self.import_books(found).await?;
@@ -276,8 +279,74 @@ async fn upsert_author(conn: &impl ConnectionTrait, name: &str) -> Result<i64> {
     Ok(row.try_get_by_index(0)?)
 }
 
+impl Store {
+    /// A book that was moved to another folder keeps its id (and with it the listening progress):
+    /// the folder, the author, the title and the kind follow the move.
+    pub async fn relocate_book(&self, id: i64, folder: &str, author: &str, title: &str) -> Result<()> {
+        let author_id = upsert_author(&self.db.writer, author).await?;
+        let values: [Value; 5] = [folder.to_owned().into(), author_id.into(), title.to_owned().into(), "audiobook".to_owned().into(), id.into()];
+        self.db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE book SET folder = ?, author_id = ?, title = ?, kind = ? WHERE id = ?",
+                values,
+            ))
+            .await?;
+        Ok(())
+    }
+}
+
+impl Store {
+    /// A book whose folder, author and title changed by a rename; unlike `relocate_book` the kind stays.
+    pub async fn rename_book(&self, id: i64, folder: &str, author: &str, title: &str) -> Result<()> {
+        let author_id = upsert_author(&self.db.writer, author).await?;
+        let values: [Value; 4] = [folder.to_owned().into(), author_id.into(), title.to_owned().into(), id.into()];
+        self.db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE book SET folder = ?, author_id = ?, title = ? WHERE id = ?", values))
+            .await?;
+        Ok(())
+    }
+}
+
+impl Store {
+    /// Puts the CDs of one work together: the tracks of every album in `discs` (`(book id, disc)`)
+    /// move into the book `keep`, as disc folders `CD n`, and the other books go. What the family
+    /// listened to stays: progress, favourites and releases of a CD move to the book that remains
+    /// (unless the book has an entry of its own). All or nothing.
+    pub async fn merge_books(&self, keep: i64, discs: &[(i64, i64)], folder: &str, author: &str, title: &str) -> Result<()> {
+        let author_id = upsert_author(&self.db.writer, author).await?;
+        let txn = self.db.writer.begin().await?;
+        let run = |sql: &'static str, values: Vec<Value>| Statement::from_sql_and_values(DbBackend::Sqlite, sql, values);
+        for &(id, disc) in discs {
+            // The disc and the new place of the files first: the tracks of two discs may share numbers.
+            txn.execute_raw(run("UPDATE track SET disc = ?, file = 'CD ' || ? || '/' || file WHERE book_id = ?", vec![disc.into(), disc.into(), id.into()])).await?;
+        }
+        for &(id, _) in discs.iter().filter(|(id, _)| *id != keep) {
+            txn.execute_raw(run("UPDATE track SET book_id = ? WHERE book_id = ?", vec![keep.into(), id.into()])).await?;
+            for table in ["progress", "favorite", "book_release"] {
+                let sql: &'static str = match table {
+                    "progress" => "UPDATE OR IGNORE progress SET book_id = ? WHERE book_id = ?",
+                    "favorite" => "UPDATE OR IGNORE favorite SET book_id = ? WHERE book_id = ?",
+                    _ => "UPDATE OR IGNORE book_release SET book_id = ? WHERE book_id = ?",
+                };
+                txn.execute_raw(run(sql, vec![keep.into(), id.into()])).await?;
+            }
+            txn.execute_raw(run("DELETE FROM book WHERE id = ?", vec![id.into()])).await?;
+        }
+        txn.execute_raw(run(
+            "UPDATE book SET folder = ?, author_id = ?, title = ?, kind = 'audiobook' WHERE id = ?",
+            vec![folder.to_owned().into(), author_id.into(), title.to_owned().into(), keep.into()],
+        ))
+        .await?;
+        txn.commit().await?;
+        Ok(())
+    }
+}
+
 async fn upsert_book(conn: &impl ConnectionTrait, author_id: i64, b: &FoundBook) -> Result<i64> {
-    let values: [Value; 7] = [
+    let values: [Value; 8] = [
         b.narrator.clone().into(),
         b.title.clone().into(),
         author_id.into(),
@@ -285,19 +354,29 @@ async fn upsert_book(conn: &impl ConnectionTrait, author_id: i64, b: &FoundBook)
         now_ms().into(),
         b.recommended_age.into(),
         b.kind.clone().into(),
+        b.genre.clone().into(),
     ];
     let row = conn
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "INSERT INTO book (narrator, title, author_id, folder, added_at, recommended_age, kind) VALUES (?, ?, ?, ?, ?, ?, ?) \
-             ON CONFLICT (folder) DO UPDATE SET title = excluded.title, author_id = excluded.author_id, kind = excluded.kind, narrator = coalesce(excluded.narrator, book.narrator), \
+            "INSERT INTO book (narrator, title, author_id, folder, added_at, recommended_age, kind, genre_tag) VALUES (?, ?, ?, ?, ?, ?, ?, ?) \
+             ON CONFLICT (folder) DO UPDATE SET title = excluded.title, author_id = excluded.author_id, kind = excluded.kind, narrator = excluded.narrator, \
+               genre_tag = excluded.genre_tag, \
                recommended_age = coalesce(excluded.recommended_age, book.recommended_age) \
              RETURNING id",
             values,
         ))
         .await?
         .ok_or_else(|| Error::WriteFailed("book upsert returned no row".into()))?;
-    Ok(row.try_get_by_index(0)?)
+    let id: i64 = row.try_get_by_index(0)?;
+    // The genre of the album follows the alias of its tag text, unless somebody chose it by hand.
+    conn.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE book SET genre_id = (SELECT genre_id FROM genre_alias WHERE tag_text = book.genre_tag) WHERE id = ? AND genre_locked = 0",
+        [Value::from(id)],
+    ))
+    .await?;
+    Ok(id)
 }
 
 async fn upsert_track(conn: &impl ConnectionTrait, book_id: i64, t: &FoundTrack) -> Result<()> {
@@ -324,6 +403,14 @@ async fn upsert_track(conn: &impl ConnectionTrait, book_id: i64, t: &FoundTrack)
     Ok(())
 }
 
+/// A folder that holds no file at all, however deep (only empty folders inside).
+pub(crate) fn is_empty_tree(dir: &Path) -> bool {
+    match fs::read_dir(dir) {
+        Ok(entries) => entries.filter_map(|e| e.ok()).all(|e| e.file_type().is_ok_and(|t| t.is_dir()) && is_empty_tree(&e.path())),
+        Err(_) => false,
+    }
+}
+
 /// How deep below an import folder the scan looks for albums.
 const MAX_DEPTH: usize = 8;
 
@@ -339,16 +426,17 @@ const MAX_DEPTH: usize = 8;
 /// folders of the NAS systems (`@eaDir`, `lost+found`) are not read. What cannot be read is skipped
 /// and told in `problems`, so one bad place does not stop the rest. Folders in `skip` are other
 /// import folders that lie inside this one: they are scanned as roots of their own.
-fn collect(root: &Path, kind: &str, skip: &[PathBuf], problems: &mut Vec<String>) -> Result<Vec<FoundBook>> {
+fn collect(root: &Path, kind: &str, skip: &[PathBuf], ph: &crate::placeholders::Placeholders, problems: &mut Vec<String>) -> Result<Vec<FoundBook>> {
     let mut books = Vec::new();
     for top in sorted_dirs(root)? {
         if ignored(&top, skip) {
             continue;
         }
         let (books_before, problems_before) = (books.len(), problems.len());
-        walk(root, &top, 1, kind, skip, problems, &mut books);
-        // A folder that gave nothing and was readable: say why, so that it is not a mystery.
-        if books.len() == books_before && problems.len() == problems_before {
+        walk(root, &top, 1, &Scope { kind, skip, ph }, problems, &mut books);
+        // A folder that gave nothing and was readable: say why, so that it is not a mystery. A folder
+        // with nothing in it at all (what is left of an album that was moved away) is no mystery.
+        if books.len() == books_before && problems.len() == problems_before && !is_empty_tree(&top) {
             problems.push(match first_audio_below(&top, MAX_DEPTH as u8) {
                 Some(example) => format!(
                     "{}: no albums could be made from it, for example from {}",
@@ -368,7 +456,15 @@ fn ignored(dir: &Path, skip: &[PathBuf]) -> bool {
     name.starts_with('.') || name == "@eaDir" || name == "lost+found" || dir.canonicalize().is_ok_and(|d| skip.contains(&d))
 }
 
-fn walk(root: &Path, dir: &Path, depth: usize, kind: &str, skip: &[PathBuf], problems: &mut Vec<String>, books: &mut Vec<FoundBook>) {
+/// What a scan carries down the folders: the kind of the import folder, the other import folders inside it, and
+/// the words that mark a tag as a placeholder.
+struct Scope<'a> {
+    kind: &'a str,
+    skip: &'a [PathBuf],
+    ph: &'a crate::placeholders::Placeholders,
+}
+
+fn walk(root: &Path, dir: &Path, depth: usize, scope: &Scope, problems: &mut Vec<String>, books: &mut Vec<FoundBook>) {
     if depth > MAX_DEPTH {
         return;
     }
@@ -409,14 +505,14 @@ fn walk(root: &Path, dir: &Path, depth: usize, kind: &str, skip: &[PathBuf], pro
     }
 
     if !parts.is_empty() {
-        match book_of(root, dir, &parts, kind) {
+        match book_of(root, dir, &parts, scope.kind, scope.ph, problems) {
             Ok(book) => books.push(book),
             Err(message) => problems.push(message),
         }
     }
     for sub in subdirs {
-        if !merged.contains(&sub) && !ignored(&sub, skip) {
-            walk(root, &sub, depth + 1, kind, skip, problems, books);
+        if !merged.contains(&sub) && !ignored(&sub, scope.skip) {
+            walk(root, &sub, depth + 1, scope, problems, books);
         }
     }
 }
@@ -428,25 +524,72 @@ fn disc_number(name: &str) -> Option<i64> {
     split_digits(rest.trim_start_matches([' ', '_', '-', '.']))?.0.into()
 }
 
+/// Makes disc and track numbers fit what the database demands: a disc is 1 or more, a track number
+/// is 1 or more, and no two tracks of a book share both. Tags often fail that (track 0, disc 0, the
+/// same number in several files, no numbers at all). Numbers that are fine are kept; if any is not,
+/// the tracks are numbered in file order within their disc, so that the album can be imported and
+/// plays in the order of its files.
+fn normalize_numbers(tracks: &mut [FoundTrack]) {
+    for t in tracks.iter_mut() {
+        t.disc = t.disc.max(1);
+    }
+    let mut seen = std::collections::HashSet::new();
+    let broken = tracks.iter().any(|t| t.number < 1 || !seen.insert((t.disc, t.number)));
+    if !broken {
+        return;
+    }
+    let mut counters: HashMap<i64, i64> = HashMap::new();
+    for t in tracks.iter_mut() {
+        let n = counters.entry(t.disc).or_insert(0);
+        *n += 1;
+        t.number = *n;
+    }
+}
+
 /// The book of a folder and its audio files; `Err` says what is wrong with it.
-fn book_of(root: &Path, dir: &Path, parts: &[(PathBuf, Option<i64>)], kind: &str) -> std::result::Result<FoundBook, String> {
+///
+/// A file whose audio cannot be read at all (a tag without any sound, a file that is no audio) is left out and said in
+/// `skipped`; the rest of the album is imported, it must not lose its place because of one file. A file that cannot be
+/// opened or read (rights, a disk that is gone for the moment) is another matter: the folder is skipped as a whole and
+/// nothing changes, so that a short failure cannot remove tracks and their listening progress from the library.
+fn book_of(root: &Path, dir: &Path, parts: &[(PathBuf, Option<i64>)], kind: &str, ph: &crate::placeholders::Placeholders, skipped: &mut Vec<String>) -> std::result::Result<FoundBook, String> {
     let relative = dir.strip_prefix(root).unwrap_or(dir);
     let names: Vec<String> = relative.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
-    let title = names.last().cloned().unwrap_or_default();
     let mut tracks = Vec::with_capacity(parts.len());
-    for (i, (path, disc)) in parts.iter().enumerate() {
+    let mut readable: Vec<&PathBuf> = Vec::with_capacity(parts.len());
+    let mut left_out: Vec<String> = Vec::new();
+    for (path, disc) in parts {
         let file = path.strip_prefix(dir).unwrap_or(path).components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/");
-        tracks.push(read_track(path, &file, i as i64 + 1, *disc).map_err(|e| format!("{}: {e}", path.display()))?);
+        match read_track(path, &file, readable.len() as i64 + 1, *disc) {
+            Ok(track) => {
+                tracks.push(track);
+                readable.push(path);
+            }
+            Err(e @ Error::Tags { .. }) => left_out.push(format!("{}: {e} (left out, the rest of the album was imported)", path.display())),
+            Err(e) => return Err(format!("{}: {e}", path.display())),
+        }
     }
+    if tracks.is_empty() {
+        return Err(left_out.into_iter().next().unwrap_or_else(|| format!("{}: no audio file could be read", dir.display())));
+    }
+    skipped.extend(left_out);
+    normalize_numbers(&mut tracks);
     // The recommendation and the narrator sit in the tags; the first track speaks for the book.
-    let first_tags = tags::read(&parts[0].0).ok();
+    let first_tags = tags::read(readable[0]).ok();
     let recommended_age = first_tags.as_ref().and_then(|t| t.age_recommendation).map(i64::from);
-    let author = match names.len() {
-        0 | 1 => first_tags.as_ref().and_then(|t| t.album_artist.clone().or_else(|| t.artist.clone())).unwrap_or_else(|| "Unknown".to_owned()),
+    // The tags come first (project owner, 2026-10-28: the folders are only the filing); the folder
+    // names are the fallback for what the tags do not say. A CD number in the album tag is not part of the title.
+    let tag_author = first_tags.as_ref().and_then(|t| ph.real(t.album_artist.clone()).or_else(|| ph.real(t.artist.clone())));
+    let tag_title = first_tags.as_ref().and_then(|t| t.album.clone()).and_then(|a| ph.real(Some(a))).map(|a| crate::relocate::strip_disc(&a).0).filter(|a| !a.is_empty());
+    let author = tag_author.unwrap_or_else(|| match names.len() {
+        0 | 1 => "Unknown".to_owned(),
         n => names[n - 2].clone(),
-    };
-    let narrator = first_tags.and_then(|t| t.narrator);
-    Ok(FoundBook { kind: kind.to_owned(), folder: names.join("/"), author, title, recommended_age, narrator, tracks })
+    });
+    let title = tag_title.unwrap_or_else(|| names.last().cloned().unwrap_or_default());
+    let genre = first_tags.as_ref().and_then(|t| t.genre.clone());
+    // The composer tag is the narrator of an audiobook; on music it names the composer, who is nobody to listen to.
+    let narrator = first_tags.and_then(|t| t.narrator).filter(|_| kind == "audiobook");
+    Ok(FoundBook { kind: kind.to_owned(), folder: names.join("/"), author, title, recommended_age, narrator, genre, tracks })
 }
 
 /// The first audio file below `dir`, at most `depth` folders down; `None` if there is none (or it
@@ -502,7 +645,8 @@ fn is_audio(p: &Path) -> bool {
 
 fn read_track(path: &Path, file: &str, ordinal: i64, disc_hint: Option<i64>) -> Result<FoundTrack> {
     let file = file.to_owned();
-    let tagged = lofty::read_from_path(path)
+    // A file that the strict tag reader refuses but that plays is taken with what can be read of it (see `tags::open_tagged`).
+    let tagged = tags::open_tagged(path, tags::Forgive::Reading)
         .map_err(|e| Error::Tags { file: file.clone(), message: e.to_string() })?;
     let meta = fs::metadata(path)?;
     let mtime = meta
@@ -555,7 +699,30 @@ fn split_digits(s: &str) -> Option<(i64, &str)> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_disc_track;
+    use super::{FoundTrack, normalize_numbers, parse_disc_track};
+
+    fn track(disc: i64, number: i64) -> FoundTrack {
+        FoundTrack { disc, number, title: String::new(), file: format!("{disc}-{number}.mp3"), duration_ms: 0, size_bytes: 0, mtime: 0 }
+    }
+
+    #[test]
+    fn good_numbers_stay_and_bad_ones_are_replaced_by_the_file_order_within_each_disc() {
+        let mut fine = vec![track(1, 1), track(1, 2), track(2, 1)];
+        normalize_numbers(&mut fine);
+        assert_eq!(fine.iter().map(|t| (t.disc, t.number)).collect::<Vec<_>>(), [(1, 1), (1, 2), (2, 1)]);
+
+        // Track 0, the same number twice and disc 0 are what the database refuses.
+        for bad in [vec![track(1, 0), track(1, 1)], vec![track(1, 3), track(1, 3)], vec![track(0, 1), track(0, 1)]] {
+            let mut t = bad;
+            normalize_numbers(&mut t);
+            assert!(t.iter().all(|x| x.disc >= 1 && x.number >= 1));
+            let keys: std::collections::HashSet<_> = t.iter().map(|x| (x.disc, x.number)).collect();
+            assert_eq!(keys.len(), t.len());
+        }
+        let mut mixed = vec![track(1, 5), track(2, 5), track(2, 5), track(1, 9)];
+        normalize_numbers(&mut mixed);
+        assert_eq!(mixed.iter().map(|t| (t.disc, t.number)).collect::<Vec<_>>(), [(1, 1), (2, 1), (2, 2), (1, 2)]);
+    }
 
     #[test]
     fn parses_ripped_file_names() {

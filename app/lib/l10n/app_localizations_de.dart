@@ -241,6 +241,98 @@ class AppLocalizationsDe extends AppLocalizations {
       'Vergisst die Kopplung mit dem Server auf diesem Gerät. Zum erneuten Verbinden brauchst du einen neuen Kopplungscode.';
 
   @override
+  String get settingsPlayback => 'Wiedergabe';
+
+  @override
+  String get settingsBuffer => 'Audiopuffer';
+
+  @override
+  String settingsBufferSeconds(int seconds) {
+    return '$seconds s';
+  }
+
+  @override
+  String get settingsBufferHint =>
+      'Wie viel Audio bereitgehalten wird, bevor es gespielt wird. Ein größerer Puffer überbrückt ein langsames Netz oder eine langsame Platte, ein kleinerer lässt einen Titelwechsel früher hören. Gilt ab dem nächsten Titel.';
+
+  @override
+  String get settingsDevices => 'Geräte';
+
+  @override
+  String settingsDevicesCount(int used, int max) {
+    return '$used von $max Geräten angebunden';
+  }
+
+  @override
+  String settingsDevicesNoLimit(int used) {
+    return '$used Geräte angebunden';
+  }
+
+  @override
+  String get settingsConnectDevice => 'Weiteres Gerät anbinden';
+
+  @override
+  String get settingsConnectDeviceHint =>
+      'Zeigt einen QR-Code, den das andere Gerät scannt. Der Code gilt einmal und nur kurze Zeit.';
+
+  @override
+  String get pairQrScan =>
+      'Scanne diesen Code mit Psalm auf dem anderen Gerät.';
+
+  @override
+  String pairQrExpires(String time) {
+    return 'Gültig noch $time';
+  }
+
+  @override
+  String get pairQrExpired => 'Der Code ist abgelaufen.';
+
+  @override
+  String get pairQrNew => 'Neuer Code';
+
+  @override
+  String get pairQrFull =>
+      'Alle Geräte sind angebunden. Entferne in der Verwaltung des Servers eines, um ein weiteres anzubinden.';
+
+  @override
+  String get pairQrError =>
+      'Der Code konnte nicht erstellt werden. Versuche es erneut.';
+
+  @override
+  String get pairQrClose => 'Schließen';
+
+  @override
+  String get pairQrCopy => 'Adresse kopieren';
+
+  @override
+  String get pairQrCopied =>
+      'Adresse kopiert. Füge sie im Verbindungsbildschirm des anderen Geräts ein.';
+
+  @override
+  String get streamArtist => 'Interpret';
+
+  @override
+  String get streamTrack => 'Titel';
+
+  @override
+  String get streamStation => 'Sender';
+
+  @override
+  String get streamGenre => 'Genre';
+
+  @override
+  String get streamDescription => 'Über';
+
+  @override
+  String get streamQuality => 'Qualität';
+
+  @override
+  String get streamWebsite => 'Webseite';
+
+  @override
+  String get streamWaiting => 'Warte auf die Angaben des Senders …';
+
+  @override
   String get cancel => 'Abbrechen';
 
   @override
@@ -423,4 +515,877 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get sectionRecent => 'Zuletzt gehört';
+
+  @override
+  String get genreOther => 'Sonstige';
+
+  @override
+  String get sectionAlbums => 'Alben';
+
+  @override
+  String get sectionBooks => 'Bücher';
+
+  @override
+  String get sectionNarrators => 'Sprecher';
+
+  @override
+  String get sectionAlbumsAndBooks => 'Alben und Bücher';
+
+  @override
+  String get navPodcasts => 'Podcasts';
+
+  @override
+  String get navRadio => 'Radio';
+
+  @override
+  String get podcastAdd => 'Podcast abonnieren';
+
+  @override
+  String get podcastAddress => 'Adresse des Feeds oder der Webseite';
+
+  @override
+  String get podcastFollow => 'Abonnieren';
+
+  @override
+  String podcastFollowed(String title) {
+    return '„$title“ abonniert';
+  }
+
+  @override
+  String get askToRelease =>
+      'Bitte darum, dass es freigegeben wird. Es wartet, bis ein Elternteil es erlaubt.';
+
+  @override
+  String get podcastInvalid =>
+      'Unter dieser Adresse gibt es keinen Podcast-Feed.';
+
+  @override
+  String get notAllowed => 'Das darfst du nicht.';
+
+  @override
+  String get serverUnreachableShort => 'Der Server ist nicht erreichbar.';
+
+  @override
+  String get needsServer =>
+      'Podcasts und Radio brauchen eine Verbindung zu deinem Server.';
+
+  @override
+  String get noPodcastsYet => 'Noch keine Podcasts. Mit + einen abonnieren.';
+
+  @override
+  String get waitingForRelease =>
+      'Wartet auf eine Freigabe. Bitte darum, dass es freigegeben wird.';
+
+  @override
+  String get feedProblem => 'Der Feed konnte zuletzt nicht gelesen werden.';
+
+  @override
+  String get podcastUnfollow => 'Nicht mehr abonnieren';
+
+  @override
+  String get noEpisodesYet => 'Noch keine Folgen.';
+
+  @override
+  String episodeAt(String time) {
+    return 'bei $time angehalten';
+  }
+
+  @override
+  String get stationAdd => 'Sender hinzufügen';
+
+  @override
+  String get stationName => 'Name';
+
+  @override
+  String get stationAddress => 'Adresse des Streams';
+
+  @override
+  String get stationSave => 'Speichern';
+
+  @override
+  String stationAdded(String name) {
+    return '„$name“ hinzugefügt';
+  }
+
+  @override
+  String get stationInvalid =>
+      'Ein Sender braucht einen Namen und die Adresse seines Streams (http oder https).';
+
+  @override
+  String get noStationsYet => 'Noch keine Sender. Mit + einen hinzufügen.';
+
+  @override
+  String get stationRemove => 'Aus den Favoriten entfernen';
+
+  @override
+  String get radioLive => 'Live';
+
+  @override
+  String get cdImportButton => 'CD importieren';
+
+  @override
+  String get cdImportTooltip =>
+      'Die CD im Laufwerk in die Bibliothek importieren';
+
+  @override
+  String get cdIdentifying => 'Die CD wird gelesen…';
+
+  @override
+  String get cdFound =>
+      'Die CD wurde online gefunden. Bitte die Angaben prüfen.';
+
+  @override
+  String get cdNotFound =>
+      'Die CD wurde online nicht gefunden. Bitte die Angaben eingeben.';
+
+  @override
+  String get cdCandidate => 'Treffer';
+
+  @override
+  String get cdSearchLabel =>
+      'Nicht der richtige Treffer? MusicBrainz suchen (Titel, Autor)';
+
+  @override
+  String get cdSearchGo => 'Suchen';
+
+  @override
+  String get cdSearchNothing => 'Nichts gefunden.';
+
+  @override
+  String get cdAuthor => 'Autor';
+
+  @override
+  String get cdTitle => 'Titel';
+
+  @override
+  String get cdDiscNumber => 'CD-Nummer';
+
+  @override
+  String get cdDiscsTotal => 'Anzahl CDs';
+
+  @override
+  String get cdKind => 'Art';
+
+  @override
+  String get cdKindAudiobook => 'Hörbuch';
+
+  @override
+  String get cdKindMusic => 'Musik';
+
+  @override
+  String get cdEjectAfter => 'CD danach auswerfen';
+
+  @override
+  String cdTracks(int count) {
+    return '$count Titel';
+  }
+
+  @override
+  String get cdSave => 'Importieren';
+
+  @override
+  String get cdClose => 'Schließen';
+
+  @override
+  String get cdStopImport => 'Import abbrechen';
+
+  @override
+  String cdReading(int track, int total) {
+    return 'Titel $track von $total wird gelesen';
+  }
+
+  @override
+  String get cdDone => 'Die CD ist jetzt in der Bibliothek.';
+
+  @override
+  String get cdEjected => 'Die CD wurde ausgeworfen.';
+
+  @override
+  String get cdCancelled =>
+      'Der Import wurde abgebrochen. Es wurde nichts in die Bibliothek aufgenommen.';
+
+  @override
+  String get cdErrNoDisc => 'Im Laufwerk liegt keine lesbare Audio-CD.';
+
+  @override
+  String get cdErrUnsupported =>
+      'Der Server verlangt ein Format oder eine Tag-Version, die diese App noch nicht erzeugen kann.';
+
+  @override
+  String get cdErrRead =>
+      'Die CD konnte nicht zuverlässig gelesen werden. Sie ist vielleicht zerkratzt oder schmutzig.';
+
+  @override
+  String get cdErrDriveGone => 'Das Laufwerk des Servers antwortet nicht mehr.';
+
+  @override
+  String get cdErrEncode => 'Der Server konnte die Audiodaten nicht umwandeln.';
+
+  @override
+  String get cdErrForbidden =>
+      'Dein Konto darf keine CDs in die Bibliothek aufnehmen.';
+
+  @override
+  String get cdErrDetails => 'Einzelheiten';
+
+  @override
+  String get cdErrVerify =>
+      'Zwei Lesedurchgänge eines Titels ergaben nie dasselbe Ergebnis. Die CD ist vielleicht zerkratzt oder schmutzig.';
+
+  @override
+  String get cdErrCancelled =>
+      'Der Import wurde abgebrochen. Es wurde nichts in die Bibliothek aufgenommen.';
+
+  @override
+  String get cdErrIo =>
+      'Auf dem Server konnte eine Datei nicht geschrieben werden.';
+
+  @override
+  String get cdErrNetwork => 'Der Server antwortet nicht.';
+
+  @override
+  String get cdErrCertificate =>
+      'Das Zertifikat des Servers ist nicht das, mit dem dieses Gerät gekoppelt wurde.';
+
+  @override
+  String get cdErrUnauthorized =>
+      'Dieses Gerät ist am Server nicht mehr angemeldet.';
+
+  @override
+  String get cdErrInvalidToc =>
+      'Der Server konnte das Inhaltsverzeichnis dieser CD nicht verwenden.';
+
+  @override
+  String get cdErrInvalidQuery =>
+      'Die Suche braucht mindestens zwei Buchstaben.';
+
+  @override
+  String get cdErrNoContact =>
+      'Der Administrator hat noch keine Kontaktadresse für MusicBrainz eingetragen, deshalb können CDs nicht nachgeschlagen werden. Die Angaben können von Hand eingegeben werden.';
+
+  @override
+  String get cdErrLookupFailed =>
+      'Das Nachschlagen der CD im Internet hat nicht funktioniert. Die Angaben können von Hand eingegeben werden.';
+
+  @override
+  String get cdErrNotFound => 'Der Server kennt diesen Eintrag nicht.';
+
+  @override
+  String get cdErrInvalidRelease =>
+      'Der Server hat die Veröffentlichung nicht akzeptiert.';
+
+  @override
+  String get cdErrTrackNumbers =>
+      'Die Titelnummern sind nicht vollständig oder kommen doppelt vor.';
+
+  @override
+  String get cdErrInvalidMeta =>
+      'Der Server hat Autor, Titel oder Nummern nicht akzeptiert.';
+
+  @override
+  String get cdErrUnreadableFile =>
+      'Der Server konnte eine der Dateien nicht lesen.';
+
+  @override
+  String get cdErrFormatMismatch =>
+      'Eine Datei hat nicht das Format, das die Einstellungen des Servers verlangen.';
+
+  @override
+  String get cdErrBadExtension =>
+      'Eine Datei hat eine Endung, die der Server nicht akzeptiert.';
+
+  @override
+  String get cdErrUnknownFile =>
+      'Der Server hat eine Datei erhalten, die er nicht erwartet hat.';
+
+  @override
+  String get cdErrMissingFile =>
+      'In dem, was an den Server gesendet wurde, fehlt eine Datei.';
+
+  @override
+  String get cdErrBadCover => 'Das Titelbild wurde nicht akzeptiert.';
+
+  @override
+  String get cdErrBadTags =>
+      'Der Server konnte die Tags einer Datei nicht schreiben.';
+
+  @override
+  String get cdErrNoImportFolder =>
+      'Der Server hat für diese Medienart keinen Importordner.';
+
+  @override
+  String get cdErrNoSpace => 'Auf dem Server ist nicht genug Platz.';
+
+  @override
+  String get cdErrDiscExists =>
+      'Diese CD ist schon in der Bibliothek; der Server überschreibt sie nicht.';
+
+  @override
+  String get cdErrTooLarge => 'Der Upload ist größer, als der Server annimmt.';
+
+  @override
+  String get cdErrBadRequest => 'Der Server hat die Anfrage nicht verstanden.';
+
+  @override
+  String get cdErrInvalidJob =>
+      'Der Server hat den Importauftrag nicht akzeptiert.';
+
+  @override
+  String get cdErrJobClosed => 'Der Importauftrag ist schon beendet.';
+
+  @override
+  String get cdErrImportFailed =>
+      'Der Server konnte die CD nicht in die Bibliothek aufnehmen.';
+
+  @override
+  String get cdErrInterrupted =>
+      'Der Import wurde unterbrochen, zum Beispiel durch einen Neustart des Servers.';
+
+  @override
+  String get cdErrStale =>
+      'Der Import hat keine Nachricht mehr gesendet und wurde aufgegeben.';
+
+  @override
+  String get cdErrClient =>
+      'Das Gerät, das den Import gestartet hat, hat ihn aufgegeben.';
+
+  @override
+  String cdErrUnknown(String code) {
+    return 'Der CD-Import ist fehlgeschlagen ($code).';
+  }
+
+  @override
+  String get sectionNew => 'Neu';
+
+  @override
+  String get badgeNew => 'Neu';
+
+  @override
+  String get tooltipPlayed => 'Gespielt';
+
+  @override
+  String playsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count-mal vollständig gehört',
+      one: 'Einmal vollständig gehört',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String lastPlayedOn(DateTime date) {
+    final intl.DateFormat dateDateFormat = intl.DateFormat.yMMMd(localeName);
+    final String dateString = dateDateFormat.format(date);
+
+    return 'zuletzt gespielt am $dateString';
+  }
+
+  @override
+  String get cdStarting => 'Wird gestartet…';
+
+  @override
+  String get cdEncoding => 'Die Audiodaten werden umgewandelt…';
+
+  @override
+  String get cdAddingToLibrary => 'Die CD wird in die Bibliothek aufgenommen…';
+
+  @override
+  String get cdImportingTooltip => 'CD wird importiert';
+
+  @override
+  String get cdEjectTooltip => 'CD auswerfen';
+
+  @override
+  String get cdNothingToEject => 'Es gibt nichts auszuwerfen.';
+
+  @override
+  String get cdErrNoDrive => 'Der Server hat kein CD-Laufwerk.';
+
+  @override
+  String get cdErrDriveDenied =>
+      'Der Server darf sein CD-Laufwerk nicht benutzen. Der Administrator muss es erlauben.';
+
+  @override
+  String get cdErrTrayOpen =>
+      'Das Fach des Laufwerks ist offen. Bitte zuerst von Hand schließen.';
+
+  @override
+  String get cdErrBusy => 'Das Laufwerk ist mit einer anderen CD beschäftigt.';
+
+  @override
+  String get cdErrEjectFailed => 'Das Laufwerk hat sein Fach nicht geöffnet.';
+
+  @override
+  String get cdErrInternal => 'Der Server hatte ein internes Problem.';
+
+  @override
+  String get cdErrInvalidSelection =>
+      'Ein gewählter Titel ist nicht auf der CD oder doppelt gewählt.';
+
+  @override
+  String get cdSelectAll => 'Alle Titel auswählen';
+
+  @override
+  String get cdSelectNone => 'Keinen Titel auswählen';
+
+  @override
+  String get cdSelectInvert => 'Auswahl umkehren';
+
+  @override
+  String cdTrackDefault(String number) {
+    return 'Titel $number';
+  }
+
+  @override
+  String cdTracksSummary(int selected, int total, String duration) {
+    return '$selected von $total Titeln, $duration';
+  }
+
+  @override
+  String get cdErrEmptySelection => 'Es ist kein Titel gewählt.';
+
+  @override
+  String cdErrTaken(String numbers) {
+    return 'Titel $numbers sind schon in der Bibliothek.';
+  }
+
+  @override
+  String cdBarHead(String title, int disc) {
+    return '$title, CD $disc';
+  }
+
+  @override
+  String cdBarTrack(int track, int total) {
+    return 'Titel $track von $total';
+  }
+
+  @override
+  String get cdPhaseReading => 'Lesen';
+
+  @override
+  String get cdPhaseChecking => 'Prüfen';
+
+  @override
+  String get cdPhaseEncoding => 'Kodieren';
+
+  @override
+  String get cdPhasePlacing => 'Einsortieren';
+
+  @override
+  String get cdPhaseImporting => 'Importieren';
+
+  @override
+  String get cdPhaseWorking => 'In Arbeit';
+
+  @override
+  String cdBarDone(int count) {
+    return 'Fertig: $count Titel';
+  }
+
+  @override
+  String get cdBarDoneNoCount => 'Fertig';
+
+  @override
+  String cdBarImporting(String line) {
+    return 'Import von: $line';
+  }
+
+  @override
+  String get cdErrDiscPresent => 'Diese CD ist schon in der Bibliothek.';
+
+  @override
+  String get cdErrNotPresent =>
+      'Diese CD ist nicht in der Bibliothek, also gibt es nichts zu reparieren.';
+
+  @override
+  String get cdErrNothingToHeal =>
+      'Die CD ist vollständig in der Bibliothek; es gibt nichts zu reparieren.';
+
+  @override
+  String get cdErrUnreadableTrack =>
+      'Einzelne Titel konnten von der CD nicht gelesen werden (sie ist vielleicht zerkratzt).';
+
+  @override
+  String get cdStateUnverified => 'Übernommen, nicht bestätigt';
+
+  @override
+  String get cdErrUnverifiedTrack =>
+      'Ein Titel wurde nicht zweimal gleich gelesen und mit der ersten Lesung übernommen (nicht bestätigt).';
+
+  @override
+  String get cdErrResumeMismatch =>
+      'Die Einstellungen oder die Titelauswahl haben sich geändert, deshalb wird die CD von vorn gelesen.';
+
+  @override
+  String get cdErrHealNeeded =>
+      'Die CD ist in der Bibliothek, aber es fehlen Titel oder sie sind defekt. Im Import-Dialog lässt sie sich reparieren.';
+
+  @override
+  String get cdErrResumePending =>
+      'Ein unterbrochenes Lesen dieser CD wartet. Im Import-Dialog lässt es sich fortsetzen.';
+
+  @override
+  String get cdErrAmbiguousMatch =>
+      'Mehrere Veröffentlichungen passen zu dieser CD. Bitte eine auswählen.';
+
+  @override
+  String get cdErrNoMatch => 'Die Online-Datenbank kennt diese CD nicht.';
+
+  @override
+  String get cdErrNoTarget =>
+      'Der Server hat keinen Importordner, in den er schreiben darf.';
+
+  @override
+  String get cdErrUdevOff =>
+      'Der automatische Import braucht die Erkennung der Laufwerke über Systemereignisse (eingeschaltet).';
+
+  @override
+  String get cdErrNotAudio => 'Das ist keine Audio-CD.';
+
+  @override
+  String get cdErrStartFailed => 'Der Import konnte nicht gestartet werden.';
+
+  @override
+  String get cdErrLocked =>
+      'Die CD wurde hinzugefügt, aber der Import der Bibliothek ist gesperrt. Sie erscheint, wenn die Sperre aufgehoben ist.';
+
+  @override
+  String get cdContinue => 'Fortsetzen';
+
+  @override
+  String cdResumeNote(int done, int total, String when) {
+    return 'Diese CD wurde schon bis Titel $done von $total gelesen (unterbrochen $when).';
+  }
+
+  @override
+  String get cdRereadFromStart => 'Von vorn noch einmal lesen';
+
+  @override
+  String get cdResumeLost =>
+      'Ein früheres Lesen dieser CD lässt sich nicht fortsetzen, weil sich die Einstellungen geändert haben. Die CD wird neu gelesen.';
+
+  @override
+  String get cdResumed => 'Ein früheres Lesen wird fortgesetzt.';
+
+  @override
+  String get cdImportAnyway => 'Trotzdem importieren';
+
+  @override
+  String get cdHeal => 'Prüfen und reparieren';
+
+  @override
+  String get cdForceTitle => 'CD erneut importieren?';
+
+  @override
+  String get cdForceBody =>
+      'Diese CD ist schon in der Bibliothek. So kommt sie ein zweites Mal als neue Kopie hinzu. Das nur tun, wenn wirklich zwei Kopien gewollt sind.';
+
+  @override
+  String get cdForceConfirm => 'Als neue Kopie importieren';
+
+  @override
+  String get cdPresentTitle => 'Diese CD ist schon in der Bibliothek';
+
+  @override
+  String cdPresentBookDisc(String book, int disc) {
+    return '$book, CD $disc';
+  }
+
+  @override
+  String cdPresentBookAuthorDisc(String book, String author, int disc) {
+    return '$book von $author, CD $disc';
+  }
+
+  @override
+  String cdPresentComplete(int inLibrary, int onDisc) {
+    return 'Die CD ist vollständig in der Bibliothek ($inLibrary von $onDisc Titeln).';
+  }
+
+  @override
+  String cdPresentCount(int inLibrary, int onDisc) {
+    return '$inLibrary von $onDisc Titeln sind in der Bibliothek.';
+  }
+
+  @override
+  String get cdMissing => 'Fehlt';
+
+  @override
+  String get cdDamaged => 'Defekt';
+
+  @override
+  String get cdDamagedEmpty => 'die Datei ist leer';
+
+  @override
+  String get cdDamagedUnreadable => 'die Datei lässt sich nicht lesen';
+
+  @override
+  String cdDamagedLength(String have, String want) {
+    return 'die Datei ist $have lang, die CD hat $want';
+  }
+
+  @override
+  String get cdDamagedOther => 'die Datei passt nicht zur CD';
+
+  @override
+  String get cdHealHint =>
+      'Von der CD werden nur die fehlenden und defekten Titel gelesen. Eine defekte Datei bleibt im Quarantäne-Ordner erhalten.';
+
+  @override
+  String get cdStateWaiting => 'Wartet';
+
+  @override
+  String get cdStateRead => 'Gelesen, wartet auf die Prüfung';
+
+  @override
+  String cdSpeed(String x) {
+    return 'Laufwerk liest mit ${x}x';
+  }
+
+  @override
+  String get cdStateRereading => 'Liest erneut';
+
+  @override
+  String cdStateRereadingPercent(int percent) {
+    return 'Liest erneut $percent %';
+  }
+
+  @override
+  String get cdStateReading => 'Wird gelesen';
+
+  @override
+  String cdStateReadingPercent(int percent) {
+    return 'Wird gelesen $percent %';
+  }
+
+  @override
+  String get cdStateVerifying => 'Wird geprüft';
+
+  @override
+  String get cdStateEncoding => 'Wird kodiert';
+
+  @override
+  String get cdStateDone => 'Fertig';
+
+  @override
+  String get cdStateFailed => 'Fehler';
+
+  @override
+  String cdBuffer(int seconds, int max) {
+    return 'Puffer $seconds s von $max s';
+  }
+
+  @override
+  String get filterPlaylists => 'Playlists';
+
+  @override
+  String get playlistNew => 'Neue Playlist';
+
+  @override
+  String get playlistNewItem => 'Neue Playlist …';
+
+  @override
+  String get playlistName => 'Name';
+
+  @override
+  String get playlistSave => 'Speichern';
+
+  @override
+  String get playlistsEmpty => 'Noch keine Playlists. Mit + eine anlegen.';
+
+  @override
+  String playlistMeta(int count, String duration) {
+    return '$count Titel · $duration';
+  }
+
+  @override
+  String get playlistAddTo => 'Zur Playlist hinzufügen';
+
+  @override
+  String playlistAddedTo(String name) {
+    return 'Zu „$name“ hinzugefügt.';
+  }
+
+  @override
+  String get playlistChoose => 'Zu welcher Playlist hinzufügen?';
+
+  @override
+  String get playlistPlay => 'Abspielen';
+
+  @override
+  String get playlistRename => 'Umbenennen';
+
+  @override
+  String get playlistRenameTitle => 'Playlist umbenennen';
+
+  @override
+  String get playlistDelete => 'Playlist löschen';
+
+  @override
+  String get playlistDeleteTitle => 'Diese Playlist löschen?';
+
+  @override
+  String playlistDeleteText(String name) {
+    return '„$name“ wird aus deinem Profil gelöscht. Die Titel bleiben in der Bibliothek.';
+  }
+
+  @override
+  String get playlistRemoveEntry => 'Aus der Playlist entfernen';
+
+  @override
+  String get playlistUnavailable => 'Nicht verfügbar';
+
+  @override
+  String get playlistEmpty =>
+      'Diese Playlist ist leer. „Zur Playlist hinzufügen“ gibt es bei einem Titel und bei einem Buch.';
+
+  @override
+  String get playlistDownload => 'Playlist herunterladen';
+
+  @override
+  String get plErrNameTaken => 'Du hast schon eine Playlist mit diesem Namen.';
+
+  @override
+  String get plErrInvalidName =>
+      'Der Name darf nicht leer sein und höchstens 100 Zeichen haben.';
+
+  @override
+  String get plErrUnknownPart =>
+      'Ein Titel ist nicht mehr da, oder du darfst ihn nicht verwenden.';
+
+  @override
+  String get plErrUnknownBook =>
+      'Das Buch ist nicht mehr da, oder du darfst es nicht verwenden.';
+
+  @override
+  String get plErrInvalidOrder =>
+      'Die Reihenfolge war nicht verwendbar. Die Liste steht so, wie sie auf dem Server ist.';
+
+  @override
+  String get plErrInvalidPosition =>
+      'Diesen Platz in der Playlist gibt es nicht.';
+
+  @override
+  String get plErrInvalidRequest => 'Die Anfrage war nicht gültig.';
+
+  @override
+  String get plErrPlaylistFull =>
+      'Die Playlist ist voll (höchstens 5000 Titel).';
+
+  @override
+  String get plErrTooManyPlaylists =>
+      'Du hast die höchste Zahl an Playlists (100).';
+
+  @override
+  String get plErrNotFound => 'Die Playlist gibt es nicht mehr.';
+
+  @override
+  String get plErrNetwork => 'Der Server antwortet nicht.';
+
+  @override
+  String plErrUnknown(String code) {
+    return 'Die Playlist konnte nicht geändert werden ($code).';
+  }
+
+  @override
+  String get hideMenuTooltip => 'Aus- oder einblenden';
+
+  @override
+  String get hideBook => 'Dieses Buch ausblenden';
+
+  @override
+  String get showBook => 'Dieses Buch wieder einblenden';
+
+  @override
+  String hideAuthorAudiobooks(String name) {
+    return 'Alle Hörbücher von $name ausblenden';
+  }
+
+  @override
+  String showAuthorAudiobooks(String name) {
+    return 'Die Hörbücher von $name wieder einblenden';
+  }
+
+  @override
+  String hideAuthorMusic(String name) {
+    return 'Alle Musik von $name ausblenden';
+  }
+
+  @override
+  String showAuthorMusic(String name) {
+    return 'Die Musik von $name wieder einblenden';
+  }
+
+  @override
+  String hideAuthorAll(String name) {
+    return 'Alles von $name ausblenden';
+  }
+
+  @override
+  String showAuthorAll(String name) {
+    return 'Alles von $name wieder einblenden';
+  }
+
+  @override
+  String get hiddenMark => 'Ausgeblendet';
+
+  @override
+  String get hidingFailed => 'Die Änderung konnte nicht gespeichert werden.';
+
+  @override
+  String get settingsMyLibrary => 'Meine Bibliothek';
+
+  @override
+  String get settingsShowHidden => 'Ausgeblendetes anzeigen';
+
+  @override
+  String get settingsShowHiddenHint =>
+      'Was du ausblendest, verschwindet aus deinen Listen, nur aus deinen. Mit diesem Schalter wird es wieder aufgeführt, abgedunkelt, damit du es wieder einblenden kannst.';
+
+  @override
+  String get settingsHiddenTitle => 'Ausgeblendet';
+
+  @override
+  String get settingsHiddenNone =>
+      'Du hast nichts ausgeblendet. Halte ein Buch gedrückt oder öffne es und nimm das Menü oben.';
+
+  @override
+  String settingsHiddenAuthorAudiobooks(String name) {
+    return 'Hörbücher von $name';
+  }
+
+  @override
+  String settingsHiddenAuthorMusic(String name) {
+    return 'Musik von $name';
+  }
+
+  @override
+  String settingsHiddenAuthorAll(String name) {
+    return 'Alles von $name';
+  }
+
+  @override
+  String get settingsShowAgain => 'Wieder einblenden';
+
+  @override
+  String musicOf(String name) {
+    return 'Musik von $name';
+  }
+
+  @override
+  String get musicOfNobody => 'Weitere Musik';
+
+  @override
+  String ownerLabel(String name) {
+    return 'Besitzer: $name';
+  }
+
+  @override
+  String audiobooksOf(String name) {
+    return 'Hörbücher von $name';
+  }
+
+  @override
+  String get audiobooksOfNobody => 'Weitere Hörbücher';
 }

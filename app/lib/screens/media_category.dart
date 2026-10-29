@@ -7,7 +7,7 @@ import '../models.dart';
 
 /// The kinds of media, as the library and the search offer them. Videos and e-books are shown so
 /// that it is clear they are coming; David does not manage them yet.
-enum MediaCategory { all, music, audiobooks, videos, ebooks }
+enum MediaCategory { all, music, audiobooks, podcasts, radio, playlists, videos, ebooks }
 
 extension MediaCategoryBooks on MediaCategory {
   /// The books of this category, or null for a category David does not manage yet.
@@ -15,26 +15,30 @@ extension MediaCategoryBooks on MediaCategory {
         MediaCategory.all => library,
         MediaCategory.music => library.where((b) => b.kind == 'music').toList(),
         MediaCategory.audiobooks => library.where((b) => b.kind == 'audiobook').toList(),
-        MediaCategory.videos || MediaCategory.ebooks => null,
+        MediaCategory.podcasts || MediaCategory.radio || MediaCategory.playlists || MediaCategory.videos || MediaCategory.ebooks => null,
       };
 }
 
-/// The row of chips that chooses a category. [withAll] adds "All" in front (the search has it,
-/// the library does not).
+/// The row of chips that chooses a category. For the search ([forSearch]) there is "All" in front
+/// and no podcasts and radio (they are lists of feeds and stations, not found by the search); the
+/// library has them and no "All".
 class CategoryChips extends StatelessWidget {
-  const CategoryChips({super.key, required this.value, required this.onChanged, this.withAll = false});
+  const CategoryChips({super.key, required this.value, required this.onChanged, this.forSearch = false});
 
   final MediaCategory value;
   final ValueChanged<MediaCategory> onChanged;
-  final bool withAll;
+  final bool forSearch;
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final entries = [
-      if (withAll) (MediaCategory.all, l.filterAll, Icons.apps_outlined),
+      if (forSearch) (MediaCategory.all, l.filterAll, Icons.apps_outlined),
       (MediaCategory.music, l.filterMusic, Icons.music_note_outlined),
       (MediaCategory.audiobooks, l.filterBooks, Icons.menu_book_outlined),
+      if (!forSearch) (MediaCategory.podcasts, l.navPodcasts, Icons.podcasts),
+      if (!forSearch) (MediaCategory.radio, l.navRadio, Icons.radio),
+      if (!forSearch) (MediaCategory.playlists, l.filterPlaylists, Icons.queue_music),
       (MediaCategory.videos, l.filterVideos, Icons.movie_outlined),
       (MediaCategory.ebooks, l.filterEbooks, Icons.auto_stories_outlined),
     ];

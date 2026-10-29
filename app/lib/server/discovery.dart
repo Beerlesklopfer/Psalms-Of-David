@@ -34,6 +34,9 @@ const _service = '_david._tcp.local';
 /// with a VPN is the tunnel, and nothing answers. So there is one client per
 /// interface, each told where to send (`IP_MULTICAST_IF`).
 Future<List<FoundServer>> discoverServers({Duration timeout = const Duration(seconds: 4), List<InternetAddress>? interfaces}) async {
+  // iOS only lets an app use multicast sockets with a special permission from Apple (an entitlement that has to
+  // be applied for). Without it the search finds nothing; the app then keeps the address it was paired with.
+  if (Platform.isIOS && interfaces == null) return const [];
   final addresses = interfaces ?? await _lanAddresses();
   final perInterface = await Future.wait(addresses.map((a) => _guarded(() => _discoverOn(a, timeout))));
   final found = <String, FoundServer>{};

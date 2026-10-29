@@ -130,3 +130,69 @@ fn a_file_without_any_tag_gives_empty_fields_and_no_error() {
     assert_eq!((t.title, t.artist, t.disc, t.track, t.age_recommendation), (None, None, None, None, None));
     assert!(t.duration_ms > 1500);
 }
+
+/// An ID3v2.3 tag as a tagger wrote it: a year of four blanks in a `TYER` frame (UTF-16 with a byte order mark), which the
+/// strict tag reader refuses together with the whole file. The file is fine and plays.
+fn id3v23_tag_with_blank_year(title: &str) -> Vec<u8> {
+    let frame = |id: &[u8; 4], data: &[u8]| -> Vec<u8> {
+        let mut f = id.to_vec();
+        f.extend((data.len() as u32).to_be_bytes());
+        f.extend([0, 0]);
+        f.extend(data);
+        f
+    };
+    let mut frames = frame(b"TYER", &[1, 0xff, 0xfe, b' ', 0, b' ', 0, b' ', 0, b' ', 0]);
+    frames.extend(frame(b"TIT2", &[&[0u8][..], title.as_bytes()].concat()));
+    frames.extend(frame(b"TPE1", &[&[0u8][..], b"Phil Collins"].concat()));
+    let size = frames.len() + 64;
+    let mut tag = b"ID3\x03\x00\x00".to_vec();
+    tag.extend([(size >> 21) as u8 & 0x7f, (size >> 14) as u8 & 0x7f, (size >> 7) as u8 & 0x7f, size as u8 & 0x7f]);
+    tag.extend(frames);
+    tag.resize(10 + size, 0);
+    tag
+}
+
+#[test]
+fn a_file_that_the_strict_tag_reader_refuses_is_read_in_the_relaxed_mode_and_its_tags_survive() {
+    if !common::audio::ffmpeg_available() {
+        return;
+    }
+    let dir = tempfile::TempDir::new().unwrap();
+    let plain = dir.path().join("plain.mp3");
+    common::audio::make_mp3(&plain, &[]);
+    let mut audio = std::fs::read(&plain).unwrap();
+    if &audio[..3] == b"ID3" {
+        let size = ((audio[6] as usize & 0x7f) << 21) | ((audio[7] as usize & 0x7f) << 14) | ((audio[8] as usize & 0x7f) << 7) | (audio[9] as usize & 0x7f);
+        audio.drain(..10 + size);
+    }
+    let path = dir.path().join("strict.mp3");
+    let mut bytes = id3v23_tag_with_blank_year("I Wish It Would Rain Down");
+    bytes.extend(&audio);
+    std::fs::write(&path, bytes).unwrap();
+
+    // What the file does to the reader: the plain call refuses it (the reason this test exists; if a newer reader forgives
+    // it, the rest of the test still holds).
+    let strict = lofty::read_from_path(&path).is_ok();
+    eprintln!("the strict reader {} the file", if strict { "accepts" } else { "refuses" });
+    // David takes it: the length and the other frames come through.
+    let tags = david_server::tags::read(&path).expect("the file is read");
+    assert!(tags.duration_ms > 1000, "the length is read: {}", tags.duration_ms);
+    assert_eq!((tags.title.as_deref(), tags.artist.as_deref()), (Some("I Wish It Would Rain Down"), Some("Phil Collins")));
+    let fields = david_server::tags::read_fields(&path).unwrap();
+    assert!(fields.iter().any(|(n, v)| n == "TrackTitle" && v == &["I Wish It Would Rain Down"]), "{fields:?}");
+
+    // A file whose tag cannot be read at all is taken for its audio (nothing but the length), not dropped.
+    let broken = dir.path().join("broken.mp3");
+    let mut bytes = b"ID3\x03\x00\x00\x00\x00\x00\x40".to_vec();
+    bytes.extend(vec![0xffu8; 64]);
+    bytes.extend(&audio);
+    std::fs::write(&broken, bytes).unwrap();
+    let t = david_server::tags::read(&broken).expect("the audio is read although the tag is not");
+    assert!(t.duration_ms > 1000);
+
+    // Writing keeps the tags that could be read (relaxed) and the fixed file reads strictly afterwards.
+    let r = david_server::tags::write_fields(&path, &[("AlbumTitle".to_owned(), vec!["Face Value".to_owned()])]);
+    assert!(r.is_ok(), "{r:?}");
+    assert!(lofty::read_from_path(&path).is_ok(), "after a write the tag is the reader's own and strict reading works");
+    assert_eq!(david_server::tags::read(&path).unwrap().album.as_deref(), Some("Face Value"));
+}

@@ -1,0 +1,11 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}<table class="track-table">
+  <thead><tr><th>{{ t("books.disc") }}</th><th>#</th><th>{{ t("books.track_title") }}</th><th>{{ t("books.track_length") }}</th></tr></thead>
+  <tbody>
+  {% for track in tracks %}
+    <tr><td>{{ track.disc }}</td><td>{{ track.number }}</td><td>{{ track.title }}</td><td>{{ track.length }}</td></tr>
+  {% else %}
+    <tr><td colspan="4">{{ t("books.no_tracks") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>

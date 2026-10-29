@@ -9,16 +9,16 @@ import 'package:psalm/screens/connect_screen.dart';
 const _address = 'david://pair?v=1&id=abc&addr=127.0.0.1%3A8484&code=0123456789abcdef';
 
 Widget _screen({String? initial}) => MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      locale: const Locale('en'),
-      home: ConnectScreen(
-        deviceName: 'Laptop',
-        initialAddress: initial,
-        onPair: (address, name) async => null,
-        onDemo: () {},
-      ),
-    );
+  localizationsDelegates: AppLocalizations.localizationsDelegates,
+  supportedLocales: AppLocalizations.supportedLocales,
+  locale: const Locale('en'),
+  home: ConnectScreen(
+    deviceName: 'Laptop',
+    initialAddress: initial,
+    onPair: (address, name) async => null,
+    onDemo: () {},
+  ),
+);
 
 /// Makes the clipboard of the test hold [text].
 void _clipboard(WidgetTester tester, String? text) {

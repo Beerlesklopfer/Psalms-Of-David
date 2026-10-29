@@ -1,8 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:crypto/crypto.dart';
+
+import '../m3u.dart';
 import '../models.dart';
 import 'api_client.dart';
 
@@ -43,6 +47,13 @@ abstract class MediaSource {
   Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished});
 
   Future<PassageHit?> resolvePassage(String text);
+
+  /// Writes the playlist file [name] (an extended M3U) next to the downloaded parts, listing [entries]; an
+  /// empty list removes the file. Nothing happens where parts are not kept on the device.
+  Future<void> writeM3u(String name, List<M3uEntry> entries) async {}
+
+  /// The path of a downloaded part relative to the folder of the playlist file, or null if it is not on the device.
+  String? relativePath(Track track) => null;
 }
 
 class ServerSource implements MediaSource {
@@ -74,12 +85,28 @@ class ServerSource implements MediaSource {
     var files = 0, bytes = 0;
     await for (final e in cache.list()) {
       // Parts only; a half-loaded one (`.part`) is counted too, it takes room.
-      if (e is File) {
+      if (e is File && !e.path.endsWith('.$kM3uEnding')) {
         files++;
         bytes += await e.length();
       }
     }
     return (files: files, bytes: bytes);
+  }
+
+  @override
+  String? relativePath(Track track) => isDownloaded(track) ? '${track.partId}.audio' : null;
+
+  @override
+  Future<void> writeM3u(String name, List<M3uEntry> entries) async {
+    final file = File('${cache.path}/$name.$kM3uEnding');
+    if (entries.isEmpty) {
+      if (file.existsSync()) await file.delete();
+      return;
+    }
+    await cache.create(recursive: true);
+    final temp = File('${file.path}.part');
+    await temp.writeAsString(buildM3u8(entries));
+    await temp.rename(file.path);
   }
 
   @override
@@ -92,17 +119,54 @@ class ServerSource implements MediaSource {
 
   @override
   Future<String> fetchPart(Track track) async {
+    final url = track.url;
+    if (url != null) {
+      // A radio stream is played from its address; an episode is fetched from the publisher once and kept.
+      if (track.live) return url;
+      final file = File('${cache.path}/ep-${sha1.convert(utf8.encode(url))}.audio');
+      if (!file.existsSync()) await _downloadFrom(url, file);
+      return file.path;
+    }
     final id = track.partId!;
     final file = File('${cache.path}/$id.audio');
     if (!file.existsSync()) await api.downloadPart(id, file);
     return file.path;
   }
 
+  /// Loads a file from the internet into [file] (through a `.part` file, so that a half-loaded file is never played).
+  /// The publisher's own certificate rules apply: this is no connection to David.
+  Future<void> _downloadFrom(String url, File file) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      // Redirects are followed by the client (publishers send episodes through trackers and content networks).
+      final req = await client.getUrl(Uri.parse(url));
+      final res = await req.close();
+      if (res.statusCode >= 400) throw HttpException('HTTP ${res.statusCode}', uri: Uri.parse(url));
+      await file.parent.create(recursive: true);
+      final part = File('${file.path}.part');
+      final sink = part.openWrite();
+      try {
+        await res.pipe(sink);
+      } on Object {
+        if (part.existsSync()) await part.delete();
+        rethrow;
+      }
+      await part.rename(file.path);
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   @override
   Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) {
+    // An episode goes back to the account's own state; a radio station has no position.
+    if (book.kind == 'podcast') return api.putEpisodeState(int.parse(book.id.substring(3)), position, finished: finished);
+    if (book.isStream) return Future.value();
     final partId = track.partId;
     if (partId == null) return Future.value();
-    return api.putProgress(itemId: int.parse(book.id), partId: partId, position: position, finished: finished);
+    // A track in a playlist reports to the book it belongs to, as it does when played from the book.
+    final itemId = track.itemId ?? book.id;
+    return api.putProgress(itemId: int.parse(itemId), partId: partId, position: position, finished: finished);
   }
 
   @override
@@ -128,7 +192,7 @@ class ServerSource implements MediaSource {
 
 /// The library of the signed-in user as the app's models, and where to resume.
 class LoadedLibrary {
-  LoadedLibrary(this.books, this.resume, {this.lastBookId, this.lastAt = 0, this.userName, this.recent = const []});
+  LoadedLibrary(this.books, this.resume, {this.lastBookId, this.lastAt = 0, this.userName, this.recent = const [], this.genres = const [], this.newIds = const []});
 
   /// The ids of the books listened to, the latest first (what "continue listening" says), at most 20.
 
@@ -139,6 +203,12 @@ class LoadedLibrary {
   final int lastAt;
   final String? userName;
   final List<String> recent;
+
+  /// The ids of the books that are new for this user, in the order of the server (newest first).
+  final List<String> newIds;
+
+  /// The genres of the list, in the order of the administration (music is shown by them).
+  final List<String> genres;
 
   final List<Book> books;
   final Map<String, ({int track, Duration position})> resume;
@@ -168,6 +238,20 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
   } on Object {
     // not needed to show the library
   }
+  var genres = <String>[];
+  try {
+    genres = await api.genres();
+  } on Object {
+    // an older server has no list; the genres then follow the albums
+  }
+  var newIds = <String>[];
+  try {
+    newIds = [for (final id in await api.newItems()) '$id'];
+  } on Object {
+    // the "New" row is optional
+  }
+  final hiddenIds = {for (final i in items) if (i['hidden'] == true) i['id'] as int};
+  final ownerOf = {for (final i in items) if (i['owner'] is String) i['id'] as int: i['owner'] as String};
   final details = await Future.wait(items.map((i) => api.item(i['id'] as int)));
   // The pictures come alongside; an item without one, or one that cannot be fetched, is drawn.
   final covers = await Future.wait(items.map((i) async {
@@ -193,6 +277,11 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
       blurb: d['description'] as String?,
       kind: d['kind'] as String? ?? 'audiobook',
       narrator: d['narrator'] as String?,
+      genre: d['genre'] as String?,
+      plays: d['plays'] as int? ?? 0,
+      lastPlayedAt: dateFromMs(d['last_played_at']),
+      hidden: hiddenIds.contains(id),
+      owner: ownerOf[id],
       tracks: [
         for (final p in parts)
           Track(
@@ -201,6 +290,8 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
             title: p['title'] as String,
             length: Duration(milliseconds: p['duration_ms'] as int),
             partId: p['id'] as int,
+            plays: p['plays'] as int? ?? 0,
+            lastPlayedAt: dateFromMs(p['last_played_at']),
           ),
       ],
     ));
@@ -212,7 +303,7 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
       }
     }
   }
-  return LoadedLibrary(books, resume, lastBookId: lastBookId, lastAt: lastAt, userName: userName, recent: recentIds);
+  return LoadedLibrary(books, resume, lastBookId: lastBookId, lastAt: lastAt, userName: userName, recent: recentIds, genres: genres, newIds: newIds);
 }
 
 extension on List<Map<String, dynamic>> {

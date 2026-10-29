@@ -7,6 +7,7 @@ import 'l10n/app_localizations.dart';
 import 'models.dart';
 import 'player_controller.dart';
 import 'screens/book_screen.dart';
+import 'screens/hide_menu.dart';
 import 'screens/player_screen.dart';
 import 'theme.dart';
 
@@ -123,24 +124,76 @@ void openBook(BuildContext context, Book book) {
 }
 
 /// Cover with title and author below, used in rows and grids.
+/// The green circle with a check mark that tells a track was heard to the end.
+class PlayedMark extends StatelessWidget {
+  const PlayedMark({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = AppLocalizations.of(context).tooltipPlayed;
+    return Tooltip(
+      message: label,
+      child: Semantics(label: label, child: const Icon(Icons.check_circle, key: ValueKey('played-mark'), color: Palette.played, size: 20)),
+    );
+  }
+}
+
 class BookCard extends StatelessWidget {
-  const BookCard({super.key, required this.book});
+  const BookCard({super.key, required this.book, this.badge});
 
   final Book book;
+
+  /// A small label on the corner of the cover (for example "New"); null for none.
+  final String? badge;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
-    return InkWell(
+    final card = InkWell(
       borderRadius: BorderRadius.circular(6),
       onTap: () => openBook(context, book),
+      // The choices about hiding (a book that is no item of the server has none).
+      onLongPress: () => showHideSheet(context, book),
       child: Padding(
         padding: const EdgeInsets.all(6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AspectRatio(aspectRatio: 1, child: Cover(book: book)),
+            AspectRatio(
+              aspectRatio: 1,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Cover(book: book),
+                  if (book.hidden)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: Tooltip(
+                        message: AppLocalizations.of(context).hiddenMark,
+                        child: const Icon(Icons.visibility_off, key: ValueKey('hidden-mark'), size: 20, color: Colors.white),
+                      ),
+                    ),
+                  if (badge != null)
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(4)),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          child: Text(
+                            badge!,
+                            key: const ValueKey('book-badge'),
+                            style: text.labelSmall?.copyWith(color: Theme.of(context).colorScheme.onPrimary, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
             const SizedBox(height: 8),
             Text(
               book.title,
@@ -158,8 +211,46 @@ class BookCard extends StatelessWidget {
         ),
       ),
     );
+    // A hidden book is listed only when the setting asks for it, and then it is dimmed.
+    return book.hidden ? Opacity(opacity: 0.5, child: card) : card;
   }
 }
+
+/// A small window with text fields and one action (Cancel / action). Returns the entries, or null if it was cancelled
+/// or a field is empty.
+Future<List<String>?> askFields(BuildContext context, {required String title, required List<({String label, String? hint})> fields, required String action, List<String>? initial}) {
+  final controllers = [for (var i = 0; i < fields.length; i++) TextEditingController(text: initial != null && i < initial.length ? initial[i] : null)];
+  final cancel = MaterialLocalizations.of(context).cancelButtonLabel;
+  return showDialog<List<String>>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (i, f) in fields.indexed)
+              TextField(
+                controller: controllers[i],
+                autofocus: i == 0,
+                decoration: InputDecoration(labelText: f.label, hintText: f.hint),
+                onSubmitted: i == fields.length - 1 ? (_) => Navigator.of(context).pop([for (final c in controllers) c.text.trim()]) : null,
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(cancel)),
+        FilledButton(onPressed: () => Navigator.of(context).pop([for (final c in controllers) c.text.trim()]), child: Text(action)),
+      ],
+    ),
+  ).then((v) => v == null || v.any((s) => s.isEmpty) ? null : v);
+}
+
+/// One text field: the entry, or null.
+Future<String?> askText(BuildContext context, {required String title, required String label, String? hint, required String action, String? initial}) =>
+    askFields(context, title: title, fields: [(label: label, hint: hint)], action: action, initial: initial == null ? null : [initial]).then((v) => v?.first);
 
 class SectionHeader extends StatelessWidget {
   const SectionHeader(this.title, {super.key});
@@ -199,7 +290,7 @@ class _SeekBarState extends State<SeekBar> {
   Widget build(BuildContext context) {
     final p = PlayerScope.of(context);
     final track = p.track;
-    if (track == null) return const SizedBox.shrink();
+    if (track == null || track.live) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
     final length = widget.wholeBook ? p.bookTotal : track.length;
     final now = widget.wholeBook ? p.bookPosition : p.position;
@@ -266,7 +357,7 @@ class MiniPlayer extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
                 children: [
-                  SizedBox.square(dimension: 44, child: Cover(book: book)),
+                  SizedBox.square(dimension: 44, child: Cover(book: p.shownBook ?? book)),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -280,7 +371,7 @@ class MiniPlayer extends StatelessWidget {
                               ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         Text(
-                          l.discTrack(p.track!.disc, p.track!.title),
+                          p.nowPlaying ?? (p.track!.live ? p.track!.title : l.discTrack(p.track!.disc, p.track!.title)),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: text.bodySmall
@@ -291,7 +382,7 @@ class MiniPlayer extends StatelessWidget {
                   ),
                   // Played and total time of the book.
                   Text(
-                    '${formatDuration(p.bookPosition)} / ${formatDuration(p.bookTotal)}',
+                    p.track?.live == true ? l.radioLive : '${formatDuration(p.bookPosition)} / ${formatDuration(p.bookTotal)}',
                     style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()]),
                   ),
                   if (speedMenu)
@@ -429,15 +520,26 @@ class _LyrePainter extends CustomPainter {
 
 /// Loads the library again from the server. Not shown without a server (demo data).
 class RefreshButton extends StatelessWidget {
-  const RefreshButton({super.key});
+  const RefreshButton({super.key, this.also});
+
+  /// More to reload together with the library (the lists of podcasts and stations). With it the button shows even
+  /// where the library itself cannot refresh.
+  final VoidCallback? also;
 
   @override
   Widget build(BuildContext context) {
     final p = PlayerScope.of(context);
-    if (!p.canRefresh) return const SizedBox.shrink();
+    if (!p.canRefresh && also == null) return const SizedBox.shrink();
     final l = AppLocalizations.of(context);
     return p.refreshing
         ? const Padding(padding: EdgeInsets.all(14), child: SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)))
-        : IconButton(tooltip: l.tooltipRefresh, onPressed: p.refreshLibrary, icon: const Icon(Icons.refresh));
+        : IconButton(
+            tooltip: l.tooltipRefresh,
+            onPressed: () {
+              if (p.canRefresh) p.refreshLibrary();
+              also?.call();
+            },
+            icon: const Icon(Icons.refresh),
+          );
   }
 }

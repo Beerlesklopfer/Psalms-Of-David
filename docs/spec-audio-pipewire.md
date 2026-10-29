@@ -145,3 +145,12 @@ Found while checking the volume: WirePlumber stores the volume of a stream under
 - `Engine::volume()` follows what PipeWire reports (`control_info`), so it is right after a restore or a change in a mixer.
 - Tests must not use the role `Music`. They set `PSALM_AUDIO_ROLE=Test` (all scripts do), so they cannot change what real programs start with.
 - Whether the app should share its volume with other music programs, or use a role or application name of its own, is **open**.
+
+## Live streams (internet radio, MP3)
+
+- The network part is Dart (`app/lib/audio/radio_stream.dart`): `dart:io` `HttpClient` (TLS, proxies, redirects), request header `Icy-MetaData: 1`, `IcyFilter` removes the metadata blocks and reports `StreamTitle`. Reconnects 3 times (2 s apart) after a lost connection; a connection that delivered 16 KiB starts the count again. HTTP 4xx, TLS errors and non-MP3 content types fail at once.
+- The engine takes the plain MP3 bytes: `psalm_engine_stream_open/_push/_end/_fail` (`audio/include/psalm_audio.h`). Push never blocks and returns the bytes taken (back pressure); the bytes go through a 1 MiB queue (`audio/src/stream.rs`) that symphonia reads as a media source without seek or length.
+- The PipeWire stream is built when the first block is decoded (format known). The state is `buffering` (5) until 2 s of decoded audio are queued, and again whenever the ring runs dry; it resumes by itself.
+- Pause tears down the PipeWire stream but keeps the connection; the queue discards its oldest bytes. Play opens at the live edge. Seek does nothing, `duration` is unknown, speed stays 1.0.
+- Not supported: AAC, Ogg, HLS, playlists (`stream type not supported`), and the old Shoutcast v1 status line `ICY 200 OK` (`dart:io` cannot parse it).
+- Checks: `audio/scripts/verify-stream.sh [station url]` (null sink, silent).

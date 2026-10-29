@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'dart:io';
 
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/audio/pipewire_backend.dart';
 import 'package:psalm/player_controller.dart';
@@ -31,7 +30,9 @@ void main() {
 
     final library = await loadLibrary(api);
     final book = library.books.single;
-    stdout.writeln('${book.author}: ${book.title}, ${book.tracks.length} parts, ${book.total.inMinutes} min, discs ${book.discs}');
+    stdout.writeln(
+      '${book.author}: ${book.title}, ${book.tracks.length} parts, ${book.total.inMinutes} min, discs ${book.discs}',
+    );
     expect(book.title, 'Kinder der Freiheit');
     expect(book.author, 'Follett');
     expect(book.tracks.first.disc, 1);

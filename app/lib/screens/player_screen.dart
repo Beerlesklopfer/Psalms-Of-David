@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../format.dart';
 import '../l10n/app_localizations.dart';
 import '../player_controller.dart';
+import '../stream_info_card.dart';
 import '../widgets.dart';
 
 
@@ -25,6 +26,8 @@ class PlayerScreen extends StatelessWidget {
     if (book == null || track == null) {
       return Scaffold(body: Center(child: Text(l.nothingSelected)));
     }
+    // In a playlist the book of the track that plays now (its cover, author and title).
+    final shown = p.shownBook ?? book;
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
@@ -37,7 +40,7 @@ class PlayerScreen extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          book.author,
+          shown.author,
           style: text.titleSmall?.copyWith(color: cs.onSurfaceVariant),
         ),
         centerTitle: true,
@@ -49,15 +52,21 @@ class PlayerScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 24),
             children: [
               const SizedBox(height: 8),
-              AspectRatio(aspectRatio: 1, child: Cover(book: book)),
+              AspectRatio(aspectRatio: 1, child: Cover(book: shown)),
               const SizedBox(height: 28),
-              Text(book.title, style: text.headlineSmall),
+              Text(shown.title, style: text.headlineSmall),
               const SizedBox(height: 4),
               Text(
-                l.discTrack(track.disc, track.title),
+                // A station says what it plays now; a book says its disc and track.
+                p.nowPlaying ?? (track.live ? track.title : l.discTrack(track.disc, track.title)),
                 style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 12),
+              if (track.live) ...[
+                Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(l.radioLive, style: text.titleMedium?.copyWith(color: cs.primary))),
+                StreamInfoCard(player: p),
+              ]
+              else ...[
               const SeekBar(),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -84,6 +93,7 @@ class PlayerScreen extends StatelessWidget {
                 ),
               ),
               const SeekBar(wholeBook: true),
+              ],
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -152,7 +162,10 @@ class PlayerScreen extends StatelessWidget {
                         : Text('${i + 1}', textAlign: TextAlign.end),
                   ),
                   title: Text(l.discTrack(t.disc, t.title)),
-                  trailing: Text(formatDuration(t.length)),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (p.isTrackPlayed(book, i)) ...const [PlayedMark(), SizedBox(width: 8)],
+                    Text(formatDuration(t.length)),
+                  ]),
                   onTap: () => p.open(book, track: i),
                 ),
               const SizedBox(height: 24),

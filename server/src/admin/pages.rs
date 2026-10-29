@@ -4,6 +4,7 @@
 //! embedded in the program (MiniJinja). A page gets plain data from the `Store`
 //! and renders it for one language.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use minijinja::value::Serde;
@@ -25,13 +26,17 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("books.html", include_str!("../../templates/books.html")),
     ("settings.html", include_str!("../../templates/settings.html")),
     ("import.html", include_str!("../../templates/import.html")),
+    ("cd.html", include_str!("../../templates/cd.html")),
     ("schedule.html", include_str!("../../templates/schedule.html")),
     ("pairing.html", include_str!("../../templates/pairing.html")),
+    ("genres.html", include_str!("../../templates/genres.html")),
+    ("releases.html", include_str!("../../templates/releases.html")),
     // Sub-templates. A list is a frame (`*_list`) around rows (`*_row`). The page
     // includes them, and a procedure can answer with the same fragment alone.
     ("fragments/message.html", include_str!("../../templates/fragments/message.html")),
     ("fragments/user_list.html", include_str!("../../templates/fragments/user_list.html")),
     ("fragments/user_row.html", include_str!("../../templates/fragments/user_row.html")),
+    ("fragments/book_tracks.html", include_str!("../../templates/fragments/book_tracks.html")),
     ("fragments/book_list.html", include_str!("../../templates/fragments/book_list.html")),
     ("fragments/book_row.html", include_str!("../../templates/fragments/book_row.html")),
     ("fragments/pairing_result.html", include_str!("../../templates/fragments/pairing_result.html")),
@@ -43,6 +48,13 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("fragments/upload_queue.html", include_str!("../../templates/fragments/upload_queue.html")),
     ("fragments/import_panel.html", include_str!("../../templates/fragments/import_panel.html")),
     ("fragments/settings_values.html", include_str!("../../templates/fragments/settings_values.html")),
+    ("fragments/cd_drive.html", include_str!("../../templates/fragments/cd_drive.html")),
+    ("fragments/folder_picker.html", include_str!("../../templates/fragments/folder_picker.html")),
+    ("fragments/pager.html", include_str!("../../templates/fragments/pager.html")),
+    ("fragments/cd_import.html", include_str!("../../templates/fragments/cd_import.html")),
+    ("fragments/settings_cdimport.html", include_str!("../../templates/fragments/settings_cdimport.html")),
+    ("fragments/settings_llm.html", include_str!("../../templates/fragments/settings_llm.html")),
+    ("fragments/access_warning.html", include_str!("../../templates/fragments/access_warning.html")),
     ("fragments/settings_roles.html", include_str!("../../templates/fragments/settings_roles.html")),
     ("fragments/import_settings.html", include_str!("../../templates/fragments/import_settings.html")),
     ("profile.html", include_str!("../../templates/profile.html")),
@@ -170,6 +182,10 @@ struct SettingView {
     /// Which block of the settings page the value belongs to.
     group: &'static str,
     confirmed: bool,
+    /// The level the start fixed for `log_level` (it wins at the next start), else nothing.
+    fixed: Option<String>,
+    /// The placeholders a template setting offers, by their names (the page shows them in plain words).
+    vars: Vec<&'static str>,
 }
 
 impl SettingView {
@@ -182,17 +198,276 @@ impl SettingView {
             "device_inactive_days" => ("pairing", "unit.days", s.value.clone()),
             "guest_expire_days" => ("guests", "unit.days", s.value.clone()),
             "import_interval_min" => ("library", "unit.minutes", s.value.clone()),
+            "new_days" => ("library", "unit.days", s.value.clone()),
+            "list_page_size" => ("library", "unit.items", s.value.clone()),
             "min_free_gb" => ("library", "unit.gb", s.value.clone()),
             "time_zone" => ("general", "", s.value.clone()),
+            "log_level" => ("general", "", s.value.clone()),
+            "tree_audiobook" | "tree_music" => ("library", "", s.value.clone()),
+            "quarantine_folder" | "audiobook_genres" | "placeholder_tags" => ("library", "", s.value.clone()),
+            "feed_refresh_min" => ("podcasts", "unit.minutes", s.value.clone()),
+            "feed_max_bytes" => ("podcasts", "unit.mb", s.value.parse::<i64>().map_or_else(|_| s.value.clone(), |n| (n / 1_048_576).to_string())),
+            "radio_directory_url" => ("podcasts", "", s.value.clone()),
+            "cd_bitrate_kbps" => ("cdimport", "unit.kbps", s.value.clone()),
+            "cd_sample_rate_hz" => ("cdimport", "unit.hz", s.value.clone()),
+            "cd_cover_px" => ("cdimport", "unit.px", s.value.clone()),
+            "cd_poll_seconds" => ("cdimport", "unit.seconds", s.value.clone()),
+            "cd_read_speed" => ("cdimport", "unit.speed_x", s.value.clone()),
+            "cd_buffer_seconds" => ("cdimport", "unit.seconds", s.value.clone()),
+            "cd_buffer_max_mb" => ("cdimport", "unit.mb", s.value.clone()),
+            "cd_resume_keep_hours" => ("cdimport", "unit.hours", s.value.clone()),
+            "cd_heal_tolerance_s" => ("cdimport", "unit.seconds", s.value.clone()),
+            k if crate::cd_settings::is_cd_key(k) => ("cdimport", "", s.value.clone()),
+            "tls_cert" | "tls_key" | "tls_host" => ("tls", "", s.value.clone()),
+            "tls_reload_s" => ("tls", "unit.seconds", s.value.clone()),
             _ => ("other", "", s.value.clone()),
         };
-        SettingView { key: s.key, value: s.value, shown, unit, group, confirmed: s.confirmed }
+        let fixed = (s.key == "log_level").then(|| crate::logging::fixed().map(|l| l.to_string().to_lowercase())).flatten();
+        let vars = crate::cd_settings::vars_of(&s.key).to_vec();
+        SettingView { key: s.key, value: s.value, shown, unit, group, confirmed: s.confirmed, fixed, vars }
     }
 
     /// The import has its own tab; its values are not listed again as plain values.
     fn is_import(&self) -> bool {
         (self.key.starts_with("import_") && self.key != "import_interval_min") || self.key == "rating_rule"
     }
+}
+
+/// A job under way, in the drive panel.
+#[derive(Serialize)]
+struct ActiveJob {
+    id: i64,
+    book: String,
+    author: String,
+    disc: i64,
+    discs_total: i64,
+    phase: String,
+    track: i64,
+    tracks_total: i64,
+    percent: i64,
+    /// The server rips it (it can be cancelled here).
+    by_server: bool,
+}
+
+/// What the page sends back when it asks for the panel again: the release chosen, the choice of tracks and the
+/// typed text, so that a new rendering does not lose them.
+#[derive(Default, Debug, Clone)]
+pub struct PanelQuery {
+    pub pick: Option<usize>,
+    /// "Cancel": start afresh.
+    pub reset: bool,
+    /// The form was sent along (the choice of tracks counts, even if no box is ticked).
+    pub sel: bool,
+    pub only: Vec<u32>,
+    pub disc_id: Option<String>,
+    /// Show the form for a new import although the CD is in the library.
+    pub force: bool,
+    pub fields: HashMap<String, String>,
+}
+
+impl PanelQuery {
+    /// From the pairs of a query string or a form (`only` may repeat).
+    pub fn from_pairs(pairs: Vec<(String, String)>) -> PanelQuery {
+        let mut q = PanelQuery::default();
+        for (k, v) in pairs {
+            match k.as_str() {
+                "pick" => q.pick = v.parse().ok(),
+                "reset" => q.reset = v == "1",
+                "force" => q.force = v == "1",
+                "sel" => q.sel = v == "1",
+                "only" => q.only.extend(v.parse::<u32>().ok()),
+                "disc_id" => q.disc_id = Some(v),
+                "csrf" | "sig" => {}
+                _ => {
+                    q.fields.insert(k, v);
+                }
+            }
+        }
+        q
+    }
+}
+
+/// What an interrupted rip of the disc in the drive left, for the page.
+#[derive(Serialize)]
+struct ResumePanel {
+    done: usize,
+    total: usize,
+    when: String,
+    keep_until: String,
+    hours: u64,
+    /// The settings that decide the audio are the same as then.
+    settings_match: bool,
+    /// Of the tracks that are chosen now: how many were read then (taken over), how many are read now, and how many that were read then are
+    /// not chosen any more (dropped).
+    kept: usize,
+    rest: usize,
+    dropped: usize,
+}
+
+/// A line of the list of tracks of a rip, with its state.
+#[derive(Serialize)]
+struct LiveRow {
+    number: u32,
+    nn: String,
+    title: String,
+    length: String,
+    state: &'static str,
+    percent: i64,
+    error: String,
+    error_key: Option<String>,
+}
+
+/// The rip that runs on the drive (or ran last, until it is closed), for the page.
+#[derive(Serialize)]
+struct RipPanel {
+    device: String,
+    active: bool,
+    percent: i64,
+    /// "Track `current` of `total`".
+    current: usize,
+    total: usize,
+    /// The catalog key suffix of the phase (`cd.phase.<phase>`).
+    phase: &'static str,
+    book: String,
+    author: String,
+    disc: i64,
+    discs_total: i64,
+    rows: Vec<LiveRow>,
+    error: String,
+    error_key: Option<String>,
+    can_cancel: bool,
+    job_id: i64,
+    /// Seconds waiting in the buffer, the most it holds, and whether it is full or empty (what brakes the rip).
+    buffer: Option<BufferView>,
+}
+
+#[derive(Serialize)]
+struct BufferView {
+    seconds: String,
+    max: u32,
+    percent: u32,
+    waits: u64,
+    longest: String,
+    state: &'static str,
+    /// The measured speed of the drive as text ("7.8"), empty while it is not known yet.
+    speed: String,
+}
+
+/// A CD that is in the library, for the page.
+#[derive(Serialize)]
+struct PresentPanel {
+    book: String,
+    author: String,
+    disc: u32,
+    in_library: usize,
+    on_disc: usize,
+    complete: bool,
+    missing: String,
+    damaged: Vec<DamageRow>,
+}
+
+#[derive(Serialize)]
+struct DamageRow {
+    number: u32,
+    reason: &'static str,
+    have: String,
+    want: String,
+}
+
+/// One line of the list of tracks.
+#[derive(Serialize)]
+struct TrackRow {
+    number: u32,
+    nn: String,
+    title: String,
+    seconds: u32,
+    length: String,
+    checked: bool,
+    /// Read already by an interrupted rip of this disc that the settings still fit: this track is taken over if it stays chosen.
+    read: bool,
+}
+
+#[derive(Serialize)]
+struct CandView {
+    index: usize,
+    release_id: String,
+    title: String,
+    author: String,
+    narrator: String,
+    audiobook: bool,
+    disc: Option<u32>,
+    discs_total: u32,
+    tracks: Vec<String>,
+}
+
+/// The fields of the form that starts a rip.
+#[derive(Serialize)]
+struct RipForm {
+    author: String,
+    title: String,
+    disc: String,
+    discs_total: String,
+    mbid: String,
+    tracks: String,
+    narrator: String,
+    eject: bool,
+    kind: String,
+}
+
+/// What the drive panel of the tab "CD import" shows.
+#[derive(Serialize)]
+struct DrivePanel {
+    drives: Vec<crate::cdrive::DriveState>,
+    mode: &'static str,
+    sig: String,
+    jobs: Vec<ActiveJob>,
+    candidates: Vec<CandView>,
+    /// The words of a search by hand (kept while the panel is drawn again).
+    mbq: String,
+    /// The same as a part of a query string (`mbq=Bach%20Passion`), for the addresses of the links; empty without a search.
+    mbq_param: String,
+    form: RipForm,
+    can_rip: bool,
+    device: String,
+    lookup_error: Option<&'static str>,
+    rip_error: Option<String>,
+    pick: Option<usize>,
+    /// A disc is in a drive whose tray is shut and nothing runs on it: it may be ejected.
+    can_eject: bool,
+    /// The numbers that are in the library already, when a start was refused with `disc_exists`.
+    taken: String,
+    disc_id: String,
+    rows: Vec<TrackRow>,
+    total_count: usize,
+    selected_count: usize,
+    selected_time: String,
+    resume: Option<ResumePanel>,
+    /// The CD is in the library: the page offers checking and repairing instead of a new import.
+    present: Option<PresentPanel>,
+    /// The rip that runs, or ran last.
+    rip: Option<RipPanel>,
+    /// The form for a new import is shown (no CD in the library, or the person asked for it anyway).
+    show_import: bool,
+}
+
+/// One line of the import log on the tab "CD import".
+#[derive(Serialize)]
+struct CdJobView {
+    book: String,
+    author: String,
+    disc: i64,
+    discs_total: i64,
+    phase: String,
+    when: String,
+    /// The code of the failure, and the catalog key of its text.
+    error: String,
+    error_key: Option<String>,
+    /// Finished, but the import of the library did not run (it is locked).
+    locked: bool,
+    /// What the job says besides its state (for a turned-down automatic import: the book, the number of releases ...).
+    message: String,
+    /// The server started it by itself.
+    auto: bool,
 }
 
 #[derive(Serialize)]
@@ -351,7 +626,8 @@ pub fn export_templates(dir: &Path) -> std::io::Result<usize> {
     std::fs::write(dir.join("static/logo.svg"), include_str!("../../static/logo.svg"))?;
     std::fs::write(dir.join("static/favicon.svg"), include_str!("../../static/favicon.svg"))?;
     std::fs::write(dir.join("static/ui.js"), include_str!("../../static/ui.js"))?;
-    Ok(count + 4)
+    std::fs::write(dir.join("static/crop.js"), include_str!("../../static/crop.js"))?;
+    Ok(count + 5)
 }
 
 impl AdminUi {
@@ -425,37 +701,128 @@ impl AdminUi {
 
     pub async fn overview<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
         let data = store.overview().await?;
-        self.render("overview.html", context! { data => Serde(data), ..view.into().context() })
+        self.render("overview.html", context! { data => Serde(data), access => crate::access::current(store).await.map(Serde), ..view.into().context() })
     }
 
     pub async fn users<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
         let users = store.user_rows().await?;
-        self.render("users.html", context! { users => Serde(users), ..view.into().context() })
+        let folders = store.all_profile_folders().await?;
+        self.render("users.html", context! { users => Serde(users), folders => Serde(folders), ..view.into().context() })
     }
 
     /// The whole list of users, without the page around it. This is what a
     /// procedure answers when the list has to be replaced.
     pub async fn user_list_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
         let users = store.user_rows().await?;
-        self.render("fragments/user_list.html", context! { users => Serde(users), ..view.into().context() })
+        let folders = store.all_profile_folders().await?;
+        self.render("fragments/user_list.html", context! { users => Serde(users), folders => Serde(folders), ..view.into().context() })
     }
 
     /// One row of the list, for replacing a single user after a change. `None` if
     /// the user does not exist (any more).
     pub async fn user_row_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>, id: i64) -> Result<Option<String>> {
         let Some(user) = store.user_row(id).await? else { return Ok(None) };
-        self.render("fragments/user_row.html", context! { user => Serde(user), ..view.into().context() }).map(Some)
+        let folders = store.all_profile_folders().await?;
+        self.render("fragments/user_row.html", context! { user => Serde(user), folders => Serde(folders), ..view.into().context() }).map(Some)
     }
 
     /// The list of albums of one kind: `audiobook` or `music`.
-    pub async fn books<'a>(&self, store: &Store, view: impl Into<View<'a>>, kind: &str) -> Result<String> {
-        let books: Vec<_> = store.admin_book_rows().await?.into_iter().filter(|b| b.kind == kind).collect();
-        self.render("books.html", context! { books => Serde(books), kind => kind, ..view.into().context() })
+    pub async fn books<'a>(&self, store: &Store, view: impl Into<View<'a>>, library: Option<&std::path::Path>, kind: &str, query: Option<&str>, only_problems: bool, page: Option<usize>, per: Option<usize>) -> Result<String> {
+        let all: Vec<_> = store.admin_book_rows().await?.into_iter().filter(|b| b.kind == kind).collect();
+        // The completions: every title, author and narrator once, sorted.
+        let mut words: Vec<String> = all.iter().flat_map(|b| [Some(b.title.clone()), Some(b.author.clone()), b.narrator.clone()]).flatten().filter(|w| !w.trim().is_empty()).collect();
+        words.sort_by_key(|w| w.to_lowercase());
+        words.dedup();
+        // Books that look like a copy of another one: id -> the others, for a badge in the row.
+        let mut dupes: std::collections::HashMap<String, Vec<crate::dupes::DupeBook>> = std::collections::HashMap::new();
+        let rules = store.ignore_rules().await?;
+        for group in store.duplicate_groups().await?.into_iter().filter(|g| g.kind != "parts") {
+            for b in &group.books {
+                dupes.insert(b.id.to_string(), group.books.iter().filter(|o| o.id != b.id).cloned().collect());
+            }
+        }
+        // Books with missing tracks (a gap in the numbers of a CD): a red mark in the row, and a filter. A rule to ignore it hides the mark.
+        let mut gaps = store.track_gaps().await?;
+        let by_id: std::collections::HashMap<i64, &crate::store::AdminBookRow> = all.iter().map(|b| (b.id, b)).collect();
+        gaps.retain(|id, _| by_id.get(id).is_some_and(|row| !crate::ignore::ignored(&rules, row, "track_number_gaps")));
+        // Books without a cover (neither a picture file nor a picture in the first file).
+        let ids: Vec<i64> = all.iter().filter(|b| !crate::ignore::ignored(&rules, b, "missing_cover")).map(|b| b.id).collect();
+        let nocover = missing_covers(store, library, &ids).await;
+        let problem_count = all.iter().filter(|b| gaps.contains_key(&b.id) || nocover.contains(&b.id)).count();
+        // The search: words, wildcards (`*`, `?`) or a regular expression between slashes (see `search.rs`). A broken expression finds nothing and says why.
+        let needle = query.map(str::trim).filter(|q| !q.is_empty());
+        let (matcher, search_error) = match crate::search::compile(needle.unwrap_or("")) {
+            Ok(m) => (m, None),
+            Err(e) => (crate::search::Matcher::Contains("\u{0}".to_owned()), Some(e)),
+        };
+        let all: Vec<_> = if only_problems { all.into_iter().filter(|b| gaps.contains_key(&b.id) || nocover.contains(&b.id)).collect() } else { all };
+        let nocover: Vec<String> = nocover.iter().map(i64::to_string).collect();
+        let books: Vec<_> = match needle {
+            Some(_) => all.into_iter().filter(|b| matcher.matches_book(&b.title, &b.author, b.narrator.as_deref())).collect(),
+            None => all,
+        };
+        // The matrix: a column for every person (administrators see everything), a mark where the person sees the book, and the owner box.
+        let (members, seen) = visibility_columns(store, None).await?;
+        let mode = store.setting(if kind == "music" { "tree_music" } else { "tree_audiobook" }).await?.filter(|m| crate::tree::valid(m)).unwrap_or_else(|| (if kind == "music" { "folder" } else { "author" }).to_owned());
+        // Pages: the books of the list (after the search) in pages of `per`; the tree is built from the books of the page.
+        let default_per = store.setting("list_page_size").await?.and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(50);
+        let per = per.unwrap_or(default_per).clamp(10, 500);
+        let total = books.len();
+        let pages = total.div_ceil(per).max(1);
+        let page = page.unwrap_or(1).clamp(1, pages);
+        let (from, to) = ((page - 1) * per, (page * per).min(total));
+        let books: Vec<_> = books.into_iter().skip(from).take(per).collect();
+        let base = {
+            let mut pairs: Vec<(&str, String)> = Vec::new();
+            if let Some(q) = needle {
+                pairs.push(("q", q.to_owned()));
+            }
+            if only_problems {
+                pairs.push(("problems", "1".to_owned()));
+            }
+            if per != default_per {
+                pairs.push(("per", per.to_string()));
+            }
+            serde_urlencoded::to_string(pairs).unwrap_or_default()
+        };
+        // The numbers of the pages to link: the first, the last and a few around the current one.
+        let shown: Vec<usize> = (1..=pages).filter(|n| *n == 1 || *n == pages || n.abs_diff(page) <= 2).collect();
+        let numbers: Vec<serde_json::Value> = shown.iter().enumerate().map(|(i, n)| serde_json::json!({ "n": n, "gap": i > 0 && n - shown[i - 1] > 1 })).collect();
+        let pager = serde_json::json!({ "page": page, "pages": pages, "per": per, "total": total, "from": if total == 0 { 0 } else { from + 1 }, "to": to, "base": base, "numbers": numbers, "prev": page.saturating_sub(1).max(1), "next": (page + 1).min(pages), "default_per": default_per, "sizes": [10, 25, 50, 100, 250, 500], "q": needle.unwrap_or(""), "problems": only_problems });
+        let items = crate::tree::build(books.clone(), &mode);
+        self.render("books.html", context! { books => Serde(books), items => Serde(items), tree => mode != "flat", kind => kind, words => words, q => query.unwrap_or_default(), searched => needle.is_some() || only_problems, search_error => search_error, only_problems => only_problems, problem_count => problem_count, pager => Serde(pager), members => Serde(members), seen => Serde(seen), owners => Serde(owners_list(store).await?), gaps => Serde(gaps), nocover => Serde(nocover), dupes => Serde(dupes), ignores => Serde(rules), access => crate::access::current(store).await.map(Serde), ..view.into().context() })
     }
 
-    pub async fn book_row_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>, id: i64) -> Result<Option<String>> {
+    /// The titles of one album, for the list that opens under it.
+    pub async fn book_tracks_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>, id: i64) -> Result<String> {
+        #[derive(serde::Serialize)]
+        struct Line {
+            disc: i64,
+            number: i64,
+            title: String,
+            length: String,
+        }
+        let lines: Vec<Line> = store
+            .tracks_of(id)
+            .await?
+            .into_iter()
+            .map(|t| {
+                let s = t.duration_ms / 1000;
+                Line { disc: t.disc, number: t.number, title: t.title, length: if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) } }
+            })
+            .collect();
+        self.render("fragments/book_tracks.html", context! { tracks => Serde(lines), ..view.into().context() })
+    }
+
+    pub async fn book_row_fragment<'a>(&self, store: &Store, library: Option<&std::path::Path>, view: impl Into<View<'a>>, id: i64) -> Result<Option<String>> {
         let Some(book) = store.admin_book_row(id).await? else { return Ok(None) };
-        self.render("fragments/book_row.html", context! { book => Serde(book), ..view.into().context() }).map(Some)
+        // The red mark of a book with missing tracks stays when the row is drawn again.
+        let rules = store.ignore_rules().await?;
+        let mut gaps = store.track_gaps().await?;
+        gaps.retain(|b, _| *b == id && !crate::ignore::ignored(&rules, &book, "track_number_gaps"));
+        let nocover: Vec<String> = if crate::ignore::ignored(&rules, &book, "missing_cover") { Vec::new() } else if crate::api::find_cover(store, library, id).await.is_some() { Vec::new() } else { vec![id.to_string()] };
+        let (members, seen) = visibility_columns(store, Some(id)).await?;
+        self.render("fragments/book_row.html", context! { book => Serde(book), gaps => Serde(gaps), nocover => Serde(nocover), members => Serde(members), seen => Serde(seen), owners => Serde(owners_list(store).await?), ..view.into().context() }).map(Some)
     }
 
     /// The upload queue of the import page: the newest jobs, with a timer while one is still open.
@@ -477,19 +844,94 @@ impl AdminUi {
                 artist => tags.artist.clone().unwrap_or_default(),
                 year => tags.year.clone().unwrap_or_default(),
                 genre => tags.genre.clone().unwrap_or_default(),
+                field_names => crate::tags::field_names().join(", "),
                 ..view.into().context()
             },
         )
     }
 
-    pub async fn settings<'a>(&self, store: &Store, view: impl Into<View<'a>>, tab: Option<&str>) -> Result<String> {
-        let tab = tab.filter(|t| matches!(*t, "roles" | "values")).unwrap_or("import");
+    pub async fn settings<'a>(&self, store: &Store, cd: &crate::cdimport::CdService, view: impl Into<View<'a>>, tab: Option<&str>, mcp: Option<&str>) -> Result<String> {
+        let tab = tab.filter(|t| matches!(*t, "roles" | "values" | "llm" | "cdimport")).unwrap_or("import");
+        let llm = if tab == "llm" { self.llm_context(store, mcp, None).await? } else { self.llm_context(store, None, None).await.unwrap_or_default() };
         let policies = self.policy_views(store).await?;
         let settings = self.setting_views(store).await?;
         let state = store.import_state().await?;
+        // The tab holds the values of the CD import; the import itself (drive, choice, progress, log) is the page "CD import".
+        let cd = self.cd_context(store, cd, false, &HashMap::new()).await?;
+        let ctx = context! { tab => tab, saved => false, zones => Self::zone_names(), state => Serde(state), policies => Serde(policies), settings => Serde(settings), ..view.into().context() };
+        let ctx = context! { ..ctx, ..llm, ..cd };
+        self.render("settings.html", ctx)
+    }
+
+    /// What the tab "LLM access" shows: the endpoint (if the server runs with `--mcp`), the
+    /// tokens, the newest tag changes, and a token that was just made (shown only once).
+    async fn llm_context(&self, store: &Store, endpoint: Option<&str>, new_token: Option<&str>) -> Result<minijinja::Value> {
+        let zone = store.setting("time_zone").await?;
+        let tokens: Vec<_> = store
+            .mcp_tokens()
+            .await?
+            .into_iter()
+            .map(|t| context! { id => t.id, name => t.name, can_write => t.can_write, created => stamp(t.created_at, zone.as_deref()), last_used => t.last_used_at.map(|ms| stamp(ms, zone.as_deref())) })
+            .collect();
+        let changes: Vec<_> = store
+            .tag_changes(0, 20)
+            .await?
+            .into_iter()
+            .map(|c| context! { at => stamp(c.at, zone.as_deref()), token => c.token_name, book_id => c.book_id, file => c.file, field => c.field, old => c.old_value, new => c.new_value })
+            .collect();
+        // The entry for a client's MCP configuration (the form `claude mcp add-json` takes).
+        let mcp_json = endpoint.zip(new_token).map(|(url, token)| {
+            serde_json::to_string_pretty(&serde_json::json!({ "type": "http", "url": url, "headers": { "Authorization": format!("Bearer {token}") } }))
+                .unwrap_or_default()
+        });
+        Ok(context! { mcp_endpoint => endpoint, mcp_tokens => tokens, mcp_changes => changes, new_token => new_token, mcp_json => mcp_json, mcp_prompt => store.mcp_prompt().await?.unwrap_or_else(|| crate::mcp::DEFAULT_PROMPT.to_owned()) })
+    }
+
+    /// The whole settings page on the tab "LLM access", with a token that was just made.
+    pub async fn settings_with_token<'a>(&self, store: &Store, view: impl Into<View<'a>>, endpoint: Option<&str>, token: &str) -> Result<String> {
+        let policies = self.policy_views(store).await?;
+        let settings = self.setting_views(store).await?;
+        let state = store.import_state().await?;
+        let llm = self.llm_context(store, endpoint, Some(token)).await?;
+        let ctx = context! { tab => "llm", saved => false, zones => Self::zone_names(), state => Serde(state), policies => Serde(policies), settings => Serde(settings), ..view.into().context() };
+        let ctx = context! { ..ctx, ..llm };
+        self.render("settings.html", ctx)
+    }
+
+    /// The tab "LLM access" alone, as the answer to making or revoking a token.
+    pub async fn settings_llm_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>, endpoint: Option<&str>, new_token: Option<&str>) -> Result<String> {
+        let llm = self.llm_context(store, endpoint, new_token).await?;
+        self.render("fragments/settings_llm.html", context! { ..llm, ..view.into().context() })
+    }
+
+    /// The warning about missing rights, alone, as the answer to "check again".
+    pub async fn access_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
+        let report = crate::access::refresh(store).await;
+        self.render("fragments/access_warning.html", context! { access => Serde(report), ..view.into().context() })
+    }
+
+    /// What children asked for (podcasts, stations) and what waits for a release.
+    pub async fn releases<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
+        self.render("releases.html", context! { pending => Serde(store.pending_releases().await?), ..view.into().context() })
+    }
+
+    /// The genres: the list that the apps show, and the tag texts that have no genre yet.
+    pub async fn genres<'a>(&self, store: &Store, view: impl Into<View<'a>>, filter: Option<&str>) -> Result<String> {
+        let needle = filter.map(|f| f.trim().to_lowercase()).filter(|f| !f.is_empty());
+        let loose: Vec<_> = store.loose_genre_tags().await?.into_iter().filter(|t| needle.as_ref().is_none_or(|n| t.text.to_lowercase().contains(n))).collect();
         self.render(
-            "settings.html",
-            context! { tab => tab, saved => false, zones => Self::zone_names(), state => Serde(state), policies => Serde(policies), settings => Serde(settings), ..view.into().context() },
+            "genres.html",
+            context! {
+                genres => Serde(store.genres().await?),
+                loose => Serde(loose),
+                filter => filter.unwrap_or_default(),
+                // The names of the ID3 list: what a tag text is given.
+                standard => lofty::id3::v1::GENRES.to_vec(),
+                // The names of the ID3 list, offered when a genre is named.
+                standard => lofty::id3::v1::GENRES.to_vec(),
+                without => store.albums_without_genre().await?,
+                ..view.into().context()
+            },
         )
     }
 
@@ -572,6 +1014,13 @@ impl AdminUi {
         self.render("fragments/schedule_panel.html", context! { s => Serde(data), ..view.into().context() }).map(Some)
     }
 
+    /// The page "CD import" (a menu item of its own): what keeps the import from working, the drive of the server with the choice of tracks and the
+    /// progress, and the log. The values (format, names, tags) stay in the settings, tab "CD import".
+    pub async fn cd_page<'a>(&self, store: &Store, cd: &crate::cdimport::CdService, view: impl Into<View<'a>>) -> Result<String> {
+        let cd = self.cd_context(store, cd, true, &HashMap::new()).await?;
+        self.render("cd.html", context! { ..view.into().context(), ..cd })
+    }
+
     /// The import page.
     pub async fn import<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
         let state = store.import_state().await?;
@@ -583,6 +1032,7 @@ impl AdminUi {
             "import.html",
             context! {
                 state => Serde(state),
+                access => crate::access::current(store).await.map(Serde),
                 report => Option::<Serde<ScanReport>>::None,
                 last_report => last.as_ref().map(|(_, r)| Serde(r.clone())),
                 last_at => last.as_ref().map(|(at, _)| stamp(*at, zone.as_deref())),
@@ -622,7 +1072,374 @@ impl AdminUi {
     /// The form with the plain values of the settings page.
     pub async fn settings_values_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>, saved: bool) -> Result<String> {
         let settings = self.setting_views(store).await?;
-        self.render("fragments/settings_values.html", context! { settings => Serde(settings), saved => saved, zones => Self::zone_names(), ..view.into().context() })
+        let tls_problem = Self::tls_problem(store).await;
+        self.render("fragments/settings_values.html", context! { settings => Serde(settings), saved => saved, zones => Self::zone_names(), tls_problem => tls_problem, ..view.into().context() })
+    }
+
+    /// The tab "CD import" alone. `refused` holds the values that were refused, by key, with the code of the
+    /// reason; they stay in the fields and the reasons are shown next to them and at the top.
+    pub async fn settings_cd_fragment<'a>(&self, store: &Store, cd: &crate::cdimport::CdService, view: impl Into<View<'a>>, saved: bool, refused: &[(String, String, &'static str)]) -> Result<String> {
+        let mut settings = self.setting_views(store).await?;
+        let view: View<'a> = view.into();
+        let lang = view.lang;
+        let mut errors: HashMap<String, String> = HashMap::new();
+        for (key, value, code) in refused {
+            errors.insert(key.clone(), verr_text(lang, key, value, code));
+            if let Some(v) = settings.iter_mut().find(|v| v.key == *key) {
+                v.value = value.clone();
+                v.shown = value.clone();
+            }
+        }
+        let cd = self.cd_context(store, cd, false, &errors).await?;
+        let ctx = context! { settings => Serde(settings), saved => saved, ..view.context() };
+        self.render("fragments/settings_cdimport.html", context! { ..ctx, ..cd })
+    }
+
+    /// What the tab "CD import" shows besides the values: what keeps the import from working, the last entries
+    /// of the log, and the reasons a save was refused.
+    async fn cd_context(&self, store: &Store, cd: &crate::cdimport::CdService, wanted: bool, errors: &HashMap<String, String>) -> Result<minijinja::Value> {
+        let (problems, jobs) = if wanted {
+            let zone = store.setting("time_zone").await?;
+            let keep = crate::cd_settings::CdSettings::load(store).await?.log_keep;
+            let jobs: Vec<CdJobView> = store
+                .cd_log(keep)
+                .await?
+                .into_iter()
+                .map(|j| CdJobView {
+                    when: stamp(j.updated_ms, zone.as_deref()),
+                    error_key: (!j.error.is_empty()).then(|| crate::cdimport::error_key(&j.error)),
+                    locked: j.phase == "done" && !j.import_ran,
+                    auto: j.device == "auto",
+                    message: j.message,
+                    book: j.album,
+                    author: j.author,
+                    disc: j.disc,
+                    discs_total: j.discs_total,
+                    phase: j.phase,
+                    error: j.error,
+                })
+                .collect();
+            (crate::cdimport::readiness(store, cd, None).await, jobs)
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        let drive = if wanted { Some(self.cd_drive_panel(store, cd, &PanelQuery::default(), None, &[]).await?) } else { None };
+        Ok(context! { cd_problems => Serde(problems), cd_jobs => Serde(jobs), errors => Serde(errors.clone()), drive => Serde(drive) })
+    }
+
+    /// The panel with the drive of the server: its state, the releases MusicBrainz offers for the disc, the list of
+    /// tracks with the choice, the form to start the import, the jobs under way. Returns `None` when `sig` is the
+    /// signature of what would be shown (nothing changed: the page keeps what it has, with the choice of tracks and
+    /// the typed text).
+    pub async fn cd_drive_fragment<'a>(&self, store: &Store, cd: &crate::cdimport::CdService, view: impl Into<View<'a>>, q: &PanelQuery, sig: Option<&str>, refused: Option<(&str, &[u32])>) -> Result<Option<String>> {
+        let (rip_error, taken) = refused.map_or((None, &[][..]), |(code, taken)| (Some(code), taken));
+        let panel = self.cd_drive_panel(store, cd, q, rip_error, taken).await?;
+        if rip_error.is_none() && sig == Some(panel.sig.as_str()) {
+            return Ok(None);
+        }
+        let ctx = context! { drive => Serde(panel) };
+        Ok(Some(self.render("fragments/cd_drive.html", context! { ..ctx, ..view.into().context() })?))
+    }
+
+    async fn cd_drive_panel(&self, store: &Store, cd: &crate::cdimport::CdService, q: &PanelQuery, rip_error: Option<&str>, taken: &[u32]) -> Result<DrivePanel> {
+        use crate::cdrive::{Medium, Tray};
+        let set = crate::cd_settings::CdSettings::load(store).await?;
+        let (drives, mode) = cd.drives.snapshot();
+        let pick = q.pick;
+        let live: Option<crate::cdrive::Live> = drives.iter().find_map(|d| cd.drives.live_of_device(&d.device));
+        let log = store.cd_log(50).await?;
+        let all_active: Vec<crate::cdimport::Job> = log.iter().filter(|j| j.active).cloned().collect();
+        // The jobs of a rip on this server are shown by the list of tracks, the others (an upload under way) as a line.
+        let jobs: Vec<ActiveJob> = all_active
+            .iter()
+            .filter(|j| live.as_ref().is_none_or(|l| l.job_id != j.id))
+            .map(|j| ActiveJob { id: j.id, book: j.album.clone(), author: j.author.clone(), disc: j.disc, discs_total: j.discs_total, phase: j.phase.clone(), track: j.track, tracks_total: j.tracks_total, percent: (j.fraction.unwrap_or(0.0) * 100.0).round() as i64, by_server: j.device == "server" })
+            .collect();
+        let rip = match &live {
+            Some(l) => {
+                let job = log.iter().find(|j| j.id == l.job_id).cloned();
+                let active = job.as_ref().is_some_and(|j| j.active) && !l.finished;
+                let mmss = |s: u32| format!("{}:{:02}", s / 60, s % 60);
+                let count = |st: &str| l.tracks.iter().filter(|t| t.state == st).count();
+
+                let job_phase = job.as_ref().map(|j| j.phase.as_str()).unwrap_or("ripping");
+                let phase = match job_phase {
+                    "placing" => "placing",
+                    "importing" => "importing",
+                    _ if count("verifying") + count("rereading") > 0 => "verifying",
+                    _ if count("reading") > 0 => "ripping",
+                    _ if l.verify && (count("waiting") > 0 || count("read") > 0) => "verifying",
+                    _ => "encoding",
+                };
+                let error = l.error.clone();
+                Some(RipPanel {
+                    device: l.device.clone(),
+                    active,
+                    percent: if l.finished && error.is_empty() { 100 } else { (l.fraction.clamp(0.0, 1.0) * 100.0).round() as i64 },
+                    current: l.current_position(),
+                    total: l.tracks.len(),
+                    phase,
+                    book: job.as_ref().map(|j| j.album.clone()).unwrap_or_default(),
+                    author: job.as_ref().map(|j| j.author.clone()).unwrap_or_default(),
+                    disc: job.as_ref().map_or(1, |j| j.disc),
+                    discs_total: job.as_ref().map_or(1, |j| j.discs_total),
+                    rows: l
+                        .tracks
+                        .iter()
+                        .map(|t| LiveRow {
+                            number: t.number,
+                            nn: format!("{:02}", t.number),
+                            title: t.title.clone(),
+                            length: mmss(t.seconds),
+                            state: t.state,
+                            percent: (t.fraction.clamp(0.0, 1.0) * 100.0).round() as i64,
+                            error_key: (!t.error.is_empty()).then(|| crate::cdimport::error_key(&t.error)),
+                            error: t.error.clone(),
+                        })
+                        .collect(),
+                    error_key: (!error.is_empty()).then(|| crate::cdimport::error_key(&error)),
+                    error,
+                    can_cancel: active && job_phase == "ripping",
+                    job_id: l.job_id,
+                    buffer: (active && job_phase == "ripping" && count("reading") + count("verifying") + count("rereading") > 0).then(|| {
+                        let secs = l.buffer_seconds();
+                        BufferView {
+                            seconds: format!("{secs:.0}"),
+                            max: l.buffer_max_seconds().round() as u32,
+                            percent: l.buffer_percent(),
+                            waits: l.reader_waits().0,
+                            longest: format!("{:.1}", l.reader_waits().1),
+                            state: if l.buffer_percent() >= 95 { "full" } else if secs < 0.5 { "empty" } else { "between" },
+                            speed: l.speed_x().map(|x| format!("{x:.1}")).unwrap_or_default(),
+                        }
+                    }),
+                })
+            }
+            None => None,
+        };
+        let ready = drives.iter().find(|d| d.medium == Medium::Audio && d.tray == Tray::Closed).cloned();
+        // The signature covers what is shown that changes: the drives, the jobs, the choice of a release.
+        let mut sig_text = serde_json::to_string(&drives).unwrap_or_default();
+        for j in &jobs {
+            sig_text.push_str(&format!("|{}:{}:{}:{}", j.id, j.phase, j.track, j.percent));
+        }
+        sig_text.push_str(&format!("|{}", set.lookup_ready));
+        if let Some(r) = &rip {
+            // The bar and the list change while a rip runs: their state is part of the signature.
+            sig_text.push_str(&format!("|rip:{}:{}:{}:{}:{}:{}", r.job_id, r.percent, r.phase, r.active, r.error, r.rows.iter().map(|x| format!("{}{}{}", x.state, x.percent, x.error)).collect::<Vec<_>>().join(",")));
+            if let Some(b) = &r.buffer {
+                sig_text.push_str(&format!("|buf:{}", b.seconds));
+            }
+        }
+        if let Some(id) = ready.as_ref().and_then(|d| d.disc_id.as_deref()) {
+            sig_text.push_str(&format!("|{:?}", crate::cdresume::info(&crate::cdresume::dir_of(&cd.staging, id), None, 0).map(|i| (i.tracks_done, i.interrupted_at))));
+        }
+        let sig = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            sig_text.hash(&mut h);
+            format!("{:016x}", h.finish())
+        };
+        let mbq = q.fields.get("mbq").map(|v| v.trim().to_owned()).unwrap_or_default();
+        let (mut candidates, mut lookup_error) = (Vec::new(), None);
+        if let Some(d) = &ready
+            && let Some(toc) = &d.table
+        {
+            if set.lookup_ready {
+                match crate::cdimport::lookup(store, cd, &set, toc).await {
+                    Ok((_, found)) => {
+                        candidates = found
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, c)| CandView {
+                                index,
+                                release_id: c.release_id,
+                                title: c.title,
+                                author: c.author,
+                                narrator: c.narrators.first().cloned().unwrap_or_default(),
+                                audiobook: c.audiobook,
+                                disc: c.disc,
+                                discs_total: c.discs_total,
+                                tracks: c.tracks.into_iter().map(|t| t.title).collect(),
+                            })
+                            .collect()
+                    }
+                    Err(r) => lookup_error = Some(r.1),
+                }
+                // Words typed by hand: the releases that MusicBrainz finds for them follow those that the disc found.
+                if !mbq.is_empty() {
+                    match crate::cdimport::search(store, cd, &set, &mbq).await {
+                        Ok(found) => {
+                            for c in found {
+                                if !candidates.iter().any(|k: &CandView| k.release_id == c.release_id) {
+                                    let index = candidates.len();
+                                    candidates.push(CandView {
+                                        index,
+                                        release_id: c.release_id,
+                                        title: c.title,
+                                        author: c.author,
+                                        narrator: c.narrators.first().cloned().unwrap_or_default(),
+                                        audiobook: c.audiobook,
+                                        disc: c.disc,
+                                        discs_total: c.discs_total,
+                                        tracks: Vec::new(),
+                                    });
+                                }
+                            }
+                        }
+                        Err(r) => lookup_error = Some(r.1),
+                    }
+                }
+            } else {
+                lookup_error = Some("no_contact");
+            }
+        }
+        // A release is taken over when it is chosen, or when MusicBrainz knows only one.
+        let chosen = pick.and_then(|i| candidates.get(i)).or(if candidates.len() == 1 { candidates.first() } else { None });
+        // A release that came from a search has no tracks yet: they are fetched when it is chosen (the disc with as many tracks as this CD).
+        let fetched: Option<CandView> = match (chosen, &ready) {
+            (Some(c), Some(d)) if c.tracks.is_empty() && !c.release_id.is_empty() && set.lookup_ready => {
+                match crate::cdimport::release_for(store, cd, &set, &c.release_id, d.track_list.len()).await {
+                    Ok(Some(full)) => Some(CandView {
+                        index: c.index,
+                        release_id: full.release_id,
+                        title: full.title,
+                        author: full.author,
+                        narrator: full.narrators.first().cloned().unwrap_or_default(),
+                        audiobook: full.audiobook,
+                        disc: full.disc,
+                        discs_total: full.discs_total,
+                        tracks: full.tracks.into_iter().map(|t| t.title).collect(),
+                    }),
+                    Ok(None) => None,
+                    Err(r) => {
+                        lookup_error = Some(r.1);
+                        None
+                    }
+                }
+            }
+            _ => None,
+        };
+        let chosen = fetched.as_ref().or(chosen);
+        let disc_id = ready.as_ref().and_then(|d| d.disc_id.clone()).unwrap_or_default();
+        // What was typed is kept while the same disc is in; choosing a release or "Cancel" starts afresh.
+        let typed = q.sel && !q.reset && pick.is_none() && q.disc_id.as_deref() == Some(disc_id.as_str());
+        let field = |key: &str, from_release: String| -> String { if typed { q.fields.get(key).cloned().unwrap_or(from_release) } else { from_release } };
+        let form = RipForm {
+            author: field("author", chosen.map(|c| c.author.clone()).unwrap_or_default()),
+            title: field("title", chosen.map(|c| c.title.clone()).unwrap_or_default()),
+            disc: field("disc", chosen.and_then(|c| c.disc).unwrap_or(1).to_string()),
+            discs_total: field("discs_total", chosen.map(|c| c.discs_total.to_string()).unwrap_or_default()),
+            mbid: field("mbid", chosen.map(|c| c.release_id.clone()).unwrap_or_default()),
+            tracks: field("tracks", chosen.map(|c| c.tracks.join("\n")).unwrap_or_default()),
+            narrator: field("narrator", chosen.map(|c| c.narrator.clone()).unwrap_or_default()),
+            eject: if typed { q.fields.contains_key("eject") } else { set.eject_after },
+            // The setting, unless MusicBrainz says the release is an audiobook (or a person chose otherwise).
+            kind: field("kind", if chosen.is_some_and(|c| c.audiobook) { "audiobook".to_owned() } else { set.target_kind.clone() }),
+        };
+        // The list of tracks: titles from the release (by position on the disc), lengths from the table of contents.
+        let titles: Vec<String> = form.tracks.lines().map(|l| l.trim().to_owned()).collect();
+        let selection = (q.sel && !q.reset && q.disc_id.as_deref() == Some(disc_id.as_str())).then_some(&q.only);
+        // An interrupted rip of this disc: which tracks it has read (they are taken over when they stay chosen and the settings fit).
+        let keep_hours = u64::from(set.resume_keep_hours);
+        let fingerprint = crate::cdresume::Fingerprint::of(&set);
+        let interrupted = (!disc_id.is_empty())
+            .then(|| crate::cdresume::info(&crate::cdresume::dir_of(&cd.staging, &disc_id), Some(&fingerprint), keep_hours))
+            .flatten()
+            .filter(|i| !i.tracks_done.is_empty());
+        let read_numbers: Vec<u32> = interrupted.as_ref().filter(|i| i.settings_match).map(|i| i.tracks_done.clone()).unwrap_or_default();
+        let rows: Vec<TrackRow> = ready
+            .as_ref()
+            .map(|d| {
+                d.track_list
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| TrackRow {
+                        number: t.number,
+                        nn: format!("{:02}", t.number),
+                        title: titles.get(i).cloned().unwrap_or_default(),
+                        seconds: t.seconds,
+                        length: format!("{}:{:02}", t.seconds / 60, t.seconds % 60),
+                        checked: selection.is_none_or(|s| s.contains(&t.number)),
+                        read: read_numbers.contains(&t.number),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let (selected_count, selected_seconds) = rows.iter().filter(|r| r.checked).fold((0usize, 0u32), |(n, s), r| (n + 1, s + r.seconds));
+        let device = ready.as_ref().map(|d| d.device.clone()).unwrap_or_default();
+        let running = !jobs.is_empty() || rip.as_ref().is_some_and(|r| r.active);
+        let can_eject = !running && drives.iter().any(|d| d.tray == Tray::Closed && matches!(d.medium, Medium::Audio | Medium::Other) && !d.ripping && !d.denied);
+        let zone = store.setting("time_zone").await?;
+        let chosen_numbers: Vec<u32> = rows.iter().filter(|r| r.checked).map(|r| r.number).collect();
+        let resume = interrupted.map(|i| {
+            // Of the chosen tracks, these are taken over and these are read again; a track that was read and is not chosen now is dropped.
+            let kept = chosen_numbers.iter().filter(|n| i.tracks_done.contains(n)).count();
+            ResumePanel {
+                done: i.tracks_done.len(),
+                total: i.tracks_total,
+                when: stamp(i.interrupted_at, zone.as_deref()),
+                keep_until: stamp(i.keep_until, zone.as_deref()),
+                hours: keep_hours,
+                settings_match: i.settings_match,
+                kept,
+                rest: chosen_numbers.len() - kept,
+                dropped: i.tracks_done.len() - kept,
+            }
+        });
+        let present = match &ready {
+            Some(d) => crate::cdrive::present_for(store, cd, cd.library.as_deref(), &set, d).await,
+            None => None,
+        };
+        let mmss = |s: u32| format!("{}:{:02}", s / 60, s % 60);
+        let present = present.map(|p| PresentPanel {
+            complete: !p.needs_healing(),
+            missing: p.missing.iter().map(u32::to_string).collect::<Vec<_>>().join(", "),
+            damaged: p.damaged.iter().map(|d| DamageRow { number: d.number, reason: d.reason, have: mmss(d.have_s), want: mmss(d.want_s) }).collect(),
+            book: p.book,
+            author: p.author,
+            disc: p.disc,
+            in_library: p.tracks_in_library,
+            on_disc: p.tracks_on_disc,
+        });
+        let show_import = present.is_none() || q.force;
+        Ok(DrivePanel {
+            rip,
+            present,
+            show_import,
+            resume,
+            drives,
+            mode,
+            sig,
+            jobs,
+            candidates,
+            mbq_param: if mbq.is_empty() { String::new() } else { serde_urlencoded::to_string([("mbq", mbq.as_str())]).unwrap_or_default() },
+            mbq,
+            form,
+            can_rip: ready.is_some() && !running,
+            device,
+            lookup_error,
+            rip_error: rip_error.map(str::to_owned),
+            taken: taken.iter().map(u32::to_string).collect::<Vec<_>>().join(", "),
+            pick,
+            can_eject,
+            disc_id,
+            total_count: rows.len(),
+            selected_count,
+            selected_time: format!("{}:{:02}", selected_seconds / 60, selected_seconds % 60),
+            rows,
+        })
+    }
+
+
+    /// What is wrong with the certificate that the settings name, if anything: a file that cannot be read,
+    /// a key that does not fit. `None` if none is named or it can be read.
+    async fn tls_problem(store: &Store) -> Option<String> {
+        let ext = store.external_tls().await.ok()?;
+        if !ext.is_set() {
+            return None;
+        }
+        crate::tls::load_external(&ext).err().map(|e| e.to_string())
     }
 
     /// The form with the device limit and session length of the roles.
@@ -639,7 +1456,10 @@ impl AdminUi {
     }
 
     async fn setting_views(&self, store: &Store) -> Result<Vec<SettingView>> {
-        Ok(store.setting_rows().await?.into_iter().map(SettingView::from_row).filter(|s| !s.is_import()).collect())
+        let mut views: Vec<SettingView> = store.setting_rows().await?.into_iter().map(SettingView::from_row).filter(|s| !s.is_import()).collect();
+        // The CD import values in the order of the group, the others as they were.
+        views.sort_by_key(|v| crate::cd_settings::KEYS.iter().position(|k| *k == v.key).unwrap_or(usize::MAX));
+        Ok(views)
     }
 
     async fn policy_views(&self, store: &Store) -> Result<Vec<PolicyView>> {
@@ -662,6 +1482,73 @@ impl AdminUi {
 fn template_error(e: minijinja::Error) -> Error {
     // The detailed form names the template, the line and the cause.
     Error::Template(format!("{e:#}"))
+}
+
+/// The text for a refused value of the tab "CD import", in plain words: the reason, and for a template the
+/// placeholder that is wrong and the ones that are allowed, with their names (`Author {author}`).
+pub fn verr_text(lang: Lang, key: &str, raw: &str, code: &str) -> String {
+    let cat = Catalog::new(lang);
+    let named = |vars: &[String]| vars.iter().map(|v| format!("{} {{{v}}}", cat.t(&format!("cd.ph.{v}")))).collect::<Vec<_>>().join(", ");
+    let shown: Vec<String> = crate::cd_settings::vars_of(key).iter().map(|v| (*v).to_owned()).collect();
+    let text = cat.t(&format!("cd.verr.{code}")).to_owned();
+    match code {
+        "template_unknown_placeholder" => {
+            let bad = crate::cd_settings::unknown_placeholder(key, raw).unwrap_or_default();
+            text.replace("{x}", &format!("{{{bad}}}")).replace("{allowed}", &named(&shown))
+        }
+        "template_missing_placeholder" => text.replace("{missing}", &named(&crate::cd_settings::missing_placeholders(key, raw))),
+        _ => text,
+    }
+}
+
+/// The example behind a template field: the real naming, filled with sample values from the catalog, or the reason
+/// why the template is refused. Plain text.
+pub async fn cd_preview(store: &Store, lang: Lang, field: &str, pattern: &str) -> String {
+    use crate::cdimport::{Meta, MetaTrack, StagedTrack};
+    let cat = Catalog::new(lang);
+    if crate::cd_settings::vars_of(field).is_empty() {
+        return String::new();
+    }
+    let value = match crate::cd_settings::check(field, pattern) {
+        Ok(v) => v,
+        Err(code) => return verr_text(lang, field, pattern, code),
+    };
+    let Ok(mut set) = crate::cd_settings::CdSettings::load(store).await else { return String::new() };
+    let sample = |k: &str| cat.t(k).to_owned();
+    let meta = Meta {
+        author: sample("cd.sample.author"),
+        album: sample("cd.sample.title"),
+        narrator: Some(sample("cd.sample.narrator")),
+        year: Some(sample("cd.sample.year")),
+        disc: 3,
+        discs_total: Some(12),
+        kind: None,
+        mbid: None,
+        disc_id: None,
+        genre: None,
+        job_id: None,
+        allow_gaps: false,
+        tracks: vec![MetaTrack { number: 5, title: Some(sample("cd.sample.track_title")), file: String::new() }],
+    };
+    let track = StagedTrack { number: 5, title: sample("cd.sample.track_title"), path: PathBuf::new() };
+    let example = match field {
+        "cd_file_pattern" => {
+            set.file_pattern = value;
+            crate::cdimport::file_name_of(&meta, &set, &track)
+        }
+        "cd_folder_pattern" => {
+            set.folder_pattern = value;
+            crate::cdimport::layout(&meta, &set, Path::new("")).0.to_string_lossy().trim_start_matches('/').to_owned()
+        }
+        "cd_disc_folder_pattern" => {
+            set.disc_folder_pattern = value;
+            let (book, dest) = crate::cdimport::layout(&meta, &set, Path::new(""));
+            dest.strip_prefix(&book).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
+        }
+        _ => return String::new(),
+    };
+    let example = if example.is_empty() { cat.t("cd.preview.flat").to_owned() } else { example };
+    format!("{}: {example}", cat.t("cd.preview.example"))
 }
 
 #[cfg(test)]
@@ -698,5 +1585,84 @@ mod tests {
         let page = ui.login(Lang::En).unwrap();
         assert!(page.contains("action=\"/admin/login\"") && !page.contains("/admin/logout"));
         assert!(!page.contains("hx-headers"), "no CSRF header without a session");
+    }
+}
+
+
+/// The books of `ids` that have no cover. Looking costs a read of the picture, so an answer is kept for a few minutes (the page asks for
+/// every book at once).
+async fn missing_covers(store: &Store, library: Option<&std::path::Path>, ids: &[i64]) -> std::collections::HashSet<i64> {
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, Instant};
+    static KNOWN: OnceLock<Mutex<std::collections::HashMap<i64, (Instant, bool)>>> = OnceLock::new();
+    let cache = KNOWN.get_or_init(Default::default);
+    let mut missing = std::collections::HashSet::new();
+    let mut ask = Vec::new();
+    {
+        let known = cache.lock().unwrap_or_else(|e| e.into_inner());
+        for id in ids {
+            match known.get(id) {
+                Some((at, has)) if at.elapsed() < Duration::from_secs(300) => {
+                    if !*has {
+                        missing.insert(*id);
+                    }
+                }
+                _ => ask.push(*id),
+            }
+        }
+    }
+    for id in ask {
+        let has = crate::api::find_cover(store, library, id).await.is_some();
+        cache.lock().unwrap_or_else(|e| e.into_inner()).insert(id, (Instant::now(), has));
+        if !has {
+            missing.insert(id);
+        }
+    }
+    missing
+}
+
+
+/// One column of the matrix of the media list.
+#[derive(serde::Serialize)]
+struct Member {
+    id: i64,
+    name: String,
+    /// Administrators see everything: their box is ticked and cannot be changed.
+    admin: bool,
+}
+
+/// The columns of the matrix (the family members that are no administrators) and the marks `"<book>:<member>"` where the member sees the
+/// book. With `only` the marks are given for that book only (to draw one row again).
+async fn visibility_columns(store: &Store, only: Option<i64>) -> Result<(Vec<Member>, Vec<String>)> {
+    let matrix = store.visibility_matrix().await?;
+    let members = matrix.iter().map(|(id, name, _, admin)| Member { id: *id, name: name.clone(), admin: *admin }).collect();
+    let seen = matrix.iter().flat_map(|(id, _, books, _)| books.iter().filter(move |b| only.is_none_or(|o| o == **b)).map(move |b| format!("{b}:{id}"))).collect();
+    Ok((members, seen))
+}
+
+
+/// Everybody a book can belong to (the choices of the owner box): id and nickname.
+async fn owners_list(store: &Store) -> Result<Vec<Member>> {
+    Ok(store.user_rows().await?.into_iter().map(|u| Member { admin: u.role == "admin", id: u.id, name: u.name }).collect())
+}
+
+
+impl AdminUi {
+    /// The dialog that chooses a folder: what the server can read, write and enter below `path` (the start: the places it works in). `target` is
+    /// the id of the input that gets the choice.
+    pub async fn folder_picker<'a>(&self, store: &Store, view: impl Into<View<'a>>, path: &str, target: &str, library: Option<&std::path::Path>) -> Result<String> {
+        let mut starts: Vec<std::path::PathBuf> = Vec::new();
+        let state = store.import_state().await?;
+        starts.extend(state.roots.iter().chain(state.music_roots.iter()).map(std::path::PathBuf::from));
+        starts.extend(library.map(std::path::Path::to_path_buf));
+        for per_profile in store.all_profile_folders().await?.into_values() {
+            starts.extend(per_profile.into_values().map(std::path::PathBuf::from));
+        }
+        let browse = crate::folders::browse(path, &starts);
+        let (listing, error) = match browse {
+            Ok(b) => (Some(b), None),
+            Err(e) => (None, Some(e.to_string())),
+        };
+        self.render("fragments/folder_picker.html", context! { listing => Serde(listing), error => error, target => target, ..view.into().context() })
     }
 }

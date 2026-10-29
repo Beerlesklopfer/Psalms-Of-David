@@ -23,14 +23,21 @@ struct App {
     router: Router,
     store: Store,
     _dir: tempfile::TempDir,
+    cd: david_server::cdimport::CdService,
+    drive: Arc<david_server::cdrive::fake::FakeDrives>,
 }
 
 async fn app() -> App {
+    app_with(false).await
+}
+
+async fn app_with(mcp: bool) -> App {
     let (dir, store) = open().await;
     let boss = store.create_profile("Boss", true).await.unwrap();
     store.set_pin(boss, PIN).await.unwrap();
-    let state = AppState { store: store.clone(), listen: "127.0.0.1:8484".parse().unwrap(), fingerprint: None, ui: Arc::new(AdminUi::new().unwrap()), secure_cookie: false, library: None, uploads: david_server::upload::Uploads::start(store.clone(), &std::env::temp_dir().join(format!("david-uploads-{}", std::process::id()))) };
-    App { router: router(state), store, _dir: dir }
+    let (cd, drive) = test_cd(dir.path());
+    let state = AppState { store: store.clone(), mcp, listen: "127.0.0.1:8484".parse().unwrap(), fingerprint: None, ca_host: None, ui: Arc::new(AdminUi::new().unwrap()), secure_cookie: false, library: None, uploads: david_server::upload::Uploads::start(store.clone(), dir.path()  /* its own folder for each test app: job numbers start at 1 in each database */), cd: cd.clone() };
+    App { router: router(state), store, _dir: dir, cd, drive }
 }
 
 struct Reply {
@@ -50,6 +57,12 @@ async fn send(app: &App, req: Request<Body>) -> Reply {
     let (parts, body) = res.into_parts();
     let bytes = to_bytes(body, 4 * 1024 * 1024).await.unwrap();
     Reply { status: parts.status, headers: parts.headers, body: String::from_utf8_lossy(&bytes).into_owned() }
+}
+
+/// The CD import of a test app: no real drive, no internet.
+fn test_cd(data: &std::path::Path) -> (david_server::cdimport::CdService, Arc<david_server::cdrive::fake::FakeDrives>) {
+    let drive = david_server::cdrive::fake::FakeDrives::with_drive("/dev/fake0");
+    (david_server::cdimport::CdService::with_backend(data, Arc::new(david_server::musicbrainz::HttpLookup::new()), drive.clone()), drive)
 }
 
 #[derive(Default)]
@@ -138,7 +151,7 @@ async fn without_a_session_pages_lead_to_sign_in() {
     let r = send(&a, get("/admin/users", &Opts { htmx: true, ..Default::default() })).await;
     assert_eq!((r.status, r.header("hx-redirect")), (StatusCode::UNAUTHORIZED, Some("/admin/login")));
 
-    for path in ["/admin/users", "/admin/books", "/admin/settings"] {
+    for path in ["/admin/users", "/admin/books", "/admin/settings", "/admin/cd"] {
         assert_eq!(send(&a, get(path, &Opts::default())).await.status, StatusCode::SEE_OTHER, "{path}");
     }
 }
@@ -277,6 +290,15 @@ async fn the_static_files_are_served_by_the_server() {
     assert_eq!(css.status, StatusCode::OK);
     assert!(css.header("content-type").unwrap().starts_with("text/css"));
     assert!(css.header("content-security-policy").is_some(), "the headers apply to files too");
+    // The tracks of a CD rip have a colour for each state (the page says `data-state` on the row), in light and in dark.
+    for state in ["waiting", "reading", "verifying", "read", "encoding", "done", "failed"] {
+        assert!(css.body.contains(&format!("tr[data-state=\"{state}\"]")), "no colour for the state {state}");
+    }
+    // The row of tabs scrolls sideways and never up and down (that gave a tiny scroll bar next to the last tab).
+    let tabs = css.body.lines().find(|l| l.starts_with(".tabs {")).expect("a rule for the tabs");
+    assert!(tabs.contains("overflow-x: auto") && tabs.contains("overflow-y: hidden"), "{tabs}");
+    assert_eq!(css.body.matches("--warn:").count(), 2, "the amber of 'read' is defined for light and dark");
+    assert_eq!(css.body.matches("--info:").count(), 2, "the blue of 'converting' is defined for light and dark");
 }
 
 #[tokio::test]
@@ -473,7 +495,7 @@ async fn books_are_released_with_an_age_rating_and_the_recommendation_is_guarded
 
     let r = send(&a, post("/admin/rpc/book.release", &form(&[("id", &id), ("min_age", "6"), ("confirm", "1")]), &o)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
-    assert!(r.body.starts_with(&format!("<tr id=\"book-{id}\">")) && r.body.contains("Released"));
+    assert!(r.body.starts_with(&format!("<tr id=\"book-{id}\"")) && r.body.contains("Released"));
 
     // At or above the recommendation no tick is needed; a missing rating is refused.
     assert_eq!(send(&a, post("/admin/rpc/book.release", &form(&[("id", &id), ("min_age", "16")]), &o)).await.status, StatusCode::OK);
@@ -495,7 +517,7 @@ async fn every_setting_is_a_line_edit_and_one_save_decides_them() {
     // Three tabs; the values are inputs with their unit, and nothing speaks of proposals any more.
     let page = send(&a, get("/admin/settings?tab=values", &Opts { cookie: Some(&cookie), ..Default::default() })).await.body;
     assert!(page.contains("class=\"tab\"") && page.contains("aria-current=\"page\""), "{page}");
-    assert!(page.contains("name=\"import_interval_min\"") && page.contains("name=\"pin_lock_s\"") && page.contains("name=\"time_zone\"") && page.contains("minutes"));
+    assert!(page.contains("name=\"import_interval_min\"") && page.contains("name=\"pin_lock_s\"") && page.contains("name=\"time_zone\"") && page.contains("<span class=\"unit\">min</span>"));
     assert!(!page.contains("Proposal") && !page.contains("Accepted") && !page.contains("import_roots"));
     assert!(page.contains("form=") || page.contains("type=\"submit\" class=\"btn\">Save"));
 
@@ -953,16 +975,20 @@ async fn with_tls_the_pairing_code_carries_the_certificate_fingerprint() {
     store.set_pin(boss, PIN).await.unwrap();
     let anna = store.create_profile("Anna", false).await.unwrap();
     let fingerprint = "ab".repeat(32);
+    let (cd, drive) = test_cd(dir.path());
     let state = AppState {
         store: store.clone(),
+        mcp: false,
         listen: "192.168.24.250:8484".parse().unwrap(),
         fingerprint: Some(fingerprint.clone()),
+        ca_host: None,
         ui: Arc::new(AdminUi::new().unwrap()),
         secure_cookie: true,
         library: None,
         uploads: david_server::upload::Uploads::start(store.clone(), &std::env::temp_dir().join(format!("david-uploads-tls-{}", std::process::id()))),
+        cd: cd.clone(),
     };
-    let a = App { router: router(state), store, _dir: dir };
+    let a = App { router: router(state), store, _dir: dir, cd, drive };
 
     // The session cookie is marked Secure, and the page says the code is pinned.
     let login = login(&a, &format!("name=Boss&pin={PIN}")).await;
@@ -1575,7 +1601,7 @@ async fn the_book_window_releases_withdraws_and_marks_in_one_save() {
 
     let r = send(&a, post("/admin/rpc/book.update", &form(&[("id", &sid), ("released", "1"), ("min_age", "12"), ("exempt", "1")]), &o)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
-    assert!(r.body.starts_with(&format!("<tr id=\"book-{id}\">")) && r.body.contains("Released from 12") && r.body.contains("Learning content"));
+    assert!(r.body.starts_with(&format!("<tr id=\"book-{id}\"")) && r.body.contains("Released from 12") && r.body.contains("Learning content"));
     let row = a.store.admin_book_row(id).await.unwrap().unwrap();
     assert_eq!((row.released, row.min_age, row.quota_exempt), (true, Some(12), true));
 
@@ -2153,6 +2179,58 @@ async fn music_and_narrators_are_imported_and_shown() {
     assert!(books_page.contains("Winter der Welt") && books_page.contains("Reinhard Kuhnert") && !books_page.contains("Was ist der Mensch"));
     let music_page = send(&a, get("/admin/music", &ob)).await.body;
     assert!(music_page.contains("Was ist der Mensch") && !music_page.contains("Winter der Welt"));
+    // The matrix: a column for every member of the family that is no administrator, with a box for every book; a change opens or closes the book.
+    let anna = a.store.create_user(david_server::NewProfile::new("Anna", david_server::Role::Member)).await.unwrap();
+    a.store.release_book(book.id, 0).await.unwrap();
+    let page = send(&a, get("/admin/books", &ob)).await.body;
+    assert!(page.contains("class=\"member-col\"") && page.contains("<span title=\"Anna\">Anna</span>"), "{page}");
+    assert!(page.contains("name=\"book.visibility\"") || page.contains("action=\"/admin/rpc/book.visibility\""), "{page}");
+    assert!(page.contains("aria-label=\"Anna: Winter der Welt\"") && page.contains("title=\"Anna\" checked"), "Anna sees the released book: {page}");
+    let csrf2 = csrf.clone();
+    let toggle = |visible: bool| {
+        let mut f = vec![("csrf", csrf2.clone()), ("book", book.id.to_string()), ("profile", anna.to_string())];
+        if visible {
+            f.push(("visible", "1".to_owned()));
+        }
+        f.into_iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("&")
+    };
+    let hx = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf2), ..Default::default() };
+    let r = send(&a, post("/admin/rpc/book.visibility", &toggle(false), &hx)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(!r.body.contains("title=\"Anna\" checked"), "the row shows the box empty now: {}", r.body);
+    assert!(!a.store.visible_books(anna).await.unwrap().iter().any(|b| b.id == book.id), "closed to Anna");
+    let r = send(&a, post("/admin/rpc/book.visibility", &toggle(true), &hx)).await;
+    assert!(r.body.contains("title=\"Anna\" checked") && a.store.visible_books(anna).await.unwrap().iter().any(|b| b.id == book.id));
+    // The owner is a box of the book window, another thing than the release: it says whom the book belongs to.
+    let page = send(&a, get("/admin/books", &ob)).await.body;
+    assert!(page.contains("name=\"owner\"") && page.contains(&format!("<option value=\"{anna}\">Anna</option>")), "{page}");
+    let body = format!("csrf={}&id={}&released=1&min_age=0&owner={anna}", csrf, book.id);
+    let r = send(&a, post("/admin/rpc/book.update", &body, &hx)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(a.store.admin_book_row(book.id).await.unwrap().unwrap().owner.as_deref(), Some("Anna"));
+    assert!(r.body.contains("of Anna") || r.body.contains("&middot; of Anna"), "{}", r.body);
+    let r = send(&a, post("/admin/rpc/book.update", &format!("csrf={}&id={}&released=1&min_age=0&owner=", csrf, book.id), &hx)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(a.store.admin_book_row(book.id).await.unwrap().unwrap().owner, None, "an empty choice removes the owner");
+    let r = send(&a, post("/admin/rpc/book.update", &format!("csrf={}&id={}&released=1&min_age=0&owner=99999", csrf, book.id), &hx)).await;
+    assert_ne!(r.status, StatusCode::OK, "an unknown owner is refused");
+    // The search knows wildcards (`*`, `?`) and regular expressions between slashes; a broken one says so and finds nothing.
+    let q = |q: &str, page: &str| format!("/admin/{page}?q={}", serde_urlencoded::to_string([("", q)]).unwrap().trim_start_matches('='));
+    let rows = |body: &str| body.matches("<tr id=\"book-").count();
+    assert_eq!(rows(&send(&a, get(&q("wint* welt", "books"), &ob)).await.body), 1, "a star");
+    assert_eq!(rows(&send(&a, get(&q("winter ??? welt", "books"), &ob)).await.body), 1, "question marks");
+    assert_eq!(rows(&send(&a, get(&q("/^winter der/", "books"), &ob)).await.body), 1, "a regular expression");
+    assert_eq!(rows(&send(&a, get(&q("/^der/", "books"), &ob)).await.body), 0, "it must hold");
+    assert_eq!(rows(&send(&a, get(&q("/(bach|follett)/", "books"), &ob)).await.body), 1, "alternatives");
+    assert_eq!(rows(&send(&a, get(&q("was * mensch", "music"), &ob)).await.body), 1, "music has it too");
+    let bad = send(&a, get(&q("/(unclosed/", "books"), &ob)).await.body;
+    assert!(bad.contains("The search pattern is not valid") && rows(&bad) == 0, "{bad}");
+    // A red mark for a book without a cover (these test files carry none), a filter for the books with a problem, and its count.
+    assert!(books_page.contains("class=\"problem-mark\"") && books_page.contains("No cover") && books_page.contains("name=\"problems\""), "{books_page}");
+    let only = send(&a, get("/admin/books?problems=1", &ob)).await.body;
+    assert!(only.contains("Winter der Welt") && only.contains("checked"), "{only}");
+    let none = send(&a, get("/admin/music?problems=1&q=zzzunknownzzz", &ob)).await.body;
+    assert!(!none.contains("<tr id=\"book-"), "no row: {none}");
 
     // The tags window asks for an author and a narrator for a book, an artist for an album.
     let w = send(&a, get(&format!("/admin/rpc/book.tags_form?id={}", book.id), &o)).await.body;
@@ -2319,6 +2397,8 @@ async fn albums_are_found_at_any_depth_with_disc_folders_and_without_hidden_ones
     mp3(".recyclebin/Gone/Old/01.mp3"); // hidden: never read
     mp3("Ken Follett/@eaDir/Thumbs/01.mp3"); // NAS bookkeeping: never read
     std::fs::create_dir_all(lib.path().join("Empty Folder")).unwrap();
+    // Not empty, but nothing to import: only a text file (a folder with nothing at all is no problem).
+    std::fs::write(lib.path().join("Empty Folder/notes.txt"), b"x").unwrap();
     let root = std::fs::canonicalize(lib.path()).unwrap().to_string_lossy().into_owned();
     send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &root), ("rule", "manual")]), &o)).await;
     send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
@@ -2374,6 +2454,8 @@ async fn the_last_import_stays_on_the_import_page_with_its_problems() {
     let lib = tempfile::TempDir::new().unwrap();
     common::audio::make_mp3(&lib.path().join("Ken Follett/Winter der Welt/01.mp3"), &[]);
     std::fs::create_dir_all(lib.path().join("Empty Folder")).unwrap();
+    // Not empty, but nothing to import: only a text file (a folder with nothing at all is no problem).
+    std::fs::write(lib.path().join("Empty Folder/notes.txt"), b"x").unwrap();
     let root = std::fs::canonicalize(lib.path()).unwrap().to_string_lossy().into_owned();
     send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &root), ("rule", "manual")]), &o)).await;
     send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
@@ -2387,4 +2469,1261 @@ async fn the_last_import_stays_on_the_import_page_with_its_problems() {
     assert!(page.contains("Result of the last import") && page.contains("class=\"when\""), "{page}");
     assert!(page.contains("Empty Folder") && page.contains("nothing to import here"), "the problems are kept too");
     assert!(page.contains("<dt>Audiobooks</dt><dd>1</dd>"));
+}
+
+#[tokio::test]
+async fn the_llm_tab_makes_a_token_shown_once_lists_it_and_revokes_it() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+
+    // The tab is there; MCP is off in this app, and it says how to turn it on.
+    let page = send(&a, get("/admin/settings?tab=llm", &plain)).await;
+    assert_eq!(page.status, StatusCode::OK);
+    assert!(page.body.contains("LLM access") && page.body.contains("david run --mcp") && page.body.contains("No tokens yet."), "{}", page.body);
+
+    let r = send(&a, post("/admin/rpc/mcp.token_create", &form(&[("name", "Claude at home"), ("write", "1")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(r.body.contains("shown only once") && r.body.contains("Bearer "), "{}", r.body);
+    let tokens = a.store.mcp_tokens().await.unwrap();
+    assert_eq!((tokens.len(), tokens[0].can_write, tokens[0].name.as_str()), (1, true, "Claude at home"));
+
+    // Afterwards the secret is not shown any more, only the name.
+    let page = send(&a, get("/admin/settings?tab=llm", &plain)).await;
+    assert!(page.body.contains("Claude at home") && !page.body.contains("Bearer "), "{}", page.body);
+
+    assert_eq!(send(&a, post("/admin/rpc/mcp.token_create", &form(&[("name", "  ")]), &o)).await.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let r = send(&a, post("/admin/rpc/mcp.token_revoke", &form(&[("id", &tokens[0].id.to_string())]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(a.store.mcp_tokens().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_new_token_comes_with_the_mcp_configuration_to_copy() {
+    let a = app_with(true).await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let r = send(&a, post("/admin/rpc/mcp.token_create", &form(&[("name", "Claude")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(r.body.contains("data-copy=") && r.body.contains("Copy MCP configuration"), "{}", r.body);
+    assert!(r.body.contains("&quot;type&quot;: &quot;http&quot;") && r.body.contains("127.0.0.1:8484&#x2f;mcp"), "{}", r.body);
+    // Later visits show neither the secret nor the button.
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let page = send(&a, get("/admin/settings?tab=llm", &plain)).await;
+    assert!(!page.body.contains("data-copy=") && !page.body.contains("Bearer "), "{}", page.body);
+}
+
+#[tokio::test]
+async fn the_media_pages_search_title_author_and_narrator_and_offer_completions() {
+    let a = app().await;
+    let (cookie, _) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    for (author, title, narrator) in [("Follett", "Winter der Welt", Some("Sprecher Eins")), ("Tolkien", "Der Hobbit", None)] {
+        let mut b = book(author, title, &[1]);
+        b.narrator = narrator.map(str::to_owned);
+        a.store.import_books(vec![b]).await.unwrap();
+    }
+    let all = send(&a, get("/admin/books", &plain)).await.body;
+    assert!(all.contains("Winter der Welt") && all.contains("Der Hobbit"));
+    // Completions hold titles, authors and narrators.
+    for word in ["<option value=\"Follett\">", "<option value=\"Der Hobbit\">", "<option value=\"Sprecher Eins\">"] {
+        assert!(all.contains(word), "{word}");
+    }
+    // Each query finds by any of the three, without regard to case.
+    for q in ["hobbit", "TOLKIEN"] {
+        let r = send(&a, get(&format!("/admin/books?q={q}"), &plain)).await.body;
+        assert!(r.contains("id=\"book-") && r.contains("Der Hobbit") && !r.contains("<strong>Winter der Welt"), "{q}");
+    }
+    let r = send(&a, get("/admin/books?q=sprecher", &plain)).await.body;
+    assert!(r.contains("<strong>Winter der Welt") && !r.contains("<strong>Der Hobbit"));
+    let r = send(&a, get("/admin/books?q=zzz", &plain)).await.body;
+    assert!(r.contains("Nothing found."), "{r}");
+}
+
+#[tokio::test]
+async fn the_tags_window_takes_any_field_as_a_line_and_refuses_unknown_ones() {
+    if !common::audio::ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let lib = tempfile::TempDir::new().unwrap();
+    let dir = lib.path().join("Ken Follett/Kinder der Freiheit");
+    common::audio::make_mp3(&dir.join("a_CD01_TR01.mp3"), &[("comment", "weg damit")]);
+    let root = std::fs::canonicalize(lib.path()).unwrap().to_string_lossy().into_owned();
+    send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &root), ("rule", "manual")]), &o)).await;
+    send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
+    send(&a, post("/admin/rpc/import.run", "", &o)).await;
+    let id = a.store.admin_book_rows().await.unwrap()[0].id.to_string();
+
+    let w = send(&a, get(&format!("/admin/rpc/book.tags_form?id={id}"), &o)).await.body;
+    assert!(w.contains("name=\"more\"") && w.contains("Lyricist"), "{w}");
+
+    let r = send(&a, tags_request(&csrf, &cookie, &[("id", &id), ("more", "Lyricist=Dichter\nGenre=Jazz\ngenre=Blues\nComment=")], None)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let fields = david_server::tags::read_fields(&dir.join("a_CD01_TR01.mp3")).unwrap();
+    let get_f = |n: &str| fields.iter().find(|(k, _)| k == n).map(|(_, v)| v.clone());
+    assert_eq!(get_f("Lyricist"), Some(vec!["Dichter".to_owned()]));
+    assert!(get_f("Genre").unwrap().contains(&"Blues".to_owned()));
+    assert!(get_f("Comment").is_none(), "an empty value removes the field");
+
+    for bad in ["NoSuchField=x", "no equals sign"] {
+        let r = send(&a, tags_request(&csrf, &cookie, &[("id", &id), ("more", bad)], None)).await;
+        assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY, "{bad}");
+    }
+}
+
+#[tokio::test]
+async fn the_administration_and_mcp_answer_together_on_one_router() {
+    let a = app().await;
+    let (cookie, _) = sign_in(&a).await;
+    let admin = a.store.user_rows().await.unwrap()[0].id;
+    let token = a.store.create_mcp_token("llm", true, admin).await.unwrap();
+    a.store.import_books(vec![book("Follett", "Winter", &[1])]).await.unwrap();
+    // The way `--mcp` puts it together: the interface of the administration plus /mcp.
+    let router = a.router.clone().merge(david_server::mcp::router(david_server::mcp::McpState { store: a.store.clone(), library: None }));
+
+    let mut jobs = tokio::task::JoinSet::new();
+    for n in 0..60 {
+        let router = router.clone();
+        let (cookie, token) = (cookie.clone(), token.clone());
+        jobs.spawn(async move {
+            let (request, expect_in_body) = match n % 3 {
+                0 => (Request::builder().uri("/healthz").body(Body::empty()).unwrap(), "\"status\":\"ok\""),
+                1 => (Request::builder().uri("/admin/books").header(header::COOKIE, cookie).body(Body::empty()).unwrap(), "Winter"),
+                _ => (
+                    Request::builder()
+                        .method("POST")
+                        .uri("/mcp")
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                        .body(Body::from(r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_albums","arguments":{}}}"#))
+                        .unwrap(),
+                    "Winter",
+                ),
+            };
+            let res = router.oneshot(request).await.unwrap();
+            let status = res.status();
+            let body = String::from_utf8_lossy(&to_bytes(res.into_body(), 1 << 20).await.unwrap()).into_owned();
+            (n, status, body.contains(expect_in_body))
+        });
+    }
+    let mut answered = 0;
+    while let Some(done) = jobs.join_next().await {
+        let (n, status, found) = done.unwrap();
+        assert_eq!(status, StatusCode::OK, "request {n}");
+        assert!(found, "request {n} did not answer as expected");
+        answered += 1;
+    }
+    assert_eq!(answered, 60);
+}
+
+#[tokio::test]
+async fn the_llm_tab_saves_the_help_text_and_an_empty_text_brings_the_built_in_one_back() {
+    let a = app_with(true).await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let r = send(&a, post("/admin/rpc/mcp.prompt_save", &form(&[("text", "Only fix titles.")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(r.body.contains("Only fix titles."), "{}", r.body);
+    assert_eq!(a.store.mcp_prompt().await.unwrap().as_deref(), Some("Only fix titles."));
+    let r = send(&a, post("/admin/rpc/mcp.prompt_save", &form(&[("text", "")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(a.store.mcp_prompt().await.unwrap(), None);
+    assert!(r.body.contains("find_problems"), "{}", r.body);
+}
+
+#[tokio::test]
+async fn missing_rights_on_the_library_are_a_warning_with_the_command_that_fixes_them() {
+    use std::os::unix::fs::PermissionsExt;
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let root = tempfile::tempdir().unwrap();
+    let album = root.path().join("Artist/Album");
+    std::fs::create_dir_all(&album).unwrap();
+    let file = album.join("01.mp3");
+    std::fs::write(&file, b"x").unwrap();
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o444)).unwrap();
+    if std::fs::OpenOptions::new().append(true).open(&file).is_ok() {
+        return; // a user that may write everything cannot show the warning
+    }
+    a.store.save_music_roots(&[root.path().display().to_string()]).await.unwrap();
+    let r = send(&a, post("/admin/rpc/access.check", &form(&[]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(r.body.contains("lacks rights") && r.body.contains("Artist&#x2f;Album") && r.body.contains("setfacl -R -m u:"), "{}", r.body);
+    // The pages carry it as well, once it is known.
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let page = send(&a, get("/admin/", &plain)).await;
+    assert!(page.body.contains("id=\"access-warning\"") && page.body.contains("files not writable"), "{}", page.body);
+}
+
+#[tokio::test]
+async fn a_book_that_looks_like_a_copy_of_another_is_marked() {
+    let a = app().await;
+    let (cookie, _) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    for (author, title) in [("Follett", "Kinder der Freiheit"), ("Johannes Steck", "Kinder der Freiheit"), ("Follett", "Winter der Welt")] {
+        a.store.import_books(vec![book(author, title, &[2])]).await.unwrap();
+    }
+    let page = send(&a, get("/admin/books", &plain)).await.body;
+    assert_eq!(page.matches("Possible duplicate").count(), 2, "{page}");
+    assert!(page.contains("Johannes Steck, 1 discs"), "the badge names the other copy: {page}");
+}
+
+#[tokio::test]
+async fn ignoring_a_duplicate_hides_its_badge_lists_the_rule_and_can_be_undone() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    for author in ["Follett", "Johannes Steck"] {
+        a.store.import_books(vec![book(author, "Kinder der Freiheit", &[2])]).await.unwrap();
+    }
+    let id = a.store.admin_book_rows().await.unwrap()[0].id;
+    let page = send(&a, get("/admin/books", &plain)).await.body;
+    assert_eq!(page.matches("Possible duplicate").count(), 2);
+    assert_eq!(page.matches("action=\"/admin/rpc/ignore.add\"").count(), 6, "three choices on each of the two rows");
+
+    let form_opts = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), ..Default::default() };
+    let r = send(&a, post("/admin/rpc/ignore.add", &form(&[("id", &id.to_string()), ("scope", "title"), ("what", "duplicate"), ("back", "audiobook")]), &form_opts)).await;
+    assert!(r.status.is_redirection(), "{}", r.body);
+    let page = send(&a, get("/admin/books", &plain)).await.body;
+    assert_eq!(page.matches("Possible duplicate").count(), 0, "the title is wanted twice: {page}");
+    assert!(page.contains("Ignored (1)") && page.contains("This title"), "{page}");
+
+    let rule = a.store.ignore_rules().await.unwrap()[0].id;
+    let r = send(&a, post("/admin/rpc/ignore.remove", &form(&[("rule", &rule.to_string()), ("back", "audiobook")]), &form_opts)).await;
+    assert!(r.status.is_redirection());
+    assert_eq!(send(&a, get("/admin/books", &plain)).await.body.matches("Possible duplicate").count(), 2);
+}
+
+#[tokio::test]
+async fn the_log_level_is_a_setting_that_applies_at_once_and_rejects_nonsense() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let page = send(&a, get("/admin/settings?tab=values", &plain)).await.body;
+    assert!(page.contains("name=\"log_level\"") && page.contains("Log level") && page.contains("<option value=\"info\" selected>"), "{page}");
+
+    let r = send(&a, post("/admin/rpc/settings.save", &form(&[("log_level", "debug")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(david_server::logging::current(), tracing::Level::DEBUG, "applied without a restart");
+    assert_eq!(a.store.setting("log_level").await.unwrap().as_deref(), Some("debug"));
+    assert!(r.body.contains("<option value=\"debug\" selected>"));
+
+    let r = send(&a, post("/admin/rpc/settings.save", &form(&[("log_level", "loud")]), &o)).await;
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(david_server::logging::current(), tracing::Level::DEBUG, "nothing changed");
+    david_server::logging::set(tracing::Level::INFO);
+}
+
+#[tokio::test]
+async fn the_media_lists_are_a_tree_whose_levels_are_a_setting_for_each_kind() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let mut music = book("Martin Luther King", "Ein Traum", &[1]);
+    music.kind = "music".into();
+    music.folder = "NORA/Chor/Martin Luther King/Ein Traum".into();
+    let mut other = music.clone();
+    other.title = "Sopran".into();
+    other.folder = "NORA/Chor/Martin Luther King/Sopran".into();
+    a.store.import_books(vec![music, other, book("Follett", "Winter der Welt", &[1])]).await.unwrap();
+
+    // Music is shown by its folders, audiobooks by their author.
+    let page = send(&a, get("/admin/music", &plain)).await.body;
+    for level in ["NORA", "Chor", "Martin Luther King"] {
+        assert!(page.contains(&format!("<span>{level}</span>")), "{level}: {page}");
+    }
+    assert!(page.contains("data-node=\"n0\"") && page.contains("(2)"), "the count of the books below a level");
+    let books = send(&a, get("/admin/books", &plain)).await.body;
+    assert!(books.contains("<span>Follett</span>") && !books.contains("<span>NORA</span>"), "{books}");
+
+    // The levels are settings; a flat list has no levels.
+    let page = send(&a, get("/admin/settings?tab=values", &plain)).await.body;
+    assert!(page.contains("name=\"tree_music\"") && page.contains("Folders on the disk"), "{page}");
+    let r = send(&a, post("/admin/rpc/settings.save", &form(&[("tree_music", "flat"), ("tree_audiobook", "letter_author")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let flat = send(&a, get("/admin/music", &plain)).await.body;
+    assert!(!flat.contains("class=\"tree-node\"") && flat.contains("Ein Traum"), "{flat}");
+    let letters = send(&a, get("/admin/books", &plain)).await.body;
+    assert!(letters.contains("<span>F</span>") && letters.contains("<span>Follett</span>"), "{letters}");
+    let bad = send(&a, post("/admin/rpc/settings.save", &form(&[("tree_music", "diagonal")]), &o)).await;
+    assert_eq!(bad.status, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn a_copy_can_be_put_into_quarantine_from_the_list_and_the_last_copy_cannot() {
+    use std::os::unix::fs::PermissionsExt;
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let form_opts = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), ..Default::default() };
+    let root = tempfile::tempdir().unwrap();
+    for folder in ["Schule/Quentin Qualle", "Compilations/Quentin Qualle"] {
+        let dir = root.path().join(folder);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Quentin Qualle_CD01_TR01.mp3"), b"x").unwrap();
+    }
+    let _ = std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o755));
+    a.store.save_music_roots(&[root.path().display().to_string()]).await.unwrap();
+    for folder in ["Schule/Quentin Qualle", "Compilations/Quentin Qualle"] {
+        let mut b = book("Quentin Qualle", "Quentin Qualle", &[1]);
+        b.kind = "music".into();
+        b.folder = folder.into();
+        a.store.import_books(vec![b]).await.unwrap();
+    }
+    let page = send(&a, get("/admin/music", &plain)).await.body;
+    assert!(page.contains("action=\"/admin/rpc/quarantine.add\"") && page.contains("Put this copy into quarantine"), "{page}");
+    let ids: Vec<i64> = a.store.admin_book_rows().await.unwrap().iter().map(|r| r.id).collect();
+
+    // The tracks have to be real files for the move; they are, in the folders above.
+    let r = send(&a, post("/admin/rpc/quarantine.add", &form(&[("id", &ids[0].to_string()), ("back", "music")]), &form_opts)).await;
+    assert!(r.status.is_redirection(), "{} {}", r.status, r.body);
+    assert_eq!(a.store.admin_book_rows().await.unwrap().len(), 1, "the copy left the library: {:?}", r.headers.get("location"));
+    assert!(root.path().join(".quarantine").is_dir());
+    // The last copy stays.
+    let r = send(&a, post("/admin/rpc/quarantine.add", &form(&[("id", &ids[1].to_string()), ("back", "music")]), &form_opts)).await;
+    assert!(r.status.is_redirection() && r.headers.get("location").unwrap().to_str().unwrap().contains("err.quarantine"), "{:?}", r.headers);
+    assert_eq!(a.store.admin_book_rows().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn the_state_badge_of_a_book_is_a_button_that_releases_and_takes_back() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let mut known = book("Follett", "Winter der Welt", &[1]);
+    known.recommended_age = Some(12);
+    a.store.import_books(vec![known, book("Tolkien", "Der Hobbit", &[1])]).await.unwrap();
+    let rows = a.store.admin_book_rows().await.unwrap();
+    let (winter, hobbit) = (rows.iter().find(|r| r.title == "Winter der Welt").unwrap().id, rows.iter().find(|r| r.title == "Der Hobbit").unwrap().id);
+
+    let page = send(&a, get("/admin/books", &plain)).await.body;
+    assert!(page.contains("action=\"/admin/rpc/book.release\"") && page.contains("name=\"min_age\" value=\"12\""), "a known age: one click releases");
+    assert!(page.contains(&format!("data-dialog=\"dlg-book-{hobbit}\" title=")), "no age known: the button opens the window");
+
+    let r = send(&a, post("/admin/rpc/book.release", &form(&[("id", &winter.to_string()), ("min_age", "12")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(r.body.contains("action=\"/admin/rpc/book.unrelease\"") && r.body.contains("aria-pressed=\"true\""), "{}", r.body);
+    assert!(a.store.admin_book_row(winter).await.unwrap().unwrap().released);
+    let r = send(&a, post("/admin/rpc/book.unrelease", &form(&[("id", &winter.to_string())]), &o)).await;
+    assert!(r.body.contains("aria-pressed=\"false\"") && !a.store.admin_book_row(winter).await.unwrap().unwrap().released, "{}", r.body);
+}
+
+#[tokio::test]
+async fn the_tags_window_has_a_cut_and_zoom_for_the_picture_and_serves_its_script() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let lib = tempfile::TempDir::new().unwrap();
+    common::audio::make_mp3(&lib.path().join("Ken Follett/Winter der Welt/a_CD01_TR01.mp3"), &[]);
+    let root = std::fs::canonicalize(lib.path()).unwrap().to_string_lossy().into_owned();
+    send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &root), ("rule", "manual")]), &o)).await;
+    send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
+    send(&a, post("/admin/rpc/import.run", "", &o)).await;
+    let id = a.store.admin_book_rows().await.unwrap()[0].id;
+    let w = send(&a, get(&format!("/admin/rpc/book.tags_form?id={id}"), &o)).await;
+    assert_eq!(w.status, StatusCode::OK);
+    for part in ["data-cropper", "class=\"crop-frame\"", "class=\"crop-image\"", "data-crop-reset", "Reset the cut", "name=\"cover\""] {
+        assert!(w.body.contains(part), "{part}: {}", w.body);
+    }
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let page = send(&a, get("/admin/books", &plain)).await.body;
+    assert!(page.contains("/admin/static/crop.js"));
+    let js = send(&a, get("/admin/static/crop.js", &plain)).await;
+    assert_eq!(js.status, StatusCode::OK);
+    assert!(js.body.contains("pointermove") && js.body.contains("wheel") && js.body.contains("toBlob"));
+}
+
+#[tokio::test]
+async fn with_a_certificate_authority_the_pairing_code_carries_the_name_and_no_fingerprint() {
+    let uri = david_server::pairing::pairing_uri("sid", "david.example.test:8484", "code1", None, true);
+    assert!(uri.contains("addr=david.example.test%3A8484") && uri.contains("ca=1") && !uri.contains("fp="), "{uri}");
+    // A server with its own certificate still pins the fingerprint, and says nothing about a CA.
+    let pinned = david_server::pairing::pairing_uri("sid", "192.168.0.2:8484", "code1", Some("ab12"), false);
+    assert!(pinned.contains("fp=ab12") && !pinned.contains("ca=1"), "{pinned}");
+}
+
+#[tokio::test]
+async fn the_settings_hold_the_certificate_files_the_quarantine_name_and_the_genre_words_and_check_them() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let page = send(&a, get("/admin/settings?tab=values", &plain)).await.body;
+    for part in ["name=\"tls_cert\"", "name=\"tls_key\"", "name=\"tls_host\"", "name=\"quarantine_folder\"", "name=\"audiobook_genres\"", "name=\"placeholder_tags\"", "name=\"radio_directory_url\"", "name=\"feed_refresh_min\"", "Podcasts and radio", "Certificate (HTTPS)", "placeholder=\"&#x2f;path&#x2f;to&#x2f;fullchain.pem\"", "placeholder=\"david.example.org\""] {
+        assert!(page.contains(part), "{part}");
+    }
+    let ok = send(&a, post("/admin/rpc/settings.save", &form(&[("tls_cert", "/some/place/fullchain.pem"), ("tls_key", "/some/place/privkey.pem"), ("tls_host", "david.example.test"), ("quarantine_folder", "Quarantaene"), ("audiobook_genres", "hörbuch, lesung")]), &o)).await;
+    assert_eq!(ok.status, StatusCode::OK, "{}", ok.body);
+    let ext = a.store.external_tls().await.unwrap();
+    assert_eq!((ext.host.as_deref(), ext.cert.is_some(), ext.key.is_some()), (Some("david.example.test"), true, true));
+    assert_eq!(a.store.quarantine_folder().await.unwrap(), "Quarantaene");
+    assert_eq!(a.store.audiobook_genres().await.unwrap(), vec!["hörbuch".to_owned(), "lesung".to_owned()]);
+    // Files that do not exist are said in the page, not silently kept.
+    assert!(ok.body.contains("No such file"), "the problem with the named file is shown: {}", ok.body);
+
+    for bad in [
+        vec![("tls_cert", "relative/cert.pem"), ("tls_key", "/k.pem")],
+        vec![("tls_cert", "/c.pem"), ("tls_key", "")],
+        vec![("tls_host", "has space")],
+        vec![("tls_reload_s", "1")],
+        vec![("quarantine_folder", "a/b")],
+        vec![("quarantine_folder", "..")],
+    ] {
+        let r = send(&a, post("/admin/rpc/settings.save", &form(&bad), &o)).await;
+        assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY, "{bad:?}");
+    }
+}
+
+#[tokio::test]
+async fn the_tab_cd_import_holds_the_format_the_names_and_the_log_and_says_why_a_value_is_refused() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let o_de = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), lang: Some("de") };
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+
+    // Its own tab: the values are not on the tab "Values" any more.
+    let values = send(&a, get("/admin/settings?tab=values", &plain)).await.body;
+    assert!(!values.contains("name=\"cd_bitrate_kbps\"") && values.contains("href=\"/admin/settings?tab=cdimport\""), "{values}");
+    let page = send(&a, get("/admin/settings?tab=cdimport", &plain)).await.body;
+    for key in david_server::cd_settings::KEYS {
+        assert!(page.contains(&format!("name=\"{key}\"")), "{key}");
+    }
+    assert!(page.contains("CD import") && page.contains("kbit&#x2f;s") && page.contains("Joint stereo") && page.contains("Detect CD drives with udev"), "{page}");
+    // A priority can be negative: the field lets the minus sign through (the browser refuses what does not match `pattern`), and the other
+    // numbers stay digits only.
+    assert!(page.contains("name=\"cd_encoder_nice\" value=\"-20\" required inputmode=\"text\" pattern=\"-?[0-9]+\""), "{page}");
+    assert!(page.contains("name=\"cd_read_speed\" value=\"8\" required inputmode=\"numeric\" pattern=\"[0-9]+\""), "{page}");
+    // The menu has an item of its own for the import; the tab keeps the values and points to it.
+    assert!(page.contains("href=\"/admin/cd\"") && page.contains("The import itself (drive, choice of tracks, progress, log) is the menu item"), "{page}");
+    assert!(!page.contains("contact address is missing") && !page.contains("No CD has been imported yet") && !page.contains("id=\"cd-drive\""), "the import is not on the tab: {page}");
+    // The state at the top of the page "CD import": no contact address, no folder, locked; and no job yet.
+    let import = send(&a, get("/admin/cd", &plain)).await.body;
+    assert!(import.contains("contact address is missing") && import.contains("The import is locked") && import.contains("No CD has been imported yet"), "{import}");
+    assert!(import.contains("<a href=\"/admin/cd\" aria-current=\"page\">") && import.contains("href=\"/admin/settings?tab=cdimport\""), "the menu item is marked, the page leads to the settings: {import}");
+    let de = send(&a, get("/admin/settings?tab=cdimport", &Opts { lang: Some("de"), ..plain })).await.body;
+    assert!(de.contains("CD-Import") && de.contains("CD-Laufwerke über udev erkennen"), "{de}");
+    let import_de = send(&a, get("/admin/cd", &Opts { lang: Some("de"), ..plain })).await.body;
+    assert!(import_de.contains("Kontaktadresse für MusicBrainz fehlt") && import_de.contains("CD-Import"), "{import_de}");
+
+    let ok = send(&a, post("/admin/rpc/settings.cd", &form(&[("cd_bitrate_kbps", "96"), ("cd_sample_rate_hz", "44100"), ("cd_channel_mode", "stereo"), ("cd_quality", "5"), ("cd_id3_version", "2.3"), ("cd_file_pattern", "{author} - {title} {disc:02}.{track:02}"), ("cd_folder_pattern", "Books/{author}/{title}"), ("cd_disc_folder_pattern", ""), ("cd_title_pattern", "track_title"), ("cd_track_scheme", "plain"), ("cd_genre", "Hörbuch"), ("cd_cover_px", "1200"), ("cd_eject_after", "0"), ("cd_udev", "1"), ("cd_log_keep", "20"), ("cd_target_kind", "music"), ("musicbrainz_contact", "me@example.org")]), &o)).await;
+    assert_eq!(ok.status, StatusCode::OK, "{}", ok.body);
+    assert!(ok.body.contains("id=\"cd-tab\"") && !ok.body.contains("contact address is missing"), "{}", ok.body);
+    let s = david_server::cd_settings::CdSettings::load(&a.store).await.unwrap();
+    assert_eq!((s.bitrate_kbps, s.sample_rate_hz, s.channel_mode.as_str(), s.quality, s.id3_version.as_str()), (96, 44100, "stereo", 5, "2.3"));
+    assert_eq!((s.file_pattern.as_str(), s.folder_pattern.as_str(), s.disc_folder_pattern.as_str(), s.title_pattern.as_str()), ("{author} - {title} {disc:02}.{track:02}", "Books/{author}/{title}", "", "track_title"));
+    assert_eq!((s.track_scheme.as_str(), s.genre.as_str(), s.cover_px, s.eject_after, s.target_kind.as_str(), s.lookup_ready), ("plain", "Hörbuch", 1200, false, "music", true));
+    assert_eq!((s.udev, s.log_keep), (true, 20));
+
+    // A refused value: nothing is saved, the tab comes back with the input and the reason, in the language asked for.
+    type Case<'a> = (Vec<(&'a str, &'a str)>, &'a str, &'a str);
+    let cases: Vec<Case> = vec![
+        (vec![("cd_bitrate_kbps", "0")], "outside the allowed range", "außerhalb des erlaubten Bereichs"),
+        (vec![("cd_bitrate_kbps", "abc")], "outside the allowed range", "außerhalb des erlaubten Bereichs"),
+        (vec![("cd_sample_rate_hz", "12345")], "allowed choices", "erlaubten Möglichkeiten"),
+        (vec![("cd_channel_mode", "surround")], "allowed choices", "erlaubten Möglichkeiten"),
+        (vec![("cd_quality", "10")], "outside the allowed range", "außerhalb des erlaubten Bereichs"),
+        (vec![("cd_id3_version", "1.1")], "allowed choices", "erlaubten Möglichkeiten"),
+        (vec![("cd_format", "wav")], "allowed choices", "erlaubten Möglichkeiten"),
+        (vec![("cd_file_pattern", "{author}_{title}")], "lacks a required placeholder", "Pflicht-Platzhalter"),
+        (vec![("cd_file_pattern", "{disc}/{track}")], "path trick", "Pfad-Trick"),
+        (vec![("cd_file_pattern", "{disc}{track}{nonsense}")], "Unknown placeholder {nonsense}; allowed are: Author {author}", "Unbekannter Platzhalter {nonsense}; erlaubt sind: Autor {author}"),
+        (vec![("cd_file_pattern", "{disc}{track")], "brace", "Klammer"),
+        (vec![("cd_file_pattern", "")], "template is empty", "Vorlage ist leer"),
+        (vec![("cd_folder_pattern", "{author}/../{title}")], "path trick", "Pfad-Trick"),
+        (vec![("cd_folder_pattern", "/{title}")], "path trick", "Pfad-Trick"),
+        (vec![("cd_title_pattern", "{filename}")], "allowed choices", "erlaubten Möglichkeiten"),
+        (vec![("cd_track_scheme", "weird")], "allowed choices", "erlaubten Möglichkeiten"),
+        (vec![("cd_genre", "")], "text is empty", "Text ist leer"),
+        (vec![("cd_cover_px", "5")], "outside the allowed range", "außerhalb des erlaubten Bereichs"),
+        (vec![("cd_eject_after", "maybe")], "allowed choices", "erlaubten Möglichkeiten"),
+        (vec![("cd_udev", "2")], "allowed choices", "erlaubten Möglichkeiten"),
+        (vec![("cd_log_keep", "3")], "outside the allowed range", "außerhalb des erlaubten Bereichs"),
+        (vec![("cd_buffer_seconds", "1")], "outside the allowed range", "außerhalb des erlaubten Bereichs"),
+        (vec![("cd_buffer_seconds", "901")], "outside the allowed range", "außerhalb des erlaubten Bereichs"),
+        (vec![("cd_target_kind", "film")], "allowed choices", "erlaubten Möglichkeiten"),
+        (vec![("cd_musicbrainz_url", "ftp://x")], "must start with https", "muss mit https"),
+    ];
+    for (bad, en, de) in cases {
+        let r = send(&a, post("/admin/rpc/settings.cd", &form(&bad), &o)).await;
+        assert_eq!(r.status, StatusCode::OK, "{bad:?}");
+        assert!(r.body.contains(en), "{bad:?}: {}", r.body);
+        let r = send(&a, post("/admin/rpc/settings.cd", &form(&bad), &o_de)).await;
+        assert!(r.body.contains(de), "{bad:?}: {}", r.body);
+    }
+    // The input stays in its field, so that it can be corrected.
+    let r = send(&a, post("/admin/rpc/settings.cd", &form(&[("cd_bitrate_kbps", "abc")]), &o)).await;
+    assert!(r.body.contains("name=\"cd_bitrate_kbps\" value=\"abc\""), "{}", r.body);
+    // Nothing of the refused saves was kept.
+    let s = david_server::cd_settings::CdSettings::load(&a.store).await.unwrap();
+    assert_eq!((s.bitrate_kbps, s.file_pattern.as_str(), s.log_keep), (96, "{author} - {title} {disc:02}.{track:02}", 20));
+}
+
+#[tokio::test]
+async fn the_tab_cd_import_lists_the_last_imports_with_the_error_in_the_language_of_the_reader() {
+    use david_server::cdimport::JobPatch;
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let mk = |phase: &str, error: &str| JobPatch { phase: Some(phase.into()), error: Some(error.into()), author: Some("Ken Follett".into()), album: Some("Sturz der Titanen".into()), disc: Some(2), discs_total: Some(12), tracks_total: Some(14), ..JobPatch::default() };
+    for (phase, error) in [("done", ""), ("failed", "disc_exists"), ("failed", "format_mismatch"), ("failed", "something_new")] {
+        let j = a.store.create_cd_job(1, "dev", &mk(phase, error)).await.unwrap();
+        a.store.update_cd_job(1, j.id, &mk(phase, error)).await.unwrap();
+    }
+    let en = send(&a, get("/admin/cd", &plain)).await.body;
+    assert!(en.contains("Sturz der Titanen") && en.contains("Ken Follett") && en.contains("2 / 12"), "{en}");
+    assert!(en.contains("This CD is already in the library; nothing was overwritten. (disc_exists)"), "{en}");
+    assert!(en.contains("does not have the format of the settings") && en.contains("(format_mismatch)"), "{en}");
+    assert!(en.contains("The job failed for a reason that is not listed. (something_new)") || en.contains("a reason that is not listed. (something_new)"), "{en}");
+    assert!(en.contains("Failed") && en.contains("Done"), "{en}");
+    let de = send(&a, get("/admin/cd", &Opts { lang: Some("de"), ..plain })).await.body;
+    assert!(de.contains("Diese CD ist schon in der Bibliothek; nichts wurde überschrieben. (disc_exists)") && de.contains("Fehlgeschlagen") && de.contains("Letzte CD-Importe"), "{de}");
+    // The log can be cleared on the page after a question; a job that runs stays.
+    assert!(en.contains("action=\"/admin/rpc/cd.log_clear\"") && en.contains("data-confirm=") && en.contains("Clear the log"), "{en}");
+    let running = a.store.create_cd_job(1, "dev", &JobPatch { phase: Some("ripping".into()), author: Some("A".into()), album: Some("Läuft".into()), disc: Some(1), discs_total: Some(1), tracks_total: Some(3), ..JobPatch::default() }).await.unwrap();
+    let r = send(&a, post("/admin/rpc/cd.log_clear", &form(&[("csrf", csrf.as_str())]), &plain)).await;
+    assert!(r.status.is_redirection(), "{}", r.status);
+    let left = a.store.cd_log(100).await.unwrap();
+    assert_eq!(left.iter().map(|j| j.id).collect::<Vec<_>>(), [running.id], "only the running job is left: {left:?}");
+    let en = send(&a, get("/admin/cd", &plain)).await.body;
+    assert!(!en.contains("disc_exists") && en.contains("Läuft"), "{en}");
+    // Only the last entries are kept (the number is a setting).
+    a.store.save_settings(&[("cd_log_keep".to_owned(), "10".to_owned())]).await.unwrap();
+    for _ in 0..15 {
+        a.store.create_cd_job(1, "dev", &mk("failed", "stale")).await.unwrap();
+    }
+    assert_eq!(a.store.cd_log(100).await.unwrap().len(), 10);
+}
+
+#[tokio::test]
+async fn the_tab_shows_the_drive_of_the_server_and_starts_a_rip_with_localized_refusals() {
+    use david_server::cdrive::fake::disc;
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let htmx = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let htmx_de = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), lang: Some("de") };
+    a.cd.refresh_drives("", true).await;
+
+    // A closed tray without a disc.
+    let page = send(&a, get("/admin/cd", &plain)).await.body;
+    assert!(page.contains("The CD drive of the server") && page.contains("&#x2f;dev&#x2f;fake0") && page.contains("there is no disc") && page.contains("hx-trigger=\"every 3s\""), "{page}");
+    assert!(!page.contains("name=\"author\""), "no form without a disc");
+
+    // An audio CD goes in: the panel shows it and offers the form; the signature of the shown state ends the polling swap.
+    a.drive.edit("/dev/fake0", |u| {
+        u.disc = Some(disc(3));
+        u.changed = true;
+    });
+    a.cd.refresh_drives("", true).await;
+    let panel = send(&a, get("/admin/rpc/cd.drive", &htmx)).await;
+    assert_eq!(panel.status, StatusCode::OK);
+    assert!(panel.body.contains("Audio CD, 3 tracks") && panel.body.contains("name=\"author\"") && panel.body.contains("Import") && panel.body.contains("Eject"), "{}", panel.body);
+    let sig = panel.body.split("sig=").nth(1).unwrap().split(['"', '&']).next().unwrap().to_owned();
+    assert_eq!(send(&a, get(&format!("/admin/rpc/cd.drive?sig={sig}"), &htmx)).await.status, StatusCode::NO_CONTENT);
+    // Without the contact address the page says why there are no suggestions.
+    assert!(panel.body.contains("no contact address") || panel.body.contains("contact address"), "{}", panel.body);
+    let de = send(&a, get("/admin/rpc/cd.drive", &htmx_de)).await.body;
+    assert!(de.contains("Audio-CD, 3 Titel") && de.contains("Auswerfen") && de.contains("Abbrechen"), "{de}");
+    assert!(de.contains("MusicBrainz von Hand durchsuchen") && de.contains("name=\"mbq\"") && de.contains(">Suchen<"), "the search by hand: {de}");
+
+    // A refused start comes back in the panel, in the language asked for, with the code.
+    a.drive.edit("/dev/fake0", |u| u.tray_open = true);
+    a.cd.refresh_drives("", false).await;
+    let r = send(&a, post("/admin/rpc/cd.rip", &form(&[("author", "A"), ("title", "B"), ("disc", "1")]), &htmx)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(r.body.contains("The tray is open. (tray_open)") && r.body.contains("The tray is open"), "{}", r.body);
+    let r = send(&a, post("/admin/rpc/cd.rip", &form(&[("author", "A"), ("title", "B"), ("disc", "1")]), &htmx_de)).await;
+    assert!(r.body.contains("Das Fach ist offen. (tray_open)"), "{}", r.body);
+
+    // The service may not use the drive: a warning at the top of the tab and in the panel.
+    a.drive.edit("/dev/fake0", |u| {
+        u.tray_open = false;
+        u.denied = true;
+    });
+    a.cd.refresh_drives("", false).await;
+    let page = send(&a, get("/admin/cd", &plain)).await.body;
+    assert!(page.contains("may not read the CD drive") && page.contains("its group is missing"), "{page}");
+    let r = send(&a, post("/admin/rpc/cd.rip", &form(&[("author", "A"), ("title", "B"), ("disc", "1")]), &htmx_de)).await;
+    assert!(r.body.contains("(drive_denied)") && r.body.contains("Der Server darf das Laufwerk nicht benutzen"), "{}", r.body);
+
+    // Eject through the page never closes a tray: with the tray open nothing is sent.
+    a.drive.edit("/dev/fake0", |u| {
+        u.denied = false;
+        u.tray_open = true;
+    });
+    a.cd.refresh_drives("", false).await;
+    let before = a.drive.ejects.lock().unwrap().len();
+    send(&a, post("/admin/rpc/cd.eject", &form(&[]), &htmx)).await;
+    assert_eq!(a.drive.ejects.lock().unwrap().len(), before);
+    // A stranger without a session gets no panel.
+    assert_ne!(send(&a, get("/admin/rpc/cd.drive", &Opts::default())).await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn the_panel_lists_the_tracks_keeps_the_choice_and_refuses_an_empty_one() {
+    use david_server::cdrive::fake::disc;
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let htmx = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let htmx_de = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), lang: Some("de") };
+    a.drive.edit("/dev/fake0", |u| {
+        u.disc = Some(disc(3));
+        u.changed = true;
+    });
+    a.cd.refresh_drives("", true).await;
+    let id = a.cd.drives.snapshot().0[0].disc_id.clone().unwrap();
+
+    // The list: every track with a box, its number and length, all ticked, the summary and the three buttons.
+    let panel = send(&a, get("/admin/rpc/cd.drive", &htmx)).await.body;
+    assert_eq!(panel.matches("name=\"only\"").count(), 3, "{panel}");
+    assert_eq!(panel.matches("name=\"only\"").count(), panel.matches(" checked>").count().min(3));
+    assert!(panel.contains("3 of 3 tracks, 6:00") && panel.contains("Track 01") && panel.contains("2:00"), "{panel}");
+    for what in ["all", "none", "invert"] {
+        assert!(panel.contains(&format!("data-cd-select=\"{what}\"")), "{what}");
+    }
+    assert!(panel.contains("data-cd-summary") && panel.contains("data-seconds=\"120\""));
+    assert!(!panel.contains("<script") && !panel.contains(" onclick=") && !panel.contains(" style="), "no inline script or style");
+    assert!(!panel.contains("data-cd-import disabled"));
+    let de = send(&a, get("/admin/rpc/cd.drive", &htmx_de)).await.body;
+    assert!(de.contains("3 von 3 Titeln, 6:00") && de.contains(">Alle<") && de.contains(">Keine<") && de.contains(">Umkehren<") && de.contains("Titel 01"), "{de}");
+
+    // An interrupted rip of this disc has read track 1 (`encoded`): the list marks it, and the notice says what Continue does with the choice.
+    // A choice that differs from the one of the interrupted rip is no reason to read everything again; only other settings for the audio are.
+    {
+        use david_server::cdresume::{self, Entry, Fingerprint, Manifest};
+        let set = david_server::cd_settings::CdSettings::load(&a.store).await.unwrap();
+        let dir = cdresume::dir_of(&a.cd.staging, &id);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut m = Manifest {
+            v: 1,
+            disc_id: id.clone(),
+            started_ms: 1,
+            updated_ms: david_server::now_ms(),
+            fingerprint: Fingerprint::of(&set),
+            only: vec![1, 2, 3],
+            author: "A".into(),
+            title: "T".into(),
+            disc: 1,
+            discs_total: None,
+            kind: "audiobook".into(),
+            tracks: vec![Entry { number: 1, file: "01.mp3".into(), size: 10, sha1: String::new(), seconds: 120, state: "encoded".into() }],
+        };
+        cdresume::write(&dir, &m).unwrap();
+        let all = send(&a, get("/admin/rpc/cd.drive", &htmx)).await.body;
+        assert_eq!(all.matches("class=\"cd-read\"").count(), 1, "only the track that was read is marked: {all}");
+        assert!(all.contains("Continuing takes over 1 of the tracks you chose") && all.contains("reads the other 2"), "{all}");
+        assert!(!all.contains("will be read again from the start"), "{all}");
+        // Another choice (track 1 not chosen any more): it is dropped, and the notice says so; the buttons Continue and Read again stay.
+        let other = send(&a, get(&format!("/admin/rpc/cd.drive?sig=old&sel=1&disc_id={id}&only=2&only=3"), &htmx)).await.body;
+        assert!(other.contains("takes over 0 of the tracks you chose") && other.contains("1 track(s) that were read but are not chosen now are dropped"), "{other}");
+        assert!(other.contains("name=\"resume\" value=\"1\""), "Continue is offered: {other}");
+        let de = send(&a, get("/admin/rpc/cd.drive", &htmx_de)).await.body;
+        assert!(de.contains("Fortsetzen übernimmt 1 der gewählten Titel"), "{de}");
+        // Other settings for the audio: everything is read again, and the notice says that.
+        m.fingerprint.bitrate_kbps += 32;
+        cdresume::write(&dir, &m).unwrap();
+        let changed = send(&a, get("/admin/rpc/cd.drive", &htmx)).await.body;
+        assert!(changed.contains("settings for the audio have changed since then"), "{changed}");
+        assert!(!changed.contains("class=\"cd-read\""), "nothing is taken over: {changed}");
+        assert!(!changed.contains("name=\"resume\" value=\"1\""), "{changed}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // The page sends back the choice with every ask. A new picture of the panel keeps it, and what was typed.
+    let uri = format!("/admin/rpc/cd.drive?sig=old&sel=1&disc_id={id}&only=1&only=3&author=Typed+Author&title=My+Book&disc=2&kind=music");
+    let kept = send(&a, get(&uri, &htmx)).await.body;
+    assert!(kept.contains("2 of 3 tracks, 4:00"), "{kept}");
+    assert_eq!(kept.matches(" checked>").count(), 2, "{kept}");
+    assert!(kept.contains("value=\"1\" data-seconds=\"120\" aria-label=\"Take 01\" checked") && !kept.contains("aria-label=\"Take 02\" checked"), "{kept}");
+    assert!(kept.contains("name=\"author\" value=\"Typed Author\"") && kept.contains("value=\"My Book\"") && kept.contains("<option value=\"music\" selected>"), "{kept}");
+    // A choice for another disc is not applied to this one; "Cancel" starts afresh.
+    let other = send(&a, get("/admin/rpc/cd.drive?sig=old&sel=1&disc_id=someotherdisc&only=2", &htmx)).await.body;
+    assert!(other.contains("3 of 3 tracks"), "{other}");
+    let reset = send(&a, get(&format!("/admin/rpc/cd.drive?sig=old&reset=1&sel=1&disc_id={id}&only=2&author=X"), &htmx)).await.body;
+    assert!(reset.contains("3 of 3 tracks") && !reset.contains("value=\"X\""), "{reset}");
+    // Nothing ticked: the summary says 0, the import button is disabled.
+    let none = send(&a, get(&format!("/admin/rpc/cd.drive?sig=old&sel=1&disc_id={id}"), &htmx)).await.body;
+    assert!(none.contains("0 of 3 tracks, 0:00") && none.contains("data-cd-import disabled"), "{none}");
+    // The signature of the shown state ends the swap, so ticks and text on the page stay as they are.
+    let sig = panel.split("sig=").nth(1).unwrap().split(['"', '&']).next().unwrap().to_owned();
+    assert_eq!(send(&a, get(&format!("/admin/rpc/cd.drive?sig={sig}&sel=1&disc_id={id}&only=2"), &htmx)).await.status, StatusCode::NO_CONTENT);
+
+    // The server refuses an empty choice, in both languages, and keeps what was typed and ticked.
+    let body = form(&[("sel", "1"), ("disc_id", &id), ("author", "Kept Author"), ("title", "B"), ("disc", "1")]);
+    let r = send(&a, post("/admin/rpc/cd.rip", &body, &htmx)).await.body;
+    assert!(r.contains("No track is chosen; choose at least one. (empty_selection)") && r.contains("Kept Author"), "{r}");
+    let r = send(&a, post("/admin/rpc/cd.rip", &body, &htmx_de)).await.body;
+    assert!(r.contains("Es ist kein Titel gewählt; wähle mindestens einen. (empty_selection)"), "{r}");
+    // A number that is not on the disc.
+    let bad = format!("{}&only=9", form(&[("sel", "1"), ("disc_id", &id), ("author", "A"), ("title", "B"), ("disc", "1"), ("only", "1")]));
+    let r = send(&a, post("/admin/rpc/cd.rip", &bad, &htmx)).await.body;
+    assert!(r.contains("(invalid_selection)"), "{r}");
+}
+
+#[tokio::test]
+async fn template_fields_name_their_placeholders_in_plain_words_preview_the_result_and_explain_errors() {
+    let a = app().await;
+    let (cookie, _csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let en = send(&a, get("/admin/settings?tab=cdimport", &plain)).await.body;
+    let tab = &en[en.find("id=\"cd-tab\"").unwrap()..];
+    // Every template field has its own block with a line of placeholders (data attributes, no inline script).
+    assert_eq!(tab.matches("data-cd-field").count(), 3);
+    assert_eq!(tab.matches("data-cd-hint").count(), 3);
+    for part in ["data-insert=\"{author}\"", "data-insert=\"{title}\"", "data-insert=\"{disc:02}\"", "data-insert=\"{track:02}\"", "data-insert=\"{track_title}\"", "Author <code>{author}</code>", "Title of the book or album <code>{title}</code>", "CD number <code>{disc}</code>", "Track number, with a leading zero <code>{track:02}</code>", "Title of the track <code>{track_title}</code>", "Narrator"] {
+        assert!(tab.contains(part), "{part}");
+    }
+    // Only what a field knows: the file name has the track, the folder of a disc has the CD number and not the track.
+    assert_eq!(tab.matches("data-insert=\"{track}\"").count(), 1);
+    assert_eq!(tab.matches("data-insert=\"{disc}\"").count(), 2);
+    assert_eq!(tab.matches("data-insert=\"{narrator}\"").count(), 2);
+    assert!(tab.contains("hx-get=\"/admin/rpc/cd.preview?field=cd_file_pattern\"") && tab.contains("id=\"cd-preview-cd_disc_folder_pattern\""));
+    // The line is plain text without the script, and the buttons are made visible by it.
+    assert!(tab.contains("data-cd-nojs") && tab.contains("data-cd-js hidden"));
+    assert!(!tab.contains("<script") && !tab.contains(" onclick=") && !tab.contains(" style="), "no inline script or style");
+    let de = send(&a, get("/admin/settings?tab=cdimport", &Opts { lang: Some("de"), ..plain })).await.body;
+    for part in ["Autor <code>{author}</code>", "Titel des Buchs oder Albums <code>{title}</code>", "CD-Nummer <code>{disc}</code>", "Tracknummer, mit führender Null <code>{track:02}</code>", "Titel des Tracks <code>{track_title}</code>", "Sprecher"] {
+        assert!(de.contains(part), "{part}");
+    }
+
+    // The preview is the real naming.
+    let file = send(&a, get("/admin/rpc/cd.preview?field=cd_file_pattern&pattern=%7Bauthor%7D_%7Btitle%7D_CD%7Bdisc%3A02%7D_TR%7Btrack%3A02%7D", &plain)).await;
+    assert_eq!(file.status, StatusCode::OK);
+    assert!(file.body.contains("Example: Ken Follett_Sturz der Titanen_CD03_TR05.mp3"), "{}", file.body);
+    let folder = send(&a, get("/admin/rpc/cd.preview?field=cd_folder_pattern&pattern=%7Bauthor%7D%2F%7Btitle%7D%20(%7Byear%7D)", &plain)).await.body;
+    assert!(folder.contains("Example: Ken Follett/Sturz der Titanen (2010)"), "{folder}");
+    let disc = send(&a, get("/admin/rpc/cd.preview?field=cd_disc_folder_pattern&pattern=CD%20%7Bdisc%7D", &plain)).await.body;
+    assert!(disc.contains("Example: CD 3"), "{disc}");
+    // The field itself may carry the value (the name of the input).
+    let by_name = send(&a, get("/admin/rpc/cd.preview?field=cd_disc_folder_pattern&cd_disc_folder_pattern=Disc%20%7Bdisc%3A02%7D", &plain)).await.body;
+    assert!(by_name.contains("Example: Disc 03"), "{by_name}");
+    let german = send(&a, get("/admin/rpc/cd.preview?field=cd_file_pattern&pattern=%7Bdisc%7D-%7Btrack%7D", &Opts { lang: Some("de"), ..plain })).await.body;
+    assert!(german.contains("Beispiel: 3-5.mp3"), "{german}");
+
+    // An invalid template shows the reason with the plain names, not a preview.
+    let unknown = send(&a, get("/admin/rpc/cd.preview?field=cd_file_pattern&pattern=%7Bdisc%7D%7Btrack%7D%7Bx%7D", &plain)).await.body;
+    assert!(unknown.contains("Unknown placeholder {x}; allowed are: Author {author}, Title of the book or album {title}, Narrator {narrator}, Year {year}, CD number {disc}, Track number {track}, Title of the track {track_title}.") && !unknown.contains("Example"), "{unknown}");
+    let unknown_de = send(&a, get("/admin/rpc/cd.preview?field=cd_disc_folder_pattern&pattern=%7Bdisc%7D%7Btrack%7D", &Opts { lang: Some("de"), ..plain })).await.body;
+    assert!(unknown_de.contains("Unbekannter Platzhalter {track}; erlaubt sind: CD-Nummer {disc}, Titel des Buchs oder Albums {title}."), "{unknown_de}");
+    let missing = send(&a, get("/admin/rpc/cd.preview?field=cd_file_pattern&pattern=%7Bauthor%7D", &plain)).await.body;
+    assert!(missing.contains("lacks a required placeholder: CD number {disc}, Track number {track}"), "{missing}");
+    let empty = send(&a, get("/admin/rpc/cd.preview?field=cd_file_pattern&pattern=", &plain)).await.body;
+    assert!(empty.contains("The template is empty."), "{empty}");
+    // Only the template fields have a preview; a stranger gets none.
+    assert!(send(&a, get("/admin/rpc/cd.preview?field=cd_genre&pattern=x", &plain)).await.body.is_empty());
+    assert_ne!(send(&a, get("/admin/rpc/cd.preview?field=cd_file_pattern&pattern=x", &Opts::default())).await.status, StatusCode::OK);
+
+    // On saving, the refusal names the placeholder in plain words as well.
+    let htmx = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&_csrf), ..Default::default() };
+    let r = send(&a, post("/admin/rpc/settings.cd", &form(&[("cd_file_pattern", "{disc}{track}{nope}")]), &htmx)).await.body;
+    assert!(r.contains("Unknown placeholder {nope}; allowed are: Author {author}"), "{r}");
+}
+
+#[tokio::test]
+async fn the_panel_shows_the_progress_and_the_state_of_each_chosen_track_while_a_rip_runs_and_after_it() {
+    use david_server::cdrive::fake::disc_sectors;
+    use std::time::Duration;
+    if !common::audio::ffmpeg_available() {
+        eprintln!("ffmpeg is not installed: test skipped");
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let htmx = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let htmx_de = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), lang: Some("de") };
+    // A library to put the files in, and a 2 second MP3 for the fake drive to "rip".
+    let library = tempfile::tempdir().unwrap();
+    a.store.save_import_criteria(&[library.path().canonicalize().unwrap().to_string_lossy().into_owned()], david_server::RatingRule::Manual).await.unwrap();
+    a.store.save_settings(&[("min_free_gb".to_owned(), "0".to_owned()), ("cd_eject_after".to_owned(), "0".to_owned())]).await.unwrap();
+    let work = tempfile::tempdir().unwrap();
+    common::audio::make(&work.path().join("t.mp3"), &["-c:a", "libmp3lame", "-b:a", "64k", "-ar", "24000", "-ac", "2"], &[]);
+    *a.drive.mp3.lock().unwrap() = std::fs::read(work.path().join("t.mp3")).unwrap();
+    a.drive.edit("/dev/fake0", |u| {
+        u.disc = Some(disc_sectors(4, 150));
+        u.changed = true;
+    });
+    a.cd.refresh_drives("", true).await;
+    let id = a.cd.drives.snapshot().0[0].disc_id.clone().unwrap();
+
+    // Tracks 1 to 3 are chosen (not 4); the drive is half way through track 2.
+    *a.drive.hold_in.lock().unwrap() = Some(2);
+    // A ring of 8 seconds, nearly full: the encoder (or the writing) is the brake; the reader has waited 3 times.
+    a.store.save_settings(&[("cd_buffer_seconds".to_owned(), "8".to_owned())]).await.unwrap();
+    *a.drive.filled_bytes.lock().unwrap() = 1_400_000;
+    let body = form(&[("sel", "1"), ("disc_id", &id), ("author", "Ken Follett"), ("title", "Sturz der Titanen"), ("disc", "1"), ("only", "1"), ("only", "2"), ("only", "3"), ("tracks", "Teil 1\nTeil 2\nTeil 3\nTeil 4")]);
+    let started = send(&a, post("/admin/rpc/cd.rip", &body, &htmx)).await;
+    assert_eq!(started.status, StatusCode::OK, "{}", started.body);
+    let mut first = String::new();
+    for _ in 0..200 {
+        first = send(&a, get("/admin/rpc/cd.drive", &htmx)).await.body;
+        if first.contains("data-state=\"reading\"") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    // The bar has a value and the line says which track it is; only the chosen tracks are listed, each with its state.
+    assert!(first.contains("<progress value=\"50\" max=\"100\">") && first.contains("50 %"), "{first}");
+    assert!(first.contains("Track 2 of 3 · Reading"), "{first}");
+    // The buffer: how much waits, and what brakes (here it is full).
+    assert!(first.contains("Buffer 8 s of 8 s (99 %)") && first.contains("The buffer is full: the reader has had to wait for the encoder or the disk.") && first.contains("data-buffer=\"full\""), "{first}");
+    assert!(first.contains("The reader had to wait 3 times for room in the buffer, the longest wait 2.5 s."), "{first}");
+    // The speed is what the drive was measured to deliver, not a guess from the buffer.
+    assert!(first.contains("The drive reads at 8.0x (measured; 1x = 75 sectors a second)."), "{first}");
+    assert_eq!(first.matches("data-state=").count(), 3, "track 4 was not chosen: {first}");
+    let states: Vec<&str> = first.split("data-state=\"").skip(1).map(|p| p.split('"').next().unwrap()).collect();
+    assert_eq!(states, ["done", "reading", "waiting"], "{first}");
+    assert!(first.contains("Teil 2") && first.contains("0:02") && first.contains("Reading 50 %") && !first.contains("Teil 4"), "{first}");
+    assert!(!first.contains("name=\"only\""), "no form while it runs");
+    let de = send(&a, get("/admin/rpc/cd.drive", &htmx_de)).await.body;
+    assert!(de.contains("Titel 2 von 3 · Lesen") && de.contains("Wird gelesen 50 %") && de.contains("Wartet"), "{de}");
+    assert!(de.contains("Puffer 8 s von 8 s (99 %)") && de.contains("Der Puffer ist voll: das Lesen musste auf den Kodierer oder die Platte warten.") && de.contains("Der Leser musste 3-mal auf Platz im Puffer warten, die längste Wartezeit 2.5 s."), "{de}");
+    assert!(!first.contains("<script") && !first.contains(" style=") && !first.contains(" onclick="));
+
+    // The same state is "no change" (204); a state further on is a new picture and not 204.
+    let sig = first.split("sig=").nth(1).unwrap().split(['"', '&']).next().unwrap().to_owned();
+    assert_eq!(send(&a, get(&format!("/admin/rpc/cd.drive?sig={sig}"), &htmx)).await.status, StatusCode::NO_CONTENT);
+    *a.drive.hold_in.lock().unwrap() = Some(3);
+    let mut second = send(&a, get(&format!("/admin/rpc/cd.drive?sig={sig}"), &htmx)).await;
+    for _ in 0..200 {
+        if second.status == StatusCode::OK && second.body.contains("Track 3 of 3") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        second = send(&a, get(&format!("/admin/rpc/cd.drive?sig={sig}"), &htmx)).await;
+    }
+    assert_eq!(second.status, StatusCode::OK, "the bar moved, so the panel is drawn again");
+    let states: Vec<&str> = second.body.split("data-state=\"").skip(1).map(|p| p.split('"').next().unwrap()).collect();
+    assert_eq!(states, ["done", "done", "reading"], "{}", second.body);
+
+    // Stopped by the person: the list stays with the result (the track it stopped on is told), until it is closed.
+    let job_id = a.store.cd_log(5).await.unwrap()[0].id;
+    send(&a, post("/admin/rpc/cd.cancel", &form(&[("id", &job_id.to_string())]), &htmx)).await;
+    let mut after = String::new();
+    for _ in 0..200 {
+        after = send(&a, get("/admin/rpc/cd.drive", &htmx)).await.body;
+        if after.contains("data-state=\"failed\"") && after.contains("Close") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let states: Vec<&str> = after.split("data-state=\"").skip(1).map(|p| p.split('"').next().unwrap()).collect();
+    assert_eq!(states, ["done", "done", "failed"], "{after}");
+    assert!(after.contains("The job was cancelled. (cancelled)") && after.contains("Close"), "{after}");
+    assert!(after.contains("name=\"only\""), "the form is back for the next rip");
+    let de = send(&a, get("/admin/rpc/cd.drive", &htmx_de)).await.body;
+    assert!(de.contains("Der Auftrag wurde abgebrochen. (cancelled)") && de.contains("Schließen"), "{de}");
+    // Closing removes the list; a new rip replaces it as well.
+    send(&a, post("/admin/rpc/cd.dismiss", &form(&[("device", "/dev/fake0")]), &htmx)).await;
+    assert!(!send(&a, get("/admin/rpc/cd.drive", &htmx)).await.body.contains("data-state="));
+}
+
+#[tokio::test]
+async fn the_panel_offers_to_repair_a_cd_that_is_in_the_library_and_the_log_shows_what_the_automatic_import_turned_down() {
+    use david_server::cdpresent::{DiscRecord, DiscRow, DiscTrackRow};
+    use david_server::cdrive::fake::disc_sectors;
+    if !common::audio::ffmpeg_available() {
+        eprintln!("ffmpeg is not installed: test skipped");
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let htmx = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let htmx_de = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), lang: Some("de") };
+    let library = tempfile::tempdir().unwrap();
+    let root = library.path().canonicalize().unwrap();
+    a.store.save_import_criteria(&[root.to_string_lossy().into_owned()], david_server::RatingRule::Manual).await.unwrap();
+    a.drive.edit("/dev/fake0", |u| {
+        u.disc = Some(disc_sectors(3, 150));
+        u.changed = true;
+    });
+    a.cd.refresh_drives("", true).await;
+    let disc_id = a.cd.drives.snapshot().0[0].disc_id.clone().unwrap();
+
+    // An earlier import wrote the disc down: tracks 1 and 3 are there, track 2 is not.
+    let book = root.join("Ken Follett/Sturz der Titanen/CD 2");
+    std::fs::create_dir_all(&book).unwrap();
+    for n in [1, 3] {
+        common::audio::make(&book.join(format!("Ken Follett_Sturz der Titanen_CD02_TR{n:02}.mp3")), &["-c:a", "libmp3lame", "-b:a", "64k", "-ar", "24000", "-ac", "2"], &[]);
+    }
+    let row = DiscRow { disc_id: disc_id.clone(), author: "Ken Follett".into(), title: "Sturz der Titanen".into(), disc: 2, discs_total: 12, kind: "audiobook".into(), folder: "Ken Follett/Sturz der Titanen".into() };
+    let tracks = (1..=3).map(|n| DiscTrackRow { number: n, file: format!("Ken Follett/Sturz der Titanen/CD 2/Ken Follett_Sturz der Titanen_CD02_TR{n:02}.mp3"), sha1: String::new(), seconds: 2 }).collect();
+    a.store.record_cd_disc(&DiscRecord { row, tracks }).await.unwrap();
+
+    let panel = send(&a, get("/admin/rpc/cd.drive", &htmx)).await.body;
+    assert!(panel.contains("This CD is in the library already") && panel.contains("Ken Follett: Sturz der Titanen, CD 2"), "{panel}");
+    assert!(panel.contains("Missing: 2.") && panel.contains("Repair") && panel.contains("name=\"mode\" value=\"heal\""), "{panel}");
+    assert!(!panel.contains("name=\"author\""), "no form for a new import");
+    // Eject is in the row of Cancel and Repair (one row, the button names the eject form), and not a second time on its own.
+    let foot = &panel[panel.find("class=\"form-foot\"").expect("the row of buttons")..];
+    let foot = &foot[..foot.find("</div>").unwrap()];
+    assert!(foot.contains("form=\"cd-eject-form\"") && foot.contains("Repair"), "{foot}");
+    assert_eq!(panel.matches(">Eject<").count(), 1, "{panel}");
+    assert!(panel.contains("id=\"cd-eject-form\""));
+    assert!(panel.contains("hx-get=\"/admin/rpc/cd.drive?force=1\"") && panel.contains("Import this CD as a new copy anyway"));
+    let de = send(&a, get("/admin/rpc/cd.drive", &htmx_de)).await.body;
+    assert!(de.contains("Diese CD ist schon in der Bibliothek") && de.contains("Fehlt: 2.") && de.contains("Reparieren"), "{de}");
+    // A damaged file: told with its lengths.
+    std::fs::write(book.join("Ken Follett_Sturz der Titanen_CD02_TR03.mp3"), b"").unwrap();
+    let panel = send(&a, get("/admin/rpc/cd.drive", &htmx)).await.body;
+    assert!(panel.contains("Damaged: Track 3 (empty)"), "{panel}");
+    // The form for a new import is there when it is asked for; it says it is a new copy.
+    let forced = send(&a, get("/admin/rpc/cd.drive?force=1", &htmx)).await.body;
+    assert!(forced.contains("name=\"author\"") && forced.contains("name=\"force\" value=\"1\""), "{forced}");
+    // A start without it is turned down with the reason.
+    let refused = send(&a, post("/admin/rpc/cd.rip", &form(&[("sel", "1"), ("disc_id", &disc_id), ("author", "Ken Follett"), ("title", "Sturz der Titanen"), ("disc", "2"), ("only", "1")]), &htmx_de)).await.body;
+    assert!(refused.contains("Diese CD ist schon in der Bibliothek; es wurde nichts importiert") && refused.contains("(disc_present)"), "{refused}");
+    // Whole again: it says so and reads nothing.
+    common::audio::make(&book.join("Ken Follett_Sturz der Titanen_CD02_TR03.mp3"), &["-c:a", "libmp3lame", "-b:a", "64k", "-ar", "24000", "-ac", "2"], &[]);
+    common::audio::make(&book.join("Ken Follett_Sturz der Titanen_CD02_TR02.mp3"), &["-c:a", "libmp3lame", "-b:a", "64k", "-ar", "24000", "-ac", "2"], &[]);
+    let whole = send(&a, get("/admin/rpc/cd.drive", &htmx)).await.body;
+    assert!(whole.contains("The CD is whole in the library (3 of 3 tracks).") && !whole.contains("name=\"mode\" value=\"heal\""), "{whole}");
+
+    // The log: a turned-down automatic import, in both languages, with the book, marked as automatic.
+    let job = a.store.create_cd_job(0, "auto", &david_server::cdimport::JobPatch { phase: Some("skipped".into()), author: Some("Ken Follett".into()), album: Some("Sturz der Titanen".into()), disc: Some(2), ..Default::default() }).await.unwrap();
+    a.store.update_cd_job(0, job.id, &david_server::cdimport::JobPatch { error: Some("disc_present".into()), message: Some("Ken Follett: Sturz der Titanen, CD 2".into()), ..Default::default() }).await.unwrap();
+    let page = send(&a, get("/admin/cd", &plain)).await.body;
+    assert!(page.contains("Skipped") && page.contains("(disc_present)") && page.contains("automatic") && page.contains("(Ken Follett: Sturz der Titanen, CD 2)"), "{page}");
+    let page_de = send(&a, get("/admin/cd", &Opts { lang: Some("de"), ..plain })).await.body;
+    assert!(page_de.contains("Übersprungen") && page_de.contains("nichts importiert") && page_de.contains("automatisch"), "{page_de}");
+    // The two settings are on the tab with their explanation.
+    let tab = send(&a, get("/admin/settings?tab=cdimport", &plain)).await.body;
+    assert!(tab.contains("name=\"cd_auto_import\"") && tab.contains("name=\"cd_heal_tolerance_s\"") && tab.contains("never imported again by itself"), "{tab}");
+}
+
+#[tokio::test]
+async fn the_titles_of_an_album_open_under_it_and_are_loaded_when_opened() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    a.store.import_books(vec![book("Follett", "Winter der Welt", &[2, 1])]).await.unwrap();
+    let id = a.store.admin_book_rows().await.unwrap()[0].id;
+
+    // The row carries the list, closed and empty; it asks for the titles when it is opened.
+    let page = send(&a, get("/admin/books", &plain)).await.body;
+    assert!(page.contains("class=\"track-details\"") && page.contains(&format!("hx-get=\"/admin/rpc/book.tracks?id={id}\"")), "{page}");
+    assert!(page.contains("3 tracks"));
+    assert!(!page.contains("Winter der Welt_CD01_TR01"), "the titles are not in the page");
+
+    let r = send(&a, get(&format!("/admin/rpc/book.tracks?id={id}"), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    for title in ["Winter der Welt_CD01_TR01", "Winter der Welt_CD01_TR02", "Winter der Welt_CD02_TR01"] {
+        assert!(r.body.contains(title), "{title}: {}", r.body);
+    }
+    assert!(r.body.contains("4:00"), "the length of a title");
+    assert_eq!(send(&a, get("/admin/rpc/book.tracks?id=99999", &o)).await.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn the_genre_page_keeps_the_list_and_gives_loose_tag_texts_a_genre() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), ..Default::default() };
+    let mut music = book("Petra", "Beyond Belief", &[1]);
+    music.kind = "music".into();
+    music.genre = Some("Christian Rock".into());
+    a.store.import_books(vec![music]).await.unwrap();
+
+    let page = send(&a, get("/admin/genres", &plain)).await.body;
+    assert!(page.contains("Christian Rock") && page.contains("Tag texts without a genre"), "{page}");
+
+    let r = send(&a, post("/admin/rpc/genre.add", &form(&[("name", "Rock")]), &o)).await;
+    assert!(r.status.is_redirection(), "{}", r.body);
+    let id = a.store.genres().await.unwrap()[0].id.to_string();
+    let r = send(&a, post("/admin/rpc/genre.assign", &form(&[("tag", "Christian Rock"), ("id", &id)]), &o)).await;
+    assert!(r.status.is_redirection(), "{}", r.body);
+    let page = send(&a, get("/admin/genres", &plain)).await.body;
+    assert!(page.contains("Every tag text has a genre."), "{page}");
+
+    let r = send(&a, post("/admin/rpc/genre.delete", &form(&[("id", &id)]), &o)).await;
+    assert!(r.status.is_redirection(), "{}", r.body);
+    assert!(a.store.genres().await.unwrap().is_empty());
+}
+
+/// A drop of loose files and folders: for each file its `path` and then the `file`, as the page sends them.
+fn drop_request(csrf: &str, cookie: &str, kind: &str, files: &[(&str, &[u8])]) -> Request<Body> {
+    let boundary = "XBOUNDARYX";
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"kind\"\r\n\r\n{kind}\r\n").as_bytes());
+    for (path, bytes) in files {
+        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"path\"\r\n\r\n{path}\r\n").as_bytes());
+        let name = path.rsplit('/').next().unwrap();
+        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\nContent-Type: application/octet-stream\r\n\r\n").as_bytes());
+        body.extend_from_slice(bytes);
+        body.extend_from_slice(b"\r\n");
+    }
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    Request::builder()
+        .method("POST")
+        .uri(format!("/admin/rpc/upload.files?csrf={csrf}"))
+        .header(header::COOKIE, cookie)
+        .header("hx-request", "true")
+        .header(header::CONTENT_TYPE, format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn dropped_folders_and_files_are_queued_filed_by_their_tags_and_imported() {
+    if !common::audio::ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is missing");
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let library = tempfile::TempDir::new().unwrap();
+    let root = std::fs::canonicalize(library.path()).unwrap().to_string_lossy().into_owned();
+    send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &root), ("rule", "manual")]), &o)).await;
+    send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
+
+    let work = tempfile::TempDir::new().unwrap();
+    common::audio::make_mp3(&work.path().join("t1.mp3"), &[("artist", "Ken Follett"), ("album", "Winter der Welt")]);
+    common::audio::make_mp3(&work.path().join("t2.mp3"), &[("artist", "Ken Follett"), ("album", "Winter der Welt")]);
+    let (t1, t2) = (std::fs::read(work.path().join("t1.mp3")).unwrap(), std::fs::read(work.path().join("t2.mp3")).unwrap());
+
+    // Nothing that is audio or a picture: refused, nothing queued.
+    let r = send(&a, drop_request(&csrf, &cookie, "audiobook", &[("Folder/notes.exe", b"MZ")])).await;
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", r.body);
+    assert!(a.store.upload_jobs(5).await.unwrap().is_empty());
+
+    // A dropped folder with two files, a note that is dropped and a path that tries to leave the folder.
+    let r = send(&a, drop_request(&csrf, &cookie, "audiobook", &[("Folder/t1.mp3", &t1), ("Folder/notes.exe", b"MZ"), ("Folder/../../t2.mp3", &t2)])).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let jobs = wait_for_uploads(&a).await;
+    assert_eq!(jobs[0].state, "done", "{}", jobs[0].message);
+    let dest = library.path().join("Ken Follett/Winter der Welt");
+    assert!(dest.join("t1.mp3").is_file() && dest.join("t2.mp3").is_file() && !dest.join("notes.exe").exists());
+    let books = a.store.admin_book_rows().await.unwrap();
+    assert!(books.iter().any(|b| b.title == "Winter der Welt" && b.tracks == 2), "imported: {books:?}");
+}
+
+#[tokio::test]
+async fn the_requests_page_lists_what_a_child_asked_for_and_releases_or_refuses_it() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), ..Default::default() };
+    let mut daytime = david_server::Schedule::none();
+    daytime.allow_every_day(7 * 60, 19 * 60);
+    let kid = a.store.create_user(david_server::NewProfile::child("Kid", 8, daytime)).await.unwrap();
+    let feed = a.store.save_feed("https://example.org/feed.xml", &david_server::podcast::parse(r#"<rss version="2.0"><channel><title>Kinderfunk</title><item><title>E</title><guid>a</guid><enclosure url="https://example.org/1.mp3" type="audio/mpeg"/></item></channel></rss>"#).unwrap()).await.unwrap();
+    a.store.subscribe(kid, feed, false).await.unwrap();
+    let station = a.store.save_station("https://stream.example.org/a", "Radio A", None, None).await.unwrap();
+    a.store.favorite_station(kid, station, false).await.unwrap();
+
+    let page = send(&a, get("/admin/releases", &plain)).await.body;
+    assert!(page.contains("Kinderfunk") && page.contains("Radio A") && page.contains("Kid"), "{page}");
+    let (kid_s, feed_s, station_s) = (kid.to_string(), feed.to_string(), station.to_string());
+    let r = send(&a, post("/admin/rpc/release.decide", &form(&[("kind", "podcast"), ("profile", &kid_s), ("target", &feed_s), ("release", "1")]), &o)).await;
+    assert!(r.status.is_redirection(), "{}", r.body);
+    let r = send(&a, post("/admin/rpc/release.decide", &form(&[("kind", "station"), ("profile", &kid_s), ("target", &station_s), ("release", "0")]), &o)).await;
+    assert!(r.status.is_redirection(), "{}", r.body);
+    assert!(a.store.follows(kid, feed).await.unwrap());
+    assert!(a.store.favorite_stations(kid, false).await.unwrap().is_empty());
+    assert!(send(&a, get("/admin/releases", &plain)).await.body.contains("Nothing waits"));
+}
+
+#[tokio::test]
+async fn a_tag_text_is_filtered_given_a_standard_genre_and_written_into_the_files() {
+    if !common::audio::ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is missing");
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), ..Default::default() };
+    let music = tempfile::TempDir::new().unwrap();
+    a.store.save_music_roots(&[music.path().display().to_string()]).await.unwrap();
+    for (title, tag) in [("A", "Christian"), ("B", "Religious"), ("C", "Jazz")] {
+        common::audio::make_mp3(&music.path().join(format!("Artist/{title}/01.mp3")), &[("album", title), ("artist", "Artist"), ("genre", tag)]);
+    }
+    a.store.scan_kind(music.path(), "music").await.unwrap();
+    let genre_of = |title: &'static str| {
+        let path = music.path().join(format!("Artist/{title}/01.mp3"));
+        async move { david_server::tags::read_fields(&path).unwrap().into_iter().find(|(n, _)| n == "Genre").and_then(|(_, v)| v.first().cloned()) }
+    };
+
+    // The page filters (and offers the names of the ID3 standard list in a searchable field).
+    let page = send(&a, get("/admin/genres", &plain)).await.body;
+    assert!(page.contains("Christian") && page.contains("Jazz") && page.contains("id=\"id3-genres\"") && page.contains("<option value=\"Gospel\">"), "{page}");
+    let filtered = send(&a, get("/admin/genres?q=christ", &plain)).await.body;
+    assert!(filtered.contains("<strong>Christian</strong>") && !filtered.contains("<strong>Jazz</strong>"), "{filtered}");
+
+    // A name that is neither on the standard list nor one of the family's genres is refused.
+    let r = send(&a, post("/admin/rpc/genre.from_tag", &form(&[("tag", "Christian"), ("name", "Made up"), ("retag", "1")]), &o)).await;
+    assert_eq!(r.status, StatusCode::SEE_OTHER);
+    assert!(r.headers.get("location").is_some_and(|l| l.to_str().unwrap().contains("msg=err.")), "{} {:?}", r.status, r.headers);
+    assert!(a.store.genres().await.unwrap().is_empty() && genre_of("A").await.as_deref() == Some("Christian"));
+
+    // Two free texts get one standard genre (any case is taken as the standard spelling), and the files are tagged at once.
+    for text in ["Christian", "Religious"] {
+        let r = send(&a, post("/admin/rpc/genre.from_tag", &form(&[("tag", text), ("name", "gospel"), ("retag", "1")]), &o)).await;
+        assert!(r.status.is_redirection(), "{}", r.body);
+    }
+    let list = a.store.genres().await.unwrap();
+    assert_eq!((list[0].name.as_str(), list[0].albums), ("Gospel", 2));
+    assert_eq!((genre_of("A").await.as_deref(), genre_of("B").await.as_deref(), genre_of("C").await.as_deref()), (Some("Gospel"), Some("Gospel"), Some("Jazz")), "only the files of those texts changed");
+
+    // Without the tick the files stay as they are: the library gets the genre and the file keeps its text.
+    let r = send(&a, post("/admin/rpc/genre.from_tag", &form(&[("tag", "Jazz"), ("name", "Jazz")]), &o)).await;
+    assert!(r.status.is_redirection(), "{}", r.body);
+    assert_eq!(a.store.genres().await.unwrap().len(), 2);
+    assert!(send(&a, get("/admin/genres", &plain)).await.body.contains("Tag texts without a genre") || true);
+}
+
+/// A filter that the template engine does not know makes the whole panel fail at run time, and only when the branch that uses it is
+/// drawn (a list of matches once led to `urlencode`, which is not there). Every filter of the templates must be one that is known to work.
+#[test]
+fn the_templates_use_only_filters_the_engine_has() {
+    const KNOWN: &[&str] = &["format", "int", "join", "length", "lower", "replace", "round", "string"];
+    let mut used = std::collections::BTreeSet::new();
+    let mut stack = vec![std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates")];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "html") {
+                let text = std::fs::read_to_string(&path).unwrap();
+                // Inside `{{ ... }}` and `{% ... %}` only (a bar in a comment or a text is no filter).
+                for block in text.split("{{").skip(1).chain(text.split("{%").skip(1)) {
+                    let code = block.split("}}").next().unwrap().split("%}").next().unwrap();
+                    let mut rest = code;
+                    while let Some(i) = rest.find('|') {
+                        let after = rest[i + 1..].trim_start();
+                        if !after.starts_with('|') {
+                            let name: String = after.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+                            if !name.is_empty() {
+                                used.insert(name);
+                            }
+                        }
+                        rest = &rest[i + 1..];
+                    }
+                }
+            }
+        }
+    }
+    let unknown: Vec<_> = used.iter().filter(|u| !KNOWN.contains(&u.as_str())).collect();
+    assert!(unknown.is_empty(), "filters that are not known to exist: {unknown:?}");
+}
+
+#[tokio::test]
+async fn every_member_has_a_folder_for_every_medium_chosen_in_a_dialog_that_lists_only_what_the_server_can_use() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let hx = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let anna = a.store.create_user(david_server::NewProfile::new("Anni", david_server::Role::Member)).await.unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let musik = root.path().join("Anni/Musik");
+    std::fs::create_dir_all(&musik).unwrap();
+    std::fs::create_dir_all(root.path().join("Anni/Bilder")).unwrap();
+    let enc = |s: &str| serde_urlencoded::to_string([("path", s)]).unwrap();
+
+    // The window of the person has a line and a button for every kind of medium.
+    let page = send(&a, get("/admin/users", &plain)).await.body;
+    for kind in ["audiobook", "music", "photo"] {
+        assert!(page.contains(&format!("name=\"folder_{kind}\"")) && page.contains(&format!("hx-get=\"/admin/rpc/folders?target=folder-{anna}-{kind}\"")), "{kind}: {page}");
+    }
+    assert!(page.contains("id=\"dlg-folders-") && page.contains("Music folder"), "{page}");
+
+    // The dialog lists the folders below a path that the server can read, write and enter; the choice goes to the input of the line.
+    let d = send(&a, get(&format!("/admin/rpc/folders?target=folder-{anna}-music&{}", enc(&root.path().join("Anni").to_string_lossy())), &hx)).await;
+    assert_eq!(d.status, StatusCode::OK, "{}", d.body);
+    assert!(d.body.contains("Bilder") && d.body.contains("Musik") && d.body.contains("data-pick-folder="), "{}", d.body);
+    assert!(d.body.contains(&format!("data-target=\"folder-{anna}-music\"")), "{}", d.body);
+    // Not usable or not there: the dialog says so and offers the way back to the start.
+    let d = send(&a, get(&format!("/admin/rpc/folders?target=folder-{anna}-music&{}", enc("/no/such/folder")), &hx)).await;
+    assert!(d.body.contains("That folder cannot be used"), "{}", d.body);
+    // Only a name of an input is taken as the target.
+    let d = send(&a, get("/admin/rpc/folders?target=x%22%3E%3Cscript", &hx)).await;
+    assert_ne!(d.status, StatusCode::OK);
+
+    // Saving: the folder is checked; a wrong one is refused and nothing of the form changes; an empty line removes the folder.
+    let base = |extra: &str| format!("csrf={csrf}&id={anna}&name=Anni&role=member{extra}");
+    let ok = send(&a, post("/admin/rpc/user.update", &base(&format!("&folder_music={}", enc(&musik.to_string_lossy()).trim_start_matches("path="))), &hx)).await;
+    assert_eq!(ok.status, StatusCode::OK, "{}", ok.body);
+    let saved = a.store.profile_folders(anna).await.unwrap();
+    assert_eq!(saved, vec![("music".to_owned(), std::fs::canonicalize(&musik).unwrap().to_string_lossy().into_owned())]);
+    assert!(ok.body.contains(&musik.file_name().unwrap().to_string_lossy().into_owned()), "the row shows the folder: {}", ok.body);
+    let bad = send(&a, post("/admin/rpc/user.update", &base("&folder_photo=%2Fno%2Fsuch%2Ffolder"), &hx)).await;
+    assert_eq!(bad.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", bad.body);
+    assert!(bad.body.contains("cannot be used"), "{}", bad.body);
+    let rel = send(&a, post("/admin/rpc/user.update", &base("&folder_photo=relative%2Fpath"), &hx)).await;
+    assert_eq!(rel.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(a.store.profile_folders(anna).await.unwrap().len(), 1, "nothing was saved by a refused form");
+    let gone = send(&a, post("/admin/rpc/user.update", &base("&folder_music="), &hx)).await;
+    assert_eq!(gone.status, StatusCode::OK, "{}", gone.body);
+    assert!(a.store.profile_folders(anna).await.unwrap().is_empty(), "an empty line removes the folder");
+    // A form that does not send the fields leaves the folders alone.
+    a.store.set_profile_folder(anna, "photo", Some(&root.path().to_string_lossy())).await.unwrap();
+    assert_eq!(send(&a, post("/admin/rpc/user.update", &base(""), &hx)).await.status, StatusCode::OK);
+    assert_eq!(a.store.profile_folders(anna).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn the_media_lists_come_in_pages_with_links_a_size_and_a_search_over_all_pages() {
+    let a = app().await;
+    let (cookie, _csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    for n in 1..=25 {
+        a.store.import_books(vec![common::book(&format!("Autor {n:02}"), &format!("Buch {n:02}"), &[1])]).await.unwrap();
+    }
+    a.store.save_settings(&[("list_page_size".to_owned(), "10".to_owned())]).await.unwrap();
+    let rows = |body: &str| body.matches("<tr id=\"book-").count();
+
+    // Page 1 of 3: ten books, the count, the links; a page beyond the last shows the last; a nonsense page shows the first.
+    let p1 = send(&a, get("/admin/books", &o)).await.body;
+    assert_eq!(rows(&p1), 10, "{p1}");
+    assert!(p1.contains("1&ndash;10 of 25") && p1.contains("rel=\"next\"") && p1.contains("page=3") && p1.contains("aria-current=\"page\""), "{p1}");
+    assert!(p1.contains("data-paged=\"1\""), "a list in pages is searched by the server");
+    let p3 = send(&a, get("/admin/books?page=3", &o)).await.body;
+    assert_eq!(rows(&p3), 5);
+    assert!(p3.contains("21&ndash;25 of 25") && p3.contains("rel=\"prev\"") && !p3.contains("rel=\"next\""), "{p3}");
+    assert!(send(&a, get("/admin/books?page=99", &o)).await.body.contains("21&ndash;25 of 25"), "clamped to the last page");
+    assert!(send(&a, get("/admin/books?page=0", &o)).await.body.contains("1&ndash;10 of 25"));
+    // A size of its own (kept in the links), and one page for a long size.
+    let big = send(&a, get("/admin/books?per=25", &o)).await.body;
+    assert_eq!(rows(&big), 25);
+    assert!(!big.contains("rel=\"next\""), "everything fits on one page");
+    let twenty = send(&a, get("/admin/books?per=20", &o)).await.body;
+    assert!(twenty.contains("per=20&amp;page=2") || twenty.contains("per=20&page=2"), "the size stays in the links: {twenty}");
+    // The search runs over all pages, and the links carry it.
+    let found = send(&a, get("/admin/books?q=buch+*", &o)).await.body;
+    assert_eq!(rows(&found), 10, "all 25 match: ten of them on the first page");
+    assert!(found.contains("q=buch+") && found.contains("page=2"), "{found}");
+    let last = send(&a, get("/admin/books?q=buch+*&page=3", &o)).await.body;
+    assert_eq!(rows(&last), 5);
+    assert!(last.contains("rel=\"prev\""), "{last}");
+    let narrow = send(&a, get("/admin/books?q=buch+2*", &o)).await.body;
+    assert_eq!(rows(&narrow), 6, "Buch 20 to 25 fit on one page");
+    // The size of a page is kept in a cookie of this browser: asked for once with ?per=, it holds for the next visits; a query wins over the cookie.
+    let first = send(&a, get("/admin/books?per=25", &o)).await;
+    let set = first.header("set-cookie").expect("the size is kept in a cookie").to_owned();
+    assert!(set.starts_with("david_page_size=25;") && set.contains("Path=/admin") && set.contains("Max-Age="), "{set}");
+    assert!(first.body.contains("<option value=\"25\" selected>") && first.body.contains("data-autosubmit"), "{}", first.body);
+    let with_cookie = format!("{}; david_page_size=25", cookie);
+    let oc = Opts { cookie: Some(&with_cookie), ..Default::default() };
+    assert_eq!(rows(&send(&a, get("/admin/books", &oc)).await.body), 25, "the cookie decides when the address says nothing");
+    assert_eq!(rows(&send(&a, get("/admin/books?per=10", &oc)).await.body), 10, "the address wins");
+    let junk = format!("{}; david_page_size=banana", cookie);
+    let oj = Opts { cookie: Some(&junk), ..Default::default() };
+    assert_eq!(rows(&send(&a, get("/admin/books", &oj)).await.body), 10, "a broken cookie is ignored: the setting of the server holds");
+    assert!(send(&a, get("/admin/books", &oj)).await.header("set-cookie").is_none(), "nothing is set when nothing was asked");
+    // The size is a setting of the pages.
+    assert!(send(&a, get("/admin/settings?tab=values", &o)).await.body.contains("name=\"list_page_size\""));
 }

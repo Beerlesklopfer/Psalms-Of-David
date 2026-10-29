@@ -6,7 +6,7 @@ import 'audio_backend.dart';
 /// move. Behaves like the real one in the things the player depends on.
 class FakeBackend implements AudioBackend {
   FakeBackend({Duration Function()? clock, this.fileLength = const Duration(minutes: 10)})
-      : _clock = clock ?? _systemClock();
+    : _clock = clock ?? _systemClock();
 
   static Duration Function() _systemClock() {
     final watch = Stopwatch()..start();
@@ -128,6 +128,20 @@ class FakeBackend implements AudioBackend {
 
   @override
   double get volume => _volume;
+
+  int _bufferSeconds = kBufferDefaultSeconds;
+
+  @override
+  void setBufferSeconds(int seconds) {
+    _check();
+    _bufferSeconds = seconds.clamp(kBufferMinSeconds, kBufferMaxSeconds);
+  }
+
+  @override
+  int get bufferSeconds => _bufferSeconds;
+
+  @override
+  bool get bufferAdjustable => true;
 
   @override
   double get speed => _speed;

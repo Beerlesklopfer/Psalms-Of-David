@@ -1,14 +1,38 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import 'package:flutter/foundation.dart' show ValueListenable;
+
 /// What the player needs from a sound engine. The app talks only to this interface;
 /// behind it sits PipeWire on Linux (`PipeWireBackend`), and later ExoPlayer on
 /// Android and AVPlayer on iPhone. `FakeBackend` serves tests.
-enum BackendState { idle, playing, paused, ended, failed }
+///
+/// [buffering] is only used by live streams: the engine collects audio before it
+/// starts, or after the network ran dry, and goes on playing by itself.
+enum BackendState { idle, playing, paused, ended, failed, buffering }
+
+/// What went wrong, for a caller that wants to show its own (localized) text
+/// instead of [AudioException.message].
+enum AudioErrorKind {
+  generic,
+
+  /// The stream is not MP3 (AAC, Ogg, HLS playlist, a web page ...).
+  streamUnsupported,
+
+  /// The connection could not be made or was lost for good.
+  streamConnection,
+
+  /// The server answered with an error status.
+  streamServer,
+
+  /// The certificate of the server is not trusted.
+  streamCertificate,
+}
 
 class AudioException implements Exception {
-  AudioException(this.message);
+  AudioException(this.message, {this.kind = AudioErrorKind.generic});
 
   final String message;
+  final AudioErrorKind kind;
 
   @override
   String toString() => 'AudioException: $message';
@@ -33,6 +57,16 @@ abstract class AudioBackend {
   /// stays set across [load] and [seek].
   void setSpeed(double speed);
 
+  /// Seconds of audio the engine keeps ready between decoding and the output. A bigger buffer bridges a slow disk or network, a
+  /// smaller one is heard sooner at a change of track. Applies from the next [load]. Only an engine that has such a buffer
+  /// ([bufferAdjustable]) uses it.
+  void setBufferSeconds(int seconds);
+
+  int get bufferSeconds;
+
+  /// Whether [setBufferSeconds] changes anything in this engine.
+  bool get bufferAdjustable;
+
   BackendState get state;
 
   /// Where the listening is. Counts the audio handed to the sound system, so it
@@ -49,4 +83,61 @@ abstract class AudioBackend {
   /// Releases the engine. Using the backend afterwards is an error; calling this
   /// twice is fine.
   void dispose();
+}
+
+/// Optional extension of a backend that plays internet radio. The player checks
+/// `backend is StreamInfo`; backends without it (just_audio, the fake) need nothing.
+abstract class StreamInfo {
+  /// The title the station announces now ("Artist - Song"), or null.
+  ValueListenable<String?> get streamTitle;
+
+  /// What the station says about itself in the headers of the connection, or null before they have come.
+  ValueListenable<StreamDetails?> get streamDetails;
+
+  /// Why the state is [BackendState.failed], if the backend knows.
+  String? get errorMessage;
+
+  AudioErrorKind get errorKind;
+}
+
+/// The range of the playback buffer in seconds (the engine takes the same) and the value when nobody has set one.
+const int kBufferMinSeconds = 1;
+const int kBufferMaxSeconds = 30;
+const int kBufferDefaultSeconds = 2;
+
+/// What a station says about itself when the connection is made (the `icy-*` headers and the content type).
+class StreamDetails {
+  const StreamDetails({this.name, this.genre, this.description, this.website, this.bitrateKbps, this.format});
+
+  final String? name;
+  final String? genre;
+  final String? description;
+  final String? website;
+  final int? bitrateKbps;
+
+  /// The short name of the audio format, "MP3".
+  final String? format;
+
+  bool get isEmpty => [name, genre, description, website, format].every((e) => e == null || e.isEmpty) && bitrateKbps == null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is StreamDetails &&
+      other.name == name &&
+      other.genre == genre &&
+      other.description == description &&
+      other.website == website &&
+      other.bitrateKbps == bitrateKbps &&
+      other.format == format;
+
+  @override
+  int get hashCode => Object.hash(name, genre, description, website, bitrateKbps, format);
+}
+
+/// The announced title split in artist and track at the first " - ": ("Axel Volk", "Pfingsten ...").
+/// Without that separator the whole text is the track.
+({String? artist, String track}) splitStreamTitle(String title) {
+  final i = title.indexOf(' - ');
+  if (i <= 0 || i + 3 >= title.length) return (artist: null, track: title.trim());
+  return (artist: title.substring(0, i).trim(), track: title.substring(i + 3).trim());
 }

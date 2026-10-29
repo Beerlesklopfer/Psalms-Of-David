@@ -55,26 +55,37 @@ pub struct ApiState {
     /// The development library folder (`--library`); the import folders of the
     /// database are searched as well.
     pub library: Option<PathBuf>,
+    /// The CD import: the way to MusicBrainz, the staging folder and the channel to the devices.
+    pub cd: crate::cdimport::CdService,
 }
 
 pub fn router(state: ApiState) -> Router {
     Router::new()
         .route("/api/v1/pair", post(pair))
+        .route("/api/v1/devices/pairing", get(pairing_usage).post(pairing_code))
         .route("/api/v1/me", get(me))
+        .route("/api/v1/me/library", get(my_library).put(put_my_library))
+        .route("/api/v1/me/hidden", post(set_hidden))
         .route("/api/v1/logout", post(logout))
         .route("/api/v1/library/version", get(library_version))
         .route("/api/v1/items", get(items))
+        .route("/api/v1/genres", get(genres))
         .route("/api/v1/items/{id}", get(item_detail))
+        .route("/api/v1/new", get(new_items))
         .route("/api/v1/items/{id}/cover", get(item_cover))
         .route("/api/v1/continue", get(continue_listening))
         .route("/api/v1/parts/{id}/stream", get(stream))
         .route("/api/v1/progress", put(put_progress))
         .route("/api/v1/bible/resolve", get(bible_resolve))
+        .merge(crate::api_feeds::routes())
+        .merge(crate::api_playlists::routes())
+        .merge(crate::api_cd::routes())
+        .layer(axum::middleware::from_fn(crate::actor::scope))
         .with_state(state)
 }
 
 /// An error answer: a status and a code the app can switch on.
-pub struct ApiError(StatusCode, &'static str);
+pub struct ApiError(pub(crate) StatusCode, pub(crate) &'static str);
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
@@ -97,13 +108,13 @@ impl From<Error> for ApiError {
     }
 }
 
-type ApiResult<T> = Result<T, ApiError>;
+pub(crate) type ApiResult<T> = Result<T, ApiError>;
 
 /// A signed-in device. Extracting it checks the bearer token.
 pub struct Device {
     pub user_id: i64,
     pub role: Role,
-    token: String,
+    pub(crate) token: String,
 }
 
 impl FromRequestParts<ApiState> for Device {
@@ -120,6 +131,7 @@ impl FromRequestParts<ApiState> for Device {
             .filter(|t| !t.is_empty())
             .ok_or_else(unauthorized)?;
         let info = state.store.session_for_token(token).await?.ok_or_else(unauthorized)?;
+        crate::actor::set(crate::actor::profile(info.user_id));
         Ok(Device { user_id: info.user_id, role: info.role, token: token.to_owned() })
     }
 }
@@ -141,12 +153,42 @@ async fn pair(State(s): State<ApiState>, Json(req): Json<PairRequest>) -> ApiRes
         .await?
         .ok_or(ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal"))?;
     let role: Role = user.role.parse().map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal"))?;
+    crate::actor::set(crate::actor::profile(user.id));
     let token = s.store.create_session(user.id, role, Some(paired.device_id)).await?;
     Ok(Json(json!({
         "token": token,
         "device_id": paired.device_id,
         "shared": paired.shared,
         "user": { "id": user.id, "name": user.name, "role": role.as_str() },
+    })))
+}
+
+/// Only a parent (an administrator or a member) connects a further device of the own profile: a child or a guest does not.
+fn may_pair(d: &Device) -> ApiResult<()> {
+    matches!(d.role, Role::Admin | Role::Member).then_some(()).ok_or(ApiError(StatusCode::FORBIDDEN, "forbidden"))
+}
+
+/// How many devices the own profile has and how many it may have: `{used, max, full}` (`max` is `null` without a limit). The app shows the button
+/// "connect a further device" only when this answers, and says so when `full`.
+async fn pairing_usage(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
+    may_pair(&d)?;
+    let (used, max) = s.store.device_usage(d.user_id).await?;
+    Ok(Json(json!({ "used": used, "max": max, "full": max.is_some_and(|m| used >= m) })))
+}
+
+/// A one-time code for a further device of the own profile (the app makes the QR code of it, with the address it uses itself). The same check as
+/// in the administration applies: with as many devices as allowed there is no code (`409 device_limit_reached`).
+async fn pairing_code(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
+    may_pair(&d)?;
+    let e = s.store.create_enrollment(d.user_id, false, d.user_id).await?;
+    let (used, max) = s.store.device_usage(d.user_id).await?;
+    Ok(Json(json!({
+        "code": e.code,
+        "server_id": s.store.server_id().await?,
+        "expires_at": e.expires_at,
+        "expires_in_s": ((e.expires_at - crate::store::now_ms()) / 1000).max(0),
+        "used": used,
+        "max": max,
     })))
 }
 
@@ -163,22 +205,118 @@ async fn logout(State(s): State<ApiState>, d: Device) -> ApiResult<StatusCode> {
 
 /// A short value that changes whenever the library changes (a new CD, a release, a blurb). The
 /// apps ask for it now and then and reload the library when it differs from the last one.
-async fn library_version(State(s): State<ApiState>, _d: Device) -> ApiResult<Json<Value>> {
-    Ok(Json(json!({ "version": s.store.library_version().await? })))
+///
+/// `playlists` is the same for the lists of the calling profile only (see `docs/spec-playlists.md`), so a change of one
+/// profile's playlists does not make the devices of the others reload.
+async fn library_version(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
+    Ok(Json(json!({ "version": s.store.library_version().await?, "playlists": s.store.playlists_version(d.user_id).await?, "hidden": s.store.hidden_version(d.user_id).await? })))
 }
 
+/// The items of the lists of this user: what they hid is left out, or (with the setting `show_hidden`) listed and marked `hidden`.
 async fn items(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
     let rows = s.store.visible_books(d.user_id).await?;
-    Ok(Json(Value::Array(rows.iter().map(item_json).collect())))
+    let hidden = s.store.hidden_of(d.user_id).await?;
+    let ids = hidden.ids_in(&rows);
+    Ok(Json(Value::Array(
+        rows.iter()
+            .filter(|b| hidden.show_hidden || !ids.contains(&b.id))
+            .map(|b| {
+                let mut j = item_json(b);
+                j["hidden"] = json!(ids.contains(&b.id));
+                j["owner"] = json!(b.owner);
+                j
+            })
+            .collect(),
+    )))
+}
+
+
+/// What this user hid, and their setting: `{ "show_hidden": bool, "books": [{id, title, author}], "authors": [{id, name, kind}] }`.
+async fn my_library(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
+    Ok(Json(json!(s.store.hidden_of(d.user_id).await?)))
+}
+
+#[derive(serde::Deserialize)]
+struct LibrarySettings {
+    show_hidden: bool,
+}
+
+/// The setting of the user: whether the lists still carry what they hid.
+async fn put_my_library(State(s): State<ApiState>, d: Device, Json(req): Json<LibrarySettings>) -> ApiResult<Json<Value>> {
+    s.store.set_show_hidden(d.user_id, req.show_hidden).await?;
+    Ok(Json(json!(s.store.hidden_of(d.user_id).await?)))
+}
+
+#[derive(serde::Deserialize)]
+struct HideRequest {
+    /// `book` or `author`.
+    scope: String,
+    /// The id of the book (`scope` = book).
+    #[serde(default)]
+    id: Option<i64>,
+    /// The name of the author or artist (`scope` = author).
+    #[serde(default)]
+    name: Option<String>,
+    /// For an author: `audiobook`, `music`, or absent for both.
+    #[serde(default)]
+    kind: Option<String>,
+    hidden: bool,
+}
+
+/// Hides a book or the books of an author for this user, or shows them again.
+async fn set_hidden(State(s): State<ApiState>, d: Device, Json(req): Json<HideRequest>) -> ApiResult<Json<Value>> {
+    let found = match req.scope.as_str() {
+        "book" => {
+            let id = req.id.ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_request"))?;
+            s.store.set_book_hidden(d.user_id, id, req.hidden).await?
+        }
+        "author" => {
+            let name = req.name.as_deref().map(str::trim).filter(|n| !n.is_empty() && n.chars().count() <= 200).ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_request"))?;
+            let kind = req.kind.as_deref().unwrap_or("");
+            if !matches!(kind, "" | "audiobook" | "music") {
+                return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_request"));
+            }
+            s.store.set_author_hidden(d.user_id, name, kind, req.hidden).await?
+        }
+        _ => return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_request")),
+    };
+    if !found {
+        return Err(ApiError(StatusCode::NOT_FOUND, "not_found"));
+    }
+    Ok(Json(json!(s.store.hidden_of(d.user_id).await?)))
+}
+
+/// The genres of the list that the apps show, in the order the administrator gave them.
+async fn genres(State(s): State<ApiState>, _d: Device) -> ApiResult<Json<Value>> {
+    let list = s.store.genres().await?;
+    Ok(Json(Value::Array(list.iter().filter(|g| g.visible).map(|g| json!({ "name": g.name })).collect())))
 }
 
 fn item_json(b: &crate::store::BookRow) -> Value {
     json!({
-        "id": b.id, "kind": b.kind, "title": b.title, "creator": b.author, "narrator": b.narrator, "min_age": b.min_age,
+        "id": b.id, "kind": b.kind, "title": b.title, "creator": b.author, "narrator": b.narrator, "genre": b.genre, "min_age": b.min_age,
         "recommended_age": b.recommended_age, "part_count": b.tracks, "discs": b.discs,
         "duration_ms": b.duration_ms,
     })
 }
+
+/// What is new for the user: the items that became visible to them in the last `new_days` days and that they have not
+/// started, newest first. The apps show them on the start page.
+async fn new_items(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
+    let days = s.store.new_days().await?;
+    let since = now_ms() - days * 24 * 3_600_000;
+    let mut items = s.store.new_books(d.user_id, since, NEW_ITEMS_MAX).await?;
+    // What this user hid is not news to them (unless they chose to see it).
+    let hidden = s.store.hidden_of(d.user_id).await?;
+    if !hidden.show_hidden {
+        let ids = hidden.ids_in(&s.store.visible_books(d.user_id).await?);
+        items.retain(|b| !ids.contains(&b.id));
+    }
+    Ok(Json(json!({ "days": days, "items": items })))
+}
+
+/// Most items the section "New" holds.
+const NEW_ITEMS_MAX: i64 = 30;
 
 async fn item_detail(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>) -> ApiResult<Json<Value>> {
     let (weekday, minute) = local_time(&s.store).await;
@@ -193,13 +331,20 @@ async fn item_detail(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<
         .into_iter()
         .find(|b| b.id == id)
         .ok_or(ApiError(StatusCode::NOT_FOUND, "not_found"))?;
+    // What this user has heard to the end: per part, and for the whole item (complete plays, last played).
+    let heard = s.store.part_plays(d.user_id, id).await?;
     let tracks: Vec<Value> = s
         .store
         .tracks_of(id)
         .await?
         .iter()
-        .map(|t| json!({ "id": t.id, "disc": t.disc, "number": t.number, "title": t.title, "duration_ms": t.duration_ms }))
+        .map(|t| {
+            let h = heard.get(&t.id).copied().unwrap_or_default();
+            json!({ "id": t.id, "disc": t.disc, "number": t.number, "title": t.title, "duration_ms": t.duration_ms, "plays": h.plays, "last_played_at": h.last_played_at })
+        })
         .collect();
+    let all: Vec<crate::plays::TrackPlays> = heard.values().copied().collect();
+    let book_heard = crate::plays::book_plays(&all);
     let progress = s.store.progress_of(d.user_id, id).await?.map(|p| {
         json!({ "part_id": p.track_id, "position_ms": p.position_ms, "finished": p.finished, "updated_at": p.updated_at })
     });
@@ -207,6 +352,8 @@ async fn item_detail(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<
     let mut out = item_json(&row);
     out["description"] = description.map_or(Value::Null, Value::String);
     out["parts"] = Value::Array(tracks);
+    out["plays"] = json!(book_heard.plays);
+    out["last_played_at"] = json!(book_heard.last_played_at);
     out["progress"] = progress.unwrap_or(Value::Null);
     out["access"] = access_json(&access);
     Ok(Json(out))
@@ -295,7 +442,7 @@ pub(crate) fn cover_rank(name: &str) -> Option<u8> {
 }
 
 /// The best picture file of a folder that is a real picture of a sensible size.
-fn cover_in(dir: &Path) -> Option<(&'static str, Vec<u8>)> {
+pub(crate) fn cover_in(dir: &Path) -> Option<(&'static str, Vec<u8>)> {
     let mut candidates: Vec<(u8, PathBuf)> = std::fs::read_dir(dir)
         .ok()?
         .filter_map(|e| e.ok())
@@ -333,7 +480,12 @@ async fn item_cover(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i
 }
 
 async fn continue_listening(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
-    let rows = s.store.continue_listening(d.user_id, 20).await?;
+    let mut rows = s.store.continue_listening(d.user_id, 20).await?;
+    let hidden = s.store.hidden_of(d.user_id).await?;
+    if !hidden.show_hidden {
+        let ids = hidden.ids_in(&s.store.visible_books(d.user_id).await?);
+        rows.retain(|c| !ids.contains(&c.book_id));
+    }
     Ok(Json(Value::Array(
         rows.iter()
             .map(|c| {
@@ -397,14 +549,12 @@ async fn put_progress(State(s): State<ApiState>, d: Device, Json(req): Json<Prog
     if s.store.access(d.user_id, req.item_id, weekday, minute).await? == Access::NotVisible {
         return Err(ApiError(StatusCode::NOT_FOUND, "not_found"));
     }
-    let belongs = track::Entity::find_by_id(req.part_id)
-        .one(&s.store.db.reader)
-        .await
-        .map_err(Error::from)?
-        .is_some_and(|t| t.book_id == req.item_id);
-    if !belongs || req.position_ms < 0 {
+    let part = track::Entity::find_by_id(req.part_id).one(&s.store.db.reader).await.map_err(Error::from)?.filter(|t| t.book_id == req.item_id);
+    let Some(part) = part.filter(|_| req.position_ms >= 0) else {
         return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_progress"));
-    }
+    };
+    // The statistics: a part that reached its end counts once per pass (see plays.rs).
+    s.store.note_part_progress(d.user_id, part.id, req.position_ms, part.duration_ms).await?;
     s.store
         .save_progress(ProgressUpdate {
             profile_id: d.user_id,

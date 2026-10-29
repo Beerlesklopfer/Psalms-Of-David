@@ -5,10 +5,12 @@
   color-scheme: light dark;
   --outer: #ebe2cc; --bg: #f6f0e3; --fg: #241f1a; --muted: #6b6255; --line: #d8cfba;
   --accent: #7b2332; --accent-fg: #f6f0e3; --ok: #2c4a3e; --err: #8a1c1c;
+  --warn: #8a5a00; --info: #1f4e79;
 }
 @media (prefers-color-scheme: dark) {
   :root { --outer: #0b090e; --bg: #121016; --fg: #efe7d6; --muted: #a79e8e; --line: #3a3544;
-          --accent: #c4a265; --accent-fg: #121016; --ok: #8fc4a8; --err: #e08a8a; }
+          --accent: #c4a265; --accent-fg: #121016; --ok: #8fc4a8; --err: #e08a8a;
+          --warn: #e0b25a; --info: #8db8e3; }
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -445,7 +447,9 @@ ul.folders .ico { flex: none; color: var(--accent, currentColor); }
 .window-body .pairing-result h3 { margin-bottom: .25rem; }
 
 /* Tabs of the settings page, and the forms of line edits */
-.tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--line); margin: 0 0 1.25rem; overflow-x: auto; }
+/* Sideways scrolling on a narrow screen, never up and down: a tab reaches 1px over the box (margin-bottom: -1px on .tab), and `overflow-x: auto`
+ * alone would make that 1px scrollable (a tiny scroll bar next to the last tab); the padding gives it room instead. */
+.tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--line); margin: 0 0 1.25rem; overflow-x: auto; overflow-y: hidden; padding-bottom: 1px; }
 .tab { padding: .6rem 1rem; text-decoration: none; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
 .tab:hover { color: var(--fg); }
 .tab[aria-current="page"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
@@ -461,6 +465,9 @@ ul.folders .ico { flex: none; color: var(--accent, currentColor); }
 .line-field input[name="time_zone"] { text-align: left; }
 .line-field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .unit { color: var(--muted); min-width: 4.5rem; }
+/* The value and its unit are one block; every unit has the same column, so the values of the rows end in one line. */
+.line-field { gap: .35rem; }
+.line-field .unit { min-width: 3rem; text-align: left; white-space: nowrap; }
 .role-line .line-field { flex: 0 0 auto; }
 .form-foot { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; margin-top: .5rem; }
 .form-foot .saved { margin-right: auto; color: var(--ok); display: flex; align-items: center; gap: .35rem; }
@@ -505,3 +512,146 @@ ul.folders li.left-out small { margin-left: auto; color: var(--muted); }
 .dialog-form small.warn { color: var(--err); }
 
 h2 small.when { font-size: .8rem; font-weight: 400; color: var(--muted); font-family: system-ui, sans-serif; margin-left: .5rem; }
+
+/* Search above a list of media */
+.search-bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: 0 0 1rem; }
+.search-bar input[type="search"] { flex: 1 1 16rem; min-width: 0; }
+
+.more-fields textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; margin: .5rem 0 .25rem; }
+.more-fields .field-names { display: block; max-height: 6rem; overflow: auto; color: var(--muted, inherit); }
+
+.json-box { grid-column: 2; margin: .5rem 0; padding: .75rem; overflow-x: auto; user-select: all; }
+.settings-form textarea.wide { width: 100%; padding: .5rem .75rem; font: inherit; line-height: 1.45; resize: vertical; }
+
+.card.warning { margin: 1rem 0; padding: 1rem 1.25rem; border-left: 4px solid var(--accent); }
+.card.warning h2 { margin: 0 0 .5rem; }
+.access-list { margin: .5rem 0; padding-left: 1.25rem; }
+.access-list li { margin: .25rem 0; }
+
+.ignore-menu { display: inline-block; margin-left: .5rem; }
+.ignore-menu summary { cursor: pointer; font-size: .8rem; color: var(--muted, inherit); }
+.ignore-options { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
+.ignore-options form, .ignore-list form { display: inline; }
+.ignore-list { margin: 1rem 0; }
+.ignore-list ul { list-style: none; padding: 0; }
+.ignore-list li { margin: .4rem 0; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+
+/* The tree of the media lists: a row for each level, the rows below it indented, collapsible. */
+.tree-node th { text-align: left; padding: .35rem .5rem .35rem calc(.5rem + var(--depth, 0) * 1.25rem); background: color-mix(in srgb, var(--accent, #7a2233) 6%, transparent); }
+.tree-toggle { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: .4rem; font-weight: 600; }
+.tree-toggle .ico { transition: transform .15s; }
+.tree-toggle[aria-expanded="false"] .ico { transform: rotate(-90deg); }
+tr[data-parents] td:nth-child(2) { padding-left: calc(.5rem + var(--depth, 0) * 1.25rem); }
+.depth-0 { --depth: 0; }
+.depth-1 { --depth: 1; }
+.depth-2 { --depth: 2; }
+.depth-3 { --depth: 3; }
+.depth-4 { --depth: 4; }
+.depth-5 { --depth: 5; }
+.depth-6 { --depth: 6; }
+.depth-7 { --depth: 7; }
+.depth-8 { --depth: 8; }
+.depth-9 { --depth: 9; }
+tr[hidden] { display: none; }
+
+/* A badge that is a button: release or take back with one click. */
+.toggle-form { display: inline; }
+button.badge.toggle { font: inherit; cursor: pointer; }
+button.badge.toggle:hover, button.badge.toggle:focus-visible { filter: brightness(.95); outline: 2px solid var(--accent, currentColor); outline-offset: 1px; }
+
+/* The cut and the zoom of the cover in the tags window (static/crop.js): the thumbnail itself is the frame */
+.crop-frame { position: relative; width: 12rem; aspect-ratio: 1; overflow: hidden; border-radius: 8px; border: 1px solid var(--line); touch-action: none;
+              cursor: grab; user-select: none; background: color-mix(in srgb, var(--fg) 6%, var(--bg)); flex: none; }
+.crop-frame.grabbing { cursor: grabbing; }
+.crop-frame.loading { cursor: progress; }
+.crop-frame:focus-visible { outline: 2px solid var(--accent, currentColor); outline-offset: 2px; }
+/* A small cue that the picture can be moved and zoomed, shown while the mouse is over it */
+.crop-frame::after { content: "\2725  \2315"; position: absolute; right: .35rem; bottom: .35rem; padding: .1rem .4rem; border-radius: 999px;
+                     font-size: .85rem; line-height: 1.3; color: #fff; background: rgb(0 0 0 / .55); opacity: 0; transition: opacity .15s; pointer-events: none; }
+.crop-frame:hover::after, .crop-frame:focus-visible::after { opacity: 1; }
+.crop-frame.grabbing::after { opacity: 0; }
+.crop-image { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; max-width: none; transform-origin: 0 0; pointer-events: none; }
+
+/* The titles of an album, opened under its row */
+.track-details { margin-top: .35rem; }
+.track-details summary { cursor: pointer; font-size: .85rem; color: var(--muted, inherit); }
+.track-table { width: 100%; margin-top: .4rem; border-collapse: collapse; font-size: .85rem; }
+.track-table th, .track-table td { padding: .15rem .5rem; text-align: left; border-bottom: 1px solid var(--line); }
+.track-table td:nth-child(1), .track-table td:nth-child(2), .track-table td:nth-child(4) { width: 3.5rem; white-space: nowrap; }
+
+/* Genres: a row of small forms (a field and its button, or a tag with its remove button). */
+.inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 0 0 .5rem; }
+.inline-form .field { flex: 1 1 14rem; margin: 0; }
+td.actions form { display: inline-block; margin: 0 .25rem .25rem 0; }
+
+/* Import: the area where files, folders and archives are dropped from the file manager. */
+.dropzone { border: 2px dashed currentColor; border-radius: 8px; padding: 1rem; margin: 0 0 1rem; opacity: .85; }
+.dropzone.over { opacity: 1; border-style: solid; background: rgba(127, 127, 127, .12); }
+.dropzone .field { max-width: 18rem; }
+.inline-form select { margin: 0; }
+
+/* The tracks of a CD rip: one colour for each state, the same meaning as in the apps. Waiting is quiet, the track that is read or checked
+ * has the accent, "read, waits for the check" is amber, converting is blue, done is green and an error red. The text says it as well. */
+.cd-live tr[data-state="waiting"] td:last-child { color: var(--muted); }
+.cd-live tr[data-state="reading"] td, .cd-live tr[data-state="verifying"] td { color: var(--accent); font-weight: 600; }
+.cd-live tr[data-state="read"] td:last-child { color: var(--warn); }
+.cd-live tr[data-state="encoding"] td:last-child { color: var(--info); }
+.cd-live tr[data-state="done"] td:last-child { color: var(--ok); }
+.cd-live tr[data-state="failed"] td { color: var(--err); }
+.cd-live tr[data-state="reading"], .cd-live tr[data-state="verifying"] { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+/* A track of the list of the form that an interrupted rip has read already: it is taken over if it stays ticked. Amber like "read" in the live list. */
+.cd-read { color: var(--warn); font-size: 0.85em; margin-left: 0.5em; }
+/* A track that is read for the third time because the first two readings differed: it needs attention, so it is amber and bold like the track
+ * that is being read, and its row is marked the same way. */
+.cd-live tr[data-state="rereading"] td { color: var(--warn); font-weight: 600; }
+.cd-live tr[data-state="rereading"] { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+/* A track that was filed with its first reading because no two readings agreed: it is done, with a mark. */
+.cd-live tr[data-state="unverified"] td:last-child { color: var(--warn); font-weight: 600; }
+.cd-search { margin: .75rem 0; }
+.cd-search-row { margin-top: .25rem; justify-content: flex-start; border-top: 0; padding-top: 0; }
+.cd-search-row input { flex: 1 1 16rem; max-width: 28rem; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }
+
+/* The log of the imports: the short columns do not break, the book and the message have the room. */
+.cd-log { table-layout: auto; }
+.cd-log td:nth-child(2), .cd-log td:nth-child(3), .cd-log td:nth-child(4) { white-space: nowrap; }
+.cd-log td:nth-child(1) { min-width: 12rem; }
+.cd-log td:nth-child(5) { width: 100%; }
+.cd-log td .unit { font-size: .85em; }
+.cd-log-clear { margin-top: .75rem; }
+
+/* A book with missing tracks: a clear red exclamation mark before its title. */
+.problem-mark { display: inline-flex; align-items: center; justify-content: center; width: 1.35em; height: 1.35em; border-radius: 50%; background: var(--danger, #b3261e); color: #fff; font-weight: 800; font-size: .9em; line-height: 1; vertical-align: text-bottom; cursor: help; }
+.problem-mark.small { font-size: .75em; cursor: default; }
+.check-inline { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+
+/* The matrix of the media list: a narrow column for every member of the family, with a checkbox for "sees this book". */
+.member-col { width: 3.2rem; max-width: 4.5rem; text-align: center; font-size: .8rem; font-weight: 600; }
+.member-col span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-cell { text-align: center; }
+.member-cell form { margin: 0; }
+.member-cell input[type="checkbox"] { width: 1.15rem; height: 1.15rem; }
+
+/* The matrix has two kinds of columns: the owner (whom the book belongs to) and, under "May see", a box for every person (access). */
+.matrix-groups th { text-align: center; font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border-bottom: 1px solid var(--line); }
+.matrix-groups .owner-col { border-bottom: 1px solid var(--line); }
+.owner-col { min-width: 7rem; }
+.owner-cell select { max-width: 8.5rem; padding: .25rem .4rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; font-size: .85rem; }
+.member-cell input[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* The folders of a person: an input with a button behind it, and the dialog that lists the folders the server can work in. */
+.folder-line { display: flex; align-items: center; gap: .5rem; position: relative; }
+.folder-line input { flex: 1 1 auto; }
+.folder-choose { flex: 0 0 auto; padding: .4rem .6rem; }
+.folder-window { max-width: 34rem; }
+.folder-list { list-style: none; margin: .5rem 0; padding: 0; display: grid; gap: .35rem; }
+.folder-list .btn { width: 100%; justify-content: flex-start; }
+.folder-path { word-break: break-all; }
+
+/* The pages of a list of media. */
+.pager { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin: .75rem 0; }
+.pager .btn { min-width: 2.2rem; justify-content: center; padding: .3rem .6rem; }
+.pager .pager-current { pointer-events: none; }
+.pager .disabled { opacity: .4; pointer-events: none; }
+.pager-count { margin-right: .5rem; color: var(--muted); font-size: .9rem; }
+.pager-gap { color: var(--muted); }

@@ -16,8 +16,10 @@ mod engine;
 pub mod ffi;
 mod source;
 mod stretch;
+pub mod stream;
 
-pub use engine::{Engine, EngineOptions, State};
+pub use engine::{BUFFER_SECONDS, DEFAULT_BUFFER_SECONDS, Engine, EngineOptions, State};
+pub use source::STREAM_UNSUPPORTED;
 
 use std::path::Path;
 use std::time::Duration;
@@ -74,7 +76,7 @@ pub struct Report {
 pub fn play_file(path: &Path, options: &PlayOptions) -> Result<Report, Error> {
     let engine = Engine::start(EngineOptions { target: options.target.clone(), role: None })?;
     engine.load(path, Duration::ZERO, true, &options.media_name)?;
-    engine.wait_for(|s| !matches!(s, State::Playing | State::Paused), Duration::from_secs(60 * 60 * 24));
+    engine.wait_for(|s| !matches!(s, State::Playing | State::Paused | State::Buffering), Duration::from_secs(60 * 60 * 24));
     if engine.state() == State::Failed {
         return Err(Error::Decode(engine.error().unwrap_or_else(|| "playback failed".into())));
     }

@@ -1,0 +1,80 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<div id="llm-panel" class="settings-form">
+  <p class="lead">{{ t("llm.intro") }}</p>
+  {% if mcp_endpoint %}
+  <p class="saved">{{ icon("check") }}{{ t("llm.on") }}: <code>{{ mcp_endpoint }}</code></p>
+  {% else %}
+  <p class="form-error" role="note">{{ t("llm.off") }} <code>david run --mcp</code> / <code>DAVID_MCP=1</code></p>
+  {% endif %}
+
+  {% if new_token %}
+  <section class="card pairing-result">
+    <h3>{{ t("llm.new_token") }}</h3>
+    <p>{{ t("llm.shown_once") }}</p>
+    <p><code>{{ new_token }}</code></p>
+    <p>{{ t("llm.use") }}: <code>Authorization: Bearer {{ new_token }}</code></p>
+    {% if mcp_json %}
+    <pre class="json-box"><code>{{ mcp_json }}</code></pre>
+    <p><button type="button" class="btn outline" data-copy="{{ mcp_json }}" data-copied="{{ t('llm.copied') }}">{{ icon("copy") }}{{ t("llm.copy_json") }}</button></p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <form class="settings-form" method="post" action="/admin/rpc/mcp.token_create"
+        hx-post="/admin/rpc/mcp.token_create" hx-target="#llm-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <fieldset class="line-group">
+      <legend>{{ t("llm.make") }}</legend>
+      <label class="line"><span class="line-label">{{ t("llm.name") }}</span>
+        <span class="line-field"><input name="name" required maxlength="60" size="24" placeholder="{{ t('llm.name_hint') }}"></span></label>
+      <label class="line"><span class="line-label">{{ t("llm.may_write") }}</span>
+        <span class="line-field"><input type="checkbox" name="write" value="1"></span></label>
+    </fieldset>
+    <div class="form-error" role="alert"></div>
+    <div class="form-foot">
+      <a class="btn outline" href="/admin/settings?tab=llm">{{ t("ui.cancel") }}</a>
+      <button type="submit" class="btn">{{ t("ui.save") }}</button>
+    </div>
+  </form>
+
+  <form class="settings-form" method="post" action="/admin/rpc/mcp.prompt_save"
+        hx-post="/admin/rpc/mcp.prompt_save" hx-target="#llm-panel" hx-swap="outerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <fieldset class="line-group">
+      <legend>{{ t("llm.prompt") }}</legend>
+      <p class="unit">{{ t("llm.prompt_hint") }}</p>
+      <textarea name="text" rows="6" maxlength="8000" class="wide">{{ mcp_prompt }}</textarea>
+    </fieldset>
+    <div class="form-error" role="alert"></div>
+    <div class="form-foot">
+      <a class="btn outline" href="/admin/settings?tab=llm">{{ t("ui.cancel") }}</a>
+      <button type="submit" class="btn">{{ t("ui.save") }}</button>
+    </div>
+  </form>
+
+  <fieldset class="line-group">
+    <legend>{{ t("llm.tokens") }}</legend>
+    {% for token in mcp_tokens %}
+    <div class="line role-line">
+      <span class="line-label"><strong>{{ token.name }}</strong> <span class="badge{% if not token.can_write %} muted{% endif %}">{% if token.can_write %}{{ t("llm.read_write") }}{% else %}{{ t("llm.read_only") }}{% endif %}</span></span>
+      <span class="line-field"><span class="unit">{{ t("llm.created") }} {{ token.created }} · {{ t("llm.last_used") }} {% if token.last_used %}{{ token.last_used }}{% else %}&ndash;{% endif %}</span></span>
+      <form method="post" action="/admin/rpc/mcp.token_revoke" hx-post="/admin/rpc/mcp.token_revoke" hx-target="#llm-panel" hx-swap="outerHTML" hx-disabled-elt="find button" hx-confirm="{{ t('llm.confirm_revoke') }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ token.id }}">
+        <button type="submit" class="btn outline danger-outline">{{ t("devices.revoke") }}</button>
+      </form>
+    </div>
+    {% else %}
+    <p class="unit">{{ t("llm.none") }}</p>
+    {% endfor %}
+  </fieldset>
+
+  <fieldset class="line-group">
+    <legend>{{ t("llm.changes") }}</legend>
+    {% for c in mcp_changes %}
+    <div class="line"><span class="line-label">{{ c.at }} · {{ c.token }}</span>
+      <span class="line-field"><code>{{ c.field }}</code>: {{ c.old }} &rarr; {{ c.new }} <span class="unit">({{ c.file }})</span></span></div>
+    {% else %}
+    <p class="unit">{{ t("llm.no_changes") }}</p>
+    {% endfor %}
+  </fieldset>
+</div>

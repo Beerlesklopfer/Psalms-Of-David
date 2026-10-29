@@ -11,21 +11,24 @@ Type=notify
 ExecStart=/usr/local/bin/david run
 # The database lives in /var/lib/david (owned by the system user "david").
 Environment=DAVID_DATA_DIR=/var/lib/david
-# Listen on every interface: the apps of the family reach the server over the network. Anything
+# Listen on every interface, IPv4 and IPv6 at the same time (a list; a machine without IPv6 skips the second):
+# the apps of the family reach the server over the network. Anything
 # but this machine speaks TLS with a certificate David makes itself; the pairing code carries its
 # fingerprint, so the apps accept only this server. Browsers warn about the certificate. To
 # keep the server on this machine (say, behind nginx), set DAVID_LISTEN=127.0.0.1:8484 in a
 # drop-in (`systemctl edit david`). Port 8484 must be open in the firewall.
-Environment=DAVID_LISTEN=0.0.0.0:8484
+Environment=DAVID_LISTEN=0.0.0.0:8484,[::]:8484
 # The data lives in /var/lib/david, and the library in /var/lib/david/library: both belong to the
 # user david, so uploads, tag editing and deleting work without any permission work. Set
 # /var/lib/david/library as the import folder in the admin pages.
 StateDirectory=david david/library
-# A fixed system user (created by the package, see david.sysusers): grant it access to the music
-# folders with file permissions or ACLs (`setfacl -R -m u:david:rwX /srv/music`).
-User=david
-Group=david
+# The service starts as root and drops to the system user "david" (IDs and settings in
+# /etc/david.toml). Before that it gives that user the rights on the import folders with POSIX
+# ACLs, so no setfacl is needed. The sandbox below must let it write there: see ReadWritePaths.
 Restart=on-failure
+# A stop (also a package update) lets a CD that is being read finish its track (up to 10 s), write down what is finished and end
+# (up to 10 s more), so that the next start can resume it. The default of systemd (90 s) would do; this says it.
+TimeoutStopSec=60
 RestartSec=5
 
 # The library is read, and written too: uploads are put into it, tags and covers are written
@@ -41,6 +44,12 @@ ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=yes
 NoNewPrivileges=yes
+# The encoder thread of a CD rip asks for the highest priority (setting cd_encoder_nice); 40 allows nice -20 to the user david.
+LimitNICE=40
+
+# The CD drive: the server reads audio CDs from /dev/sr*. Nothing here hides the device or the kernel's drive events
+# (no PrivateDevices=, no RestrictAddressFamilies=); the service user needs the group of the drive in `groups` of
+# /etc/david.toml (FAQ.md, "audio CDs in the drive of the server").
 
 [Install]
 WantedBy=multi-user.target

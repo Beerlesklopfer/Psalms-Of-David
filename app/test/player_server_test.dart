@@ -33,15 +33,15 @@ class FakeSource extends MediaSource {
 }
 
 Book _book(String id, int firstPart) => Book(
-      id: id,
-      title: 'Book $id',
-      author: 'A',
-      color: const Color(0xFF000000),
-      tracks: [
-        for (var i = 0; i < 3; i++)
-          Track(disc: 1, number: i + 1, title: 'T$i', length: const Duration(seconds: 20), partId: firstPart + i),
-      ],
-    );
+  id: id,
+  title: 'Book $id',
+  author: 'A',
+  color: const Color(0xFF000000),
+  tracks: [
+    for (var i = 0; i < 3; i++)
+      Track(disc: 1, number: i + 1, title: 'T$i', length: const Duration(seconds: 20), partId: firstPart + i),
+  ],
+);
 
 void main() {
   late FakeBackend backend;

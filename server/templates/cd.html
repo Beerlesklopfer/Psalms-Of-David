@@ -1,0 +1,10 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "cd" %}
+
+{% block title %}{{ t("cd.title") }}{% endblock %}
+
+{% block content %}
+<h1>{{ t("cd.title") }}</h1>
+<p class="unit">{{ t("cd.page.hint") }} <a href="/admin/settings?tab=cdimport">{{ t("cd.page.settings") }}</a></p>
+{% include "fragments/cd_import.html" %}
+{% endblock %}

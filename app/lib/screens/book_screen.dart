@@ -7,6 +7,8 @@ import '../l10n/app_localizations.dart';
 import '../models.dart';
 import '../player_controller.dart';
 import '../widgets.dart';
+import 'hide_menu.dart';
+import 'playlists_screen.dart';
 
 class BookScreen extends StatelessWidget {
   const BookScreen({super.key, required this.book});
@@ -24,7 +26,14 @@ class BookScreen extends StatelessWidget {
     final started = progress > 0;
 
     return Scaffold(
-      appBar: AppBar(backgroundColor: Colors.transparent),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        actions: [
+          // Books of the server only (an episode or a station is no item of the library).
+          if (int.tryParse(book.id) != null) AddToPlaylistButton(bookId: int.parse(book.id)),
+          HideMenuButton(book: book),
+        ],
+      ),
       bottomNavigationBar: const MiniPlayer(),
       body: Center(
         child: ConstrainedBox(
@@ -33,30 +42,47 @@ class BookScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             children: [
               Center(
-                child: SizedBox.square(
-                  dimension: 220,
-                  child: Cover(book: book),
-                ),
+                child: SizedBox.square(dimension: 220, child: Cover(book: book)),
               ),
               const SizedBox(height: 20),
               Text(book.title, style: text.headlineMedium),
               const SizedBox(height: 4),
-              Text(
-                book.author,
-                style: text.titleMedium?.copyWith(color: cs.primary),
-              ),
+              Text(book.author, style: text.titleMedium?.copyWith(color: cs.primary)),
               if (book.narrator != null && book.narrator!.trim().isNotEmpty) ...[
                 const SizedBox(height: 2),
-                Text(book.kind == 'music' ? l.artistLabel(book.narrator!) : l.readBy(book.narrator!), style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+                Text(
+                  book.kind == 'music' ? l.artistLabel(book.narrator!) : l.readBy(book.narrator!),
+                  style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              ],
+              // Whom the book belongs to (the nickname); not the same as who may see it.
+              if (book.owner != null && book.owner!.trim().isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  l.ownerLabel(book.owner!),
+                  key: const ValueKey('owner-line'),
+                  style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                ),
               ],
               const SizedBox(height: 4),
               Text(
                 l.bookMeta(book.discs, book.tracks.length, formatTotal(l, book.total)),
                 style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
               ),
+              if (_playsLine(context, p) case final line?) ...[
+                const SizedBox(height: 4),
+                Text(
+                  line,
+                  key: const ValueKey('plays-line'),
+                  style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              ],
               if (book.blurb != null && book.blurb!.trim().isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Text(book.blurb!, style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant, height: 1.45)),
+                Text(
+                  book.blurb!,
+                  style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant, height: 1.45),
+                ),
               ],
               if (started) ...[
                 const SizedBox(height: 12),
@@ -86,21 +112,16 @@ class BookScreen extends StatelessWidget {
                       foregroundColor: cs.onPrimary,
                       fixedSize: const Size(56, 56),
                     ),
-                    icon: Icon(
-                      isCurrent && p.playing ? Icons.pause : Icons.play_arrow,
-                    ),
+                    icon: Icon(isCurrent && p.playing ? Icons.pause : Icons.play_arrow),
                     iconSize: 32,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    started ? l.actionContinue : l.actionListen,
-                    style: text.titleSmall,
-                  ),
+                  Text(started ? l.actionContinue : l.actionListen, style: text.titleSmall),
                   const Spacer(),
-                  _DownloadButton(book: book),
+                  DownloadButton(book: book),
                 ],
               ),
-              for (var disc = 1; disc <= book.discs; disc++) ...[
+              for (final disc in book.discNumbers) ...[
                 SectionHeader(l.discLabel(disc)),
                 for (final t in book.tracks.where((t) => t.disc == disc))
                   _TrackTile(book: book, track: t),
@@ -111,6 +132,18 @@ class BookScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+extension on BookScreen {
+  /// "Played 3 times · last played on 27 Oct 2026"; null if there is nothing to say.
+  String? _playsLine(BuildContext context, PlayerController p) {
+    final l = AppLocalizations.of(context);
+    final plays = p.playsOf(book);
+    // A book heard just now has no date from the server yet: today.
+    final at = book.lastPlayedAt ?? (plays > 0 ? DateTime.now() : null);
+    final parts = [if (plays > 0) l.playsCount(plays), if (at != null) l.lastPlayedOn(at)];
+    return parts.isEmpty ? null : parts.join(' · ');
   }
 }
 
@@ -137,15 +170,23 @@ class _TrackTile extends StatelessWidget {
             : Text('${track.number}', textAlign: TextAlign.end),
       ),
       title: Text(track.title),
-      trailing: Text(formatDuration(track.length)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (p.isTrackPlayed(book, index)) ...const [PlayedMark(), SizedBox(width: 8)],
+          Text(formatDuration(track.length)),
+          if (track.partId != null && int.tryParse(book.id) != null)
+            AddToPlaylistButton(partId: track.partId, asMenu: true),
+        ],
+      ),
       onTap: () => p.open(book, track: index),
     );
   }
 }
 
 /// Keeps the book on the device: download, progress with a way to stop, and removing it again.
-class _DownloadButton extends StatelessWidget {
-  const _DownloadButton({required this.book});
+class DownloadButton extends StatelessWidget {
+  const DownloadButton({super.key, required this.book});
 
   final Book book;
 
@@ -155,21 +196,34 @@ class _DownloadButton extends StatelessWidget {
     final l = AppLocalizations.of(context);
     final cs = Theme.of(context).colorScheme;
     if (!p.canDownload) {
-      return IconButton(tooltip: l.tooltipDownloadUnavailable, onPressed: null, icon: const Icon(Icons.download_for_offline_outlined));
+      return IconButton(
+        tooltip: l.tooltipDownloadUnavailable,
+        onPressed: null,
+        icon: const Icon(Icons.download_for_offline_outlined),
+      );
     }
     final running = p.downloads[book.id];
     if (running != null) {
-      return Row(mainAxisSize: MainAxisSize.min, children: [
-        Text(l.downloadedCount(running.done, running.total), style: Theme.of(context).textTheme.bodySmall),
-        IconButton(
-          tooltip: l.tooltipDownloadCancel,
-          onPressed: () => p.cancelDownload(book),
-          icon: SizedBox.square(
-            dimension: 24,
-            child: CircularProgressIndicator(value: running.total == 0 ? null : running.done / running.total, strokeWidth: 3),
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            l.downloadedCount(running.done, running.total),
+            style: Theme.of(context).textTheme.bodySmall,
           ),
-        ),
-      ]);
+          IconButton(
+            tooltip: l.tooltipDownloadCancel,
+            onPressed: () => p.cancelDownload(book),
+            icon: SizedBox.square(
+              dimension: 24,
+              child: CircularProgressIndicator(
+                value: running.total == 0 ? null : running.done / running.total,
+                strokeWidth: 3,
+              ),
+            ),
+          ),
+        ],
+      );
     }
     final have = p.downloadedCount(book);
     final all = have == book.tracks.length && have > 0;
@@ -180,14 +234,21 @@ class _DownloadButton extends StatelessWidget {
         icon: Icon(Icons.download_done, color: cs.primary),
       );
     }
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      if (have > 0) Text(l.downloadedCount(have, book.tracks.length), style: Theme.of(context).textTheme.bodySmall),
-      IconButton(
-        tooltip: l.tooltipDownload,
-        onPressed: () => p.downloadBook(book),
-        icon: const Icon(Icons.download_for_offline_outlined),
-      ),
-    ]);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (have > 0)
+          Text(
+            l.downloadedCount(have, book.tracks.length),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        IconButton(
+          tooltip: l.tooltipDownload,
+          onPressed: () => p.downloadBook(book),
+          icon: const Icon(Icons.download_for_offline_outlined),
+        ),
+      ],
+    );
   }
 
   Future<void> _confirmRemove(BuildContext context, PlayerController p, AppLocalizations l) async {
@@ -198,7 +259,10 @@ class _DownloadButton extends StatelessWidget {
         content: Text(l.downloadRemoveText),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(l.downloadRemove)),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(l.downloadRemove),
+          ),
         ],
       ),
     );

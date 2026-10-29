@@ -3,7 +3,7 @@
 //! Pages and procedures of the administration interface.
 
 use std::collections::HashMap;
-use axum::extract::{Form, Query, State};
+use axum::extract::{Form, Query, RawQuery, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::Deserialize;
@@ -108,6 +108,13 @@ pub struct PageQuery {
     next: Option<String>,
     /// The tab of the settings page.
     tab: Option<String>,
+    /// What the search of the media pages looks for.
+    q: Option<String>,
+    /// Only the books with a problem (`1`).
+    problems: Option<String>,
+    /// The page of the list (from 1) and how many books it holds (10 to 500; the setting `list_page_size` when absent).
+    page: Option<usize>,
+    per: Option<usize>,
 }
 
 fn message_of(q: &PageQuery, lang: Lang) -> Option<(MessageKind, &str)> {
@@ -172,6 +179,11 @@ pub async fn favicon(State(state): State<AppState>, headers: HeaderMap) -> Respo
 /// can replace it like the stylesheet.
 pub async fn ui_js(State(state): State<AppState>, headers: HeaderMap) -> Response {
     static_file(&state, &headers, "ui.js", "text/javascript; charset=utf-8", include_bytes!("../../static/ui.js"))
+}
+
+/// The cut and the zoom of a cover in the tags window.
+pub async fn crop_js(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    static_file(&state, &headers, "crop.js", "text/javascript; charset=utf-8", include_bytes!("../../static/crop.js"))
 }
 
 pub async fn htmx(headers: HeaderMap) -> Response {
@@ -314,6 +326,7 @@ pub async fn login_submit(State(state): State<AppState>, headers: HeaderMap, For
         Login::WrongCredentials => login_failure(&state, &headers, StatusCode::UNAUTHORIZED, "err.login"),
         Login::Locked { .. } => login_failure(&state, &headers, StatusCode::TOO_MANY_REQUESTS, "err.locked"),
         Login::Ok { user_id, role } => {
+            crate::actor::set(crate::actor::profile(user_id));
             let remember = form.remember == "1";
             let token = match state.store.create_session(user_id, role, None).await {
                 Ok(t) => t,
@@ -362,24 +375,320 @@ pub async fn users_page(State(state): State<AppState>, s: AdminSession, Query(q)
     render(state.ui.users(&state.store, view_for(&s, &q)).await)
 }
 
-pub async fn books_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
-    render(state.ui.books(&state.store, view_for(&s, &q), "audiobook").await)
+/// The cookie that keeps the size of a page of the media lists (a setting of this browser, not of the server).
+const PAGE_SIZE_COOKIE: &str = "david_page_size";
+
+/// The size of a page: the one asked for (`?per=`, which also sets the cookie), else the one the cookie keeps, else none (the setting of the server
+/// then decides). Only 10 to 500 count.
+fn page_size(q: &PageQuery, headers: &HeaderMap) -> (Option<usize>, bool) {
+    let valid = |n: usize| (10..=500).contains(&n);
+    if let Some(n) = q.per.filter(|n| valid(*n)) {
+        return (Some(n), true);
+    }
+    (super::cookie(headers, PAGE_SIZE_COOKIE).and_then(|v| v.parse::<usize>().ok()).filter(|n| valid(*n)), false)
 }
 
-pub async fn music_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
-    render(state.ui.books(&state.store, view_for(&s, &q), "music").await)
+fn page_size_cookie(n: usize, secure: bool) -> HeaderValue {
+    let secure = if secure { "; Secure" } else { "" };
+    HeaderValue::from_str(&format!("{PAGE_SIZE_COOKIE}={n}; HttpOnly; SameSite=Lax; Path=/admin; Max-Age=31536000{secure}")).expect("digits are plain ASCII")
+}
+
+async fn media_page(state: &AppState, s: &AdminSession, q: &PageQuery, headers: &HeaderMap, kind: &str) -> Response {
+    let (per, remember) = page_size(q, headers);
+    let mut res = render(state.ui.books(&state.store, view_for(s, q), state.library.as_deref(), kind, q.q.as_deref(), q.problems.as_deref() == Some("1"), q.page, per).await);
+    if let (true, Some(n)) = (remember, per) {
+        res.headers_mut().append(header::SET_COOKIE, page_size_cookie(n, state.secure_cookie));
+    }
+    res
+}
+
+pub async fn books_page(State(state): State<AppState>, s: AdminSession, headers: HeaderMap, Query(q): Query<PageQuery>) -> Response {
+    media_page(&state, &s, &q, &headers, "audiobook").await
+}
+
+pub async fn music_page(State(state): State<AppState>, s: AdminSession, headers: HeaderMap, Query(q): Query<PageQuery>) -> Response {
+    media_page(&state, &s, &q, &headers, "music").await
+}
+
+pub async fn genres_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
+    render(state.ui.genres(&state.store, view_for(&s, &q), q.q.as_deref()).await)
+}
+
+/// Gives a tag text a genre of the standard ID3 list (or one that the list of the family has already), makes the genre
+/// if it is not there, and, if asked (`retag=1`), writes the name into the files of the albums with that text.
+pub async fn genre_from_tag(State(state): State<AppState>, s: AdminSession, Form(f): Form<GenreForm>) -> Response {
+    let outcome = async {
+        let existing = state.store.genres().await?;
+        let wanted = f.name.trim();
+        let name = match crate::genres::standard_genre(wanted) {
+            Some(standard) => standard.to_owned(),
+            None => existing.iter().find(|g| g.name.eq_ignore_ascii_case(wanted)).map(|g| g.name.clone()).ok_or_else(Failure::input)?,
+        };
+        let id = state.store.add_genre(&name).await?;
+        // The files first, so that a refusal of the disk does not leave the library saying more than the files do.
+        let report = if f.retag == "1" { Some(state.store.retag_genre(state.library.as_deref(), f.tag.trim(), &name).await?) } else { None };
+        state.store.assign_genre_tag(&f.tag, id).await?;
+        state.store.assign_genre_tag(&name, id).await?;
+        if let Some(r) = &report {
+            tracing::info!(tag = %f.tag, genre = %name, albums = r.albums, files = r.files, failed = r.failed.len(), "genre written into the files");
+            if let Some(first) = r.failed.first() {
+                tracing::warn!(error = %first, "files of a genre could not be written");
+                return Err(Failure::new(StatusCode::INTERNAL_SERVER_ERROR, "err.genre_files"));
+            }
+        }
+        Ok(())
+    }
+    .await;
+    let outcome: Result<(), Failure> = outcome;
+    finish(&s, "/admin/genres", outcome.map(|()| String::new()))
+}
+
+#[derive(Deserialize)]
+pub struct GenreForm {
+    #[serde(default)]
+    id: i64,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    tag: String,
+    #[serde(default)]
+    by: i64,
+    #[serde(default)]
+    visible: String,
+    /// `1`: write the genre into the files too.
+    #[serde(default)]
+    retag: String,
+}
+
+/// The genre pages post plain forms; the answer is the page again with a message.
+fn genre_done(s: &AdminSession, outcome: std::result::Result<(), crate::Error>) -> Response {
+    finish(s, "/admin/genres", outcome.map(|()| String::new()).map_err(Into::into))
+}
+
+pub async fn genre_add(State(state): State<AppState>, s: AdminSession, Form(f): Form<GenreForm>) -> Response {
+    genre_done(&s, state.store.add_genre(&f.name).await.map(|_| ()))
+}
+
+pub async fn genre_rename(State(state): State<AppState>, s: AdminSession, Form(f): Form<GenreForm>) -> Response {
+    genre_done(&s, state.store.rename_genre(f.id, &f.name).await)
+}
+
+pub async fn genre_visible(State(state): State<AppState>, s: AdminSession, Form(f): Form<GenreForm>) -> Response {
+    genre_done(&s, state.store.set_genre_visible(f.id, f.visible == "1").await)
+}
+
+pub async fn genre_move(State(state): State<AppState>, s: AdminSession, Form(f): Form<GenreForm>) -> Response {
+    genre_done(&s, state.store.move_genre(f.id, f.by).await)
+}
+
+pub async fn genre_delete(State(state): State<AppState>, s: AdminSession, Form(f): Form<GenreForm>) -> Response {
+    genre_done(&s, state.store.delete_genre(f.id).await)
+}
+
+pub async fn genre_assign(State(state): State<AppState>, s: AdminSession, Form(f): Form<GenreForm>) -> Response {
+    genre_done(&s, state.store.assign_genre_tag(&f.tag, f.id).await)
+}
+
+pub async fn genre_unassign(State(state): State<AppState>, s: AdminSession, Form(f): Form<GenreForm>) -> Response {
+    genre_done(&s, state.store.remove_genre_tag(&f.tag).await)
+}
+
+pub async fn releases_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
+    render(state.ui.releases(&state.store, view_for(&s, &q)).await)
+}
+
+#[derive(Deserialize)]
+pub struct ReleaseForm {
+    kind: String,
+    profile: i64,
+    target: i64,
+    /// `1` releases, anything else refuses.
+    #[serde(default)]
+    release: String,
+}
+
+/// An administrator releases or refuses what a child asked for (a podcast or a station).
+pub async fn release_decide(State(state): State<AppState>, s: AdminSession, Form(f): Form<ReleaseForm>) -> Response {
+    let outcome = state.store.decide_release(&f.kind, f.profile, f.target, f.release == "1").await;
+    finish(&s, "/admin/releases", outcome.map(|()| String::new()).map_err(Into::into))
 }
 
 pub async fn import_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
     render(state.ui.import(&state.store, view_for(&s, &q)).await)
 }
 
+pub async fn cd_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
+    render(state.ui.cd_page(&state.store, &state.cd, view_for(&s, &q)).await)
+}
+
 pub async fn pairing_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
-    render(state.ui.pairing(&state.store, view_for(&s, &q), &reachable_address(state.listen), None, state.fingerprint.is_some()).await)
+    render(state.ui.pairing(&state.store, view_for(&s, &q), &public_address(&state), None, state.https()).await)
 }
 
 pub async fn settings_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
-    render(state.ui.settings(&state.store, view_for(&s, &q), q.tab.as_deref()).await)
+    let endpoint = mcp_endpoint(&state);
+    render(state.ui.settings(&state.store, &state.cd, view_for(&s, &q), q.tab.as_deref(), endpoint.as_deref()).await)
+}
+
+/// Where a remote LLM connects, if the server runs with `--mcp`.
+fn mcp_endpoint(state: &AppState) -> Option<String> {
+    let scheme = if state.https() { "https" } else { "http" };
+    state.mcp.then(|| format!("{scheme}://{}/mcp", public_address(state)))
+}
+
+#[derive(Deserialize)]
+pub struct McpTokenCreate {
+    name: String,
+    #[serde(default)]
+    write: String,
+}
+
+/// Makes a token for a remote LLM. It is shown on the answer, once.
+pub async fn mcp_token_create(State(state): State<AppState>, s: AdminSession, Form(f): Form<McpTokenCreate>) -> Response {
+    let name = f.name.trim();
+    if name.is_empty() || name.chars().count() > 60 || name.chars().any(char::is_control) {
+        return finish(&s, "/admin/settings?tab=llm", Err(Failure::input()));
+    }
+    let outcome = async {
+        let token = state.store.create_mcp_token(name, f.write == "1", s.user_id).await?;
+        tracing::info!(name, write = f.write == "1", "MCP token made");
+        Ok::<_, Failure>(token)
+    }
+    .await;
+    match outcome {
+        Ok(token) => {
+            let endpoint = mcp_endpoint(&state);
+            if s.htmx {
+                render(state.ui.settings_llm_fragment(&state.store, view(&s), endpoint.as_deref(), Some(&token)).await)
+            } else {
+                // Without JavaScript the token must be on the page that answers.
+                let mut v = view(&s);
+                v.message = None;
+                render(state.ui.settings_with_token(&state.store, v, endpoint.as_deref(), &token).await)
+            }
+        }
+        Err(f) => finish(&s, "/admin/settings?tab=llm", Err(f)),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct McpPromptForm {
+    #[serde(default)]
+    text: String,
+}
+
+/// Saves the help text for remote LLMs; an empty text brings the built-in one back.
+pub async fn mcp_prompt_save(State(state): State<AppState>, s: AdminSession, Form(f): Form<McpPromptForm>) -> Response {
+    if f.text.chars().count() > 8000 {
+        return finish(&s, "/admin/settings?tab=llm", Err(Failure::input()));
+    }
+    let outcome = async {
+        // The built-in text, saved unchanged, stays the built-in text.
+        let text = if f.text.trim() == crate::mcp::DEFAULT_PROMPT { "" } else { f.text.as_str() };
+        state.store.set_mcp_prompt(text).await?;
+        tracing::info!("MCP help text saved");
+        let endpoint = mcp_endpoint(&state);
+        Ok(state.ui.settings_llm_fragment(&state.store, view(&s), endpoint.as_deref(), None).await?)
+    }
+    .await;
+    finish(&s, "/admin/settings?tab=llm", outcome)
+}
+
+#[derive(Deserialize)]
+pub struct IgnoreAdd {
+    id: i64,
+    scope: String,
+    #[serde(default)]
+    what: String,
+    #[serde(default)]
+    back: String,
+}
+
+/// "Ignore this": hides a book from the reports or says that its duplicates are wanted. Goes back to the list.
+pub async fn ignore_add(State(state): State<AppState>, s: AdminSession, Form(f): Form<IgnoreAdd>) -> Response {
+    let what = if f.what.trim().is_empty() { crate::ignore::DUPLICATE } else { f.what.trim() };
+    let back = if f.back == "music" { "/admin/music" } else { "/admin/books" };
+    let outcome = async {
+        state.store.add_ignore(f.id, &f.scope, what, None, &format!("admin:{}", s.user_id)).await?;
+        tracing::info!(album = f.id, scope = %f.scope, what, "ignore rule made");
+        Ok::<_, Failure>(String::new())
+    }
+    .await;
+    match outcome {
+        Ok(_) => Redirect::to(&format!("{back}?msg=ok.saved")).into_response(),
+        Err(failure) => finish(&s, back, Err(failure)),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct QuarantineAdd {
+    id: i64,
+    #[serde(default)]
+    back: String,
+}
+
+/// "Quarantine": puts this copy of a duplicate into the quarantine folder of its import folder. The
+/// same checks as for the MCP tool: it must be a copy, and one copy of the work stays.
+pub async fn quarantine_add(State(state): State<AppState>, s: AdminSession, Form(f): Form<QuarantineAdd>) -> Response {
+    let back = if f.back == "music" { "/admin/music" } else { "/admin/books" };
+    let outcome = async {
+        let plans = crate::quarantine::plan(&state.store, state.library.as_deref(), &[f.id]).await.map_err(|e| {
+            tracing::warn!(album = f.id, error = %e, "quarantine refused");
+            Failure::new(StatusCode::CONFLICT, "err.quarantine")
+        })?;
+        let plan = plans.first().ok_or_else(Failure::not_found)?;
+        if let Some(problem) = &plan.problem {
+            tracing::warn!(album = f.id, %problem, "quarantine refused");
+            return Err(Failure::new(StatusCode::CONFLICT, "err.quarantine"));
+        }
+        crate::quarantine::execute(&state.store, plan).await.map_err(|e| {
+            tracing::warn!(album = f.id, error = %e, "quarantine failed");
+            Failure::new(StatusCode::INTERNAL_SERVER_ERROR, "err.quarantine")
+        })?;
+        tracing::info!(album = f.id, from = %plan.from.display(), to = %plan.to.display(), "album put into quarantine from the pages");
+        state.store.log_tag_change(&format!("admin:{}", s.user_id), f.id, "", "Quarantine", &plan.from.display().to_string(), &plan.to.display().to_string()).await?;
+        Ok::<_, Failure>(String::new())
+    }
+    .await;
+    match outcome {
+        Ok(_) => Redirect::to(&format!("{back}?msg=ok.saved")).into_response(),
+        Err(failure) => finish(&s, back, Err(failure)),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct IgnoreRemove {
+    rule: i64,
+    #[serde(default)]
+    back: String,
+}
+
+pub async fn ignore_remove(State(state): State<AppState>, s: AdminSession, Form(f): Form<IgnoreRemove>) -> Response {
+    let back = if f.back == "music" { "/admin/music" } else { "/admin/books" };
+    match state.store.remove_ignore(f.rule).await {
+        Ok(_) => {
+            tracing::info!(rule = f.rule, "ignore rule removed");
+            Redirect::to(&format!("{back}?msg=ok.saved")).into_response()
+        }
+        Err(e) => finish(&s, back, Err(e.into())),
+    }
+}
+
+/// Looks at the rights on the library again, after the administrator changed the ACLs.
+pub async fn access_check(State(state): State<AppState>, s: AdminSession) -> Response {
+    let outcome = async { Ok(state.ui.access_fragment(&state.store, view(&s)).await?) }.await;
+    finish(&s, "/admin/", outcome)
+}
+
+pub async fn mcp_token_revoke(State(state): State<AppState>, s: AdminSession, Form(f): Form<IdForm>) -> Response {
+    let outcome = async {
+        state.store.revoke_mcp_token(f.id).await?;
+        tracing::info!(token = f.id, "MCP token revoked");
+        let endpoint = mcp_endpoint(&state);
+        Ok(state.ui.settings_llm_fragment(&state.store, view(&s), endpoint.as_deref(), None).await?)
+    }
+    .await;
+    finish(&s, "/admin/settings?tab=llm", outcome)
 }
 
 // Procedures
@@ -567,6 +876,13 @@ pub struct UserUpdate {
     /// Empty keeps the PIN.
     #[serde(default)]
     pin: String,
+    /// The folders of this person for every kind of medium; absent leaves them alone, empty removes the folder.
+    #[serde(default)]
+    folder_audiobook: Option<String>,
+    #[serde(default)]
+    folder_music: Option<String>,
+    #[serde(default)]
+    folder_photo: Option<String>,
 }
 
 /// The edit window of a user: everything in one go. All input is checked before the
@@ -588,7 +904,24 @@ pub async fn user_update(State(state): State<AppState>, s: AdminSession, Form(f)
         // The planner is only given when the user becomes a child; then the hours count.
         let schedule = if role == Role::Child && current.role != "child" { Some(daytime(&f.hours_from, &f.hours_until)?) } else { None };
 
+        // The folders: a path the server can read, write and enter; checked before anything changes.
+        let mut folders: Vec<(&str, Option<String>)> = Vec::new();
+        for (kind, value) in [("audiobook", &f.folder_audiobook), ("music", &f.folder_music), ("photo", &f.folder_photo)] {
+            if let Some(v) = value {
+                let v = v.trim();
+                if v.is_empty() {
+                    folders.push((kind, None));
+                } else {
+                    let real = crate::folders::check(v).map_err(|_| Failure::new(StatusCode::UNPROCESSABLE_ENTITY, "err.folder"))?;
+                    folders.push((kind, Some(real.to_string_lossy().into_owned())));
+                }
+            }
+        }
+
         state.store.set_person_names(f.id, &f.name, &f.first_name, &f.last_name).await?;
+        for (kind, path) in &folders {
+            state.store.set_profile_folder(f.id, kind, path.as_deref()).await?;
+        }
         state.store.change_role(f.id, role, max_age, schedule.as_ref()).await?;
         if !birth.is_empty() {
             state.store.set_birth_date(f.id, Some(birth)).await?;
@@ -671,7 +1004,7 @@ pub async fn user_delete(State(state): State<AppState>, s: AdminSession, Form(f)
 }
 
 async fn book_row(state: &AppState, s: &AdminSession, id: i64) -> Outcome {
-    state.ui.book_row_fragment(&state.store, view(s), id).await?.ok_or_else(Failure::not_found)
+    state.ui.book_row_fragment(&state.store, state.library.as_deref(), view(s), id).await?.ok_or_else(Failure::not_found)
 }
 
 #[derive(Deserialize)]
@@ -714,6 +1047,9 @@ pub struct BookUpdate {
     /// The blurb; absent (an older form) leaves it alone, empty removes it.
     #[serde(default)]
     description: Option<String>,
+    /// The owner (the id of a profile); absent leaves it alone, empty removes it.
+    #[serde(default)]
+    owner: Option<String>,
 }
 
 /// The window of a book: released or not, from which age, learning content or not. All
@@ -742,6 +1078,14 @@ pub async fn book_update(State(state): State<AppState>, s: AdminSession, Form(f)
         if let Some(text) = &f.description {
             state.store.set_book_description(f.id, text).await?;
         }
+        // The owner is another thing than the release: whom the book belongs to.
+        if let Some(owner) = f.owner.as_deref() {
+            let owner = owner.trim();
+            let id = if owner.is_empty() { None } else { Some(owner.parse::<i64>().map_err(|_| Failure::input())?) };
+            if !state.store.set_book_owner(f.id, id).await? {
+                return Err(Failure::input());
+            }
+        }
         book_row(&state, &s, f.id).await
     }
     .await;
@@ -751,6 +1095,19 @@ pub async fn book_update(State(state): State<AppState>, s: AdminSession, Form(f)
 #[derive(Deserialize)]
 pub struct BookQuery {
     id: i64,
+}
+
+/// The titles of an album, loaded when its list is opened (an album can have hundreds, the page does not carry them).
+pub async fn book_tracks(State(state): State<AppState>, s: AdminSession, Query(q): Query<BookQuery>) -> Response {
+    let outcome: Result<String, Failure> = async {
+        state.store.admin_book_row(q.id).await?.ok_or_else(Failure::not_found)?;
+        Ok(state.ui.book_tracks_fragment(&state.store, view(&s), q.id).await?)
+    }
+    .await;
+    match outcome {
+        Ok(html) => Html(html).into_response(),
+        Err(f) => plain_failure(f.status, f.key, s.lang, true),
+    }
 }
 
 /// The window of the tags of an album, loaded when it opens: it shows what the first file says.
@@ -796,6 +1153,7 @@ pub async fn book_tags(State(state): State<AppState>, s: AdminSession, mut form:
     let outcome = async {
         let (mut id, mut album, mut artist, mut narrator, mut year, mut genre) = (0i64, String::new(), String::new(), String::new(), String::new(), String::new());
         let mut picture = None;
+        let mut more = String::new();
         loop {
             let field = form.next_field().await.map_err(|_| Failure::new(StatusCode::PAYLOAD_TOO_LARGE, "err.cover_size"))?;
             let Some(field) = field else { break };
@@ -815,6 +1173,7 @@ pub async fn book_tags(State(state): State<AppState>, s: AdminSession, mut form:
                 "narrator" => narrator = text,
                 "year" => year = text,
                 "genre" => genre = text,
+                "more" => more = text,
                 _ => {}
             }
         }
@@ -839,6 +1198,7 @@ pub async fn book_tags(State(state): State<AppState>, s: AdminSession, mut form:
             }
             None => None,
         };
+        let more_fields = parse_more_fields(&more)?;
         let tags = crate::tags::AlbumTags { album: clean(&album)?, artist: clean(&artist)?, narrator: clean(&narrator)?, year, genre: clean(&genre)?, cover };
         let (_, files) = book_files(&state, id).await?;
         // A picture goes into every file: that many bytes more on the disk of the album.
@@ -860,6 +1220,9 @@ pub async fn book_tags(State(state): State<AppState>, s: AdminSession, mut form:
             }
             for path in &files {
                 crate::tags::write_album(path, &tags).map_err(|e| e.to_string())?;
+                if !more_fields.is_empty() {
+                    crate::tags::write_fields(path, &more_fields).map_err(|e| e.to_string())?;
+                }
             }
             Ok(())
         })
@@ -873,6 +1236,26 @@ pub async fn book_tags(State(state): State<AppState>, s: AdminSession, mut form:
     }
     .await;
     finish(&s, "/admin/books", outcome)
+}
+
+/// The free lines of the tags window: `Field=Value`, one per line. A field written twice gets both
+/// values; `Field=` with nothing after it removes the field. Names are those of `tags::field_names`.
+fn parse_more_fields(text: &str) -> Result<Vec<(String, Vec<String>)>, Failure> {
+    let names = crate::tags::field_names();
+    let mut out: Vec<(String, Vec<String>)> = Vec::new();
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let (name, value) = line.split_once('=').ok_or_else(Failure::input)?;
+        let name = names.iter().find(|n| n.eq_ignore_ascii_case(name.trim())).ok_or_else(Failure::input)?;
+        let value = value.trim();
+        if value.chars().count() > 2000 || value.chars().any(char::is_control) {
+            return Err(Failure::input());
+        }
+        match out.iter_mut().find(|(n, _)| n == name) {
+            Some((_, values)) => values.extend((!value.is_empty()).then(|| value.to_owned())),
+            None => out.push(((*name).to_owned(), if value.is_empty() { Vec::new() } else { vec![value.to_owned()] })),
+        }
+    }
+    Ok(out)
 }
 
 #[derive(Deserialize)]
@@ -947,6 +1330,78 @@ pub async fn admin_cover(State(state): State<AppState>, _s: AdminSession, header
     }
 }
 
+#[derive(Deserialize)]
+pub struct BookVisibility {
+    book: i64,
+    profile: i64,
+    /// Present (`1`) when the box is ticked: the member sees the book.
+    visible: Option<String>,
+}
+
+/// A box of the matrix of the media list: the book is opened to the member or closed to them. The row is drawn again with the truth.
+pub async fn book_visibility(State(state): State<AppState>, s: AdminSession, Form(f): Form<BookVisibility>) -> Response {
+    let outcome = async {
+        let visible = f.visible.as_deref() == Some("1");
+        if !state.store.set_book_visible_for(f.book, f.profile, visible, Some(s.user_id)).await? {
+            return Err(Failure::not_found());
+        }
+        state.store.log_tag_change(&format!("admin:{}", s.user_id), f.book, "", "Visibility", &f.profile.to_string(), if visible { "open" } else { "closed" }).await?;
+        tracing::info!(book = f.book, profile = f.profile, visible, by = s.user_id, "visibility of a book changed in the matrix");
+        book_row(&state, &s, f.book).await
+    }
+    .await;
+    finish(&s, "/admin/books", outcome)
+}
+
+#[derive(Deserialize)]
+pub struct BookOwner {
+    book: i64,
+    /// The id of a profile; empty removes the owner.
+    #[serde(default)]
+    owner: String,
+}
+
+/// The owner box of a row of the media list: whom the book belongs to. This is not the release and not who may see it.
+pub async fn book_owner(State(state): State<AppState>, s: AdminSession, Form(f): Form<BookOwner>) -> Response {
+    let outcome = async {
+        let owner = f.owner.trim();
+        let id = if owner.is_empty() { None } else { Some(owner.parse::<i64>().map_err(|_| Failure::input())?) };
+        let before = state.store.admin_book_row(f.book).await?.ok_or_else(Failure::not_found)?;
+        if !state.store.set_book_owner(f.book, id).await? {
+            return Err(Failure::input());
+        }
+        let after = state.store.admin_book_row(f.book).await?.ok_or_else(Failure::not_found)?;
+        state.store.log_tag_change(&format!("admin:{}", s.user_id), f.book, "", "Owner", before.owner.as_deref().unwrap_or(""), after.owner.as_deref().unwrap_or("")).await?;
+        book_row(&state, &s, f.book).await
+    }
+    .await;
+    finish(&s, "/admin/books", outcome)
+}
+
+#[derive(Deserialize)]
+pub struct FolderQuery {
+    #[serde(default)]
+    path: String,
+    /// The id of the input that gets the choice.
+    #[serde(default)]
+    target: String,
+}
+
+/// The dialog that chooses a folder: the folders below `path` that the server can read, write and enter.
+pub async fn folder_picker(State(state): State<AppState>, s: AdminSession, Query(q): Query<FolderQuery>) -> Response {
+    // The id of an input: letters, digits and dashes only, so that nothing but a name reaches the page.
+    if q.target.is_empty() || !q.target.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return plain_failure(StatusCode::UNPROCESSABLE_ENTITY, "err.input", s.lang, true);
+    }
+    match state.ui.folder_picker(&state.store, view(&s), &q.path, &q.target, state.library.as_deref()).await {
+        Ok(html) => Html(html).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "the folder dialog failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
 pub async fn book_unrelease(State(state): State<AppState>, s: AdminSession, Form(f): Form<IdForm>) -> Response {
     let outcome = async {
         state.store.unrelease_book(f.id).await?;
@@ -972,7 +1427,11 @@ pub async fn book_set_exempt(State(state): State<AppState>, s: AdminSession, For
 }
 
 /// The values of the settings page. Each is a number in the unit the page shows, except the time zone.
-const SETTING_RULES: [(&str, i64, i64, i64); 7] = [
+const SETTING_RULES: [(&str, i64, i64, i64); 11] = [
+    ("new_days", 1, 365, 1),
+    ("list_page_size", 10, 500, 1),
+    ("feed_refresh_min", 0, 10_080, 1),
+    ("feed_max_bytes", 1, 100, 1_048_576),
     ("import_interval_min", 0, 1440, 1),
     ("min_free_gb", 0, 100_000, 1),
     // key, smallest, largest, factor to the stored unit
@@ -1001,11 +1460,217 @@ pub async fn settings_save(State(state): State<AppState>, s: AdminSession, Form(
             }
             values.push(("time_zone".to_owned(), zone.to_owned()));
         }
+        // Names and files that the machine decides on: nothing is built in, so anything sensible is taken.
+        let text = |key: &str| f.get(key).map(|v| v.trim().to_owned());
+        let plain = |v: &str| v.chars().count() <= 500 && !v.chars().any(char::is_control);
+        for key in ["tls_cert", "tls_key"] {
+            if let Some(v) = text(key) {
+                if !plain(&v) || (!v.is_empty() && !std::path::Path::new(&v).is_absolute()) {
+                    return Err(Failure::input());
+                }
+                values.push((key.to_owned(), v));
+            }
+        }
+        if let (Some(c), Some(k)) = (text("tls_cert"), text("tls_key"))
+            && c.is_empty() != k.is_empty()
+        {
+            return Err(Failure::input());
+        }
+        if let Some(v) = text("tls_host") {
+            if !plain(&v) || v.contains(['/', ' ', ':']) {
+                return Err(Failure::input());
+            }
+            values.push(("tls_host".to_owned(), v));
+        }
+        if let Some(v) = text("tls_reload_s") {
+            if !v.is_empty() && v.parse::<u64>().map_or(true, |n| n < 5) {
+                return Err(Failure::input());
+            }
+            values.push(("tls_reload_s".to_owned(), v));
+        }
+        if let Some(v) = text("quarantine_folder") {
+            if v.is_empty() || !plain(&v) || v.contains(['/', '\\']) || v == "." || v == ".." {
+                return Err(Failure::input());
+            }
+            values.push(("quarantine_folder".to_owned(), v));
+        }
+        if let Some(v) = text("radio_directory_url") {
+            // Where stations are searched: the address of a directory in the format of radio-browser.info. Empty = no search.
+            if !plain(&v) || (!v.is_empty() && !(v.starts_with("https://") || v.starts_with("http://"))) || v.contains(' ') {
+                return Err(Failure::input());
+            }
+            values.push(("radio_directory_url".to_owned(), v));
+        }
+        if let Some(v) = text("placeholder_tags") {
+            if !plain(&v) {
+                return Err(Failure::input());
+            }
+            values.push(("placeholder_tags".to_owned(), v));
+        }
+        if let Some(v) = text("audiobook_genres") {
+            if !plain(&v) {
+                return Err(Failure::input());
+            }
+            values.push(("audiobook_genres".to_owned(), v));
+        }
+        for key in ["tree_audiobook", "tree_music"] {
+            if let Some(mode) = f.get(key) {
+                if !crate::tree::valid(mode.trim()) {
+                    return Err(Failure::input());
+                }
+                values.push((key.to_owned(), mode.trim().to_owned()));
+            }
+        }
+        let level = match f.get("log_level") {
+            Some(text) => Some(crate::logging::parse(text).ok_or_else(Failure::input)?),
+            None => None,
+        };
+        if let Some(level) = level {
+            values.push(("log_level".to_owned(), level.to_string().to_lowercase()));
+        }
         state.store.save_settings(&values).await?;
+        if let Some(level) = level {
+            // At once, without a restart.
+            crate::logging::set(level);
+            tracing::info!(%level, "log level changed in the pages");
+        }
         Ok(state.ui.settings_values_fragment(&state.store, view(&s), true).await?)
     }
     .await;
     finish(&s, "/admin/settings?tab=values", outcome)
+}
+
+/// The tab "CD import": every value is checked by its own rule (ranges, known placeholders, no path tricks). A
+/// refused value is not an error page: the tab comes back with the input kept and the reason, in the language of
+/// the administrator, next to the field and at the top.
+pub async fn cd_settings_save(State(state): State<AppState>, s: AdminSession, Form(f): Form<HashMap<String, String>>) -> Response {
+    let outcome = async {
+        let mut values = Vec::new();
+        let mut refused: Vec<(String, String, &'static str)> = Vec::new();
+        for key in crate::cd_settings::KEYS {
+            if let Some(raw) = f.get(*key) {
+                match crate::cd_settings::check(key, raw) {
+                    Ok(v) => values.push(((*key).to_owned(), v)),
+                    Err(code) => refused.push(((*key).to_owned(), raw.clone(), code)),
+                }
+            }
+        }
+        if refused.is_empty() {
+            state.store.save_settings(&values).await?;
+        }
+        Ok(state.ui.settings_cd_fragment(&state.store, &state.cd, view(&s), refused.is_empty(), &refused).await?)
+    }
+    .await;
+    finish(&s, "/admin/settings?tab=cdimport", outcome)
+}
+
+// The drive of the server on the tab "CD import"
+
+/// The drive panel. The page asks for it every few seconds and sends back what it shows: the signature, the choice
+/// of tracks and the typed text. When nothing changed the answer is empty (204) and the page keeps what it has; when
+/// the state changed the panel is drawn again with that choice and text, so nothing the person did is lost.
+pub async fn cd_drive_panel(State(state): State<AppState>, s: AdminSession, RawQuery(query): RawQuery) -> Response {
+    let pairs: Vec<(String, String)> = serde_urlencoded::from_str(query.as_deref().unwrap_or("")).unwrap_or_default();
+    let sig = pairs.iter().find(|(k, _)| k == "sig").map(|(_, v)| v.clone());
+    let q = crate::admin::pages::PanelQuery::from_pairs(pairs);
+    match state.ui.cd_drive_fragment(&state.store, &state.cd, view(&s), &q, sig.as_deref(), None).await {
+        Ok(Some(html)) => Html(html).into_response(),
+        Ok(None) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "drive panel failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+async fn cd_panel_after(state: &AppState, s: &AdminSession, q: &crate::admin::pages::PanelQuery, error: Option<&str>, taken: &[u32]) -> Response {
+    // After an action the panel is always shown, with the reason when it was refused.
+    match state.ui.cd_drive_fragment(&state.store, &state.cd, view(s), q, None, error.map(|e| (e, taken))).await {
+        Ok(html) => Html(html.unwrap_or_default()).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "drive panel failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// Starts the rip of the disc in the drive of the server.
+pub async fn cd_rip(State(state): State<AppState>, s: AdminSession, Form(pairs): Form<Vec<(String, String)>>) -> Response {
+    let q = crate::admin::pages::PanelQuery::from_pairs(pairs);
+    let text = |k: &str| q.fields.get(k).map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+    let number = |k: &str| text(k).and_then(|v| v.parse::<u32>().ok());
+    let req = crate::cdrive::RipRequest {
+        kind: text("kind"),
+        author: text("author").unwrap_or_default(),
+        title: text("title").unwrap_or_default(),
+        disc: number("disc"),
+        discs_total: number("discs_total"),
+        narrator: text("narrator"),
+        year: text("year"),
+        mbid: text("mbid"),
+        tracks: q.fields.get("tracks").map(|t| t.lines().map(|l| l.trim().to_owned()).collect()).unwrap_or_default(),
+        eject: Some(q.fields.get("eject").is_some_and(|v| v == "1" || v == "on")),
+        device: text("device"),
+        // The boxes of the list: ticked numbers. A form without the list takes the whole disc.
+        only: q.sel.then(|| q.only.clone()),
+        resume: q.fields.get("resume").map(|v| v == "1"),
+        mode: text("mode"),
+        force: q.fields.get("force").is_some_and(|v| v == "1"),
+        auto: false,
+    };
+    match crate::cdrive::start_rip(&state.store, &state.cd, state.library.clone(), s.user_id, req).await {
+        // The settings or the choice changed since the interrupted rip: it is read again, and the page says so.
+        Ok(st) => cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default(), (st.resume == "mismatch").then_some("resume_mismatch"), &[]).await,
+        // A refusal keeps what was typed and ticked.
+        Err(r) => cd_panel_after(&state, &s, &q, Some(r.refusal.1), &r.taken).await,
+    }
+}
+
+/// The example for a template field, while it is typed: the real naming, or why the template is refused.
+pub async fn cd_preview(State(state): State<AppState>, s: AdminSession, RawQuery(query): RawQuery) -> Response {
+    let pairs: Vec<(String, String)> = serde_urlencoded::from_str(query.as_deref().unwrap_or("")).unwrap_or_default();
+    let get = |k: &str| pairs.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone());
+    let field = get("field").unwrap_or_default();
+    let pattern = get("pattern").or_else(|| get(&field)).unwrap_or_default();
+    let text = crate::admin::pages::cd_preview(&state.store, s.lang, &field, &pattern).await;
+    Html(escape(&text)).into_response()
+}
+
+pub async fn cd_cancel(State(state): State<AppState>, s: AdminSession, Form(f): Form<HashMap<String, String>>) -> Response {
+    let id = f.get("id").and_then(|v| v.parse::<i64>().ok());
+    let found = id.is_some_and(|id| state.cd.drives.cancel(id));
+    cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default(), (!found).then_some("not_found"), &[]).await
+}
+
+/// Closes the list of tracks of a rip that has ended.
+pub async fn cd_dismiss(State(state): State<AppState>, s: AdminSession, Form(f): Form<HashMap<String, String>>) -> Response {
+    let devices: Vec<String> = match f.get("device").filter(|d| !d.is_empty()) {
+        Some(d) => vec![d.clone()],
+        None => state.cd.drives.snapshot().0.into_iter().map(|d| d.device).collect(),
+    };
+    for d in devices {
+        state.cd.drives.dismiss(&d);
+    }
+    cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default(), None, &[]).await
+}
+
+/// Empties the log of the imports on the tab "CD import" (the page asks first); what runs stays.
+pub async fn cd_log_clear(State(state): State<AppState>, s: AdminSession) -> Response {
+    match state.store.clear_cd_log().await {
+        Ok(n) => {
+            tracing::info!(removed = n, by = s.user_id, "the log of the CD imports was cleared from the pages");
+            Redirect::to("/admin/cd?msg=ok.cd_log_cleared").into_response()
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "the log of the CD imports could not be cleared");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+pub async fn cd_eject(State(state): State<AppState>, s: AdminSession) -> Response {
+    let error = crate::cdrive::eject(&state.store, &state.cd, None).await.err().map(|r| r.1);
+    cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default(), error, &[]).await
 }
 
 pub async fn policies_save(State(state): State<AppState>, s: AdminSession, Form(f): Form<HashMap<String, String>>) -> Response {
@@ -1120,7 +1785,7 @@ pub async fn import_run(State(state): State<AppState>, s: AdminSession) -> Respo
 /// otherwise. The version is told for the one who looks after the machine; nothing else is.
 pub async fn healthz(State(state): State<AppState>) -> Response {
     let ok = state.store.healthy().await;
-    let body = serde_json::json!({ "status": if ok { "ok" } else { "unavailable" }, "version": env!("CARGO_PKG_VERSION") });
+    let body = serde_json::json!({ "status": if ok { "ok" } else { "unavailable" }, "version": env!("CARGO_PKG_VERSION"), "git": crate::buildinfo::GIT, "built": crate::buildinfo::BUILT });
     let status = if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
     (status, [(header::CACHE_CONTROL, "no-store")], axum::Json(body)).into_response()
 }
@@ -1218,6 +1883,108 @@ pub async fn upload_create(State(state): State<AppState>, s: AdminSession, heade
     finish(&s, "/admin/import", outcome)
 }
 
+/// Takes loose files and folders that were dropped on the page and puts them into the queue as one job. The
+/// form has `kind` first, then for each file its `path` (the place inside the dropped folder) and the `file`
+/// itself; only audio files and pictures are kept. Every file is written to disk as it arrives.
+pub async fn upload_files(State(state): State<AppState>, s: AdminSession, headers: header::HeaderMap, mut form: axum::extract::Multipart) -> Response {
+    use tokio::io::AsyncWriteExt;
+    let outcome: Result<String, Failure> = async {
+        let too_big = || Failure::new(StatusCode::PAYLOAD_TOO_LARGE, "err.upload_size");
+        let disk_full = || Failure::new(StatusCode::INSUFFICIENT_STORAGE, "err.upload_disk");
+        let reserve = crate::diskspace::reserve(&state.store).await;
+        let announced = headers.get(header::CONTENT_LENGTH).and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+        let uploads_dir = state.uploads.archive_path(0, "x");
+        let uploads_dir = uploads_dir.parent().and_then(std::path::Path::parent).map(std::path::Path::to_path_buf).unwrap_or_default();
+        // The files are moved into the import folder afterwards, so the same room is needed again.
+        if !crate::diskspace::fits(&uploads_dir, announced.saturating_mul(2), reserve) {
+            return Err(disk_full());
+        }
+        let mut kind = "audiobook";
+        let mut path: Option<Vec<String>> = None;
+        let mut job: Option<(i64, std::path::PathBuf)> = None;
+        let (mut size, mut count) = (0u64, 0usize);
+        let mut first_name = String::new();
+        let abort = |state: AppState, id: i64, dir: std::path::PathBuf| async move {
+            let _ = state.store.set_upload_state(id, "failed", "the upload was interrupted, too large or the disk is full").await;
+            let _ = tokio::fs::remove_dir_all(dir).await;
+        };
+        while let Some(mut field) = form.next_field().await.map_err(|_| too_big())? {
+            match field.name() {
+                Some("kind") => kind = if field.text().await.unwrap_or_default().trim() == "music" { "music" } else { "audiobook" },
+                Some("path") => path = crate::upload::dropped_path(&field.text().await.unwrap_or_default()),
+                Some("file") => {
+                    // A file whose path was refused (not audio, not a picture) is read and dropped.
+                    let Some(parts) = path.take() else {
+                        while field.chunk().await.map_err(|_| too_big())?.is_some() {}
+                        continue;
+                    };
+                    let (id, root) = match &job {
+                        Some(j) => j.clone(),
+                        None => {
+                            let id = state.store.create_upload_job("files", s.user_id, kind).await?;
+                            let root = state.uploads.files_dir(id);
+                            job = Some((id, root.clone()));
+                            (id, root)
+                        }
+                    };
+                    let target = parts.iter().fold(root.clone(), |p, c| p.join(c));
+                    if first_name.is_empty() {
+                        first_name = parts.first().cloned().unwrap_or_default();
+                    }
+                    let written = async {
+                        tokio::fs::create_dir_all(target.parent().ok_or(std::io::ErrorKind::InvalidInput)?).await?;
+                        let mut file = tokio::fs::File::create(&target).await?;
+                        while let Some(chunk) = field.chunk().await.map_err(|_| std::io::ErrorKind::InvalidData)? {
+                            size += chunk.len() as u64;
+                            if size > crate::upload::MAX_UPLOAD_BYTES {
+                                return Err(std::io::ErrorKind::FileTooLarge.into());
+                            }
+                            if size / (64 * 1024 * 1024) != (size - chunk.len() as u64) / (64 * 1024 * 1024) && !crate::diskspace::fits(&target, 0, reserve) {
+                                return Err(std::io::ErrorKind::StorageFull.into());
+                            }
+                            file.write_all(&chunk).await?;
+                        }
+                        file.flush().await?;
+                        Ok::<(), std::io::Error>(())
+                    }
+                    .await;
+                    if let Err(e) = written {
+                        abort(state.clone(), id, root.parent().map(std::path::Path::to_path_buf).unwrap_or(root)).await;
+                        return Err(match e.kind() {
+                            std::io::ErrorKind::FileTooLarge => Failure::new(StatusCode::PAYLOAD_TOO_LARGE, "err.upload_size"),
+                            std::io::ErrorKind::StorageFull => disk_full(),
+                            _ => Failure::new(StatusCode::INSUFFICIENT_STORAGE, "err.upload_broken"),
+                        });
+                    }
+                    count += 1;
+                }
+                _ => {}
+            }
+        }
+        let Some((id, root)) = job else { return Err(Failure::new(StatusCode::UNPROCESSABLE_ENTITY, "err.upload_type")) };
+        if size == 0 {
+            abort(state.clone(), id, root.parent().map(std::path::Path::to_path_buf).unwrap_or(root)).await;
+            return Err(Failure::input());
+        }
+        let name = if count == 1 { first_name } else { format!("{first_name} ({count} files)") };
+        state.store.set_upload_name(id, &crate::upload::clean_name(&name, "files")).await?;
+        state.store.set_upload_size(id, size as i64).await?;
+        state.uploads.enqueue(id);
+        upload_queue(&state, &s).await
+    }
+    .await;
+    finish(&s, "/admin/import", outcome)
+}
+
+/// The address that devices are told: the name for a certificate from a certificate authority (the
+/// certificate is checked against it), else the address of this machine.
+pub(crate) fn public_address(state: &AppState) -> String {
+    match &state.ca_host {
+        Some(host) => format!("{host}:{}", state.listen.port()),
+        None => reachable_address(state.listen),
+    }
+}
+
 /// The address the pairing page offers for a device: the listen address, and when that is "every
 /// interface" (0.0.0.0), the address of this machine in the network (the one that leads to the
 /// default route), because a device cannot reach 0.0.0.0.
@@ -1246,7 +2013,7 @@ pub struct UserQuery {
 }
 
 pub async fn schedule_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<UserQuery>) -> Response {
-    let page = PageQuery { msg: q.msg, next: None, tab: None };
+    let page = PageQuery { msg: q.msg, next: None, tab: None, q: None, problems: None, page: None, per: None };
     match state.ui.schedule(&state.store, view_for(&s, &page), q.user).await {
         Ok(Some(html)) => Html(html).into_response(),
         Ok(None) => plain_failure(StatusCode::NOT_FOUND, "err.not_found", s.lang, s.htmx),
@@ -1343,7 +2110,7 @@ pub async fn pairing_create(State(state): State<AppState>, s: AdminSession, Form
             Error::WriteFailed(m) if m == "no such user" => Failure::not_found(),
             other => Failure::from(other),
         })?;
-        let uri = crate::pairing::pairing_uri(&state.store.server_id().await?, address, &enrollment.code, state.fingerprint.as_deref());
+        let uri = crate::pairing::pairing_uri(&state.store.server_id().await?, address, &enrollment.code, state.fingerprint.as_deref(), state.ca_host.is_some());
         let minutes = ((enrollment.expires_at - now_ms()) / 60_000).max(1);
         Ok(state.ui.pairing_result_fragment(view(&s), &enrollment.user_name, &uri, minutes, s.htmx)?)
     }
@@ -1351,7 +2118,7 @@ pub async fn pairing_create(State(state): State<AppState>, s: AdminSession, Form
     match outcome {
         // Without JavaScript the code must be on the page that answers: it is shown only once.
         Ok(fragment) if !s.htmx => {
-            render(state.ui.pairing(&state.store, view(&s), &reachable_address(state.listen), Some(fragment), state.fingerprint.is_some()).await)
+            render(state.ui.pairing(&state.store, view(&s), &public_address(&state), Some(fragment), state.https()).await)
         }
         other => finish(&s, "/admin/pairing", other),
     }

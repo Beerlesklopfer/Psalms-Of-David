@@ -1,0 +1,18 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% if pager.total > 0 %}
+<nav class="pager" aria-label="{{ t('pager.label') }}">
+  <span class="pager-count">{{ pager.from }}&ndash;{{ pager.to }} {{ t("pager.of") }} {{ pager.total }}</span>
+  {% set page_url = "/admin/" ~ ("music" if kind == "music" else "books") ~ "?" ~ (pager.base ~ "&" if pager.base else "") ~ "page=" %}
+  {% if pager.page > 1 %}<a class="btn outline" rel="prev" href="{{ page_url }}{{ pager.prev }}" aria-label="{{ t('pager.prev') }}">&lsaquo;</a>{% else %}<span class="btn outline disabled" aria-hidden="true">&lsaquo;</span>{% endif %}
+  {% for item in pager.numbers %}
+    {% if item.gap %}<span class="pager-gap">&hellip;</span>{% endif %}
+    {% if item.n == pager.page %}<span class="btn pager-current" aria-current="page">{{ item.n }}</span>{% else %}<a class="btn outline" href="{{ page_url }}{{ item.n }}">{{ item.n }}</a>{% endif %}
+  {% endfor %}
+  {% if pager.page < pager.pages %}<a class="btn outline" rel="next" href="{{ page_url }}{{ pager.next }}" aria-label="{{ t('pager.next') }}">&rsaquo;</a>{% else %}<span class="btn outline disabled" aria-hidden="true">&rsaquo;</span>{% endif %}
+  <form class="pager-size" method="get" action="/admin/{{ 'music' if kind == 'music' else 'books' }}">
+    {% if pager.q %}<input type="hidden" name="q" value="{{ pager.q }}">{% endif %}{% if pager.problems %}<input type="hidden" name="problems" value="1">{% endif %}
+    <label>{{ t("pager.size") }} <select name="per" data-autosubmit>{% for n in pager.sizes %}<option value="{{ n }}"{% if n == pager.per %} selected{% endif %}>{{ n }}</option>{% endfor %}{% if pager.per not in pager.sizes %}<option value="{{ pager.per }}" selected>{{ pager.per }}</option>{% endif %}</select></label>
+    <noscript><button type="submit" class="btn outline">OK</button></noscript>
+  </form>
+</nav>
+{% endif %}

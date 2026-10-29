@@ -34,6 +34,8 @@ pub fn now_ms() -> i64 {
 pub struct Store {
     pub(crate) db: Db,
     queue: WriteQueue,
+    /// The last check of the rights on the library folders (see `access`).
+    pub(crate) access_cache: std::sync::Arc<crate::access::Cache>,
 }
 
 #[derive(Debug, Clone, FromQueryResult)]
@@ -49,18 +51,24 @@ pub struct ContinueEntry {
 #[derive(Debug, Clone, FromQueryResult)]
 pub struct BookRow {
     pub id: i64,
+    /// The place of the book below its import folder (`NORA/Die Rotsteinkids/...`); the first part names the owner of music.
+    pub folder: String,
     /// `audiobook` or `music`.
     pub kind: String,
     pub title: String,
     pub author: String,
     /// Who reads the audiobook; `None` if the files do not say.
     pub narrator: Option<String>,
+    /// The genre of the list (not the raw tag text); `None` if the album has none or it is hidden.
+    pub genre: Option<String>,
     pub min_age: Option<i64>,
     pub recommended_age: Option<i64>,
     pub released: bool,
     pub tracks: i64,
     pub discs: i64,
     pub duration_ms: i64,
+    /// The nickname of the family member the book belongs to.
+    pub owner: Option<String>,
 }
 
 /// What the overview page of the administration interface shows.
@@ -95,9 +103,17 @@ pub struct UserRow {
 pub struct AdminBookRow {
     pub id: i64,
     pub kind: String,
+    /// The place below the import folder; what the book is known by.
+    pub folder: String,
     pub title: String,
     pub author: String,
     pub narrator: Option<String>,
+    /// The genre of the list, and whether somebody chose it by hand (then the tags do not change it).
+    pub genre: Option<String>,
+    pub genre_id: Option<i64>,
+    pub genre_locked: bool,
+    /// The raw genre text of the tags.
+    pub genre_tag: Option<String>,
     pub released: bool,
     pub min_age: Option<i64>,
     pub recommended_age: Option<i64>,
@@ -106,6 +122,10 @@ pub struct AdminBookRow {
     pub tracks: i64,
     pub discs: i64,
     pub duration_ms: i64,
+    /// The family member the book belongs to (not the same as who may see it).
+    pub owner_id: Option<i64>,
+    /// Their nickname.
+    pub owner: Option<String>,
 }
 
 /// One archive in the upload queue.
@@ -120,6 +140,29 @@ pub struct UploadJob {
     pub state: String,
     pub message: String,
     pub created_at: i64,
+}
+
+/// A token for a remote LLM (MCP). The token itself is not kept, only its hash.
+#[derive(Debug, Clone, Serialize, FromQueryResult)]
+pub struct McpToken {
+    pub id: i64,
+    pub name: String,
+    pub can_write: bool,
+    pub created_at: i64,
+    pub last_used_at: Option<i64>,
+}
+
+/// One tag value that was changed through MCP.
+#[derive(Debug, Clone, Serialize, FromQueryResult)]
+pub struct TagChange {
+    pub id: i64,
+    pub at: i64,
+    pub token_name: String,
+    pub book_id: i64,
+    pub file: String,
+    pub field: String,
+    pub old_value: String,
+    pub new_value: String,
 }
 
 /// Longest blurb of a book, in characters.
@@ -172,11 +215,11 @@ struct AccessRow {
 }
 
 /// Every book with what the administration interface needs; callers add ordering or a filter.
-const ADMIN_BOOKS: &str = "SELECT b.id, b.kind, b.title, a.name AS author, b.narrator, b.released, b.min_age, b.recommended_age, \
+const ADMIN_BOOKS: &str = "SELECT b.id, b.kind, b.folder, b.title, a.name AS author, b.narrator, g.name AS genre, b.genre_id, b.genre_locked, b.genre_tag, b.released, b.min_age, b.recommended_age, \
     b.quota_exempt, b.description, (SELECT count(*) FROM track t WHERE t.book_id = b.id) AS tracks, \
     (SELECT count(DISTINCT t.disc) FROM track t WHERE t.book_id = b.id) AS discs, \
-    (SELECT coalesce(sum(t.duration_ms), 0) FROM track t WHERE t.book_id = b.id) AS duration_ms \
-    FROM book b JOIN author a ON a.id = b.author_id";
+    (SELECT coalesce(sum(t.duration_ms), 0) FROM track t WHERE t.book_id = b.id) AS duration_ms, b.owner_id, o.name AS owner \
+    FROM book b JOIN author a ON a.id = b.author_id LEFT JOIN genre g ON g.id = b.genre_id LEFT JOIN profile o ON o.id = b.owner_id";
 
 /// The columns of one line of the user list; the callers add the ordering or the filter.
 const USER_ROWS: &str = "SELECT p.id, p.name, p.first_name, p.last_name, p.birth_date, p.role, p.max_age, p.max_devices, \
@@ -184,19 +227,20 @@ const USER_ROWS: &str = "SELECT p.id, p.name, p.first_name, p.last_name, p.birth
     FROM profile p";
 
 /// The one place that decides which books a user sees (spec section 3b):
-/// admins see everything; others see released books within their age limit
+/// admins see everything (unless a book is closed to them: a couple that are both administrators can keep their own things apart); others see released books within their age limit
 /// (users without a limit see all released books), plus exceptions given to the
-/// user or to the user's role. Needs the aliases `b` (book) and `p` (profile).
-pub(crate) const VISIBLE: &str = "(p.role = 'admin' \
-    OR (b.released = 1 AND (p.max_age IS NULL OR b.min_age <= p.max_age)) \
-    OR EXISTS (SELECT 1 FROM book_release r WHERE r.book_id = b.id \
-               AND (r.profile_id = p.id OR r.role = p.role)))";
+/// user or to the user's role; a book that is closed to the user (`book_block`) is not seen by them, whatever else says. Needs the aliases `b` (book) and `p` (profile).
+pub(crate) const VISIBLE: &str = "(NOT EXISTS (SELECT 1 FROM book_block k WHERE k.book_id = b.id AND k.profile_id = p.id) \
+    AND (p.role = 'admin' \
+         OR (b.released = 1 AND (p.max_age IS NULL OR b.min_age <= p.max_age)) \
+         OR EXISTS (SELECT 1 FROM book_release r WHERE r.book_id = b.id \
+                    AND (r.profile_id = p.id OR r.role = p.role))))";
 
 impl Store {
     pub async fn open(path: &Path) -> Result<Store> {
         let db = Db::open(path).await?;
         let queue = WriteQueue::spawn(db.writer.clone(), COALESCE_WINDOW);
-        let store = Store { db, queue };
+        let store = Store { db, queue, access_cache: std::sync::Arc::default() };
         store.ensure_server_identity().await?;
         let open = store.unconfirmed_defaults().await?;
         if open > 0 {
@@ -518,6 +562,17 @@ impl Store {
         Ok(())
     }
 
+    /// Gives a book an owner (a profile) or none. `false` if the book or the profile does not exist.
+    pub async fn set_book_owner(&self, book_id: i64, owner: Option<i64>) -> Result<bool> {
+        if let Some(p) = owner {
+            if self.db.reader.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT 1 FROM profile WHERE id = ?", [p.into()])).await?.is_none() {
+                return Ok(false);
+            }
+        }
+        let res = self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE book SET owner_id = ? WHERE id = ?", [owner.into(), book_id.into()])).await?;
+        Ok(res.rows_affected() > 0)
+    }
+
     /// Releases a book to one user whatever its rating.
     pub async fn grant_release_to_user(&self, book_id: i64, profile_id: i64, by: Option<i64>) -> Result<()> {
         book_release::ActiveModel {
@@ -627,9 +682,10 @@ impl Store {
     /// anything an app would show changes, and an app that sees the same value need not reload.
     pub async fn library_version(&self) -> Result<String> {
         use sha2::{Digest, Sha256};
-        const QUERIES: [&str; 3] = [
+        const QUERIES: [&str; 4] = [
             "SELECT coalesce(group_concat(id || ':' || title || ':' || author_id || ':' || released || ':' || coalesce(min_age, '') || ':' || \
-             quota_exempt || ':' || coalesce(description, ''), '|'), '') FROM (SELECT * FROM book ORDER BY id)",
+             quota_exempt || ':' || coalesce(description, '') || ':' || coalesce(genre_id, ''), '|'), '') FROM (SELECT * FROM book ORDER BY id)",
+            "SELECT coalesce(group_concat(id || ':' || name || ':' || position || ':' || visible, '|'), '') FROM (SELECT * FROM genre ORDER BY id)",
             "SELECT coalesce(group_concat(id || ':' || book_id || ':' || disc || ':' || number || ':' || title || ':' || mtime || ':' || size_bytes, '|'), '') \
              FROM (SELECT * FROM track ORDER BY id)",
             "SELECT coalesce(group_concat(book_id || ':' || profile_id, '|'), '') FROM (SELECT * FROM book_release ORDER BY book_id, profile_id)",
@@ -683,6 +739,15 @@ impl Store {
             .await?
             .ok_or_else(|| Error::WriteFailed("upload insert returned no row".into()))?;
         Ok(row.try_get_by_index(0)?)
+    }
+
+    /// The name of a job that is only known once its files have arrived (dropped files and folders).
+    pub async fn set_upload_name(&self, id: i64, name: &str) -> Result<()> {
+        self.db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE upload_job SET name = ? WHERE id = ?", [Value::from(name.to_owned()), Value::from(id)]))
+            .await?;
+        Ok(())
     }
 
     pub async fn set_upload_size(&self, id: i64, size: i64) -> Result<()> {
@@ -744,9 +809,162 @@ impl Store {
         rows.iter().map(|r| Ok(r.try_get_by_index(0)?)).collect()
     }
 
+    // MCP access
+
+    /// Makes a token and returns it; this is the only time it can be seen.
+    pub async fn create_mcp_token(&self, name: &str, can_write: bool, user_id: i64) -> Result<String> {
+        let token = crate::auth::new_token();
+        self.db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO mcp_token (name, token_hash, can_write, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+                [
+                    Value::from(name.to_owned()),
+                    Value::from(crate::auth::sha256_hex(&token)),
+                    Value::from(can_write),
+                    Value::from(user_id),
+                    Value::from(now_ms()),
+                ],
+            ))
+            .await?;
+        Ok(token)
+    }
+
+    pub async fn mcp_tokens(&self) -> Result<Vec<McpToken>> {
+        let stmt = Statement::from_string(DbBackend::Sqlite, "SELECT id, name, can_write, created_at, last_used_at FROM mcp_token ORDER BY id");
+        Ok(McpToken::find_by_statement(stmt).all(&self.db.reader).await?)
+    }
+
+    pub async fn revoke_mcp_token(&self, id: i64) -> Result<()> {
+        self.db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "DELETE FROM mcp_token WHERE id = ?", [Value::from(id)]))
+            .await?;
+        Ok(())
+    }
+
+    /// The help text the project owner set for remote LLMs, if there is one.
+    pub async fn mcp_prompt(&self) -> Result<Option<String>> {
+        let row = self
+            .db
+            .reader
+            .query_one_raw(Statement::from_string(DbBackend::Sqlite, "SELECT text FROM mcp_prompt WHERE id = 1"))
+            .await?;
+        Ok(row.map(|r| r.try_get_by_index::<String>(0)).transpose()?)
+    }
+
+    /// Sets the help text; an empty text brings the built-in one back.
+    pub async fn set_mcp_prompt(&self, text: &str) -> Result<()> {
+        let text = text.trim();
+        let stmt = if text.is_empty() {
+            Statement::from_string(DbBackend::Sqlite, "DELETE FROM mcp_prompt WHERE id = 1")
+        } else {
+            Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO mcp_prompt (id, text) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET text = excluded.text",
+                [Value::from(text.to_owned())],
+            )
+        };
+        self.db.writer.execute_raw(stmt).await?;
+        Ok(())
+    }
+
+    /// The token behind a presented secret, if there is one; stamps the time of use.
+    pub async fn mcp_token_for(&self, secret: &str) -> Result<Option<McpToken>> {
+        let hash = crate::auth::sha256_hex(secret);
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT id, name, can_write, created_at, last_used_at FROM mcp_token WHERE token_hash = ?",
+            [Value::from(hash)],
+        );
+        let Some(token) = McpToken::find_by_statement(stmt).one(&self.db.reader).await? else { return Ok(None) };
+        self.db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE mcp_token SET last_used_at = ? WHERE id = ?",
+                [Value::from(now_ms()), Value::from(token.id)],
+            ))
+            .await?;
+        Ok(Some(token))
+    }
+
+    pub async fn log_tag_change(&self, token_name: &str, book_id: i64, file: &str, field: &str, old: &str, new: &str) -> Result<()> {
+        self.db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO tag_change (at, token_name, book_id, file, field, old_value, new_value) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    Value::from(now_ms()),
+                    Value::from(token_name.to_owned()),
+                    Value::from(book_id),
+                    Value::from(file.to_owned()),
+                    Value::from(field.to_owned()),
+                    Value::from(old.to_owned()),
+                    Value::from(new.to_owned()),
+                ],
+            ))
+            .await?;
+        Ok(())
+    }
+
+    /// The newest changes first, of one book or of all (`book_id` 0).
+    pub async fn tag_changes(&self, book_id: i64, limit: u64) -> Result<Vec<TagChange>> {
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT id, at, token_name, book_id, file, field, old_value, new_value FROM tag_change WHERE (? = 0 OR book_id = ?) ORDER BY id DESC LIMIT ?",
+            [Value::from(book_id), Value::from(book_id), Value::from(limit as i64)],
+        );
+        Ok(TagChange::find_by_statement(stmt).all(&self.db.reader).await?)
+    }
+
     /// The folder of a book below its library root, e.g. `Follett/Kinder der Freiheit`.
     pub async fn book_folder(&self, id: i64) -> Result<Option<String>> {
         Ok(book::Entity::find_by_id(id).one(&self.db.reader).await?.map(|b| b.folder))
+    }
+
+    /// Books with missing tracks: for every book the numbers that are missing in the sequence of a CD (1 to the highest number), by CD, as a
+    /// text for the list (`6, 7, 11` for a book of one CD, `CD 4: 6, 7, 11` else), and whether a number is there twice. Books without a gap are not in it.
+    pub async fn track_gaps(&self) -> Result<std::collections::HashMap<i64, String>> {
+        use std::collections::{BTreeMap, HashMap};
+        let rows = self
+            .db
+            .reader
+            .query_all_raw(Statement::from_string(DbBackend::Sqlite, "SELECT book_id, disc, number FROM track ORDER BY book_id, disc, number"))
+            .await?;
+        let mut books: HashMap<i64, BTreeMap<i64, Vec<i64>>> = HashMap::new();
+        for r in rows {
+            let (b, d, n): (i64, i64, i64) = (r.try_get_by_index(0)?, r.try_get_by_index(1)?, r.try_get_by_index(2)?);
+            books.entry(b).or_default().entry(d).or_default().push(n);
+        }
+        let mut out = HashMap::new();
+        for (book, discs) in books {
+            let many = discs.len() > 1 || discs.keys().any(|d| *d > 1);
+            let mut parts = Vec::new();
+            for (disc, numbers) in &discs {
+                let max = numbers.iter().copied().max().unwrap_or(0).min(999);
+                let missing: Vec<i64> = (1..=max).filter(|n| !numbers.contains(n)).collect();
+                let double = numbers.windows(2).any(|w| w[0] == w[1]);
+                if missing.is_empty() && !double {
+                    continue;
+                }
+                let mut text: Vec<String> = missing.iter().take(12).map(i64::to_string).collect();
+                if missing.len() > 12 {
+                    text.push("…".to_owned());
+                }
+                let mut line = text.join(", ");
+                if double {
+                    line = if line.is_empty() { "doubles".to_owned() } else { format!("{line}; doubles") };
+                }
+                parts.push(if many { format!("CD {disc}: {line}") } else { line });
+            }
+            if !parts.is_empty() {
+                out.insert(book, parts.join(" | "));
+            }
+        }
+        Ok(out)
     }
 
     /// Tracks of a book in playing order.
@@ -779,11 +997,14 @@ impl Store {
     /// All books the user may see, ordered by author and title.
     pub async fn visible_books(&self, profile_id: i64) -> Result<Vec<BookRow>> {
         let sql = format!(
-            "SELECT b.id, b.kind, b.title, a.name AS author, b.narrator, b.min_age, b.recommended_age, b.released, \
+            "SELECT b.id, b.folder, b.kind, b.title, a.name AS author, b.narrator, CASE WHEN g.visible = 1 THEN g.name END AS genre, \
+                    b.min_age, b.recommended_age, b.released, \
                     count(t.id) AS tracks, count(DISTINCT t.disc) AS discs, \
-                    coalesce(sum(t.duration_ms), 0) AS duration_ms \
+                    coalesce(sum(t.duration_ms), 0) AS duration_ms, o.name AS owner \
              FROM book b \
              JOIN author a ON a.id = b.author_id \
+             LEFT JOIN profile o ON o.id = b.owner_id \
+             LEFT JOIN genre g ON g.id = b.genre_id \
              LEFT JOIN track t ON t.book_id = b.id \
              JOIN profile p ON p.id = ? \
              WHERE {VISIBLE} \

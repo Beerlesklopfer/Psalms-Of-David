@@ -64,6 +64,9 @@ pub struct ImportState {
     pub unlocked_at: Option<i64>,
 }
 
+/// The quarantine folder when the setting is empty or unusable.
+pub const DEFAULT_QUARANTINE_FOLDER: &str = ".quarantine";
+
 impl Store {
     async fn set_setting(&self, key: &str, value: &str, confirmed: bool) -> Result<()> {
         let values: [Value; 3] = [key.to_owned().into(), value.to_owned().into(), i64::from(confirmed).into()];
@@ -77,6 +80,29 @@ impl Store {
             ))
             .await?;
         Ok(())
+    }
+
+    /// The name of the quarantine folder inside each import folder (a setting; `DEFAULT_QUARANTINE_FOLDER`
+    /// if there is none or it is not a plain folder name).
+    pub async fn quarantine_folder(&self) -> Result<String> {
+        let v = self.setting("quarantine_folder").await?.map(|s| s.trim().to_owned()).unwrap_or_default();
+        Ok(if v.is_empty() || v.contains('/') || v.contains('\\') || v == "." || v == ".." { DEFAULT_QUARANTINE_FOLDER.to_owned() } else { v })
+    }
+
+    /// The words in the genre tag that make an album an audiobook (a setting, separated by commas), in lower case.
+    pub async fn audiobook_genres(&self) -> Result<Vec<String>> {
+        Ok(self.setting("audiobook_genres").await?.unwrap_or_default().split(',').map(|w| w.trim().to_lowercase()).filter(|w| !w.is_empty()).collect())
+    }
+
+    /// The certificate files and the name of the settings in the pages (empty values are not set).
+    pub async fn external_tls(&self) -> Result<crate::tls::External> {
+        let get = |key: &'static str| async move { self.setting(key).await.map(|v| v.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty())) };
+        Ok(crate::tls::External {
+            cert: get("tls_cert").await?.map(PathBuf::from),
+            key: get("tls_key").await?.map(PathBuf::from),
+            host: get("tls_host").await?,
+            reload_s: get("tls_reload_s").await?.and_then(|v| v.parse().ok()),
+        })
     }
 
     pub async fn import_state(&self) -> Result<ImportState> {
@@ -239,6 +265,28 @@ impl Store {
         Ok(())
     }
 
+    /// Brings the library in line with the files a little later, after something changed them (tags,
+    /// covers, moved folders): one import in the background, however many changes come in a row.
+    /// Without it the lists keep the old narrator, title and author until the next import.
+    pub fn rescan_soon(&self) {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static PENDING: AtomicBool = AtomicBool::new(false);
+        if PENDING.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let store = self.clone();
+        tokio::spawn(async move {
+            // The changes of one session arrive in bursts; wait until it is quiet.
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            PENDING.store(false, Ordering::SeqCst);
+            match store.run_import().await {
+                Ok(report) => tracing::info!(books = report.books, tracks_updated = report.tracks_updated, "library brought in line after a change"),
+                Err(Error::ImportLocked) => {}
+                Err(e) => tracing::warn!(error = %e, "the rescan after a change failed"),
+            }
+        });
+    }
+
     pub async fn run_import(&self) -> Result<ScanReport> {
         let state = self.import_state().await?;
         if !state.enabled {
@@ -255,6 +303,8 @@ impl Store {
             .transpose()?
             .unwrap_or(0);
         let mut total = ScanReport::default();
+        // The quarantine of each import folder is not part of the library, whatever it is called.
+        let quarantine = self.quarantine_folder().await?;
         // Every folder, with the kind of what is in it. A folder that lies inside another one is left
         // out of the scan of that one: it is scanned as a root of its own.
         let roots: Vec<(PathBuf, &'static str)> = state
@@ -275,6 +325,7 @@ impl Store {
                 .filter(|(other, _)| other != path && other.starts_with(path))
                 .map(|(other, _)| other.clone())
                 .chain(if *kind == "music" { &state.music_excludes } else { &state.excludes }.iter().map(PathBuf::from))
+                .chain(std::iter::once(path.join(&quarantine)))
                 .map(|p| p.canonicalize().unwrap_or(p))
                 .collect();
             // A folder that cannot be read must not stop the others.

@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'dart:async';
 
+import 'dart:io';
+
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 
 import 'audio_backend.dart';
 
@@ -14,10 +17,23 @@ import 'audio_backend.dart';
 /// return is what the player last said. A file that cannot be opened is reported by the state
 /// `failed` a moment later, not by an exception from [load].
 class JustAudioBackend implements AudioBackend {
+  /// Lets playback go on in the background and shows it on the lock screen, with the keys of the
+  /// headphones and the car (iOS: the remote command centre). Call once before the first player is made.
+  /// Only iOS for now: Android needs entries in its manifest for the same, which are not made yet.
+  static Future<void> initBackground() async {
+    if (!Platform.isIOS || _background) return;
+    await JustAudioBackground.init();
+    _background = true;
+  }
+
+  static bool _background = false;
+
   JustAudioBackend() : _player = AudioPlayer() {
-    _subs.add(_player.playerStateStream.listen((s) {
-      if (_loaded && s.processingState == ProcessingState.completed) _ended = true;
-    }));
+    _subs.add(
+      _player.playerStateStream.listen((s) {
+        if (_loaded && s.processingState == ProcessingState.completed) _ended = true;
+      }),
+    );
     _subs.add(_player.durationStream.listen((d) => _duration = d));
   }
 
@@ -54,7 +70,20 @@ class JustAudioBackend implements AudioBackend {
     _wantPlaying = play;
     _duration = null;
     _then(() async {
-      await _player.setFilePath(path, initialPosition: start);
+      // A radio stream comes as an address, everything else as a file.
+      final stream = path.startsWith('http://') || path.startsWith('https://');
+      if (_background) {
+        // The tag is what the lock screen shows.
+        final tag = MediaItem(id: path, title: title.isEmpty ? path.split('/').last : title);
+        await _player.setAudioSource(
+          stream ? AudioSource.uri(Uri.parse(path), tag: tag) : AudioSource.file(path, tag: tag),
+          initialPosition: start,
+        );
+      } else if (stream) {
+        await _player.setUrl(path, initialPosition: start);
+      } else {
+        await _player.setFilePath(path, initialPosition: start);
+      }
       await _player.setSpeed(_speed);
       await _player.setVolume(_volume);
       if (_wantPlaying) unawaited(_player.play());
@@ -121,6 +150,16 @@ class JustAudioBackend implements AudioBackend {
 
   @override
   double get volume => _volume;
+
+  // The player of the platform has a buffer of its own that cannot be set.
+  @override
+  void setBufferSeconds(int seconds) {}
+
+  @override
+  int get bufferSeconds => kBufferDefaultSeconds;
+
+  @override
+  bool get bufferAdjustable => false;
 
   @override
   double get speed => _speed;

@@ -3,9 +3,32 @@
 
 {% block title %}{{ t("music.title") if kind == "music" else t("books.title") }}{% endblock %}
 
+
 {% block content %}
 <div class="page-head">
   <h1>{{ t("music.title") if kind == "music" else t("books.title") }}</h1>
 </div>
+<form class="search-bar" method="get" action="/admin/{{ 'music' if kind == 'music' else 'books' }}" role="search">
+  <input type="search" id="book-search" name="q" value="{{ q }}" list="book-words" autocomplete="off" spellcheck="false" maxlength="100"
+         placeholder="{{ t('books.search_hint') }}" title="{{ t('books.search_syntax') }}" aria-label="{{ t('books.search') }}">
+  <datalist id="book-words">{% for w in words %}<option value="{{ w }}">{% endfor %}</datalist>
+  <label class="check-inline"><input type="checkbox" name="problems" value="1"{% if only_problems %} checked{% endif %}> <span class="problem-mark small" aria-hidden="true">!</span> {{ t("books.only_problems") }}{% if problem_count is defined %} ({{ problem_count }}){% endif %}</label>
+  <button type="submit" class="btn">{{ t("books.search") }}</button>
+  {% if searched %}<a class="btn outline" href="/admin/{{ 'music' if kind == 'music' else 'books' }}">{{ t("ui.cancel") }}</a>{% endif %}
+</form>
+{% include "fragments/pager.html" %}
 {% include "fragments/book_list.html" %}
+{% include "fragments/pager.html" %}
+{% if ignores is defined and ignores %}
+<details class="ignore-list"><summary>{{ t("ignore.list") }} ({{ ignores|length }})</summary>
+  <ul>
+  {% for r in ignores %}
+    <li><span class="badge muted">{{ t("ignore." ~ r.scope) }}</span> <span class="badge">{{ r.what }}</span> <code>{{ r.key|replace("\u0001", " / ") }}</code>{% if r.note %} <small>{{ r.note }}</small>{% endif %}
+      <form method="post" action="/admin/rpc/ignore.remove"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="rule" value="{{ r.id }}"><input type="hidden" name="back" value="{{ kind }}"><button type="submit" class="btn outline">{{ t("ignore.remove") }}</button></form></li>
+  {% endfor %}
+  </ul>
+</details>
+{% endif %}
+{% if search_error is defined and search_error %}<p class="form-error" role="alert">{{ t("books.bad_pattern") }}: {{ search_error }}</p>{% endif %}
+{% if searched and not books %}<p class="unit">{{ t("books.no_match") }}</p>{% endif %}
 {% endblock %}

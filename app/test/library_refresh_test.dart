@@ -10,14 +10,15 @@ import 'package:psalm/server/server_source.dart';
 import 'package:psalm/widgets.dart';
 
 Book _book(String id, {int tracks = 3}) => Book(
-      id: id,
-      title: 'Book $id',
-      author: 'A',
-      color: const Color(0xFF000000),
-      tracks: [
-        for (var i = 1; i <= tracks; i++) Track(disc: 1, number: i, title: 'T$i', length: const Duration(minutes: 5), path: '/m/$id/$i.mp3'),
-      ],
-    );
+  id: id,
+  title: 'Book $id',
+  author: 'A',
+  color: const Color(0xFF000000),
+  tracks: [
+    for (var i = 1; i <= tracks; i++)
+      Track(disc: 1, number: i, title: 'T$i', length: const Duration(minutes: 5), path: '/m/$id/$i.mp3'),
+  ],
+);
 
 void main() {
   test('a reloaded library brings new books and keeps what plays', () {
@@ -53,14 +54,16 @@ void main() {
       calls++;
       await Future<void>.delayed(const Duration(milliseconds: 50));
     };
-    await tester.pumpWidget(PlayerScope(
-      controller: p,
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(appBar: AppBar(actions: const [RefreshButton()])),
+    await tester.pumpWidget(
+      PlayerScope(
+        controller: p,
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(appBar: AppBar(actions: const [RefreshButton()])),
+        ),
       ),
-    ));
+    );
     await tester.tap(find.byTooltip('Refresh the library'));
     await tester.pump();
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
@@ -73,14 +76,16 @@ void main() {
 
   testWidgets('without a server there is no refresh button', (tester) async {
     final p = PlayerController([_book('1')]);
-    await tester.pumpWidget(PlayerScope(
-      controller: p,
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(appBar: AppBar(actions: const [RefreshButton()])),
+    await tester.pumpWidget(
+      PlayerScope(
+        controller: p,
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(appBar: AppBar(actions: const [RefreshButton()])),
+        ),
       ),
-    ));
+    );
     expect(find.byType(IconButton), findsNothing);
     p.dispose();
   });

@@ -4,6 +4,8 @@
 
 use std::fs::File;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use symphonia::core::audio::sample::Sample;
@@ -16,6 +18,11 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::units::Time;
 
 use crate::Error;
+use crate::stream::{ByteQueue, QueueReader};
+
+/// The message for a stream that is not MP3 (AAC, Ogg, HLS playlists, a web page ...).
+/// The app maps this exact text to a localized one.
+pub const STREAM_UNSUPPORTED: &str = "stream type not supported";
 
 pub struct Source {
     format: Box<dyn FormatReader>,
@@ -39,9 +46,29 @@ impl Source {
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             hint.with_extension(ext);
         }
-        let mut format = symphonia::default::get_probe()
+        let format = symphonia::default::get_probe()
             .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
             .map_err(|e| Error::Decode(format!("{}: {e}", path.display())))?;
+        Self::start(format, start)
+    }
+
+    /// Opens a pushed stream (MP3). Blocks until the first block is decoded, so the
+    /// caller must run it on a thread of its own; `abort` ends the wait.
+    pub fn open_stream(queue: Arc<ByteQueue>, abort: Arc<AtomicBool>) -> Result<(Source, Vec<f32>), Error> {
+        let mss = MediaSourceStream::new(Box::new(QueueReader::new(queue.clone(), abort)), Default::default());
+        let mut hint = Hint::new();
+        hint.with_extension("mp3").mime_type("audio/mpeg");
+        let format = symphonia::default::get_probe()
+            .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+            .map_err(|e| match queue.failure() {
+                // The probe may hide a failed connection behind "no format found".
+                Some(reason) => Error::Decode(reason),
+                None => stream_error(e),
+            })?;
+        Self::start(format, Duration::ZERO)
+    }
+
+    fn start(mut format: Box<dyn FormatReader>, start: Duration) -> Result<(Source, Vec<f32>), Error> {
         let track = format.default_track(TrackType::Audio).ok_or_else(|| Error::Decode("no audio track".into()))?;
         let track_id = track.id;
         let params = track
@@ -102,5 +129,127 @@ impl Source {
                 Err(e) => return Err(Error::Decode(e.to_string())),
             }
         }
+    }
+}
+
+/// A failure while opening a stream: the queue's own reason if the connection
+/// failed, otherwise the data was not something this engine can play.
+fn stream_error(e: DecodeError) -> Error {
+    match e {
+        DecodeError::IoError(io) => Error::Decode(io.to_string()),
+        _ => Error::Decode(STREAM_UNSUPPORTED.into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+    use std::thread;
+
+    /// A 3 s stereo 44.1 kHz sine at 128 kbit/s, made by ffmpeg (as the scripts do).
+    /// `None` if ffmpeg is not installed; the test is then skipped with a note.
+    fn mp3() -> Option<Vec<u8>> {
+        let out = Command::new("ffmpeg")
+            .args(["-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3:sample_rate=44100", "-ac", "2", "-b:a", "128k", "-f", "mp3", "-"])
+            .output()
+            .ok()?;
+        out.status.success().then_some(out.stdout)
+    }
+
+    fn drain(queue: &Arc<ByteQueue>, abort: &Arc<AtomicBool>) -> Result<(u64, u32, u32), Error> {
+        let (mut source, first) = Source::open_stream(queue.clone(), abort.clone())?;
+        let mut frames = (first.len() / source.channels as usize) as u64;
+        while let Some(block) = source.next_samples()? {
+            frames += (block.len() / source.channels as usize) as u64;
+        }
+        Ok((frames, source.rate, source.channels))
+    }
+
+    /// Pushes `data` in pieces of `piece` bytes the way a network connection would,
+    /// waiting when the queue is full.
+    fn feed(queue: Arc<ByteQueue>, data: Vec<u8>, piece: usize) -> thread::JoinHandle<()> {
+        thread::spawn(move || {
+            for chunk in data.chunks(piece) {
+                let mut rest = chunk;
+                while !rest.is_empty() {
+                    let n = queue.push(rest).unwrap();
+                    rest = &rest[n..];
+                    if n == 0 {
+                        thread::sleep(Duration::from_millis(1));
+                    }
+                }
+            }
+            queue.end();
+        })
+    }
+
+    #[test]
+    fn an_mp3_pushed_in_small_pieces_decodes_completely() {
+        let Some(data) = mp3() else { return eprintln!("skipped: ffmpeg not found") };
+        let queue = ByteQueue::new(4096); // small: forces back pressure
+        let abort = Arc::new(AtomicBool::new(false));
+        let writer = feed(queue.clone(), data, 313);
+        let (frames, rate, channels) = drain(&queue, &abort).expect("decodes");
+        writer.join().unwrap();
+        assert_eq!((rate, channels), (44100, 2));
+        let seconds = frames as f64 / rate as f64;
+        assert!((2.8..=3.2).contains(&seconds), "about 3 s decoded, got {seconds}");
+    }
+
+    #[test]
+    fn a_stream_that_starts_in_the_middle_of_a_frame_decodes() {
+        let Some(data) = mp3() else { return eprintln!("skipped: ffmpeg not found") };
+        // Radio streams are joined wherever the broadcast is: cut the head off.
+        let queue = ByteQueue::new(1 << 20);
+        queue.push(&data[1000..]).unwrap();
+        queue.end();
+        let (frames, rate, _) = drain(&queue, &Arc::new(AtomicBool::new(false))).expect("decodes");
+        assert!(frames as f64 / rate as f64 > 2.0);
+    }
+
+    #[test]
+    fn a_gap_in_the_stream_after_a_reconnect_is_survived() {
+        let Some(data) = mp3() else { return eprintln!("skipped: ffmpeg not found") };
+        // First part, then the new connection continues somewhere else (bytes lost).
+        let queue = ByteQueue::new(1 << 20);
+        queue.push(&data[..20_000]).unwrap();
+        queue.push(&data[20_777..]).unwrap();
+        queue.end();
+        let (frames, rate, _) = drain(&queue, &Arc::new(AtomicBool::new(false))).expect("decodes");
+        assert!(frames as f64 / rate as f64 > 2.0, "most of the audio is still there");
+    }
+
+    #[test]
+    fn something_that_is_not_mp3_is_called_unsupported() {
+        for body in [&b"<html><body>Not a stream</body></html>"[..], &[0xFF, 0xF1, 0x50, 0x80, 0x1F, 0xFC][..], &[7u8; 5000][..]] {
+            let queue = ByteQueue::new(1 << 20);
+            queue.push(body).unwrap();
+            queue.end();
+            let err = Source::open_stream(queue, Arc::new(AtomicBool::new(false))).err().expect("must fail");
+            assert_eq!(err.to_string(), format!("decode: {STREAM_UNSUPPORTED}"));
+        }
+    }
+
+    #[test]
+    fn a_failing_connection_reports_its_reason() {
+        let queue = ByteQueue::new(1 << 20);
+        queue.fail("HTTP 404");
+        let err = Source::open_stream(queue, Arc::new(AtomicBool::new(false))).err().expect("must fail");
+        assert!(err.to_string().contains("HTTP 404"), "{err}");
+    }
+
+    #[test]
+    fn opening_ends_when_told_to_and_does_not_hang() {
+        let queue = ByteQueue::new(1 << 20);
+        let abort = Arc::new(AtomicBool::new(false));
+        let opener = {
+            let (q, a) = (queue.clone(), abort.clone());
+            thread::spawn(move || Source::open_stream(q, a).err().map(|e| e.to_string()))
+        };
+        thread::sleep(Duration::from_millis(150));
+        abort.store(true, std::sync::atomic::Ordering::Release);
+        assert!(opener.join().unwrap().is_some());
+        queue.close();
     }
 }

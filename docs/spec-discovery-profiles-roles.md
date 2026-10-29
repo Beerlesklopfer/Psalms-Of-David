@@ -235,7 +235,7 @@ Built as described below. **Values that the owner has not confirmed are stored w
 
 ## 7. Transport security (decided and built)
 
-Everything that other machines can reach is served over HTTPS with a self-signed certificate made at the first start. The fingerprint of that certificate travels in the pairing code, and a paired device accepts only a server that shows exactly this certificate; there is no certificate authority. Loopback stays plain HTTP. The WireGuard tunnel encrypts the traffic away from home in addition. Details, the known gaps and the tests are in `autonomous-session-log.md`, entries 29 to 31.
+Everything that other machines can reach is served over HTTPS with a self-signed certificate made at the first start. The fingerprint of that certificate travels in the pairing code, and a paired device accepts only a server that shows exactly this certificate; there is no certificate authority. Loopback stays plain HTTP. The WireGuard tunnel encrypts the traffic away from home in addition.
 
 ## 8. How it will be checked
 

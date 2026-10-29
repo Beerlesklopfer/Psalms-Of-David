@@ -8,22 +8,22 @@ import 'package:psalm/player_controller.dart';
 import 'package:psalm/screens/book_screen.dart';
 
 Book _book({String? blurb}) => Book(
-      id: '1',
-      title: 'Kinder der Freiheit',
-      author: 'Ken Follett',
-      color: const Color(0xFF6E1F2B),
-      tracks: const [Track(disc: 1, number: 1, title: 'T', length: Duration(minutes: 1))],
-      blurb: blurb,
-    );
+  id: '1',
+  title: 'Kinder der Freiheit',
+  author: 'Ken Follett',
+  color: const Color(0xFF6E1F2B),
+  tracks: const [Track(disc: 1, number: 1, title: 'T', length: Duration(minutes: 1))],
+  blurb: blurb,
+);
 
 Widget _app(Book book) => PlayerScope(
-      controller: PlayerController([book]),
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: BookScreen(book: book),
-      ),
-    );
+  controller: PlayerController([book]),
+  child: MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: BookScreen(book: book),
+  ),
+);
 
 void main() {
   testWidgets('the book screen shows the blurb', (tester) async {

@@ -85,6 +85,32 @@
   "settingsDevice": "Dieses Gerät",
   "settingsDisconnect": "Trennen",
   "settingsDisconnectHint": "Vergisst die Kopplung mit dem Server auf diesem Gerät. Zum erneuten Verbinden brauchst du einen neuen Kopplungscode.",
+  "settingsPlayback": "Wiedergabe",
+  "settingsBuffer": "Audiopuffer",
+  "settingsBufferSeconds": "{seconds} s",
+  "settingsBufferHint": "Wie viel Audio bereitgehalten wird, bevor es gespielt wird. Ein größerer Puffer überbrückt ein langsames Netz oder eine langsame Platte, ein kleinerer lässt einen Titelwechsel früher hören. Gilt ab dem nächsten Titel.",
+  "settingsDevices": "Geräte",
+  "settingsDevicesCount": "{used} von {max} Geräten angebunden",
+  "settingsDevicesNoLimit": "{used} Geräte angebunden",
+  "settingsConnectDevice": "Weiteres Gerät anbinden",
+  "settingsConnectDeviceHint": "Zeigt einen QR-Code, den das andere Gerät scannt. Der Code gilt einmal und nur kurze Zeit.",
+  "pairQrScan": "Scanne diesen Code mit Psalm auf dem anderen Gerät.",
+  "pairQrExpires": "Gültig noch {time}",
+  "pairQrExpired": "Der Code ist abgelaufen.",
+  "pairQrNew": "Neuer Code",
+  "pairQrFull": "Alle Geräte sind angebunden. Entferne in der Verwaltung des Servers eines, um ein weiteres anzubinden.",
+  "pairQrError": "Der Code konnte nicht erstellt werden. Versuche es erneut.",
+  "pairQrClose": "Schließen",
+  "pairQrCopy": "Adresse kopieren",
+  "pairQrCopied": "Adresse kopiert. Füge sie im Verbindungsbildschirm des anderen Geräts ein.",
+  "streamArtist": "Interpret",
+  "streamTrack": "Titel",
+  "streamStation": "Sender",
+  "streamGenre": "Genre",
+  "streamDescription": "Über",
+  "streamQuality": "Qualität",
+  "streamWebsite": "Webseite",
+  "streamWaiting": "Warte auf die Angaben des Senders …",
   "cancel": "Abbrechen",
   "aboutVersion": "Version {version}",
   "aboutDescription": "Psalm spielt Hörbücher, Musik und mehr von deinem eigenen David-Server, für die ganze Familie.",
@@ -195,5 +221,356 @@
       }
     }
   },
-  "sectionRecent": "Zuletzt gehört"
+  "sectionRecent": "Zuletzt gehört",
+  "genreOther": "Sonstige",
+  "sectionAlbums": "Alben",
+  "sectionBooks": "Bücher",
+  "sectionNarrators": "Sprecher",
+  "sectionAlbumsAndBooks": "Alben und Bücher",
+  "navPodcasts": "Podcasts",
+  "navRadio": "Radio",
+  "podcastAdd": "Podcast abonnieren",
+  "podcastAddress": "Adresse des Feeds oder der Webseite",
+  "podcastFollow": "Abonnieren",
+  "podcastFollowed": "„{title}“ abonniert",
+  "@podcastFollowed": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "askToRelease": "Bitte darum, dass es freigegeben wird. Es wartet, bis ein Elternteil es erlaubt.",
+  "podcastInvalid": "Unter dieser Adresse gibt es keinen Podcast-Feed.",
+  "notAllowed": "Das darfst du nicht.",
+  "serverUnreachableShort": "Der Server ist nicht erreichbar.",
+  "needsServer": "Podcasts und Radio brauchen eine Verbindung zu deinem Server.",
+  "noPodcastsYet": "Noch keine Podcasts. Mit + einen abonnieren.",
+  "waitingForRelease": "Wartet auf eine Freigabe. Bitte darum, dass es freigegeben wird.",
+  "feedProblem": "Der Feed konnte zuletzt nicht gelesen werden.",
+  "podcastUnfollow": "Nicht mehr abonnieren",
+  "noEpisodesYet": "Noch keine Folgen.",
+  "episodeAt": "bei {time} angehalten",
+  "@episodeAt": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "stationAdd": "Sender hinzufügen",
+  "stationName": "Name",
+  "stationAddress": "Adresse des Streams",
+  "stationSave": "Speichern",
+  "stationAdded": "„{name}“ hinzugefügt",
+  "@stationAdded": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "stationInvalid": "Ein Sender braucht einen Namen und die Adresse seines Streams (http oder https).",
+  "noStationsYet": "Noch keine Sender. Mit + einen hinzufügen.",
+  "stationRemove": "Aus den Favoriten entfernen",
+  "radioLive": "Live",
+  "cdImportButton": "CD importieren",
+  "cdImportTooltip": "Die CD im Laufwerk in die Bibliothek importieren",
+  "cdIdentifying": "Die CD wird gelesen…",
+  "cdFound": "Die CD wurde online gefunden. Bitte die Angaben prüfen.",
+  "cdNotFound": "Die CD wurde online nicht gefunden. Bitte die Angaben eingeben.",
+  "cdCandidate": "Treffer",
+  "cdSearchLabel": "Nicht der richtige Treffer? MusicBrainz suchen (Titel, Autor)",
+  "cdSearchGo": "Suchen",
+  "cdSearchNothing": "Nichts gefunden.",
+  "cdAuthor": "Autor",
+  "cdTitle": "Titel",
+  "cdDiscNumber": "CD-Nummer",
+  "cdDiscsTotal": "Anzahl CDs",
+  "cdKind": "Art",
+  "cdKindAudiobook": "Hörbuch",
+  "cdKindMusic": "Musik",
+  "cdEjectAfter": "CD danach auswerfen",
+  "cdTracks": "{count} Titel",
+  "cdSave": "Importieren",
+  "cdClose": "Schließen",
+  "cdStopImport": "Import abbrechen",
+  "cdReading": "Titel {track} von {total} wird gelesen",
+  "cdDone": "Die CD ist jetzt in der Bibliothek.",
+  "cdEjected": "Die CD wurde ausgeworfen.",
+  "cdCancelled": "Der Import wurde abgebrochen. Es wurde nichts in die Bibliothek aufgenommen.",
+  "cdErrNoDisc": "Im Laufwerk liegt keine lesbare Audio-CD.",
+  "cdErrUnsupported": "Der Server verlangt ein Format oder eine Tag-Version, die diese App noch nicht erzeugen kann.",
+  "cdErrRead": "Die CD konnte nicht zuverlässig gelesen werden. Sie ist vielleicht zerkratzt oder schmutzig.",
+  "cdErrDriveGone": "Das Laufwerk des Servers antwortet nicht mehr.",
+  "cdErrEncode": "Der Server konnte die Audiodaten nicht umwandeln.",
+  "cdErrForbidden": "Dein Konto darf keine CDs in die Bibliothek aufnehmen.",
+  "cdErrDetails": "Einzelheiten",
+  "cdErrVerify": "Zwei Lesedurchgänge eines Titels ergaben nie dasselbe Ergebnis. Die CD ist vielleicht zerkratzt oder schmutzig.",
+  "cdErrCancelled": "Der Import wurde abgebrochen. Es wurde nichts in die Bibliothek aufgenommen.",
+  "cdErrIo": "Auf dem Server konnte eine Datei nicht geschrieben werden.",
+  "cdErrNetwork": "Der Server antwortet nicht.",
+  "cdErrCertificate": "Das Zertifikat des Servers ist nicht das, mit dem dieses Gerät gekoppelt wurde.",
+  "cdErrUnauthorized": "Dieses Gerät ist am Server nicht mehr angemeldet.",
+  "cdErrInvalidToc": "Der Server konnte das Inhaltsverzeichnis dieser CD nicht verwenden.",
+  "cdErrInvalidQuery": "Die Suche braucht mindestens zwei Buchstaben.",
+  "cdErrNoContact": "Der Administrator hat noch keine Kontaktadresse für MusicBrainz eingetragen, deshalb können CDs nicht nachgeschlagen werden. Die Angaben können von Hand eingegeben werden.",
+  "cdErrLookupFailed": "Das Nachschlagen der CD im Internet hat nicht funktioniert. Die Angaben können von Hand eingegeben werden.",
+  "cdErrNotFound": "Der Server kennt diesen Eintrag nicht.",
+  "cdErrInvalidRelease": "Der Server hat die Veröffentlichung nicht akzeptiert.",
+  "cdErrTrackNumbers": "Die Titelnummern sind nicht vollständig oder kommen doppelt vor.",
+  "cdErrInvalidMeta": "Der Server hat Autor, Titel oder Nummern nicht akzeptiert.",
+  "cdErrUnreadableFile": "Der Server konnte eine der Dateien nicht lesen.",
+  "cdErrFormatMismatch": "Eine Datei hat nicht das Format, das die Einstellungen des Servers verlangen.",
+  "cdErrBadExtension": "Eine Datei hat eine Endung, die der Server nicht akzeptiert.",
+  "cdErrUnknownFile": "Der Server hat eine Datei erhalten, die er nicht erwartet hat.",
+  "cdErrMissingFile": "In dem, was an den Server gesendet wurde, fehlt eine Datei.",
+  "cdErrBadCover": "Das Titelbild wurde nicht akzeptiert.",
+  "cdErrBadTags": "Der Server konnte die Tags einer Datei nicht schreiben.",
+  "cdErrNoImportFolder": "Der Server hat für diese Medienart keinen Importordner.",
+  "cdErrNoSpace": "Auf dem Server ist nicht genug Platz.",
+  "cdErrDiscExists": "Diese CD ist schon in der Bibliothek; der Server überschreibt sie nicht.",
+  "cdErrTooLarge": "Der Upload ist größer, als der Server annimmt.",
+  "cdErrBadRequest": "Der Server hat die Anfrage nicht verstanden.",
+  "cdErrInvalidJob": "Der Server hat den Importauftrag nicht akzeptiert.",
+  "cdErrJobClosed": "Der Importauftrag ist schon beendet.",
+  "cdErrImportFailed": "Der Server konnte die CD nicht in die Bibliothek aufnehmen.",
+  "cdErrInterrupted": "Der Import wurde unterbrochen, zum Beispiel durch einen Neustart des Servers.",
+  "cdErrStale": "Der Import hat keine Nachricht mehr gesendet und wurde aufgegeben.",
+  "cdErrClient": "Das Gerät, das den Import gestartet hat, hat ihn aufgegeben.",
+  "cdErrUnknown": "Der CD-Import ist fehlgeschlagen ({code}).",
+  "sectionNew": "Neu",
+  "badgeNew": "Neu",
+  "tooltipPlayed": "Gespielt",
+  "playsCount": "{count, plural, =1{Einmal vollständig gehört} other{{count}-mal vollständig gehört}}",
+  "lastPlayedOn": "zuletzt gespielt am {date}",
+  "cdStarting": "Wird gestartet…",
+  "cdEncoding": "Die Audiodaten werden umgewandelt…",
+  "cdAddingToLibrary": "Die CD wird in die Bibliothek aufgenommen…",
+  "cdImportingTooltip": "CD wird importiert",
+  "cdEjectTooltip": "CD auswerfen",
+  "cdNothingToEject": "Es gibt nichts auszuwerfen.",
+  "cdErrNoDrive": "Der Server hat kein CD-Laufwerk.",
+  "cdErrDriveDenied": "Der Server darf sein CD-Laufwerk nicht benutzen. Der Administrator muss es erlauben.",
+  "cdErrTrayOpen": "Das Fach des Laufwerks ist offen. Bitte zuerst von Hand schließen.",
+  "cdErrBusy": "Das Laufwerk ist mit einer anderen CD beschäftigt.",
+  "cdErrEjectFailed": "Das Laufwerk hat sein Fach nicht geöffnet.",
+  "cdErrInternal": "Der Server hatte ein internes Problem.",
+  "cdErrInvalidSelection": "Ein gewählter Titel ist nicht auf der CD oder doppelt gewählt.",
+  "cdSelectAll": "Alle Titel auswählen",
+  "cdSelectNone": "Keinen Titel auswählen",
+  "cdSelectInvert": "Auswahl umkehren",
+  "cdTrackDefault": "Titel {number}",
+  "cdTracksSummary": "{selected} von {total} Titeln, {duration}",
+  "cdErrEmptySelection": "Es ist kein Titel gewählt.",
+  "cdErrTaken": "Titel {numbers} sind schon in der Bibliothek.",
+  "cdBarHead": "{title}, CD {disc}",
+  "cdBarTrack": "Titel {track} von {total}",
+  "cdPhaseReading": "Lesen",
+  "cdPhaseChecking": "Prüfen",
+  "cdPhaseEncoding": "Kodieren",
+  "cdPhasePlacing": "Einsortieren",
+  "cdPhaseImporting": "Importieren",
+  "cdPhaseWorking": "In Arbeit",
+  "cdBarDone": "Fertig: {count} Titel",
+  "cdBarDoneNoCount": "Fertig",
+  "cdBarImporting": "Import von: {line}",
+  "@cdBarImporting": {
+    "placeholders": {
+      "line": {
+        "type": "String"
+      }
+    }
+  },
+  "cdErrDiscPresent": "Diese CD ist schon in der Bibliothek.",
+  "cdErrNotPresent": "Diese CD ist nicht in der Bibliothek, also gibt es nichts zu reparieren.",
+  "cdErrNothingToHeal": "Die CD ist vollständig in der Bibliothek; es gibt nichts zu reparieren.",
+  "cdErrUnreadableTrack": "Einzelne Titel konnten von der CD nicht gelesen werden (sie ist vielleicht zerkratzt).",
+  "cdStateUnverified": "Übernommen, nicht bestätigt",
+  "cdErrUnverifiedTrack": "Ein Titel wurde nicht zweimal gleich gelesen und mit der ersten Lesung übernommen (nicht bestätigt).",
+  "cdErrResumeMismatch": "Die Einstellungen oder die Titelauswahl haben sich geändert, deshalb wird die CD von vorn gelesen.",
+  "cdErrHealNeeded": "Die CD ist in der Bibliothek, aber es fehlen Titel oder sie sind defekt. Im Import-Dialog lässt sie sich reparieren.",
+  "cdErrResumePending": "Ein unterbrochenes Lesen dieser CD wartet. Im Import-Dialog lässt es sich fortsetzen.",
+  "cdErrAmbiguousMatch": "Mehrere Veröffentlichungen passen zu dieser CD. Bitte eine auswählen.",
+  "cdErrNoMatch": "Die Online-Datenbank kennt diese CD nicht.",
+  "cdErrNoTarget": "Der Server hat keinen Importordner, in den er schreiben darf.",
+  "cdErrUdevOff": "Der automatische Import braucht die Erkennung der Laufwerke über Systemereignisse (eingeschaltet).",
+  "cdErrNotAudio": "Das ist keine Audio-CD.",
+  "cdErrStartFailed": "Der Import konnte nicht gestartet werden.",
+  "cdErrLocked": "Die CD wurde hinzugefügt, aber der Import der Bibliothek ist gesperrt. Sie erscheint, wenn die Sperre aufgehoben ist.",
+  "cdContinue": "Fortsetzen",
+  "cdResumeNote": "Diese CD wurde schon bis Titel {done} von {total} gelesen (unterbrochen {when}).",
+  "cdRereadFromStart": "Von vorn noch einmal lesen",
+  "cdResumeLost": "Ein früheres Lesen dieser CD lässt sich nicht fortsetzen, weil sich die Einstellungen geändert haben. Die CD wird neu gelesen.",
+  "cdResumed": "Ein früheres Lesen wird fortgesetzt.",
+  "cdImportAnyway": "Trotzdem importieren",
+  "cdHeal": "Prüfen und reparieren",
+  "cdForceTitle": "CD erneut importieren?",
+  "cdForceBody": "Diese CD ist schon in der Bibliothek. So kommt sie ein zweites Mal als neue Kopie hinzu. Das nur tun, wenn wirklich zwei Kopien gewollt sind.",
+  "cdForceConfirm": "Als neue Kopie importieren",
+  "cdPresentTitle": "Diese CD ist schon in der Bibliothek",
+  "cdPresentBookDisc": "{book}, CD {disc}",
+  "cdPresentBookAuthorDisc": "{book} von {author}, CD {disc}",
+  "cdPresentComplete": "Die CD ist vollständig in der Bibliothek ({inLibrary} von {onDisc} Titeln).",
+  "cdPresentCount": "{inLibrary} von {onDisc} Titeln sind in der Bibliothek.",
+  "cdMissing": "Fehlt",
+  "cdDamaged": "Defekt",
+  "cdDamagedEmpty": "die Datei ist leer",
+  "cdDamagedUnreadable": "die Datei lässt sich nicht lesen",
+  "cdDamagedLength": "die Datei ist {have} lang, die CD hat {want}",
+  "cdDamagedOther": "die Datei passt nicht zur CD",
+  "cdHealHint": "Von der CD werden nur die fehlenden und defekten Titel gelesen. Eine defekte Datei bleibt im Quarantäne-Ordner erhalten.",
+  "cdStateWaiting": "Wartet",
+  "cdStateRead": "Gelesen, wartet auf die Prüfung",
+  "cdSpeed": "Laufwerk liest mit {x}x",
+  "cdStateRereading": "Liest erneut",
+  "cdStateRereadingPercent": "Liest erneut {percent} %",
+  "cdStateReading": "Wird gelesen",
+  "cdStateReadingPercent": "Wird gelesen {percent} %",
+  "cdStateVerifying": "Wird geprüft",
+  "cdStateEncoding": "Wird kodiert",
+  "cdStateDone": "Fertig",
+  "cdStateFailed": "Fehler",
+  "cdBuffer": "Puffer {seconds} s von {max} s",
+  "filterPlaylists": "Playlists",
+  "playlistNew": "Neue Playlist",
+  "playlistNewItem": "Neue Playlist …",
+  "playlistName": "Name",
+  "playlistSave": "Speichern",
+  "playlistsEmpty": "Noch keine Playlists. Mit + eine anlegen.",
+  "playlistMeta": "{count} Titel · {duration}",
+  "playlistAddTo": "Zur Playlist hinzufügen",
+  "playlistAddedTo": "Zu „{name}“ hinzugefügt.",
+  "playlistChoose": "Zu welcher Playlist hinzufügen?",
+  "playlistPlay": "Abspielen",
+  "playlistRename": "Umbenennen",
+  "playlistRenameTitle": "Playlist umbenennen",
+  "playlistDelete": "Playlist löschen",
+  "playlistDeleteTitle": "Diese Playlist löschen?",
+  "playlistDeleteText": "„{name}“ wird aus deinem Profil gelöscht. Die Titel bleiben in der Bibliothek.",
+  "playlistRemoveEntry": "Aus der Playlist entfernen",
+  "playlistUnavailable": "Nicht verfügbar",
+  "playlistEmpty": "Diese Playlist ist leer. „Zur Playlist hinzufügen“ gibt es bei einem Titel und bei einem Buch.",
+  "playlistDownload": "Playlist herunterladen",
+  "plErrNameTaken": "Du hast schon eine Playlist mit diesem Namen.",
+  "plErrInvalidName": "Der Name darf nicht leer sein und höchstens 100 Zeichen haben.",
+  "plErrUnknownPart": "Ein Titel ist nicht mehr da, oder du darfst ihn nicht verwenden.",
+  "plErrUnknownBook": "Das Buch ist nicht mehr da, oder du darfst es nicht verwenden.",
+  "plErrInvalidOrder": "Die Reihenfolge war nicht verwendbar. Die Liste steht so, wie sie auf dem Server ist.",
+  "plErrInvalidPosition": "Diesen Platz in der Playlist gibt es nicht.",
+  "plErrInvalidRequest": "Die Anfrage war nicht gültig.",
+  "plErrPlaylistFull": "Die Playlist ist voll (höchstens 5000 Titel).",
+  "plErrTooManyPlaylists": "Du hast die höchste Zahl an Playlists (100).",
+  "plErrNotFound": "Die Playlist gibt es nicht mehr.",
+  "plErrNetwork": "Der Server antwortet nicht.",
+  "plErrUnknown": "Die Playlist konnte nicht geändert werden ({code}).",
+  "hideMenuTooltip": "Aus- oder einblenden",
+  "hideBook": "Dieses Buch ausblenden",
+  "showBook": "Dieses Buch wieder einblenden",
+  "hideAuthorAudiobooks": "Alle Hörbücher von {name} ausblenden",
+  "@hideAuthorAudiobooks": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "showAuthorAudiobooks": "Die Hörbücher von {name} wieder einblenden",
+  "@showAuthorAudiobooks": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hideAuthorMusic": "Alle Musik von {name} ausblenden",
+  "@hideAuthorMusic": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "showAuthorMusic": "Die Musik von {name} wieder einblenden",
+  "@showAuthorMusic": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hideAuthorAll": "Alles von {name} ausblenden",
+  "@hideAuthorAll": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "showAuthorAll": "Alles von {name} wieder einblenden",
+  "@showAuthorAll": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hiddenMark": "Ausgeblendet",
+  "hidingFailed": "Die Änderung konnte nicht gespeichert werden.",
+  "settingsMyLibrary": "Meine Bibliothek",
+  "settingsShowHidden": "Ausgeblendetes anzeigen",
+  "settingsShowHiddenHint": "Was du ausblendest, verschwindet aus deinen Listen, nur aus deinen. Mit diesem Schalter wird es wieder aufgeführt, abgedunkelt, damit du es wieder einblenden kannst.",
+  "settingsHiddenTitle": "Ausgeblendet",
+  "settingsHiddenNone": "Du hast nichts ausgeblendet. Halte ein Buch gedrückt oder öffne es und nimm das Menü oben.",
+  "settingsHiddenAuthorAudiobooks": "Hörbücher von {name}",
+  "@settingsHiddenAuthorAudiobooks": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsHiddenAuthorMusic": "Musik von {name}",
+  "@settingsHiddenAuthorMusic": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsHiddenAuthorAll": "Alles von {name}",
+  "@settingsHiddenAuthorAll": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsShowAgain": "Wieder einblenden",
+  "musicOf": "Musik von {name}",
+  "@musicOf": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "musicOfNobody": "Weitere Musik",
+  "ownerLabel": "Besitzer: {name}",
+  "@ownerLabel": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "audiobooksOf": "Hörbücher von {name}",
+  "@audiobooksOf": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "audiobooksOfNobody": "Weitere Hörbücher"
 }

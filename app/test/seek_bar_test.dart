@@ -8,13 +8,18 @@ import 'package:psalm/demo_data.dart';
 import 'package:psalm/widgets.dart';
 
 Widget _app(PlayerController p, Widget child) => PlayerScope(
-      controller: p,
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(body: Align(alignment: Alignment.bottomCenter, child: SizedBox(width: 400, child: child))),
+  controller: p,
+  child: MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: Scaffold(
+      body: Align(
+        alignment: Alignment.bottomCenter,
+        child: SizedBox(width: 400, child: child),
       ),
-    );
+    ),
+  ),
+);
 
 void main() {
   bookTests();
@@ -71,7 +76,11 @@ void bookTests() {
     await tester.tapAt(Offset(box.left + box.width * 0.5, box.center.dy));
     await tester.pumpAndSettle();
     final half = book.total.inMilliseconds / 2;
-    expect(p.bookPosition.inMilliseconds, closeTo(half, book.total.inMilliseconds * 0.06), reason: 'half way through the whole book');
+    expect(
+      p.bookPosition.inMilliseconds,
+      closeTo(half, book.total.inMilliseconds * 0.06),
+      reason: 'half way through the whole book',
+    );
     expect(p.trackIndex, greaterThan(0), reason: 'in a later track, not in the first');
     // The mini player shows the played and the total time.
     expect(find.textContaining(' / '), findsWidgets);

@@ -28,6 +28,8 @@ class HomeScreen extends StatelessWidget {
     final music = p.library.where((b) => b.kind == 'music').toList();
     // The shortcuts are the books listened to last, whatever their kind, the latest first.
     final recent = p.recentBooks();
+    // New for this user, as the server decides; no row at all if there is nothing.
+    final fresh = p.newBooks();
 
     return CustomScrollView(
       slivers: [
@@ -55,6 +57,7 @@ class HomeScreen extends StatelessWidget {
             children: [for (final b in recent) _Shortcut(book: b)],
           ),
         ),
+        if (fresh.isNotEmpty) ..._strip(l.sectionNew, fresh, badge: l.badgeNew),
         if (music.isNotEmpty) ..._strip(l.sectionYourMusic, music),
         if (books.isNotEmpty || music.isEmpty) ..._strip(l.sectionYourBooks, books),
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
@@ -64,7 +67,7 @@ class HomeScreen extends StatelessWidget {
 }
 
 /// A heading and a row of covers that scrolls sideways.
-List<Widget> _strip(String title, List<Book> books) => [
+List<Widget> _strip(String title, List<Book> books, {String? badge}) => [
       SliverToBoxAdapter(child: SectionHeader(title)),
       SliverToBoxAdapter(
         child: SizedBox(
@@ -74,7 +77,7 @@ List<Widget> _strip(String title, List<Book> books) => [
             padding: const EdgeInsets.symmetric(horizontal: 10),
             itemCount: books.length,
             separatorBuilder: (_, _) => const SizedBox(width: 4),
-            itemBuilder: (_, i) => SizedBox(width: 156, child: BookCard(book: books[i])),
+            itemBuilder: (_, i) => SizedBox(width: 156, child: BookCard(book: books[i], badge: badge)),
           ),
         ),
       ),

@@ -1,0 +1,28 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<div id="cd-page">
+{% if drive %}{% include "fragments/cd_drive.html" %}{% endif %}
+<div class="cd-status" role="status">
+  {% if cd_problems %}{% for p in cd_problems %}<p class="message error">{{ t("cd.status." ~ p) }}</p>{% endfor %}{% else %}<p class="message">{{ t("cd.status.ready") }}</p>{% endif %}
+</div>
+<h2>{{ t("cd.jobs.title") }}</h2>
+{% if cd_jobs %}
+<table class="list cd-log">
+  <thead><tr><th>{{ t("cd.col.book") }}</th><th>{{ t("cd.col.disc") }}</th><th>{{ t("cd.col.state") }}</th><th>{{ t("cd.col.time") }}</th><th>{{ t("cd.col.error") }}</th></tr></thead>
+  <tbody>
+  {% for job in cd_jobs %}
+  <tr>
+    <td>{{ job.book }}{% if job.author %}<br><span class="unit">{{ job.author }}</span>{% endif %}{% if job.auto %}<br><span class="unit">{{ t("cd.log.auto") }}</span>{% endif %}</td>
+    <td>{{ job.disc }} / {{ job.discs_total }}</td>
+    <td>{{ t("cd.phase." ~ job.phase) }}{% if job.locked %}<br><span class="unit">{{ t("cd.err.locked") }}</span>{% endif %}</td>
+    <td>{{ job.when }}</td>
+    <td>{% if job.error_key %}{{ t(job.error_key) }} ({{ job.error }}){% endif %}{% if job.phase == "skipped" and job.message %} <span class="unit">({{ job.message }})</span>{% endif %}{% if job.phase == "done" and job.message %}<br><span class="unit">{{ job.message }}</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<form method="post" action="/admin/rpc/cd.log_clear" data-confirm="{{ t('cd.log.confirm_clear') }}" class="cd-log-clear">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button type="submit" class="btn outline">{{ t("cd.log.clear") }}</button>
+</form>
+{% else %}<p class="unit">{{ t("cd.jobs.none") }}</p>{% endif %}
+</div>

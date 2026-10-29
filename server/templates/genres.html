@@ -1,0 +1,92 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "genres" %}
+
+{% block title %}{{ t("genres.title") }}{% endblock %}
+
+{% block content %}
+{% from "fragments/ui.html" import icon %}
+<div class="page-head">
+  <h1>{{ t("genres.title") }}</h1>
+</div>
+
+<p class="lead">{{ t("genres.intro") }}</p>
+
+<form class="inline-form" method="post" action="/admin/rpc/genre.add">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label class="field"><input type="text" name="name" required maxlength="80" placeholder=" "><span>{{ t("genres.name") }}</span></label>
+  <button type="submit" class="btn">{{ icon("plus") }}<span>{{ t("genres.add") }}</span></button>
+</form>
+
+{% if genres %}
+<table class="stack">
+  <thead>
+    <tr>
+      <th>{{ t("genres.name") }}</th>
+      <th>{{ t("genres.albums") }}</th>
+      <th>{{ t("genres.tags") }}</th>
+      <th><span class="sr-only">{{ t("users.actions") }}</span></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for g in genres %}
+    <tr>
+      <td>
+        <form class="inline-form" method="post" action="/admin/rpc/genre.rename">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ g.id }}">
+          <label class="field"><input type="text" name="name" required maxlength="80" value="{{ g.name }}" placeholder=" "><span>{{ t("genres.name") }}</span></label>
+          <button type="submit" class="btn outline">{{ t("ui.save") }}</button>
+        </form>
+        {% if not g.visible %}<span class="badge muted">{{ t("genres.hidden") }}</span>{% endif %}
+      </td>
+      <td data-label="{{ t('genres.albums') }}">{{ g.albums }}</td>
+      <td data-label="{{ t('genres.tags') }}">
+        {% for tag in g.tags %}
+        <form class="inline-form" method="post" action="/admin/rpc/genre.unassign">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tag" value="{{ tag }}">
+          <span class="badge">{{ tag }}</span>
+          <button type="submit" class="ghost" title="{{ t('genres.unassign') }}" aria-label="{{ t('genres.unassign') }}">{{ icon("close") }}</button>
+        </form>
+        {% endfor %}
+      </td>
+      <td class="actions">
+        <form method="post" action="/admin/rpc/genre.move"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ g.id }}"><input type="hidden" name="by" value="-1"><button type="submit" class="btn outline" title="{{ t('genres.up') }}" aria-label="{{ t('genres.up') }}">&uarr;</button></form>
+        <form method="post" action="/admin/rpc/genre.move"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ g.id }}"><input type="hidden" name="by" value="1"><button type="submit" class="btn outline" title="{{ t('genres.down') }}" aria-label="{{ t('genres.down') }}">&darr;</button></form>
+        <form method="post" action="/admin/rpc/genre.visible"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ g.id }}"><input type="hidden" name="visible" value="{% if g.visible %}0{% else %}1{% endif %}"><button type="submit" class="btn outline">{% if g.visible %}{{ t("genres.hide") }}{% else %}{{ t("genres.show") }}{% endif %}</button></form>
+        <form method="post" action="/admin/rpc/genre.delete" data-confirm="{{ t('genres.confirm_delete') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ g.id }}"><button type="submit" class="btn outline danger-outline">{{ t("genres.delete") }}</button></form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>{{ t("genres.none") }}</p>
+{% endif %}
+
+<datalist id="id3-genres">{% for g in genres %}<option value="{{ g.name }}">{% endfor %}{% for g in standard %}<option value="{{ g }}">{% endfor %}</datalist>
+<h2>{{ t("genres.loose") }}</h2>
+<p class="lead">{{ t("genres.without") }}: {{ without }}</p>
+<form class="search-bar" method="get" action="/admin/genres" role="search">
+  <input type="search" name="q" value="{{ filter }}" autocomplete="off" spellcheck="false" maxlength="80" placeholder="{{ t('genres.filter') }}" aria-label="{{ t('genres.filter') }}" data-filter-rows="#loose-tags tbody tr">
+</form>
+{% if loose %}
+<table class="stack" id="loose-tags">
+  <tbody>
+  {% for l in loose %}
+    <tr data-search="{{ l.text | lower }}">
+      <td><strong>{{ l.text }}</strong> <span class="badge">{{ l.albums }}</span></td>
+      <td class="actions">
+        <form class="inline-form" method="post" action="/admin/rpc/genre.from_tag">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="tag" value="{{ l.text }}">
+          <input type="text" name="name" list="id3-genres" required maxlength="80" size="24" autocomplete="off" spellcheck="false" placeholder="{{ t('genres.pick') }}" aria-label="{{ t('genres.pick') }}" title="{{ t('genres.from_tag_hint') }}">
+          <label class="check"><input type="checkbox" name="retag" value="1" checked> <span>{{ t("genres.retag") }}</span></label>
+          <button type="submit" class="btn">{{ t("genres.assign") }}</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>{{ t("genres.loose_none") }}</p>
+{% endif %}
+{% endblock %}

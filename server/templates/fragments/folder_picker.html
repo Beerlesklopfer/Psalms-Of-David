@@ -1,0 +1,19 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<div class="folder-picker" data-target="{{ target }}">
+  <p class="unit">{{ t("folders.hint") }}</p>
+  {% if error %}<p class="message error" role="alert">{{ t("err.folder") }} ({{ error }})</p>
+  <p><button type="button" class="btn outline" hx-get="/admin/rpc/folders?target={{ target }}" hx-target="closest .folder-picker" hx-swap="outerHTML">{{ t("folders.start") }}</button></p>
+  {% else %}
+  <p class="folder-path"><strong>{% if listing.path %}{{ listing.path }}{% else %}{{ t("folders.start") }}{% endif %}</strong></p>
+  <ul class="folder-list">
+    {% if listing.path %}
+    <li>{% if listing.parent %}<button type="button" class="btn outline" hx-get="/admin/rpc/folders?target={{ target }}&{{ listing.parent_q }}" hx-target="closest .folder-picker" hx-swap="outerHTML">{{ icon("chevron") }}<span>{{ t("folders.up") }}</span></button>{% else %}<button type="button" class="btn outline" hx-get="/admin/rpc/folders?target={{ target }}" hx-target="closest .folder-picker" hx-swap="outerHTML">{{ icon("chevron") }}<span>{{ t("folders.up") }}</span></button>{% endif %}</li>
+    {% endif %}
+    {% for f in listing.folders %}
+    <li><button type="button" class="btn outline folder-entry" hx-get="/admin/rpc/folders?target={{ target }}&{{ f.q }}" hx-target="closest .folder-picker" hx-swap="outerHTML">{{ icon("books") }}<span>{{ f.name }}</span></button></li>
+    {% endfor %}
+    {% if not listing.folders %}<li class="unit">{{ t("folders.none") }}</li>{% endif %}
+  </ul>
+  {% if listing.choosable %}<p><button type="button" class="btn" data-pick-folder="{{ listing.path }}" data-target="{{ target }}">{{ t("folders.use") }}</button></p>{% endif %}
+  {% endif %}
+</div>

@@ -49,6 +49,17 @@
       if (dialog) dialog.close();
       return;
     }
+    // The folder dialog: a button with data-pick-folder puts the path into the input named by data-target and closes the dialog.
+    const pick = target.closest('[data-pick-folder]');
+    if (pick) {
+      const input = document.getElementById(pick.dataset.target);
+      if (input) {
+        input.value = pick.dataset.pickFolder;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      pick.closest('dialog')?.close();
+      return;
+    }
     const opener = target.closest('[data-dialog]');
     if (opener) {
       const dialog = document.getElementById(opener.dataset.dialog);
@@ -268,5 +279,279 @@
     if (!td) return;
     td.classList.toggle('on', box(td).checked);
     total(td.closest('table.planner'));
+  });
+
+  // A select marked data-autosubmit sends its form when it changes (the size of a page).
+  document.addEventListener('change', (e) => {
+    const sel = e.target;
+    if (sel instanceof HTMLSelectElement && sel.hasAttribute('data-autosubmit') && sel.form) sel.form.requestSubmit();
+  });
+
+  // ---- The syntax of a search (the same as `search.rs` of the server) -----------------------
+  // Words are found anywhere, ignoring case; `*` is any run of characters and `?` one character; between slashes the text is a regular
+  // expression. Returns a function text -> bool; an expression that does not compile finds nothing (the server says why after the submit).
+  const searchMatcher = (raw) => {
+    const q = (raw || '').trim();
+    if (q === '') return () => true;
+    const compile = (source) => { try { return new RegExp(source, 'i'); } catch (_) { return null; } };
+    let re = null;
+    if (q.length > 2 && q.startsWith('/') && q.endsWith('/')) {
+      re = compile(q.slice(1, -1));
+      return re ? (text) => re.test(text) : () => false;
+    }
+    if (q.includes('*') || q.includes('?')) {
+      const source = Array.from(q).map((c) => (c === '*' ? '.*' : c === '?' ? '.' : c.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&'))).join('');
+      re = compile(source);
+      return re ? (text) => re.test(text) : () => false;
+    }
+    const needle = q.toLowerCase();
+    return (text) => text.toLowerCase().includes(needle);
+  };
+
+  // ---- Search of the media pages: filters the rows while typing ----------------------
+  // Without JavaScript the form submits and the server filters (`?q=`).
+  const search = document.getElementById('book-search');
+  if (search) {
+    const rows = () => document.querySelectorAll('#book-list tbody tr[data-search]');
+    // A list in pages is searched by the server (the rows of one page are not all there are): no filtering while typing, the form submits.
+    const paged = () => !!document.querySelector('#book-list[data-paged]');
+    const apply = () => {
+      if (paged()) return;
+      const match = searchMatcher(search.value);
+      for (const row of rows()) row.hidden = !match(row.dataset.search || '');
+    };
+    search.addEventListener('input', apply);
+    search.form.addEventListener('submit', (e) => { if (rows().length && !paged()) e.preventDefault(); });
+    apply();
+  }
+
+  // ---- Filter of a table while typing: <input data-filter-rows="table rows selector"> -------
+  // The rows carry their text in data-search (lower case). Without JavaScript the form submits and the server filters.
+  document.querySelectorAll('input[data-filter-rows]').forEach((input) => {
+    const rows = () => document.querySelectorAll(input.dataset.filterRows);
+    const apply = () => {
+      const match = searchMatcher(input.value);
+      for (const row of rows()) row.hidden = !match(row.dataset.search || '');
+    };
+    input.addEventListener('input', apply);
+    input.form?.addEventListener('submit', (e) => { if (rows().length) e.preventDefault(); });
+    apply();
+  });
+
+  // ---- Copy button: puts the text of data-copy on the clipboard ---------------------
+  // Delegated, because htmx swaps the panel that holds the button.
+  document.addEventListener('click', async (e) => {
+    const button = e.target.closest('[data-copy]');
+    if (!button) return;
+    const text = button.dataset.copy;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      // No secure page or no permission: select the text so Ctrl+C works.
+      const box = button.closest('section, div')?.querySelector('pre');
+      if (box) getSelection().selectAllChildren(box);
+      return;
+    }
+    const label = button.innerHTML;
+    button.textContent = button.dataset.copied || 'OK';
+    setTimeout(() => { button.innerHTML = label; }, 1500);
+  });
+
+  // ---- Tree of the media lists: a level folds the rows below it ----------------------------
+  // The rows carry the ids of their levels (data-parents); without JavaScript everything is open.
+  const tree = document.getElementById('book-list');
+  if (tree) {
+    const folded = new Set();
+    const box = document.getElementById('book-search');
+    const refresh = () => {
+      const needle = (box?.value || '').trim().toLowerCase();
+      const match = searchMatcher(box?.value || '');
+      const rows = Array.from(tree.querySelectorAll('tbody tr'));
+      const parentsOf = (row) => (row.dataset.parents ? row.dataset.parents.split(' ') : []);
+      // A book matches when there is no search or its text holds the words searched for.
+      const matches = (row) => needle === '' || match(row.dataset.search || '');
+      // A level that is folded hides everything below it, but never itself: that is where the click is.
+      // A search shows what it finds, even inside a folded level.
+      const hiddenByFold = (row) => needle === '' && parentsOf(row).some((p) => folded.has(p));
+      const found = new Set();
+      for (const row of rows) {
+        if (row.classList.contains('tree-node')) continue;
+        if (matches(row)) for (const p of parentsOf(row)) found.add(p);
+      }
+      for (const row of rows) {
+        if (row.classList.contains('tree-node')) {
+          const id = row.dataset.node;
+          row.hidden = hiddenByFold(row) || !found.has(id);
+          row.querySelector('.tree-toggle')?.setAttribute('aria-expanded', folded.has(id) && needle === '' ? 'false' : 'true');
+        } else {
+          row.hidden = hiddenByFold(row) || !matches(row);
+        }
+      }
+    };
+    tree.addEventListener('click', (e) => {
+      const button = e.target.closest('.tree-toggle');
+      if (!button) return;
+      const id = button.closest('tr').dataset.node;
+      if (folded.has(id)) folded.delete(id); else folded.add(id);
+      refresh();
+    });
+    // The search of the page filters the rows too; the tree takes it over, so a level is shown only
+    // while a book below it is.
+    if (box) box.addEventListener('input', () => queueMicrotask(refresh));
+    refresh();
+  }
+
+  // ---- Drop files, folders and archives on the import page -----------------------------
+  // An archive is sent as an upload of its own (upload.create); audio files, pictures and folders go together in
+  // one upload (upload.files) with the place of each file inside the dropped folder.
+  const ARCHIVE = /\.(zip|tar|gz|tgz|bz2|tbz2|xz|txz|rar|7z)$/i;
+  const readAll = (reader) => new Promise((resolve, reject) => {
+    const all = [];
+    const next = () => reader.readEntries((batch) => { if (batch.length) { all.push(...batch); next(); } else resolve(all); }, reject);
+    next();
+  });
+  const fileOf = (entry) => new Promise((resolve, reject) => entry.file(resolve, reject));
+  // Every file below the dropped entries, with its path inside the dropped folder.
+  const walk = async (entry, out) => {
+    if (entry.isFile) {
+      out.push({ path: entry.fullPath.replace(/^\//, ''), file: await fileOf(entry) });
+    } else if (entry.isDirectory) {
+      for (const child of await readAll(entry.createReader())) await walk(child, out);
+    }
+  };
+  const send = (url, form, csrf, zone) => new Promise((resolve, reject) => {
+    const box = zone.querySelector('[data-drop-progress]');
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.setRequestHeader('X-CSRF-Token', csrf);
+    xhr.setRequestHeader('HX-Request', 'true');
+    xhr.upload.onprogress = (e) => {
+      if (!box || !e.lengthComputable) return;
+      const percent = Math.floor((e.loaded / e.total) * 100);
+      box.querySelector('progress').value = percent;
+      box.querySelector('.progress-percent').textContent = percent + '%';
+    };
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve(xhr.responseText) : reject(xhr.responseText || String(xhr.status)));
+    xhr.onerror = () => reject('network');
+    xhr.send(form);
+  });
+  const zones = document.querySelectorAll('[data-dropzone]');
+  zones.forEach((zone) => {
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+    zone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      zone.classList.remove('over');
+      const error = zone.querySelector('[data-drop-error]');
+      const box = zone.querySelector('[data-drop-progress]');
+      error.textContent = '';
+      // The entries must be taken before the first await: the list is emptied afterwards.
+      const entries = Array.from(e.dataTransfer.items || []).map((i) => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null));
+      const plain = Array.from(e.dataTransfer.files || []);
+      const found = [];
+      try {
+        if (entries.some(Boolean)) { for (const entry of entries) if (entry) await walk(entry, found); }
+        else plain.forEach((f) => found.push({ path: f.name, file: f }));
+      } catch (err) { error.textContent = String(err); return; }
+      const kind = zone.querySelector('[data-drop-kind]').value;
+      const csrf = zone.dataset.csrf;
+      // Only a file straight in the dropped area can be an archive; inside a folder it is just a file.
+      const archives = found.filter((f) => !f.path.includes('/') && ARCHIVE.test(f.path));
+      const loose = found.filter((f) => !archives.includes(f));
+      box.hidden = false;
+      let html = null;
+      try {
+        for (const a of archives) {
+          const form = new FormData();
+          form.append('kind', kind);
+          form.append('archive', a.file, a.file.name);
+          html = await send('/admin/rpc/upload.create', form, csrf, zone);
+        }
+        if (loose.length) {
+          const form = new FormData();
+          form.append('kind', kind);
+          for (const f of loose) { form.append('path', f.path); form.append('file', f.file, f.file.name); }
+          html = await send('/admin/rpc/upload.files', form, csrf, zone);
+        }
+      } catch (err) {
+        const doc = new DOMParser().parseFromString(String(err), 'text/html');
+        error.textContent = doc.body.textContent.trim() || String(err);
+      }
+      box.hidden = true;
+      const queue = document.querySelector(zone.dataset.queue);
+      if (html && queue && window.htmx) window.htmx.ajax('GET', '/admin/rpc/upload.list', { target: zone.dataset.queue, swap: 'outerHTML' });
+    });
+  });
+
+  // ---- CD import: the list of tracks and the buttons that insert a placeholder -------------------------------------
+  // Without this script every box of the list stays ticked, the buttons stay hidden and the lines of placeholders stay
+  // visible as plain text. All of it works by data attributes, so it needs no inline script.
+  const cdTracks = (el) => el.closest('[data-cd-tracks]');
+  const cdSummary = (root) => {
+    if (!root) return;
+    const boxes = Array.from(root.querySelectorAll('input[name=only]'));
+    const on = boxes.filter((b) => b.checked);
+    const seconds = on.reduce((sum, b) => sum + (parseInt(b.dataset.seconds, 10) || 0), 0);
+    const line = root.querySelector('[data-cd-summary]');
+    if (line) {
+      const time = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+      line.textContent = (line.dataset.cdFormat || '').replace('{n}', on.length).replace('{m}', boxes.length).replace('{time}', time);
+    }
+    const form = root.closest('form');
+    const go = form && form.querySelector('[data-cd-import]');
+    if (go) go.disabled = on.length === 0;
+  };
+  const cdPrepare = () => {
+    document.querySelectorAll('[data-cd-js]').forEach((e) => { e.hidden = false; });
+    document.querySelectorAll('[data-cd-nojs]').forEach((e) => { e.hidden = true; });
+    document.querySelectorAll('[data-cd-hint]').forEach((h) => { if (!h.closest('[data-cd-field]').contains(document.activeElement)) h.hidden = true; });
+  };
+  document.addEventListener('DOMContentLoaded', cdPrepare);
+  document.addEventListener('htmx:afterSwap', cdPrepare);
+  document.addEventListener('click', (e) => {
+    const pick = e.target.closest && e.target.closest('[data-cd-select]');
+    if (pick) {
+      const root = cdTracks(pick);
+      if (!root) return;
+      root.querySelectorAll('input[name=only]').forEach((b) => {
+        b.checked = pick.dataset.cdSelect === 'all' ? true : pick.dataset.cdSelect === 'none' ? false : !b.checked;
+      });
+      cdSummary(root);
+      return;
+    }
+    const insert = e.target.closest && e.target.closest('[data-insert]');
+    if (insert) {
+      const field = insert.closest('[data-cd-field]');
+      const input = field && field.querySelector('input[type=text], input:not([type])');
+      if (!input) return;
+      const text = insert.dataset.insert;
+      const from = input.selectionStart ?? input.value.length;
+      const to = input.selectionEnd ?? from;
+      input.value = input.value.slice(0, from) + text + input.value.slice(to);
+      input.setSelectionRange(from + text.length, from + text.length);
+      input.focus();
+      // The preview and the checks listen to "input".
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
+  document.addEventListener('change', (e) => {
+    if (e.target.matches && e.target.matches('input[name=only]')) cdSummary(cdTracks(e.target));
+  });
+  document.addEventListener('focusin', (e) => {
+    const field = e.target.closest && e.target.closest('[data-cd-field]');
+    document.querySelectorAll('[data-cd-hint]').forEach((h) => { h.hidden = h.closest('[data-cd-field]') !== field; });
+  });
+  document.addEventListener('focusout', (e) => {
+    const field = e.target.closest && e.target.closest('[data-cd-field]');
+    if (field && !(e.relatedTarget && field.contains(e.relatedTarget))) {
+      const h = field.querySelector('[data-cd-hint]');
+      if (h) h.hidden = true;
+    }
+  });
+
+  // ---- A plain form that asks first: <form data-confirm="Really?"> ------------------------
+  document.addEventListener('submit', (e) => {
+    const text = e.target.closest && e.target.closest('form[data-confirm]')?.dataset.confirm;
+    if (text && !window.confirm(text)) e.preventDefault();
   });
 })();

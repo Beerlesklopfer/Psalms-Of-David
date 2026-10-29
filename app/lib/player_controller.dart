@@ -5,7 +5,10 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import 'audio/audio_backend.dart';
+import 'audio/playback_settings.dart';
+import 'm3u.dart';
 import 'models.dart';
+import 'playlists.dart' show kPlaylistBookPrefix, kPlaylistKind;
 import 'server/last_played.dart';
 import 'server/server_source.dart';
 
@@ -13,7 +16,9 @@ import 'server/server_source.dart';
 /// position is read from it. Without a backend, or for demo tracks without a file,
 /// the position just keeps advancing so the UI and controls can be judged.
 class PlayerController extends ChangeNotifier {
-  PlayerController(this.library, {this.backend, this.source, this.lastStore}) {
+  PlayerController(this.library, {this.backend, this.source, this.lastStore, this.playbackStore}) {
+    final b = backend;
+    if (b != null && b.bufferAdjustable) b.setBufferSeconds(playbackStore?.readBufferSeconds() ?? kBufferDefaultSeconds);
     // Demo: the first book has already been listened to.
     if (library.isEmpty) return;
     book = library.first;
@@ -24,10 +29,32 @@ class PlayerController extends ChangeNotifier {
   }
 
   List<Book> library;
+
+  /// The genres in the order of the administration; music is shown by them.
+  List<String> genres = const [];
   final AudioBackend? backend;
 
   /// Where the last listening is remembered on this device; null in tests and demos.
   final LastPlayedStore? lastStore;
+
+  /// Where the playback settings of this device are kept; null in tests and demos.
+  final PlaybackSettingsStore? playbackStore;
+
+  /// Whether the engine has a buffer whose size the listener can set.
+  bool get bufferAdjustable => backend?.bufferAdjustable ?? false;
+
+  /// Seconds of audio the engine keeps ready.
+  int get bufferSeconds => backend?.bufferSeconds ?? kBufferDefaultSeconds;
+
+  /// Sets the buffer and remembers it. It applies from the next track that is loaded.
+  void setBufferSeconds(int seconds) {
+    final b = backend;
+    if (b == null || !b.bufferAdjustable) return;
+    final n = seconds.clamp(kBufferMinSeconds, kBufferMaxSeconds);
+    b.setBufferSeconds(n);
+    playbackStore?.writeBufferSeconds(n);
+    notifyListeners();
+  }
   DateTime _lastWritten = DateTime.fromMillisecondsSinceEpoch(0);
 
   /// The server, if there is one: fetches the files of parts and takes the position.
@@ -44,6 +71,19 @@ class PlayerController extends ChangeNotifier {
   /// The last failure of the sound engine, or null. Playback is paused after it.
   String? error;
 
+  /// What a radio station announces now ("Artist - Song"), or null. Only set for live
+  /// streams on a backend that knows titles (`StreamInfo`).
+  String? streamTitle;
+
+  /// What the station says about itself (name, genre, bitrate, format); null for a book or before the answer of the station.
+  StreamDetails? streamDetails;
+
+  /// What the station sends about what it plays now (the ICY title), or null: not a live stream, or nothing sent yet.
+  String? get nowPlaying {
+    final t = streamTitle?.trim();
+    return track?.live == true && t != null && t.isNotEmpty ? t : null;
+  }
+
   /// Which track the backend has loaded, as `bookId:trackIndex`.
   String? _loadedKey;
 
@@ -53,6 +93,17 @@ class PlayerController extends ChangeNotifier {
   bool _disposed = false;
 
   Track? get track => book?.tracks[trackIndex];
+
+  /// Called when the place in a playlist is written down (for the playlists to remember it); null elsewhere.
+  void Function(Book book, Track track, Duration position)? onPlaylistPosition;
+
+  /// The book to show for what plays: for a playlist the book of the track that plays now (its cover, its
+  /// author), so a change across the border of two books shows the right one; else [book].
+  Book? get shownBook {
+    final b = book, t = track;
+    if (b == null || b.kind != kPlaylistKind || t == null) return b;
+    return library.where((x) => x.id == t.itemId).firstOrNull ?? b;
+  }
 
   /// Where the listening is in the whole book: the tracks before this one and the
   /// position in this one.
@@ -117,7 +168,9 @@ class PlayerController extends ChangeNotifier {
     return done.inMilliseconds / b.total.inMilliseconds;
   }
 
-  bool get _useBackend => backend != null && (track?.path != null || (track?.partId != null && source != null));
+  /// The engine plays a file on the device, a part of the server, an episode or a radio station (the last two have an address and
+  /// are fetched through the source). Without it the clock only runs on: a station of length zero would be over at once.
+  bool get _useBackend => backend != null && (track?.path != null || ((track?.partId != null || track?.url != null) && source != null));
 
   // ---- Downloads: keeping a book on the device ---------------------------------------
 
@@ -162,15 +215,45 @@ class PlayerController extends ChangeNotifier {
         await s.fetchPart(t);
         done++;
         downloads[b.id] = (done: done, total: total);
+        await _writePlaylistFile(b);
         if (!_disposed) notifyListeners();
       }
     } on Object catch (e) {
       downloadError = '$e';
     } finally {
+      // Whatever happened, the file says what is on the device now (also when nothing was left to fetch).
+      await _writePlaylistFile(b);
       _cancelled.remove(b.id);
       downloads.remove(b.id);
       storageRevision++;
       if (!_disposed) notifyListeners();
+    }
+  }
+
+  /// The name of the playlist file (without the ending) next to the downloads of [b]: one per book, one per
+  /// playlist. Null for what is not kept as parts (episodes, stations).
+  String? m3uNameOf(Book b) {
+    if (b.kind == kPlaylistKind) return 'playlist-${b.id.substring(kPlaylistBookPrefix.length)}';
+    if (b.kind == 'podcast' || b.isStream) return null;
+    return 'book-${b.id}';
+  }
+
+  /// Writes the extended M3U of [b] again: the parts that are on the device, in order, with paths relative to
+  /// the folder. With no part left the file is removed. Called when parts come in and when the download goes.
+  Future<void> _writePlaylistFile(Book b) async {
+    final s = source;
+    final name = m3uNameOf(b);
+    if (s == null || name == null) return;
+    final entries = <M3uEntry>[];
+    for (final t in b.tracks) {
+      final path = s.relativePath(t);
+      if (path == null) continue;
+      entries.add(M3uEntry(duration: t.live ? null : t.length, artist: t.bookAuthor ?? b.author, title: t.title, path: path));
+    }
+    try {
+      await s.writeM3u(name, entries);
+    } on Object {
+      // The playlist file is a convenience; the download stands without it.
     }
   }
 
@@ -186,12 +269,43 @@ class PlayerController extends ChangeNotifier {
     for (final t in b.tracks) {
       await s.removeDownload(t);
     }
+    await _writePlaylistFile(b);
     storageRevision++;
     if (!_disposed) notifyListeners();
   }
 
   /// The nickname of the signed-in user, for the greeting; null without a server.
   String? userName;
+
+  /// The ids of the books that are new for this user (from the server, newest first).
+  List<String> newIds = const [];
+
+  /// The books of [newIds] that are in the library, in the order of the server. Unknown ids are skipped.
+  List<Book> newBooks() => [
+        for (final id in newIds)
+          for (final b in library.where((b) => b.id == id).take(1)) b,
+      ];
+
+  /// Tracks heard to the end in this session, as `bookId:trackIndex`. It shows the check mark at once;
+  /// a reload from the server replaces it.
+  final Set<String> _heard = {};
+
+  /// Has this user heard track [index] of [b] to the end: the server says so, or it happened just now.
+  bool isTrackPlayed(Book b, int index) =>
+      (index >= 0 && index < b.tracks.length && b.tracks[index].plays > 0) || _heard.contains('${b.id}:$index');
+
+  /// How often [b] was heard as a whole. The server knows; a book finished just now counts once at least.
+  int playsOf(Book b) {
+    if (b.plays > 0 || b.tracks.isEmpty) return b.plays;
+    return [for (var i = 0; i < b.tracks.length; i++) i].every((i) => isTrackPlayed(b, i)) ? 1 : 0;
+  }
+
+  /// Remembers the current track as heard once the position is within [heardTail] of its end.
+  void _markHeard({bool ended = false}) {
+    final b = book, t = track;
+    if (b == null || t == null || t.live || b.isStream) return;
+    if (ended || (t.length > Duration.zero && position >= t.length - heardTail)) _heard.add('${b.id}:$trackIndex');
+  }
 
   /// The ids of the books listened to, the latest first. Comes from the server and is kept up to
   /// date here, so the home page shows a book at once when it is opened.
@@ -235,6 +349,8 @@ class PlayerController extends ChangeNotifier {
   /// with its track and position, if it is still there; otherwise the player stops.
   void updateLibrary(LoadedLibrary loaded) {
     userName = loaded.userName ?? userName;
+    newIds = loaded.newIds;
+    _heard.clear();
     if (loaded.recent.isNotEmpty) {
       recentIds
         ..clear()
@@ -242,6 +358,7 @@ class PlayerController extends ChangeNotifier {
     }
     final openId = book?.id;
     library = loaded.books;
+    genres = loaded.genres;
     for (final e in loaded.resume.entries) {
       _resume.putIfAbsent(e.key, () => e.value);
     }
@@ -273,10 +390,13 @@ class PlayerController extends ChangeNotifier {
     backend?.stop();
     _loadedKey = null;
     library = loaded.books;
+    genres = loaded.genres;
     _resume
       ..clear()
       ..addAll(loaded.resume);
     userName = loaded.userName;
+    newIds = loaded.newIds;
+    _heard.clear();
     recentIds
       ..clear()
       ..addAll(loaded.recent);
@@ -314,11 +434,12 @@ class PlayerController extends ChangeNotifier {
   void _writeLast({bool force = false}) {
     final store = lastStore;
     final b = book;
-    if (store == null || b == null || b.tracks.isEmpty) return;
+    if ((store == null && onPlaylistPosition == null) || b == null || b.tracks.isEmpty) return;
     final now = DateTime.now();
     if (!force && now.difference(_lastWritten) < const Duration(seconds: 5)) return;
     _lastWritten = now;
-    store.write(LastPlayed(bookId: b.id, track: trackIndex, position: position, at: now.millisecondsSinceEpoch));
+    if (b.kind == kPlaylistKind) onPlaylistPosition?.call(b, b.tracks[trackIndex], position);
+    store?.write(LastPlayed(bookId: b.id, track: trackIndex, position: position, at: now.millisecondsSinceEpoch));
   }
 
   /// Opens a passage of an audio Bible by its text ("Johannes 3,16"). False if
@@ -415,7 +536,8 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
-  void open(Book b, {int? track}) {
+  /// Opens a book and plays it; [start] is where in the track it begins (an episode goes on where the account stopped).
+  void open(Book b, {int? track, Duration? start}) {
     _report();
     _saveResume();
     book = b;
@@ -428,6 +550,7 @@ class PlayerController extends ChangeNotifier {
       trackIndex = r?.track ?? 0;
       position = r?.position ?? Duration.zero;
     }
+    if (start != null) position = start;
     _setPlaying(true);
   }
 
@@ -523,6 +646,10 @@ class PlayerController extends ChangeNotifier {
     if (_useBackend && _loadedKey != '${book!.id}:$trackIndex') return; // still fetching
     if (_useBackend) {
       position = backend!.position;
+      final info = backend;
+      streamTitle = info is StreamInfo ? (info as StreamInfo).streamTitle.value : null;
+      streamDetails = info is StreamInfo ? (info as StreamInfo).streamDetails.value : null;
+      _markHeard(ended: backend!.state == BackendState.ended);
       _report(force: false);
       if (backend!.state == BackendState.ended) {
         if (trackIndex < book!.tracks.length - 1) {
@@ -536,7 +663,7 @@ class PlayerController extends ChangeNotifier {
           _timer?.cancel();
         }
       } else if (backend!.state == BackendState.failed) {
-        error = 'playback failed';
+        error = (backend is StreamInfo ? (backend as StreamInfo).errorMessage : null) ?? 'playback failed';
         playing = false;
         _timer?.cancel();
       }
@@ -544,6 +671,7 @@ class PlayerController extends ChangeNotifier {
       return;
     }
     position += Duration(milliseconds: (500 * speed).round());
+    _markHeard();
     if (position >= t.length) {
       if (trackIndex < book!.tracks.length - 1) {
         trackIndex++;
@@ -578,6 +706,9 @@ class PlayerScope extends InheritedNotifier<PlayerController> {
     required PlayerController controller,
     required super.child,
   }) : super(notifier: controller);
+
+  /// The player, or null where there is none above (a page shown on its own).
+  static PlayerController? maybeOf(BuildContext context) => context.dependOnInheritedWidgetOfExactType<PlayerScope>()?.notifier;
 
   static PlayerController of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<PlayerScope>()!.notifier!;

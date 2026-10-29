@@ -103,6 +103,115 @@ pub unsafe extern "C" fn psalm_engine_load(e: *mut Engine, path: *const c_char, 
     })
 }
 
+/// Opens a live MP3 stream that the caller feeds with `psalm_engine_stream_push`.
+/// Returns at once; the state is 5 (buffering) until playback starts, and 4 (failed)
+/// with `psalm_engine_error` if the data cannot be played. `media_name` may be null.
+///
+/// # Safety
+/// `e` is valid; `media_name` is null or a valid zero-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn psalm_engine_stream_open(e: *mut Engine, play: i32, media_name: *const c_char) -> i32 {
+    guard(-1, || {
+        let Some(engine) = (unsafe { engine(e) }) else {
+            set_error("engine missing");
+            return -1;
+        };
+        match engine.load_stream(play != 0, unsafe { text(media_name) }.unwrap_or("")) {
+            Ok(()) => 0,
+            Err(err) => {
+                set_error(err.to_string());
+                -1
+            }
+        }
+    })
+}
+
+/// Offers `len` bytes of the stream. Returns how many were taken (0 to `len`; fewer
+/// means the queue is full, so wait and offer the rest again), or -1 on failure
+/// (no stream open, or it was closed). Never blocks.
+///
+/// # Safety
+/// `e` is valid; `data` points to `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn psalm_engine_stream_push(e: *mut Engine, data: *const u8, len: usize) -> i64 {
+    guard(-1, || {
+        let Some(engine) = (unsafe { engine(e) }) else {
+            set_error("engine missing");
+            return -1;
+        };
+        let bytes: &[u8] = if data.is_null() || len == 0 { &[] } else { unsafe { std::slice::from_raw_parts(data, len) } };
+        match engine.stream_push(bytes) {
+            Ok(n) => n as i64,
+            Err(err) => {
+                set_error(err.to_string());
+                -1
+            }
+        }
+    })
+}
+
+/// The stream ended; what was pushed is still played, then the state is 3 (ended).
+///
+/// # Safety
+/// `e` is valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn psalm_engine_stream_end(e: *mut Engine) -> i32 {
+    guard(-1, || match unsafe { engine(e) }.map(|engine| engine.stream_end()) {
+        Some(Ok(())) => 0,
+        Some(Err(err)) => {
+            set_error(err.to_string());
+            -1
+        }
+        None => {
+            set_error("engine missing");
+            -1
+        }
+    })
+}
+
+/// The stream failed on the sender's side; the state becomes 4 (failed) with `message`.
+///
+/// # Safety
+/// `e` is valid; `message` is a valid zero-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn psalm_engine_stream_fail(e: *mut Engine, message: *const c_char) -> i32 {
+    guard(-1, || {
+        let message = unsafe { text(message) }.unwrap_or("stream failed");
+        match unsafe { engine(e) }.map(|engine| engine.stream_fail(message)) {
+            Some(Ok(())) => 0,
+            Some(Err(err)) => {
+                set_error(err.to_string());
+                -1
+            }
+            None => {
+                set_error("engine missing");
+                -1
+            }
+        }
+    })
+}
+
+/// Copies the engine's own failure text (why the state is 4) into `buffer`, like
+/// `psalm_last_error`; returns its full length, 0 if there is none.
+///
+/// # Safety
+/// `e` is valid; `buffer` is null or points to `len` writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn psalm_engine_error(e: *const Engine, buffer: *mut c_char, len: usize) -> usize {
+    guard(0, || {
+        let message = unsafe { engine(e) }.and_then(|engine| engine.error()).unwrap_or_default();
+        if !buffer.is_null() && len > 0 {
+            let n = message.len().min(len - 1);
+            // SAFETY: `buffer` has `len` bytes and `n + 1 <= len`.
+            unsafe {
+                std::ptr::copy_nonoverlapping(message.as_ptr(), buffer.cast::<u8>(), n);
+                *buffer.add(n) = 0;
+            }
+        }
+        message.len()
+    })
+}
+
 macro_rules! simple {
     ($(#[$doc:meta])* $name:ident => |$engine:ident| $body:expr) => {
         $(#[$doc])*
@@ -168,6 +277,24 @@ pub unsafe extern "C" fn psalm_engine_set_speed(e: *mut Engine, speed: f32) -> i
     })
 }
 
+/// Seconds of audio kept ready between the decoder and the output, 1 to 30 (2 if never set). Applies from the next load.
+///
+/// # Safety
+/// `e` is valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn psalm_engine_set_buffer(e: *mut Engine, seconds: u32) -> i32 {
+    guard(-1, || match unsafe { engine(e) } {
+        Some(engine) => {
+            engine.set_buffer_seconds(seconds);
+            0
+        }
+        None => {
+            set_error("engine missing");
+            -1
+        }
+    })
+}
+
 /// Volume of this stream, 0.0 to 1.0.
 ///
 /// # Safety
@@ -186,7 +313,7 @@ pub unsafe extern "C" fn psalm_engine_set_volume(e: *mut Engine, volume: f32) ->
     })
 }
 
-/// 0 idle, 1 playing, 2 paused, 3 ended, 4 failed; -1 if the engine is missing.
+/// 0 idle, 1 playing, 2 paused, 3 ended, 4 failed, 5 buffering (live stream); -1 if the engine is missing.
 ///
 /// # Safety
 /// `e` is valid.
@@ -199,6 +326,7 @@ pub unsafe extern "C" fn psalm_engine_state(e: *const Engine) -> i32 {
             State::Paused => 2,
             State::Ended => 3,
             State::Failed => 4,
+            State::Buffering => 5,
         })
     })
 }
@@ -279,6 +407,11 @@ mod tests {
             assert_eq!(psalm_engine_seek(null_mut(), 1000), -1);
             assert_eq!(psalm_engine_set_volume(null_mut(), 0.5), -1);
             assert_eq!(psalm_engine_state(std::ptr::null()), -1);
+            assert_eq!(psalm_engine_stream_open(null_mut(), 1, std::ptr::null()), -1);
+            assert_eq!(psalm_engine_stream_push(null_mut(), b"x".as_ptr(), 1), -1);
+            assert_eq!(psalm_engine_stream_end(null_mut()), -1);
+            assert_eq!(psalm_engine_stream_fail(null_mut(), std::ptr::null()), -1);
+            assert_eq!(psalm_engine_error(std::ptr::null(), null_mut(), 0), 0);
             assert_eq!(psalm_engine_position_ms(std::ptr::null()), -1);
             assert_eq!(psalm_engine_duration_ms(std::ptr::null()), -1);
             assert_eq!(psalm_engine_volume(std::ptr::null()), -1.0);

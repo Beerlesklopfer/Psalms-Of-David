@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+[package]
+name = "cdrip"
+version = "0.1.0"
+edition = "2024"
+description = "Reading audio CDs: drive, table of contents, MusicBrainz disc id, MP3 encoding, ID3v2.4, uevent watch"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/Beerlesklopfer/Psalms-Of-David"
+publish = false
+
+[dependencies]
+# LAME is built from bundled C source and linked statically (needs a C compiler); LGPL-3.0, see docs/spec-cd-ripping.md.
+base64 = "0.23.1"
+cd-da-reader = "1.0.0"
+libc = "0.2"
+mp3lame-encoder = "0.2.5"
+serde = { version = "1", features = ["derive"] }
+sha1 = "0.11.0"
+
+[dev-dependencies]
+tempfile = "3"
+serde_json = "1"
