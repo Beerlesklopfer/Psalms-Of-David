@@ -162,6 +162,34 @@ impl Store {
         Ok(())
     }
 
+    /// `(share_listening, may_hide_listening)` of a user; `(true, true)` for an unknown one.
+    pub async fn listening_sharing(&self, user_id: i64) -> Result<(bool, bool)> {
+        let values: [Value; 1] = [user_id.into()];
+        let row = self
+            .db
+            .reader
+            .query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT share_listening, may_hide_listening FROM profile WHERE id = ?", values))
+            .await?;
+        Ok(match row {
+            Some(r) => (r.try_get_by_index::<i64>(0)? != 0, r.try_get_by_index::<i64>(1)? != 0),
+            None => (true, true),
+        })
+    }
+
+    /// The person's own choice whether the family sees their listening. The caller checks `may_hide_listening` before it accepts `false`.
+    pub async fn set_share_listening(&self, user_id: i64, share: bool) -> Result<()> {
+        let values: [Value; 2] = [i64::from(share).into(), user_id.into()];
+        self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE profile SET share_listening = ? WHERE id = ?", values)).await?;
+        Ok(())
+    }
+
+    /// The decision of an administrator whether the person may hide their listening.
+    pub async fn set_may_hide_listening(&self, user_id: i64, may: bool) -> Result<()> {
+        let values: [Value; 2] = [i64::from(may).into(), user_id.into()];
+        self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE profile SET may_hide_listening = ? WHERE id = ?", values)).await?;
+        Ok(())
+    }
+
     pub async fn set_avatar(&self, user_id: i64, bytes: &[u8]) -> Result<()> {
         if bytes.len() > MAX_AVATAR_BYTES {
             return Err(Error::AvatarSize);

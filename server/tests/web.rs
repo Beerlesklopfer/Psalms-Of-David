@@ -297,8 +297,9 @@ async fn the_static_files_are_served_by_the_server() {
     // The row of tabs scrolls sideways and never up and down (that gave a tiny scroll bar next to the last tab).
     let tabs = css.body.lines().find(|l| l.starts_with(".tabs {")).expect("a rule for the tabs");
     assert!(tabs.contains("overflow-x: auto") && tabs.contains("overflow-y: hidden"), "{tabs}");
-    assert_eq!(css.body.matches("--warn:").count(), 2, "the amber of 'read' is defined for light and dark");
-    assert_eq!(css.body.matches("--info:").count(), 2, "the blue of 'converting' is defined for light and dark");
+    // Light, dark by the system and dark chosen with the switch in the header.
+    assert_eq!(css.body.matches("--warn:").count(), 3, "the amber of 'read' is defined for light and dark");
+    assert_eq!(css.body.matches("--info:").count(), 3, "the blue of 'converting' is defined for light and dark");
 }
 
 #[tokio::test]
@@ -4281,6 +4282,50 @@ async fn the_administrator_edits_who_follows_a_podcast() {
     assert_eq!(r.status, StatusCode::NOT_FOUND);
     let r = send(&a, post("/admin/rpc/podcast.followers", &form(&[("id", "9999"), ("followers_form", "1"), ("profiles", "not a number")]), &hx)).await;
     assert_eq!((r.status, r.header("x-invalid-field")), (StatusCode::UNPROCESSABLE_ENTITY, Some("profiles")));
+}
+
+#[tokio::test]
+async fn an_administrator_chooses_who_has_a_radio_station_among_the_favourites() {
+    let a = app().await;
+    let (cookie, token) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), ..Opts::default() };
+    let hx = Opts { cookie: Some(&cookie), csrf_header: Some(&token), htmx: true, ..Opts::default() };
+    let id = a.store.save_station("https://radio.example/live", "Live", None, None).await.unwrap();
+    let anna = a.store.create_profile("Anna", false).await.unwrap();
+    let ben = a.store.create_profile("Ben", false).await.unwrap();
+    let kid = a.store.create_profile("Kid", false).await.unwrap();
+    a.store.favorite_station(anna, id, true).await.unwrap();
+    a.store.favorite_station(kid, id, false).await.unwrap();
+    let has = |p: i64| {
+        let s = a.store.clone();
+        async move { s.favorite_stations(p, false).await.unwrap().iter().any(|st| st.id == id) }
+    };
+
+    let page = send(&a, get("/admin/radio", &o)).await.body;
+    assert!(page.contains(&format!("id=\"dlg-favourites-{id}\"")) && page.contains("/admin/rpc/station.favourites"), "{page}");
+    assert!(page.contains(&format!("name=\"profiles\" value=\"{anna}\" checked")), "Anna has it");
+    assert!(page.contains(&format!("name=\"profiles\" value=\"{kid}\" checked")), "the request of Kid waits and counts as ticked");
+    assert!(page.contains(&format!("name=\"profiles\" value=\"{ben}\">")), "Ben does not have it");
+
+    let save = |profiles: &[i64]| {
+        let mut fields: Vec<(String, String)> = vec![("id".into(), id.to_string()), ("favourites_form".into(), "1".into())];
+        fields.extend(profiles.iter().map(|p| ("profiles".to_owned(), p.to_string())));
+        serde_urlencoded::to_string(&fields).unwrap()
+    };
+    let r = send(&a, post("/admin/rpc/station.favourites", &save(&[anna, ben]), &hx)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(has(anna).await && has(ben).await && !has(kid).await, "Ben is added, the waiting request of Kid is refused");
+    send(&a, post("/admin/rpc/station.favourites", &save(&[kid]), &hx)).await;
+    assert!(has(kid).await && !has(anna).await && !has(ben).await, "only Kid has it, with the release");
+
+    // Without the marker nothing changes; an unknown profile or station is refused.
+    let r = send(&a, post("/admin/rpc/station.favourites", &form(&[("id", &id.to_string()), ("profiles", &anna.to_string())]), &hx)).await;
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(!has(anna).await && has(kid).await, "unchanged");
+    let r = send(&a, post("/admin/rpc/station.favourites", &save(&[anna, 9999]), &hx)).await;
+    assert_eq!((r.status, r.header("x-invalid-field")), (StatusCode::UNPROCESSABLE_ENTITY, Some("profiles")));
+    let r = send(&a, post("/admin/rpc/station.favourites", &form(&[("id", "9999"), ("favourites_form", "1")]), &hx)).await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

@@ -194,3 +194,25 @@ async fn the_pin_changes_only_with_the_right_current_one() {
     // The device keeps its session.
     assert_eq!(send(&a, "GET", "/api/v1/me", Some(&anna), "application/json", vec![], None).await.status, StatusCode::OK);
 }
+
+#[tokio::test]
+async fn the_own_listening_can_be_hidden_unless_an_administrator_forbids_it() {
+    let a = api().await;
+    let (id, token) = member(&a, "Anna", 5).await;
+    let me = json_call(&a, "GET", "/api/v1/me", &token, Value::Null).await.json();
+    assert_eq!((me["share_listening"].as_bool(), me["may_hide_listening"].as_bool()), (Some(true), Some(true)));
+
+    let hidden = json_call(&a, "PUT", "/api/v1/me", &token, json!({ "share_listening": false })).await;
+    assert_eq!(hidden.status, StatusCode::OK);
+    assert_eq!(hidden.json()["share_listening"], false);
+
+    a.store.set_may_hide_listening(id, false).await.unwrap();
+    let forced = json_call(&a, "GET", "/api/v1/me", &token, Value::Null).await.json();
+    assert_eq!((forced["share_listening"].as_bool(), forced["may_hide_listening"].as_bool()), (Some(true), Some(false)));
+    let refused = json_call(&a, "PUT", "/api/v1/me", &token, json!({ "share_listening": false })).await;
+    assert_eq!(refused.status, StatusCode::FORBIDDEN);
+    let family = json_call(&a, "GET", "/api/v1/family/media-time?days=7", &token, Value::Null).await;
+    assert_eq!(family.status, StatusCode::OK);
+    assert_eq!(family.json()["days"], 7);
+    assert_eq!(family.json()["members"][0]["me"], true);
+}

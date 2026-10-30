@@ -58,7 +58,8 @@ class _AboutScreenState extends State<AboutScreen> {
         Text(l.aboutDescription, textAlign: TextAlign.center, style: text.bodyLarge),
         const SizedBox(height: 20),
         Wrap(
-          alignment: WrapAlignment.center,
+          // Justified: the tags spread over the whole width.
+          alignment: WrapAlignment.spaceBetween,
           spacing: 8,
           runSpacing: 8,
           children: [
@@ -71,7 +72,8 @@ class _AboutScreenState extends State<AboutScreen> {
         const SizedBox(height: 28),
         Card(
           margin: EdgeInsets.zero,
-          color: cs.primaryContainer.withValues(alpha: 0.25),
+          // A light tint of the primary colour: readable in the light and in the dark theme (the container colour is dark red in the light one).
+          color: cs.primary.withValues(alpha: 0.08),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(

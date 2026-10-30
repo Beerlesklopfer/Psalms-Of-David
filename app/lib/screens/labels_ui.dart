@@ -123,27 +123,33 @@ class FeedLabelsLine extends StatelessWidget {
     final controller = LabelsScope.maybeOf(context);
     final editable = canLabel && controller != null && controller.available;
     if (labels.isEmpty && !editable) return const SizedBox.shrink();
+    // The chips wrap in the space that is left; the editor is a small icon button at the right edge.
     return Padding(
       padding: const EdgeInsets.only(top: 4),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 2,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          for (final name in labels)
-            Chip(
-              key: ValueKey('feed-label-$idKey-$name'),
-              label: Text(name),
-              labelStyle: Theme.of(context).textTheme.labelSmall,
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
+          Expanded(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 2,
+              children: [
+                for (final name in labels)
+                  Chip(
+                    key: ValueKey('feed-label-$idKey-$name'),
+                    label: Text(name),
+                    labelStyle: Theme.of(context).textTheme.labelSmall,
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                  ),
+              ],
             ),
+          ),
           if (editable)
-            ActionChip(
+            IconButton(
               key: ValueKey('feed-labels-edit-$idKey'),
-              avatar: const Icon(Icons.sell_outlined, size: 16),
-              label: Text(labels.isEmpty ? l.labelsEdit : l.labelsTitle),
-              labelStyle: Theme.of(context).textTheme.labelSmall,
+              icon: const Icon(Icons.sell_outlined, size: 18),
+              tooltip: labels.isEmpty ? l.labelsEdit : l.labelsTitle,
               visualDensity: VisualDensity.compact,
               onPressed: () => showFeedLabelEditor(context, initial: labels, title: title, onSave: onSave),
             ),
@@ -397,57 +403,114 @@ class _LabelEditorState extends State<LabelEditor> {
   }
 }
 
-/// The labels as a row of chips to filter a list by: a tap adds the label, a second tap takes it away; several narrow the list (a book has all).
+/// The labels to filter a list by: chips that break into a new line by themselves. When they would take more than [maxLines] lines they
+/// become one combo box with a check box for every label. A tap adds the label, a second tap takes it away; several narrow the list (a book has all).
 class LabelFilter extends StatelessWidget {
   const LabelFilter({
     super.key,
     required this.counts,
     required this.chosen,
     required this.onChanged,
+    this.maxLines = 3,
   });
 
   final List<(String, int)> counts;
   final Set<String> chosen;
   final ValueChanged<Set<String>> onChanged;
 
+  /// Up to this many lines the chips are shown; more than that, the combo box.
+  final int maxLines;
+
+  bool _isChosen(String name) => chosen.any((c) => c.toLowerCase() == name.toLowerCase());
+
+  void _toggle(String name, bool on) {
+    final next = {...chosen}..removeWhere((c) => c.toLowerCase() == name.toLowerCase());
+    if (on) next.add(name);
+    onChanged(next);
+  }
+
+  /// How many lines the chips take at [width]: each is the text, the icon and the padding of a compact chip, with 8 between them.
+  int _lines(BuildContext context, double width) {
+    final style = Theme.of(context).textTheme.labelLarge ?? const TextStyle();
+    final scale = MediaQuery.textScalerOf(context);
+    var lines = 1;
+    var used = 0.0;
+    for (final (name, count) in counts) {
+      final painter = TextPainter(text: TextSpan(text: '$name ($count)', style: style), textDirection: TextDirection.ltr, textScaler: scale)..layout();
+      final chip = painter.width + 52;
+      if (used > 0 && used + 8 + chip > width) {
+        lines++;
+        used = chip;
+      } else {
+        used += (used > 0 ? 8 : 0) + chip;
+      }
+    }
+    return lines;
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     if (counts.isEmpty) return const SizedBox.shrink();
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    final clear = chosen.isEmpty
+        ? null
+        : ActionChip(
+            key: const ValueKey('label-filter-clear'),
+            avatar: const Icon(Icons.close, size: 16),
+            label: Text(l.labelsFilterClear),
+            visualDensity: VisualDensity.compact,
+            onPressed: () => onChanged({}),
+          );
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          if (chosen.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ActionChip(
-                key: const ValueKey('label-filter-clear'),
-                avatar: const Icon(Icons.close, size: 16),
-                label: Text(l.labelsFilterClear),
-                visualDensity: VisualDensity.compact,
-                onPressed: () => onChanged({}),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          if (_lines(context, box.maxWidth) <= maxLines) {
+            return Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                ?clear,
+                for (final (name, count) in counts)
+                  FilterChip(
+                    key: ValueKey('label-filter-$name'),
+                    avatar: const Icon(Icons.sell_outlined, size: 16),
+                    label: Text('$name ($count)'),
+                    selected: _isChosen(name),
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (on) => _toggle(name, on),
+                  ),
+              ],
+            );
+          }
+          return Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              MenuAnchor(
+                style: const MenuStyle(maximumSize: WidgetStatePropertyAll(Size(double.infinity, 420))),
+                menuChildren: [
+                  for (final (name, count) in counts)
+                    CheckboxMenuButton(
+                      key: ValueKey('label-filter-$name'),
+                      closeOnActivate: false,
+                      value: _isChosen(name),
+                      onChanged: (on) => _toggle(name, on ?? false),
+                      child: Text('$name ($count)'),
+                    ),
+                ],
+                builder: (context, menu, _) => OutlinedButton.icon(
+                  key: const ValueKey('label-filter-combo'),
+                  icon: const Icon(Icons.sell_outlined, size: 18),
+                  label: Text(chosen.isEmpty ? l.labelsTitle : '${l.labelsTitle} (${chosen.length})'),
+                  onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+                ),
               ),
-            ),
-          for (final (name, count) in counts)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: FilterChip(
-                key: ValueKey('label-filter-$name'),
-                avatar: const Icon(Icons.sell_outlined, size: 16),
-                label: Text('$name ($count)'),
-                selected: chosen.any((c) => c.toLowerCase() == name.toLowerCase()),
-                visualDensity: VisualDensity.compact,
-                onSelected: (on) {
-                  final next = {...chosen}
-                    ..removeWhere((c) => c.toLowerCase() == name.toLowerCase());
-                  if (on) next.add(name);
-                  onChanged(next);
-                },
-              ),
-            ),
-        ],
+              ?clear,
+            ],
+          );
+        },
       ),
     );
   }

@@ -2042,6 +2042,9 @@ impl AdminUi {
             .filter(|(s, _)| lower.as_ref().is_none_or(|n| s.name.to_lowercase().contains(n) || s.stream_url.to_lowercase().contains(n)))
             .collect();
         let paging = Paging::of(store, stations.len(), page, per).await?;
+        // For the dialog "Favourite of": every profile, and who has the station (ticked) or asked for it (waits), by id.
+        let profiles = follower_choices(store).await?;
+        let by_station = store.favourite_ids_by_station().await?;
         let items: Vec<serde_json::Value> = stations
             .into_iter()
             .skip(paging.from)
@@ -2049,11 +2052,14 @@ impl AdminUi {
             .map(|(s, owners)| {
                 // The names that wait for a release come marked "(waiting)" from the store; they are listed apart.
                 let favourite: Vec<String> = owners.into_iter().filter(|n| !n.ends_with(" (waiting)")).collect();
-                serde_json::json!({ "id": s.id, "name": s.name, "stream_url": s.stream_url, "homepage": s.homepage, "logo_url": s.logo_url, "favourite": favourite, "waiting": waiting.get(&s.id).map(|w| serde_json::json!(w)).unwrap_or_else(|| serde_json::json!([])), "labels": labels.get(&s.id).cloned().unwrap_or_default() })
+                let ids = by_station.get(&s.id).cloned().unwrap_or_default();
+                let favourite_ids: Vec<i64> = ids.iter().filter(|(_, ok)| *ok).map(|(p, _)| *p).collect();
+                let waiting_ids: Vec<i64> = ids.iter().filter(|(_, ok)| !*ok).map(|(p, _)| *p).collect();
+                serde_json::json!({ "favourite_ids": favourite_ids, "waiting_ids": waiting_ids, "id": s.id, "name": s.name, "stream_url": s.stream_url, "homepage": s.homepage, "logo_url": s.logo_url, "favourite": favourite, "waiting": waiting.get(&s.id).map(|w| serde_json::json!(w)).unwrap_or_else(|| serde_json::json!([])), "labels": labels.get(&s.id).cloned().unwrap_or_default() })
             })
             .collect();
         let pager = paging.json("/admin/radio", needle);
         let label_names = store.labels().await?;
-        self.render("radio.html", context! { stations => Serde(items), pager => Serde(pager), q => needle.unwrap_or_default(), searched => needle.is_some(), label_names => Serde(label_names), ..view.into().context() })
+        self.render("radio.html", context! { profiles => Serde(profiles), stations => Serde(items), pager => Serde(pager), q => needle.unwrap_or_default(), searched => needle.is_some(), label_names => Serde(label_names), ..view.into().context() })
     }
 }

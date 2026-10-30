@@ -548,6 +548,126 @@ abstract class AppLocalizations {
   /// **'Disconnect'**
   String get settingsDisconnect;
 
+  /// No description provided for @settingsGroupGeneral.
+  ///
+  /// In en, this message translates to:
+  /// **'General'**
+  String get settingsGroupGeneral;
+
+  /// No description provided for @settingsGroupOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline and downloads'**
+  String get settingsGroupOffline;
+
+  /// No description provided for @settingsGroupLibrary.
+  ///
+  /// In en, this message translates to:
+  /// **'Library'**
+  String get settingsGroupLibrary;
+
+  /// No description provided for @settingsGroupDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Further devices'**
+  String get settingsGroupDevices;
+
+  /// No description provided for @settingsGroupServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Server'**
+  String get settingsGroupServer;
+
+  /// No description provided for @sectionHeardBy.
+  ///
+  /// In en, this message translates to:
+  /// **'Recently heard by {name}'**
+  String sectionHeardBy(String name);
+
+  /// No description provided for @sectionMyMediaTime.
+  ///
+  /// In en, this message translates to:
+  /// **'My media time'**
+  String get sectionMyMediaTime;
+
+  /// No description provided for @sectionMediaTimeOf.
+  ///
+  /// In en, this message translates to:
+  /// **'Media time of {name}'**
+  String sectionMediaTimeOf(String name);
+
+  /// No description provided for @chartTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Total'**
+  String get chartTotal;
+
+  /// No description provided for @chartNothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing listened to in the last days.'**
+  String get chartNothing;
+
+  /// No description provided for @chartMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} min'**
+  String chartMinutes(int n);
+
+  /// No description provided for @chartHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} h'**
+  String chartHours(int n);
+
+  /// No description provided for @settingsShareListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Show what I listen to'**
+  String get settingsShareListening;
+
+  /// No description provided for @settingsShareListeningHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The family sees your recently heard books on their start page.'**
+  String get settingsShareListeningHint;
+
+  /// No description provided for @settingsShareListeningLocked.
+  ///
+  /// In en, this message translates to:
+  /// **'An administrator decided that your listening is visible to the family.'**
+  String get settingsShareListeningLocked;
+
+  /// No description provided for @settingsShareListeningFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not change this setting.'**
+  String get settingsShareListeningFailed;
+
+  /// No description provided for @settingsTheme.
+  ///
+  /// In en, this message translates to:
+  /// **'Colours'**
+  String get settingsTheme;
+
+  /// No description provided for @themeSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get themeSystem;
+
+  /// No description provided for @themeLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get themeLight;
+
+  /// No description provided for @themeDark.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get themeDark;
+
   /// No description provided for @settingsDisconnectHint.
   ///
   /// In en, this message translates to:
@@ -1141,6 +1261,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The feed could not be read the last time.'**
   String get feedProblem;
+
+  /// No description provided for @podcastUnfollowTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop following this podcast?'**
+  String get podcastUnfollowTitle;
+
+  /// No description provided for @podcastUnfollowAsk.
+  ///
+  /// In en, this message translates to:
+  /// **'\"{title}\" disappears from the podcasts of this account, on all its devices. You can follow it again with the address of its feed.'**
+  String podcastUnfollowAsk(String title);
+
+  /// No description provided for @stationRemoveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this station?'**
+  String get stationRemoveTitle;
+
+  /// No description provided for @stationRemoveAsk.
+  ///
+  /// In en, this message translates to:
+  /// **'\"{name}\" is taken out of the favourites of this account.'**
+  String stationRemoveAsk(String name);
 
   /// No description provided for @podcastUnfollow.
   ///
@@ -2719,6 +2863,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Choose a picture'**
   String get profileChoosePhoto;
+
+  /// No description provided for @profileRemovePhotoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the picture?'**
+  String get profileRemovePhotoTitle;
+
+  /// No description provided for @profileRemovePhotoAsk.
+  ///
+  /// In en, this message translates to:
+  /// **'Your picture is deleted on the server and on all your devices.'**
+  String get profileRemovePhotoAsk;
 
   /// No description provided for @profileRemovePhoto.
   ///

@@ -3,6 +3,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/material.dart' show ThemeMode;
+
 import '../server/app_paths.dart';
 import 'audio_backend.dart';
 
@@ -48,4 +50,13 @@ class PlaybackSettingsStore {
   bool readShowBookTime() => _read()['show_book_time'] == true;
 
   void writeShowBookTime(bool value) => _write({..._read(), 'show_book_time': value});
+
+  /// The colour scheme: "system", "light" or "dark"; dark when nothing (or nothing usable) is stored.
+  ThemeMode readThemeMode() => switch (_read()['theme_mode']) {
+        'system' => ThemeMode.system,
+        'light' => ThemeMode.light,
+        _ => ThemeMode.dark,
+      };
+
+  void writeThemeMode(ThemeMode mode) => _write({..._read(), 'theme_mode': mode.name});
 }

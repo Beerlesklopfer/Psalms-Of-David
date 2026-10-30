@@ -899,6 +899,12 @@ pub struct UserUpdate {
     max_age: Option<String>,
     #[serde(default)]
     max_devices: String,
+    /// The form says it carries the switch (an unticked box sends nothing, so the box alone cannot say "off").
+    #[serde(default)]
+    listening_form: Option<String>,
+    /// "on" when the person may hide their listening from the family.
+    #[serde(default)]
+    may_hide_listening: Option<String>,
     #[serde(default)]
     hours_from: String,
     #[serde(default)]
@@ -960,6 +966,9 @@ pub async fn user_update(State(state): State<AppState>, s: AdminSession, Form(f)
             state.store.set_profile_max_age(f.id, max_age).await?;
         }
         state.store.set_profile_max_devices(f.id, max_devices).await?;
+        if f.listening_form.is_some() {
+            state.store.set_may_hide_listening(f.id, f.may_hide_listening.is_some()).await?;
+        }
         if !pin.is_empty() {
             state.store.set_pin(f.id, pin).await?;
         }
@@ -2857,6 +2866,36 @@ pub async fn podcast_followers(State(state): State<AppState>, s: AdminSession, F
     }
     .await;
     feed_done(&s, &here, &here, outcome)
+}
+
+/// An administrator changes who has a radio station among the favourites (the dialog "Favourite of"), as `podcast_followers` does for a podcast: the
+/// ticked profiles have it, the others do not. Without the marker `favourites_form=1` a request changes nothing.
+pub async fn station_favourites(State(state): State<AppState>, s: AdminSession, Form(pairs): Form<Vec<(String, String)>>) -> Response {
+    let get = |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str());
+    let id: i64 = get("id").and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+    let outcome = async {
+        if get("favourites_form") != Some("1") {
+            return Err(Failure::input());
+        }
+        let mut wanted: Vec<i64> = Vec::new();
+        for (_, v) in pairs.iter().filter(|(k, _)| k == "profiles") {
+            let p: i64 = v.trim().parse().map_err(|_| Failure::input().at("profiles"))?;
+            if !wanted.contains(&p) {
+                wanted.push(p);
+            }
+        }
+        let people = state.store.list_profiles().await?;
+        if wanted.iter().any(|w| !people.iter().any(|p| p.id == *w)) {
+            return Err(Failure::input().at("profiles"));
+        }
+        let station = state.store.stations_with_owners().await?.into_iter().find(|(st, _)| st.id == id).map(|(st, _)| st).ok_or_else(Failure::not_found)?;
+        let (added, removed) = state.store.set_station_favourites(id, &wanted).await?;
+        let names = |ids: &[i64]| ids.iter().filter_map(|i| people.iter().find(|p| p.id == *i).map(|p| p.name.clone())).collect::<Vec<_>>();
+        tracing::info!(by = s.user_id, station = %station.name, added = ?names(&added), removed = ?names(&removed), "favourites of a radio station changed by an administrator");
+        Ok(None)
+    }
+    .await;
+    feed_done(&s, "/admin/radio", "/admin/radio", outcome)
 }
 
 /// Reads the feed again now; a feed that cannot be read keeps the reason, which the list shows.

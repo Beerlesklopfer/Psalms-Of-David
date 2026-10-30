@@ -7,6 +7,7 @@
 //! |---|---|
 //! | `GET /me` | the profile (see `api.rs`), with `has_avatar`, `avatar_version` and the device counts |
 //! | `PUT /me` `{nickname?, first_name?, last_name?, language?}` | changes what is given (`language`: `en`, `de`, or `""`/`null` to follow the device); answers like `GET /me` |
+//! | `PUT /me` also takes `share_listening` (bool): whether the family sees what you listened to; `false` answers `403 listening_not_hideable` when an administrator forbade hiding it |
 //! | `PUT /me/pin` `{current, new}` | changes the PIN or password; a wrong current one counts like a wrong sign-in |
 //! | `GET /me/devices` | the devices of the account: `[{id, name, shared, last_seen, this}]` |
 //! | `GET /me/avatar` | the picture, `404` if there is none; `ETag` is the version, `304` for a repeated request |
@@ -16,7 +17,7 @@
 use axum::Json;
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, State};
+use axum::extract::{DefaultBodyLimit, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, put};
@@ -34,6 +35,8 @@ pub fn routes() -> Router<ApiState> {
     Router::new()
         .route("/api/v1/me", put(put_me))
         .route("/api/v1/me/pin", put(put_pin))
+        .route("/api/v1/family/listening", get(family_listening))
+        .route("/api/v1/family/media-time", get(family_media_time))
         .route("/api/v1/me/devices", get(devices))
         .route("/api/v1/me/avatar", get(get_avatar).put(put_avatar).delete(delete_avatar).layer(DefaultBodyLimit::max(AVATAR_BODY)))
 }
@@ -45,6 +48,8 @@ struct MeUpdate {
     last_name: Option<String>,
     /// `None` leaves it as it is; an empty text or an explicit `null` is not distinguishable here, so `""` is the way to follow the device.
     language: Option<String>,
+    /// Show the own listening to the family (`false` is refused when an administrator forbade hiding it).
+    share_listening: Option<bool>,
 }
 
 /// The profile as the apps read it.
@@ -52,7 +57,9 @@ pub(crate) async fn me_json(s: &ApiState, d: &Device) -> ApiResult<Value> {
     let user = s.store.profile_by_id(d.user_id).await?.ok_or(ApiError(StatusCode::UNAUTHORIZED, "unauthorized"))?;
     let avatar = s.store.avatar_version(d.user_id).await?;
     let (used, max) = s.store.device_usage(d.user_id).await?;
+    let (share, may_hide) = s.store.listening_sharing(d.user_id).await?;
     Ok(json!({
+        "share_listening": share || !may_hide, "may_hide_listening": may_hide,
         "id": user.id, "name": user.name, "nickname": user.name, "first_name": user.first_name, "last_name": user.last_name,
         "role": d.role.as_str(), "max_age": user.max_age, "language": user.language,
         "has_avatar": avatar.is_some(), "avatar_version": avatar, "device_count": used, "device_limit": max,
@@ -84,6 +91,13 @@ async fn put_me(State(s): State<ApiState>, d: Device, Json(req): Json<MeUpdate>)
             e => e.into(),
         })?;
     }
+    if let Some(share) = req.share_listening {
+        let (_, may_hide) = s.store.listening_sharing(d.user_id).await?;
+        if !share && !may_hide {
+            return Err(ApiError(StatusCode::FORBIDDEN, "listening_not_hideable"));
+        }
+        s.store.set_share_listening(d.user_id, share).await?;
+    }
     Ok(Json(me_json(&s, &d).await?))
 }
 
@@ -102,6 +116,61 @@ async fn put_pin(State(s): State<ApiState>, d: Device, Json(req): Json<PinChange
         e => e.into(),
     })?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// What the other members of the family listened to lately, one entry per member (`docs/spec-app-api.md`). Guests see nothing.
+async fn family_listening(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
+    if d.role == crate::roles::Role::Guest {
+        return Ok(Json(Value::Array(Vec::new())));
+    }
+    let hidden = s.store.hidden_of(d.user_id).await?;
+    let hidden_ids = if hidden.show_hidden { Default::default() } else { hidden.ids_in(&s.store.visible_books(d.user_id).await?) };
+    let members = s.store.family_listening(d.user_id, 10).await?;
+    Ok(Json(Value::Array(
+        members
+            .iter()
+            .filter_map(|m| {
+                let books: Vec<Value> = m
+                    .books
+                    .iter()
+                    .filter(|c| !hidden_ids.contains(&c.book_id))
+                    .map(|c| json!({ "item_id": c.book_id, "kind": "audiobook", "title": c.title, "creator": c.author, "part_id": c.track_id, "position_ms": c.position_ms, "updated_at": c.updated_at }))
+                    .collect();
+                (!books.is_empty()).then(|| json!({ "user_id": m.member_id, "name": m.member, "has_avatar": m.has_avatar, "items": books }))
+            })
+            .collect(),
+    )))
+}
+
+/// The media time of the family: per member the time listened on each of the last days (`?days=`, 7 to 90, 14 by default), per kind of medium
+/// and together (`docs/spec-app-api.md`). Guests see only themselves.
+async fn family_media_time(State(s): State<ApiState>, d: Device, Query(q): Query<TimeQuery>) -> ApiResult<Json<Value>> {
+    let days = q.days.unwrap_or(14).clamp(7, 90);
+    let mut time = s.store.media_time(d.user_id, days).await?;
+    if d.role == crate::roles::Role::Guest {
+        time.members.retain(|m| m.me);
+    }
+    let members: Vec<Value> = time
+        .members
+        .iter()
+        .map(|m| {
+            let mut total = vec![0_i64; days as usize];
+            let mut kinds = serde_json::Map::new();
+            for (kind, per_day) in &m.kinds {
+                for (t, ms) in total.iter_mut().zip(per_day) {
+                    *t += ms;
+                }
+                kinds.insert(kind.clone(), json!(per_day));
+            }
+            json!({ "user_id": m.member_id, "name": m.member, "has_avatar": m.has_avatar, "me": m.me, "kinds": kinds, "total": total })
+        })
+        .collect();
+    Ok(Json(json!({ "from_day": time.from_day, "days": days, "members": members })))
+}
+
+#[derive(Deserialize)]
+struct TimeQuery {
+    days: Option<i64>,
 }
 
 async fn devices(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {

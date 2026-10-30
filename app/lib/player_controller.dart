@@ -353,6 +353,26 @@ class PlayerController extends ChangeNotifier {
   /// The ids of the books that are new for this user (from the server, newest first).
   List<String> newIds = const [];
 
+  /// What the other members of the family listened to lately (the rows "recently heard by" of the home page).
+  List<FamilyMember> heard = const [];
+
+  /// The books of the library that [m] listened to lately, the latest first (unknown ids are skipped).
+  List<Book> booksOf(FamilyMember m) => [
+        for (final id in m.bookIds)
+          for (final b in library.where((b) => b.id == id).take(1)) b,
+      ];
+
+  /// The media time of the family, the own first (the charts of the home page).
+  List<FamilyTime> family = const [];
+  bool shareListening = true;
+  bool mayHideListening = true;
+
+  /// Remembers the choice after the server took it (the settings call the server first).
+  void setShareListening(bool share) {
+    shareListening = share;
+    notifyListeners();
+  }
+
   /// The books of [newIds] that are in the library, in the order of the server. Unknown ids are skipped.
   List<Book> newBooks() => [
         for (final id in newIds)
@@ -423,6 +443,10 @@ class PlayerController extends ChangeNotifier {
   void updateLibrary(LoadedLibrary loaded) {
     userName = loaded.userName ?? userName;
     newIds = loaded.newIds;
+    family = loaded.family;
+    heard = loaded.heard;
+    shareListening = loaded.shareListening;
+    mayHideListening = loaded.mayHideListening;
     _heard.clear();
     if (loaded.recent.isNotEmpty) {
       recentIds
@@ -471,6 +495,10 @@ class PlayerController extends ChangeNotifier {
       ..addAll(loaded.resume);
     userName = loaded.userName;
     newIds = loaded.newIds;
+    family = loaded.family;
+    heard = loaded.heard;
+    shareListening = loaded.shareListening;
+    mayHideListening = loaded.mayHideListening;
     _heard.clear();
     recentIds
       ..clear()

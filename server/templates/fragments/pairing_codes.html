@@ -1,5 +1,5 @@
 {# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
-   SPDX-License-Identifier: AGPL-3.0-or-later -#}<section id="pairing-codes" class="pairing-codes" hx-get="/admin/fragments/pairing-codes" hx-trigger="every 30s, pairing-created from:body" hx-target="this" hx-swap="outerHTML">
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<section id="pairing-codes" class="pairing-codes" hx-get="/admin/fragments/pairing-codes" hx-trigger="every 30s, pairing-created from:body" hx-target="this" hx-swap="outerHTML">
   <h2>{{ t("pairing.codes") }}{% if open_codes > 0 %} <span class="badge ok">{{ open_codes }} {{ t("pairing.state_open") }}</span>{% endif %}</h2>
   {% for e in events %}
   <p class="message{% if e.kind == 'expired' %} warn{% endif %}" role="status">
@@ -41,7 +41,7 @@
           {% else %}
           <form method="post" action="/admin/rpc/pairing.delete_code" hx-post="/admin/rpc/pairing.delete_code" hx-target="#pairing-codes" hx-swap="outerHTML" hx-disabled-elt="find button" hx-confirm="{{ t('pairing.confirm_delete_code') }}">
             <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ c.id }}">
-            <button type="submit" class="btn outline danger-outline">{{ t("devices.delete") }}</button>
+            <button type="submit" class="btn outline danger-outline">{{ icon("trash") }}<span>{{ t("devices.delete") }}</span></button>
           </form>
           {% endif %}
         </td>

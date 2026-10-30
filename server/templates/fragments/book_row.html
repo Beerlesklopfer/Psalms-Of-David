@@ -63,7 +63,7 @@
             <form method="post" action="/admin/rpc/book.delete" hx-post="/admin/rpc/book.delete" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-confirm="{{ t('books.confirm_delete') }}">
                       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}">
                       <label class="check"><input type="checkbox" name="files" value="1" checked> <span>{{ t("books.delete_files") }}</span></label>
-                      <button type="submit" class="link-danger">{{ t("books.delete") }}</button>
+                      <button type="submit" class="link-danger">{{ icon("trash") }}<span>{{ t("books.delete") }}</span></button>
                     </form>
           </div>
         </section>

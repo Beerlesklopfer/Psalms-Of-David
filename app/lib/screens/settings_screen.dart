@@ -13,6 +13,7 @@ import '../offline/offline_controller.dart';
 import '../offline/offline_view.dart';
 import '../player_controller.dart';
 import '../server/credentials.dart';
+import '../theme_mode.dart';
 import '../server/device_pairing.dart';
 import 'connect_device.dart';
 import 'about_screen.dart';
@@ -28,8 +29,12 @@ class SettingsScreen extends StatelessWidget {
     this.onDisconnect,
     this.devicePairing,
     this.onSync,
+    this.onShareListening,
     this.openUrl = _launch,
   });
+
+  /// Tells the server whether the family sees what this user listens to (throws when it refuses); null in demo mode.
+  final Future<void> Function(bool share)? onShareListening;
 
   /// Looks for the server and sends the changes that wait (the offline mode); null in demo mode.
   final Future<void> Function()? onSync;
@@ -80,44 +85,52 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
         ],
+        // The groups: each has a title with an icon (as the cards of the page "About"), and shows only when it has something.
+        _GroupTitle(icon: Icons.tune, title: l.settingsGroupGeneral),
+        const _ThemeCard(),
+        if (player != null && onShareListening != null && creds != null) ...[
+          const SizedBox(height: 16),
+          _ShareListeningCard(player: player, onChanged: onShareListening!),
+        ],
         if (player != null && player.bufferAdjustable) ...[
-          Text(
-            l.settingsPlayback,
-            style: text.titleMedium?.copyWith(color: cs.primary),
-          ),
+          const SizedBox(height: 16),
+          Text(l.settingsPlayback, style: text.titleSmall),
           const SizedBox(height: 8),
           _BufferSlider(player: player),
-          const SizedBox(height: 24),
         ],
-        // The offline mode: the switch, what waits for the server, what the server did not take.
-        if (OfflineScope.maybeOf(context) case final offline? when creds != null) ...[
-          OfflineCard(controller: offline, onSync: onSync == null ? null : () => onSync!()),
+        const SizedBox(height: 24),
+        if (OfflineScope.maybeOf(context) case final offline? when creds != null || player?.podcastDownloads != null) ...[
+          _GroupTitle(icon: Icons.cloud_download_outlined, title: l.settingsGroupOffline),
+          // The offline mode: the switch, what waits for the server, what the server did not take.
+          if (creds != null) OfflineCard(controller: offline, onSync: onSync == null ? null : () => onSync!()),
+          // The podcast episodes on this device: what they take, delete all, delete after listening, the largest download.
+          if (player?.podcastDownloads case final downloads?) ...[
+            if (creds != null) const SizedBox(height: 16),
+            PodcastDownloadsCard(downloads: downloads),
+          ],
           const SizedBox(height: 24),
-        ],
-        // The podcast episodes on this device: what they take, delete all, delete after listening, the largest download.
-        if (player?.podcastDownloads case final downloads?) ...[
+        ] else if (player?.podcastDownloads case final downloads?) ...[
+          _GroupTitle(icon: Icons.cloud_download_outlined, title: l.settingsGroupOffline),
           PodcastDownloadsCard(downloads: downloads),
           const SizedBox(height: 24),
         ],
-        // The own library: what this profile hid, and whether it is still listed.
-        if (HidingScope.maybeOf(context) case final hiding?
-            when hiding.available) ...[
-          _HidingCard(controller: hiding),
-          const SizedBox(height: 24),
-        ],
-        // The labels of the library: everybody sees the list; an administrator renames and deletes.
-        if (LabelsScope.maybeOf(context) case final labels? when labels.available) ...[
-          LabelsCard(controller: labels),
+        if ((HidingScope.maybeOf(context)?.available ?? false) || (LabelsScope.maybeOf(context)?.available ?? false)) ...[
+          _GroupTitle(icon: Icons.library_music_outlined, title: l.settingsGroupLibrary),
+          // The own library: what this profile hid, and whether it is still listed.
+          if (HidingScope.maybeOf(context) case final hiding? when hiding.available) _HidingCard(controller: hiding),
+          if ((HidingScope.maybeOf(context)?.available ?? false) && (LabelsScope.maybeOf(context)?.available ?? false))
+            const SizedBox(height: 16),
+          // The labels of the library: everybody sees the list; an administrator renames and deletes.
+          if (LabelsScope.maybeOf(context) case final labels? when labels.available) LabelsCard(controller: labels),
           const SizedBox(height: 24),
         ],
         // Connecting a further device: a parent only, with a server (the card is empty for anybody else).
-        if (devicePairing != null && creds != null)
+        if (devicePairing != null && creds != null) ...[
+          _GroupTitle(icon: Icons.devices_outlined, title: l.settingsGroupDevices),
           ConnectDeviceCard(api: devicePairing!, credentials: creds),
-        Text(
-          l.settingsServer,
-          style: text.titleMedium?.copyWith(color: cs.primary),
-        ),
-        const SizedBox(height: 8),
+          const SizedBox(height: 24),
+        ],
+        _GroupTitle(icon: Icons.dns_outlined, title: l.settingsGroupServer),
         if (creds == null)
           Text(
             l.settingsDemo,
@@ -218,6 +231,107 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
     if (yes == true) onDisconnect?.call();
+  }
+}
+
+/// The title of a group of settings: an icon and the name, in the colour of the titles of the page "About".
+class _GroupTitle extends StatelessWidget {
+  const _GroupTitle({required this.icon, required this.title});
+
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: cs.primary),
+          const SizedBox(width: 12),
+          Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: cs.primary))),
+        ],
+      ),
+    );
+  }
+}
+
+/// Whether the family sees what this user listened to (the rows "recently heard by" of their start page). An administrator can forbid hiding it.
+class _ShareListeningCard extends StatelessWidget {
+  const _ShareListeningCard({required this.player, required this.onChanged});
+
+  final PlayerController player;
+  final Future<void> Function(bool share) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return ListenableBuilder(
+      listenable: player,
+      builder: (context, _) {
+        final locked = !player.mayHideListening;
+        return Card(
+          margin: EdgeInsets.zero,
+          child: SwitchListTile(
+            key: const Key('share-listening'),
+            secondary: const Icon(Icons.groups_outlined),
+            title: Text(l.settingsShareListening),
+            subtitle: Text(locked ? l.settingsShareListeningLocked : l.settingsShareListeningHint),
+            value: player.shareListening || locked,
+            onChanged: locked
+                ? null
+                : (v) async {
+                    final messenger = ScaffoldMessenger.maybeOf(context);
+                    final failed = l.settingsShareListeningFailed;
+                    try {
+                      await onChanged(v);
+                      player.setShareListening(v);
+                    } on Object {
+                      messenger?.showSnackBar(SnackBar(content: Text(failed)));
+                    }
+                  },
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The choice of the colour scheme: like the system, light or dark.
+class _ThemeCard extends StatelessWidget {
+  const _ThemeCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l.settingsTheme, style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 12),
+            ValueListenableBuilder<ThemeMode>(
+              valueListenable: themeModeNotifier,
+              builder: (context, mode, _) => SegmentedButton<ThemeMode>(
+                key: const Key('theme-mode'),
+                showSelectedIcon: false,
+                segments: [
+                  ButtonSegment(value: ThemeMode.system, icon: const Icon(Icons.brightness_auto), label: Text(l.themeSystem)),
+                  ButtonSegment(value: ThemeMode.light, icon: const Icon(Icons.light_mode), label: Text(l.themeLight)),
+                  ButtonSegment(value: ThemeMode.dark, icon: const Icon(Icons.dark_mode), label: Text(l.themeDark)),
+                ],
+                selected: {mode},
+                onSelectionChanged: (s) => setThemeMode(s.first),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

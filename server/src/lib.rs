@@ -75,5 +75,5 @@ pub use importer::{ImportState, RatingRule};
 pub use pairing::{DeviceRow, Enrollment, PairedDevice};
 pub use roles::{Role, Schedule};
 pub use scan::{FoundBook, FoundTrack, ScanReport};
-pub use store::{McpToken, TagChange, UploadJob, Access, AdminBookRow, BookRow, ContinueEntry, NewDevice, NewProfile, Overview, Store, UserRow, now_ms};
+pub use store::{McpToken, TagChange, UploadJob, Access, AdminBookRow, BookRow, ContinueEntry, FamilyListening, MediaTime, MemberTime, NewDevice, NewProfile, Overview, Store, UserRow, now_ms};
 pub use writer::{ProgressUpdate, WriterStats};

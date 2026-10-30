@@ -7,11 +7,17 @@
   --accent: #7b2332; --accent-fg: #f6f0e3; --ok: #2c4a3e; --err: #8a1c1c;
   --warn: #8a5a00; --info: #1f4e79;
 }
+/* The dark colours apply when the system asks for them, unless the user chose "light" with the switch in the header;
+   "dark" from the switch applies whatever the system says (`data-theme` on <html>, set by ui.js). */
 @media (prefers-color-scheme: dark) {
-  :root { --outer: #0b090e; --bg: #121016; --fg: #efe7d6; --muted: #a79e8e; --line: #3a3544;
+  :root:not([data-theme="light"]) { --outer: #0b090e; --bg: #121016; --fg: #efe7d6; --muted: #a79e8e; --line: #3a3544;
           --accent: #c4a265; --accent-fg: #121016; --ok: #8fc4a8; --err: #e08a8a;
           --warn: #e0b25a; --info: #8db8e3; }
 }
+:root[data-theme="dark"] { color-scheme: dark; --outer: #0b090e; --bg: #121016; --fg: #efe7d6; --muted: #a79e8e; --line: #3a3544;
+          --accent: #c4a265; --accent-fg: #121016; --ok: #8fc4a8; --err: #e08a8a;
+          --warn: #e0b25a; --info: #8db8e3; }
+:root[data-theme="light"] { color-scheme: light; }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--outer); color: var(--fg); font: 16px/1.5 system-ui, sans-serif;
@@ -84,8 +90,9 @@ button.danger:hover { background: var(--err); color: var(--bg); }
   table.stack tbody, table.stack tr { display: block; }
   table.stack tr { border: 1px solid var(--line); border-radius: 8px; padding: .75rem; margin: .75rem 0;
                    background: color-mix(in srgb, var(--fg) 4%, var(--bg)); }
-  table.stack td { display: flex; justify-content: space-between; gap: 1rem; border: 0; padding: .15rem 0; }
-  table.stack td[data-label]::before { content: attr(data-label); color: var(--muted); }
+  /* The label stands above its value and both are aligned left (side by side they zigzagged: label left, value right, in every row). */
+  table.stack td { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: .1rem; border: 0; padding: .25rem 0; }
+  table.stack td[data-label]::before { content: attr(data-label); color: var(--muted); font-size: .8rem; }
   table.stack td:first-child { font-weight: 600; font-size: 1.1rem; }
   table.stack td.actions { display: block; padding-top: .5rem; }
   .edit form.row { grid-template-columns: 1fr; }
@@ -118,6 +125,13 @@ button.danger:hover { background: var(--err); color: var(--bg); }
 .chip { display: inline-flex; align-items: center; gap: .5rem; padding: .2rem .75rem .2rem .2rem; margin-left: auto;
         border: 1px solid var(--line); border-radius: 999px; color: var(--fg); text-decoration: none; }
 .menu + .chip { margin-left: 0; }
+.theme-toggle { margin-left: auto; padding: .35rem; background: transparent; color: var(--muted); border-color: transparent;
+                display: inline-flex; }
+.theme-toggle:hover { color: var(--fg); border-color: var(--line); }
+details.popup.user ~ .theme-toggle { margin-left: .25rem; }
+.theme-toggle .ico { display: none; }
+.theme-toggle[data-mode="auto"] .i-auto, .theme-toggle[data-mode="light"] .i-light,
+.theme-toggle[data-mode="dark"] .i-dark { display: block; }
 .chip:hover, .chip.current { border-color: var(--accent); }
 .logout { margin: 0; }
 .ghost { background: transparent; color: var(--muted); border-color: transparent; display: inline-flex;
@@ -324,7 +338,7 @@ html:not(.js) dialog.edit-window .window-head form { display: none; }
                             border-top: 1px solid var(--line); background: var(--bg); }
 .window-foot form, .panel-foot form { margin: 0; }
 .foot-left { margin-right: auto !important; }
-.link-danger { background: none; border: 0; padding: .35rem .25rem; color: var(--err); text-decoration: underline; cursor: pointer; font: inherit; }
+.link-danger { display: inline-flex; align-items: center; gap: .35rem; background: none; border: 0; padding: .35rem .25rem; color: var(--err); text-decoration: underline; cursor: pointer; font: inherit; }
 .link-danger:hover { color: var(--accent); }
 .panel-foot { position: sticky; bottom: -1.25rem; margin: 1rem -1.25rem -1.25rem; }
 .only-window { display: none; }

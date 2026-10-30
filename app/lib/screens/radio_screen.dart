@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import 'confirm_dialog.dart';
 import '../labels.dart';
 import '../player_controller.dart';
 import '../podcasts.dart';
@@ -149,6 +150,8 @@ class RadioBody extends StatelessWidget {
                 tooltip: l.stationRemove,
                 icon: const Icon(Icons.delete_outline),
                 onPressed: () async {
+                  final sure = await confirmRemoval(context, title: l.stationRemoveTitle, text: l.stationRemoveAsk(s.name), action: l.downloadRemove);
+                  if (!sure) return;
                   await controller.api!.removeStation(s.id);
                   await controller.load();
                 },

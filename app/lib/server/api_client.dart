@@ -167,6 +167,17 @@ class ApiClient implements FeedApi {
     return text.isEmpty ? null : jsonDecode(text);
   }
 
+  /// What the other members of the family listened to lately: `[{user_id, name, has_avatar, items: [{item_id, ...}]}]`.
+  Future<List<Map<String, dynamic>>> familyListening() async =>
+      ((await _json('GET', '/api/v1/family/listening')) as List).cast<Map<String, dynamic>>();
+
+  /// The media time of the family for the line charts: `{from_day, days, members: [{user_id, name, me, kinds: {kind: [ms…]}, total: [ms…]}]}`.
+  Future<Map<String, dynamic>> familyMediaTime({int days = 14}) async =>
+      await _json('GET', '/api/v1/family/media-time?days=$days') as Map<String, dynamic>;
+
+  /// Shows or hides the own listening to the family; refused (403) when an administrator forbade hiding it.
+  Future<void> setShareListening(bool share) => _json('PUT', '/api/v1/me', body: {'share_listening': share});
+
   Future<Map<String, dynamic>> me() async => await _json('GET', '/api/v1/me') as Map<String, dynamic>;
 
   Future<void> logout() => _json('POST', '/api/v1/logout');

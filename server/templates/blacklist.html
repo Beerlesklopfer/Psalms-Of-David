@@ -51,7 +51,7 @@
           <button type="button" class="btn outline" data-dialog="dlg-blacklist-edit-{{ word.id }}">{{ icon("edit") }}<span>{{ t("blacklist.edit") }}</span></button>
           <form method="post" action="/admin/rpc/blacklist.delete" hx-post="/admin/rpc/blacklist.delete" hx-swap="none" hx-confirm="{{ t('blacklist.confirm_delete') }}" hx-disabled-elt="find button">
             <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ word.id }}"><input type="hidden" name="back" value="{{ back }}">
-            <button type="submit" class="btn outline danger-outline">{{ t("blacklist.delete") }}</button>
+            <button type="submit" class="btn outline danger-outline">{{ icon("trash") }}<span>{{ t("blacklist.delete") }}</span></button>
           </form>
         </div>
         {% set form_id = "blacklist-edit-" ~ word.id %}{% set action = "blacklist.update" %}

@@ -52,6 +52,7 @@
         </div>
       </details>
       {% endif %}
+      <button type="button" class="theme-toggle" id="theme-toggle" data-mode="auto" data-auto="{{ t("theme.auto") }}" data-light="{{ t("theme.light") }}" data-dark="{{ t("theme.dark") }}" title="{{ t("theme.auto") }}" aria-label="{{ t("theme.switch") }}">{{ icon("theme-auto", "i-auto") }}{{ icon("sun", "i-light") }}{{ icon("moon", "i-dark") }}</button>
     </header>
     <main>
       <div id="messages" role="status">{% include "fragments/message.html" %}</div>

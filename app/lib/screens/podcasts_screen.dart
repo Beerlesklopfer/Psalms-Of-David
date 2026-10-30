@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import 'confirm_dialog.dart';
 import '../labels.dart';
 import '../offline/offline_controller.dart';
 import '../podcast_downloads.dart';
@@ -277,6 +278,8 @@ class _EpisodesScreenState extends State<EpisodesScreen> {
             icon: const Icon(Icons.bookmark_remove_outlined),
             onPressed: () async {
               final nav = Navigator.of(context);
+              final sure = await confirmRemoval(context, title: l.podcastUnfollowTitle, text: l.podcastUnfollowAsk(widget.podcast.title), action: l.podcastUnfollow);
+              if (!sure) return;
               await widget.api.unfollowPodcast(widget.podcast.id);
               await widget.onUnfollowed();
               nav.pop();

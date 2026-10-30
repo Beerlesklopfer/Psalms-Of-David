@@ -147,6 +147,70 @@ async fn continue_listening_is_recent_first_and_skips_finished_books() {
 }
 
 #[tokio::test]
+async fn the_family_sees_what_the_others_listened_to_unless_they_hide_it_and_may() {
+    let (_dir, store) = open().await;
+    store.import_books(vec![book("A", "One", &[2]), book("A", "Two", &[2])]).await.unwrap();
+    let anna = store.create_profile("Anna", false).await.unwrap();
+    let ben = store.create_profile("Ben", false).await.unwrap();
+    for (i, folder) in ["A/One", "A/Two"].iter().enumerate() {
+        let b = store.find_book(folder).await.unwrap().unwrap();
+        store.release_book(b.id, 0).await.unwrap();
+        let t = store.tracks_of(b.id).await.unwrap()[0].id;
+        let mut u = update(anna, b.id, t, 1_000, 1_000 * (i as i64 + 1));
+        u.finished = i == 1; // finished books count for "recently heard" too
+        store.save_progress(u).await.unwrap();
+        store.save_progress(update(ben, b.id, t, 500, 9_000)).await.unwrap();
+    }
+    store.flush().await.unwrap();
+
+    // Ben sees Anna, latest book first, and not himself.
+    let seen = store.family_listening(ben, 10).await.unwrap();
+    assert_eq!(seen.iter().map(|m| m.member.as_str()).collect::<Vec<_>>(), ["Anna"]);
+    assert_eq!(seen[0].books.iter().map(|b| b.title.as_str()).collect::<Vec<_>>(), ["Two", "One"]);
+    assert_eq!(store.family_listening(ben, 1).await.unwrap()[0].books.len(), 1);
+
+    // Anna hides her listening: gone for Ben, unless an administrator forbids hiding.
+    store.set_share_listening(anna, false).await.unwrap();
+    assert!(store.family_listening(ben, 10).await.unwrap().is_empty());
+    store.set_may_hide_listening(anna, false).await.unwrap();
+    assert_eq!(store.family_listening(ben, 10).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn listening_time_is_counted_per_day_and_kind_and_shown_to_the_family_unless_hidden() {
+    let (_dir, store) = open().await;
+    store.import_books(vec![book("A", "One", &[2])]).await.unwrap();
+    let anna = store.create_profile("Anna", false).await.unwrap();
+    let ben = store.create_profile("Ben", false).await.unwrap();
+    let b = store.find_book("A/One").await.unwrap().unwrap();
+    store.release_book(b.id, 0).await.unwrap();
+    let t = store.tracks_of(b.id).await.unwrap()[0].id;
+    let now = david_server::now_ms();
+    // Anna listens for a minute (two reports 60 s apart, the position moved 60 s), then jumps ahead 10 minutes: not listening time.
+    store.save_progress(update(anna, b.id, t, 10_000, now - 120_000)).await.unwrap();
+    store.flush().await.unwrap();
+    store.save_progress(update(anna, b.id, t, 70_000, now - 60_000)).await.unwrap();
+    store.flush().await.unwrap();
+    store.save_progress(update(anna, b.id, t, 670_000, now)).await.unwrap();
+    store.flush().await.unwrap();
+
+    let seen = store.media_time(ben, 14).await.unwrap();
+    // Ben himself is always there (with nothing); Anna shows with her minute (the jump counted for the time between the reports, 60 s).
+    assert_eq!(seen.members.iter().map(|m| (m.member.as_str(), m.me)).collect::<Vec<_>>(), [("Ben", true), ("Anna", false)]);
+    let anna_time = &seen.members[1].kinds;
+    assert_eq!(anna_time.len(), 1);
+    assert_eq!(anna_time[0].0, "audiobook");
+    assert_eq!(anna_time[0].1.iter().sum::<i64>(), 120_000, "60 s + min(600 s, 60 s)");
+
+    // Anna hides it: gone for Ben, unless an administrator forbids hiding.
+    store.set_share_listening(anna, false).await.unwrap();
+    assert_eq!(store.media_time(ben, 14).await.unwrap().members.len(), 1);
+    store.set_may_hide_listening(anna, false).await.unwrap();
+    assert_eq!(store.media_time(ben, 14).await.unwrap().members.len(), 2);
+    assert_eq!(store.listening_sharing(anna).await.unwrap(), (false, false));
+}
+
+#[tokio::test]
 async fn importing_twice_changes_nothing_and_vanished_files_are_removed() {
     let (_dir, store) = open().await;
     let first = store.import_books(vec![book("A", "Book", &[3])]).await.unwrap();

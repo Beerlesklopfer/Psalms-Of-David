@@ -63,6 +63,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0051_track_format.sql"),
     include_str!("../migrations/0052_transcode_settings.sql"),
     include_str!("../migrations/0053_enrollment_trail.sql"),
+    include_str!("../migrations/0054_listening_sharing.sql"),
+    include_str!("../migrations/0055_listening_time.sql"),
 ];
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);

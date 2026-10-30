@@ -100,6 +100,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/rpc/station.add", post(handlers::station_add))
         .route("/admin/rpc/station.update", post(handlers::station_update))
         .route("/admin/rpc/station.delete", post(handlers::station_delete))
+        .route("/admin/rpc/station.favourites", post(handlers::station_favourites))
         .route("/admin/rpc/station.decide", post(handlers::station_decide))
         .route("/admin/rpc/release.decide", post(handlers::release_decide))
         .route("/admin/rpc/genre.add", post(handlers::genre_add))

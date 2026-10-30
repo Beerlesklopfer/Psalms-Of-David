@@ -279,6 +279,77 @@ class AppLocalizationsDe extends AppLocalizations {
   String get settingsDisconnect => 'Trennen';
 
   @override
+  String get settingsGroupGeneral => 'Allgemein';
+
+  @override
+  String get settingsGroupOffline => 'Offline und Downloads';
+
+  @override
+  String get settingsGroupLibrary => 'Bibliothek';
+
+  @override
+  String get settingsGroupDevices => 'Weitere Geräte';
+
+  @override
+  String get settingsGroupServer => 'Server';
+
+  @override
+  String sectionHeardBy(String name) {
+    return 'Zuletzt gehört von $name';
+  }
+
+  @override
+  String get sectionMyMediaTime => 'Meine Medienzeit';
+
+  @override
+  String sectionMediaTimeOf(String name) {
+    return 'Medienzeit von $name';
+  }
+
+  @override
+  String get chartTotal => 'Gesamt';
+
+  @override
+  String get chartNothing => 'In den letzten Tagen wurde nichts gehört.';
+
+  @override
+  String chartMinutes(int n) {
+    return '$n Min.';
+  }
+
+  @override
+  String chartHours(int n) {
+    return '$n Std.';
+  }
+
+  @override
+  String get settingsShareListening => 'Zeigen, was ich höre';
+
+  @override
+  String get settingsShareListeningHint =>
+      'Die Familie sieht deine zuletzt gehörten Bücher auf ihrer Startseite.';
+
+  @override
+  String get settingsShareListeningLocked =>
+      'Ein Administrator hat festgelegt, dass die Familie sieht, was du hörst.';
+
+  @override
+  String get settingsShareListeningFailed =>
+      'Diese Einstellung ließ sich nicht ändern.';
+
+  @override
+  String get settingsTheme => 'Farben';
+
+  @override
+  String get themeSystem => 'System';
+
+  @override
+  String get themeLight => 'Hell';
+
+  @override
+  String get themeDark => 'Dunkel';
+
+  @override
   String get settingsDisconnectHint =>
       'Vergisst die Kopplung mit dem Server auf diesem Gerät. Zum erneuten Verbinden brauchst du einen neuen Kopplungscode.';
 
@@ -620,6 +691,22 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get feedProblem => 'Der Feed konnte zuletzt nicht gelesen werden.';
+
+  @override
+  String get podcastUnfollowTitle => 'Diesen Podcast nicht mehr abonnieren?';
+
+  @override
+  String podcastUnfollowAsk(String title) {
+    return '„$title“ verschwindet aus den Podcasts dieses Kontos, auf allen seinen Geräten. Mit der Adresse des Feeds kannst du ihn wieder abonnieren.';
+  }
+
+  @override
+  String get stationRemoveTitle => 'Diesen Sender entfernen?';
+
+  @override
+  String stationRemoveAsk(String name) {
+    return '„$name“ wird aus den Favoriten dieses Kontos entfernt.';
+  }
 
   @override
   String get podcastUnfollow => 'Nicht mehr abonnieren';
@@ -1584,6 +1671,13 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get profileChoosePhoto => 'Bild auswählen';
+
+  @override
+  String get profileRemovePhotoTitle => 'Das Bild entfernen?';
+
+  @override
+  String get profileRemovePhotoAsk =>
+      'Dein Bild wird auf dem Server und auf allen deinen Geräten gelöscht.';
 
   @override
   String get profileRemovePhoto => 'Bild entfernen';

@@ -13,6 +13,7 @@ import 'audio/mpris.dart';
 import 'audio/pipewire_backend.dart';
 import 'audio/psalm_audio_handler.dart';
 import 'demo_data.dart';
+import 'theme_mode.dart';
 import 'models.dart';
 import 'l10n/app_localizations.dart';
 import 'labels.dart';
@@ -162,6 +163,8 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (!widget.demo) loadThemeMode();
+    themeModeNotifier.addListener(_themeChanged);
     _player.onPlaylistPosition = _playlists.remember;
     PsalmAudioHandler.instance?.attach(_player);
     _player.offline = _offline;
@@ -437,6 +440,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _offline.dispose();
     unawaited(_mpris?.stop());
     PsalmAudioHandler.instance?.detach(_player);
+    themeModeNotifier.removeListener(_themeChanged);
     _player.dispose();
     _playlists.dispose();
     _hiding.dispose();
@@ -444,6 +448,8 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _profile.dispose();
     super.dispose();
   }
+
+  void _themeChanged() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
@@ -478,7 +484,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
             ],
             theme: PsalmTheme.light,
             darkTheme: PsalmTheme.dark,
-            themeMode: ThemeMode.dark,
+            themeMode: themeModeNotifier.value,
             home: switch (_phase) {
               _Phase.starting => const Scaffold(body: Center(child: CircularProgressIndicator())),
               _Phase.connect => ConnectScreen(
@@ -572,6 +578,7 @@ class _ShellState extends State<Shell> {
       onDisconnect: widget.onDisconnect,
       devicePairing: widget.api == null ? null : ServerDevicePairingApi(widget.api!),
       onSync: widget.onSync,
+      onShareListening: widget.api?.setShareListening,
     ),
     const AboutScreen(),
   ];

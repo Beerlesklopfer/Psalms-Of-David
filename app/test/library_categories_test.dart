@@ -113,23 +113,15 @@ void main() {
     p.dispose();
   });
 
-  testWidgets('the home page has a strip for music and one for audiobooks, each only with its own', (tester) async {
-    // A tall window: the strips are lazy and the ones below the fold are not built.
+  testWidgets('the home page does not repeat the library: no strips of all the music and all the audiobooks', (tester) async {
     tester.view.physicalSize = const Size(1000, 2400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     final p = PlayerController([_book('1', 'Winter der Welt'), _book('2', 'Versprochen', kind: 'music')]);
     await tester.pumpWidget(_app(p, const HomeScreen()));
-    expect(find.text('Your music'), findsOneWidget);
-    expect(find.text('Your audiobooks'), findsOneWidget);
+    expect(find.text('Your music'), findsNothing);
+    expect(find.text('Your audiobooks'), findsNothing);
     p.dispose();
-
-    final onlyBooks = PlayerController([_book('1', 'Winter der Welt')]);
-    await tester.pumpWidget(_app(onlyBooks, const HomeScreen()));
-    await tester.pump();
-    expect(find.text('Your music'), findsNothing, reason: 'no music, no strip');
-    expect(find.text('Your audiobooks'), findsOneWidget);
-    onlyBooks.dispose();
   });
 
   testWidgets('the home page greets the user by nickname and shows what was listened to last', (tester) async {
@@ -173,9 +165,7 @@ void main() {
     await tester.pumpWidget(_app(p, const HomeScreen()));
     final continueAt = tester.getTopLeft(find.text('Continue listening')).dy;
     final recentAt = tester.getTopLeft(find.text('Recently listened')).dy;
-    final booksAt = tester.getTopLeft(find.text('Your audiobooks')).dy;
     expect(continueAt, lessThan(recentAt));
-    expect(recentAt, lessThan(booksAt));
     p.dispose();
   });
 }

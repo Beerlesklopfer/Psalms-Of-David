@@ -173,6 +173,57 @@ impl Store {
         Ok(out)
     }
 
+    /// Who has each station among the favourites, by id: `station id -> [(profile id, approved)]` (a request of a child that waits has `approved` false).
+    pub async fn favourite_ids_by_station(&self) -> Result<std::collections::HashMap<i64, Vec<(i64, bool)>>> {
+        let rows = self.db.reader.query_all_raw(Statement::from_string(DbBackend::Sqlite, "SELECT station_id, profile_id, approved FROM station_favorite ORDER BY station_id, profile_id")).await?;
+        let mut out: std::collections::HashMap<i64, Vec<(i64, bool)>> = std::collections::HashMap::new();
+        for r in rows {
+            out.entry(r.try_get_by_index(0)?).or_default().push((r.try_get_by_index(1)?, r.try_get_by_index::<i64>(2)? == 1));
+        }
+        Ok(out)
+    }
+
+    /// An administrator saves who has a station among the favourites, as for the followers of a podcast (`set_feed_followers`): the ticked profiles
+    /// have it (a new one at the end of the list, with a release), a request that waits and is ticked is released, a profile that is not ticked loses
+    /// it. Returns `(added, removed)` as profile ids. The caller checks that the station and the profiles exist.
+    pub async fn set_station_favourites(&self, station_id: i64, wanted: &[i64]) -> Result<(Vec<i64>, Vec<i64>)> {
+        let txn = self.db.writer.begin().await?;
+        let rows = txn.query_all_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT profile_id, approved FROM station_favorite WHERE station_id = ?", [station_id.into()])).await?;
+        let mut current: Vec<(i64, bool)> = Vec::new();
+        for r in rows {
+            current.push((r.try_get_by_index(0)?, r.try_get_by_index::<i64>(1)? == 1));
+        }
+        let (mut added, mut removed) = (Vec::new(), Vec::new());
+        for &profile in wanted {
+            match current.iter().find(|(p, _)| *p == profile) {
+                Some((_, true)) => {}
+                Some((_, false)) => {
+                    txn.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE station_favorite SET approved = 1 WHERE profile_id = ? AND station_id = ?", [profile.into(), station_id.into()])).await?;
+                    added.push(profile);
+                }
+                None => {
+                    txn.execute_raw(Statement::from_sql_and_values(
+                        DbBackend::Sqlite,
+                        "INSERT INTO station_favorite (profile_id, station_id, position, added_at, approved) \
+                         VALUES (?, ?, (SELECT coalesce(max(position), 0) + 1 FROM station_favorite WHERE profile_id = ?), ?, 1)",
+                        [profile.into(), station_id.into(), profile.into(), now_ms().into()],
+                    ))
+                    .await
+                    .map_err(|_| Error::WriteFailed("no such station or profile".into()))?;
+                    added.push(profile);
+                }
+            }
+        }
+        for &(profile, _) in &current {
+            if !wanted.contains(&profile) {
+                txn.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "DELETE FROM station_favorite WHERE profile_id = ? AND station_id = ?", [profile.into(), station_id.into()])).await?;
+                removed.push(profile);
+            }
+        }
+        txn.commit().await?;
+        Ok((added, removed))
+    }
+
     /// An administrator saves the list of the followers of a feed. Only the difference is applied, in one transaction: a profile that is ticked and
     /// does not follow yet follows with a release (the administrator decides, also for a child); a request of a child that waits and is ticked is
     /// released; a profile that follows (or asked) and is not ticked stops following. Returns `(added, removed)` as profile ids. The caller checks

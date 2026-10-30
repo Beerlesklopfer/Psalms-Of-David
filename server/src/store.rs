@@ -52,6 +52,58 @@ pub struct ContinueEntry {
     pub updated_at: i64,
 }
 
+/// What one member of the family listened to lately (see `family_listening`).
+#[derive(Debug, Clone)]
+pub struct FamilyListening {
+    pub member_id: i64,
+    pub member: String,
+    pub has_avatar: bool,
+    pub books: Vec<ContinueEntry>,
+}
+
+#[derive(Debug, Clone, FromQueryResult)]
+struct FamilyListeningRow {
+    member_id: i64,
+    member: String,
+    has_avatar: bool,
+    book_id: i64,
+    title: String,
+    author: String,
+    track_id: i64,
+    position_ms: i64,
+    updated_at: i64,
+}
+
+/// The media time of the family (see `media_time`).
+#[derive(Debug, Clone)]
+pub struct MediaTime {
+    /// The first day, as days since 1970-01-01 counted by the calendar date (of the clock of the server); `days` days follow, the last is today.
+    pub from_day: i64,
+    pub days: i64,
+    pub members: Vec<MemberTime>,
+}
+
+/// The listening of one member: `kinds` holds, per kind of medium, the milliseconds of every day.
+#[derive(Debug, Clone)]
+pub struct MemberTime {
+    pub member_id: i64,
+    pub member: String,
+    pub has_avatar: bool,
+    /// The member is the one who asks.
+    pub me: bool,
+    pub kinds: Vec<(String, Vec<i64>)>,
+}
+
+#[derive(Debug, Clone, FromQueryResult)]
+struct MediaTimeRow {
+    member_id: i64,
+    member: String,
+    has_avatar: bool,
+    slot: Option<i64>,
+    kind: Option<String>,
+    ms: Option<i64>,
+}
+
 #[derive(Debug, Clone, FromQueryResult)]
 pub struct BookRow {
     pub id: i64,
@@ -102,6 +154,10 @@ pub struct UserRow {
     pub devices: i64,
     /// Whether the user has a picture (the list shows it in a small circle).
     pub has_avatar: bool,
+    /// The person's own choice: is their listening shown to the family?
+    pub share_listening: bool,
+    /// May the person turn that off? With `false` the listening is shown whatever the person chose.
+    pub may_hide_listening: bool,
 }
 
 /// One book as the administration interface shows it (all books, released or not).
@@ -232,7 +288,7 @@ const ADMIN_BOOKS: &str = "SELECT b.id, b.kind, b.folder, b.title, a.name AS aut
 /// The columns of one line of the user list; the callers add the ordering or the filter.
 const USER_ROWS: &str = "SELECT p.id, p.name, p.first_name, p.last_name, p.birth_date, p.role, p.max_age, p.max_devices, \
     (SELECT count(*) FROM device d WHERE d.user_id = p.id AND d.revoked_at IS NULL) AS devices, \
-    EXISTS (SELECT 1 FROM avatar a WHERE a.profile_id = p.id) AS has_avatar \
+    EXISTS (SELECT 1 FROM avatar a WHERE a.profile_id = p.id) AS has_avatar, p.share_listening, p.may_hide_listening \
     FROM profile p";
 
 /// The one place that decides which books a user sees (spec section 3b):
@@ -1064,6 +1120,82 @@ impl Store {
         let values: [Value; 2] = [profile_id.into(), limit.into()];
         let stmt = Statement::from_sql_and_values(DbBackend::Sqlite, sql, values);
         Ok(ContinueEntry::find_by_statement(stmt).all(&self.db.reader).await?)
+    }
+
+    /// What the other members of the family listened to lately, for the dashboard of `viewer_id`: per member the books (finished or not) that
+    /// the viewer may see, most recent first, at most `limit` per member. A member shows when they share their listening or may not hide it;
+    /// guests and the viewer themself do not show. Members with nothing to show are left out.
+    pub async fn family_listening(&self, viewer_id: i64, limit: i64) -> Result<Vec<FamilyListening>> {
+        let sql = format!(
+            "SELECT g.profile_id AS member_id, m.name AS member, EXISTS (SELECT 1 FROM avatar a WHERE a.profile_id = m.id) AS has_avatar, \
+                    b.id AS book_id, b.title, a.name AS author, g.track_id, g.position_ms, g.finished, g.updated_at \
+             FROM progress g \
+             JOIN profile m ON m.id = g.profile_id \
+             JOIN book b ON b.id = g.book_id \
+             JOIN author a ON a.id = b.author_id \
+             JOIN profile p ON p.id = ? \
+             WHERE g.profile_id <> p.id AND m.role <> 'guest' AND (m.share_listening = 1 OR m.may_hide_listening = 0) AND {VISIBLE} \
+             ORDER BY m.name COLLATE NOCASE, g.updated_at DESC"
+        );
+        let values: [Value; 1] = [viewer_id.into()];
+        let stmt = Statement::from_sql_and_values(DbBackend::Sqlite, sql, values);
+        let rows = FamilyListeningRow::find_by_statement(stmt).all(&self.db.reader).await?;
+        let mut out: Vec<FamilyListening> = Vec::new();
+        for r in rows {
+            if out.last().is_none_or(|m| m.member_id != r.member_id) {
+                out.push(FamilyListening { member_id: r.member_id, member: r.member.clone(), has_avatar: r.has_avatar, books: Vec::new() });
+            }
+            let m = out.last_mut().expect("just pushed");
+            if (m.books.len() as i64) < limit {
+                m.books.push(ContinueEntry { book_id: r.book_id, title: r.title, author: r.author, track_id: r.track_id, position_ms: r.position_ms, updated_at: r.updated_at });
+            }
+        }
+        Ok(out)
+    }
+
+    /// The media time of the family for the dashboard of `viewer_id`: per member the milliseconds listened on each of the last `days` days
+    /// (the last one is today), per kind of medium. The days are those of the clock of the server (the setting `time_zone`). The viewer is always
+    /// there; another member shows when they share their listening or may not hide it, they are not a guest and they listened at all in the period.
+    /// Own member first, then by name.
+    pub async fn media_time(&self, viewer_id: i64, days: i64) -> Result<MediaTime> {
+        let zone = self.setting("time_zone").await?;
+        let tz = zone.as_deref().and_then(|z| jiff::tz::TimeZone::get(z).ok()).unwrap_or_else(jiff::tz::TimeZone::system);
+        let epoch_day = |date: jiff::civil::Date| date.at(0, 0, 0, 0).to_zoned(jiff::tz::TimeZone::UTC).map_or(0, |z| z.timestamp().as_second().div_euclid(86_400));
+        let today = jiff::Timestamp::now().to_zoned(tz.clone()).date();
+        let from_date = today.checked_sub(jiff::Span::new().days(days - 1)).unwrap_or(today);
+        let from_day = epoch_day(from_date);
+        let from_ms = from_date.to_zoned(tz.clone()).map_or(0, |z| z.timestamp().as_millisecond());
+        let from_slot = from_ms.div_euclid(900_000);
+        let sql = "SELECT m.id AS member_id, m.name AS member, EXISTS (SELECT 1 FROM avatar a WHERE a.profile_id = m.id) AS has_avatar, \
+                          d.slot AS slot, d.kind AS kind, d.ms AS ms \
+                   FROM profile m \
+                   LEFT JOIN listening_time d ON d.profile_id = m.id AND d.slot >= ? \
+                   WHERE m.id = ? OR (m.role <> 'guest' AND (m.share_listening = 1 OR m.may_hide_listening = 0)) \
+                   ORDER BY m.id <> ?, m.name COLLATE NOCASE, d.slot";
+        let stmt = Statement::from_sql_and_values(DbBackend::Sqlite, sql, [from_slot.into(), viewer_id.into(), viewer_id.into()]);
+        let rows = MediaTimeRow::find_by_statement(stmt).all(&self.db.reader).await?;
+        let mut members: Vec<MemberTime> = Vec::new();
+        for r in rows {
+            if members.last().is_none_or(|m| m.member_id != r.member_id) {
+                members.push(MemberTime { member_id: r.member_id, member: r.member.clone(), has_avatar: r.has_avatar, me: r.member_id == viewer_id, kinds: Vec::new() });
+            }
+            let (Some(slot), Some(kind), Some(ms)) = (r.slot, r.kind, r.ms) else { continue };
+            let m = members.last_mut().expect("just pushed");
+            let slot_start = jiff::Timestamp::from_millisecond(slot * 900_000).map_or(today, |t| t.to_zoned(tz.clone()).date());
+            let index = epoch_day(slot_start) - from_day;
+            let k = match m.kinds.iter().position(|(name, _)| *name == kind) {
+                Some(i) => i,
+                None => {
+                    m.kinds.push((kind, vec![0; days as usize]));
+                    m.kinds.len() - 1
+                }
+            };
+            if let Some(cell) = usize::try_from(index).ok().and_then(|i| m.kinds[k].1.get_mut(i)) {
+                *cell += ms;
+            }
+        }
+        members.retain(|m| m.me || !m.kinds.is_empty());
+        Ok(MediaTime { from_day, days, members })
     }
 
     /// All books the user may see, ordered by author and title.

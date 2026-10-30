@@ -232,6 +232,8 @@ void main() {
       expect(find.byKey(const ValueKey('avatar-image')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('avatar-remove')));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('confirm-removal')));
+      await tester.pumpAndSettle();
       expect(api.calls.last, 'delete');
       expect(find.byKey(const ValueKey('avatar-image')), findsNothing);
     });

@@ -48,12 +48,32 @@
       <td data-label="{{ t('radio.labels') }}">{% for name in station.labels %}<span class="badge">{{ name }}</span> {% endfor %}</td>
       <td class="actions">
         <div class="row-actions">
+          <button type="button" class="btn outline" data-dialog="dlg-favourites-{{ station.id }}">{{ icon("users") }}<span>{{ t("radio.favourites_edit") }}</span></button>
           <button type="button" class="btn outline" data-dialog="dlg-station-{{ station.id }}">{{ icon("edit") }}<span>{{ t("radio.edit") }}</span></button>
           <form method="post" action="/admin/rpc/station.delete" hx-post="/admin/rpc/station.delete" hx-swap="none" hx-confirm="{{ t('radio.confirm_delete') }}" hx-disabled-elt="find button">
             <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ station.id }}">
-            <button type="submit" class="btn outline danger-outline">{{ t("radio.delete") }}</button>
+            <button type="submit" class="btn outline danger-outline">{{ icon("trash") }}<span>{{ t("radio.delete") }}</span></button>
           </form>
         </div>
+        <dialog id="dlg-favourites-{{ station.id }}" class="window edit-window" aria-labelledby="dlg-favourites-title-{{ station.id }}">
+          <div class="window-head"><h3 id="dlg-favourites-title-{{ station.id }}">{{ t("radio.favourites_edit") }}: {{ station.name }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+          <div class="window-body">
+            <form id="favourites-form-{{ station.id }}" class="dialog-form" method="post" action="/admin/rpc/station.favourites" hx-post="/admin/rpc/station.favourites" hx-swap="none" hx-disabled-elt="find button" data-close-window>
+              <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ station.id }}">
+              {#- The marker says that this is the whole list: without it a request changes nothing, with it and no tick nobody has the station. -#}
+              <input type="hidden" name="favourites_form" value="1">
+              {% for p in profiles %}
+              <label class="check span-all"><input type="checkbox" name="profiles" value="{{ p.id }}"{% if p.id in station.favourite_ids or p.id in station.waiting_ids %} checked{% endif %}> <span>{{ p.name }} <small class="muted">({{ t("role." ~ p.role) }})</small>{% if p.id in station.waiting_ids %} <span class="badge">{{ t("podcasts.waiting") }}</span>{% endif %}</span></label>
+              {% endfor %}
+              <small class="span-all">{{ t("radio.favourites_hint") }}</small>
+              <div class="form-error span-all" role="alert"></div>
+            </form>
+          </div>
+          <div class="window-foot">
+            <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+            <button type="submit" class="btn" form="favourites-form-{{ station.id }}">{{ t("ui.save") }}</button>
+          </div>
+        </dialog>
         <dialog id="dlg-station-{{ station.id }}" class="window edit-window" aria-labelledby="dlg-station-title-{{ station.id }}">
           <div class="window-head"><h3 id="dlg-station-title-{{ station.id }}">{{ t("radio.edit") }}: {{ station.name }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
           <div class="window-body">

@@ -8,6 +8,7 @@ import '../l10n/app_localizations.dart';
 import '../profile.dart';
 import '../widgets.dart';
 import 'avatar_picker.dart';
+import 'confirm_dialog.dart';
 
 /// The picture of a person in a circle: the photo, or the first letter of the name.
 class AvatarCircle extends StatelessWidget {
@@ -157,6 +158,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final c = _c;
     if (c == null) return;
     final l = AppLocalizations.of(context);
+    if (!await confirmRemoval(context, title: l.profileRemovePhotoTitle, text: l.profileRemovePhotoAsk, action: l.downloadRemove)) return;
     if (!await c.removeAvatar() && mounted) _say(_errorText(l, c.error ?? 'error'));
   }
 

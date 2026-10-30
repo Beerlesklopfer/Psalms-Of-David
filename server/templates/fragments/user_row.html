@@ -33,6 +33,8 @@
           <label class="field"><select name="role">{% for r in ["admin", "member", "child", "guest"] %}<option value="{{ r }}"{% if r == user.role %} selected{% endif %}>{{ t("role." ~ r) }}</option>{% endfor %}</select><span class="raised">{{ t("users.role") }}</span></label>
           <label class="field"><input type="date" name="birth_date" min="1900-01-01"{% if user.birth_date %} value="{{ user.birth_date }}"{% endif %}><span class="raised">{{ t("users.birthday") }}</span></label>
           <label class="field"><input type="number" name="max_devices" min="0" max="50"{% if user.max_devices is not none %} value="{{ user.max_devices }}"{% endif %} placeholder=" "><span>{{ t("users.device_limit") }}</span></label>
+          <label class="check span-all"><input type="hidden" name="listening_form" value="1"><input type="checkbox" name="may_hide_listening" value="on"{% if user.may_hide_listening %} checked{% endif %}><span>{{ t("users.may_hide_listening") }}</span></label>
+          <small class="span-all">{{ t("users.may_hide_listening_hint") }}</small>
           <label class="field"><input type="password" name="pin" maxlength="64" autocomplete="new-password" placeholder=" "><span>{{ t("users.new_pin") }}</span></label>
           {# A folder for every kind of medium of this person; the button behind the line opens the dialog that lists what the server can read, write and enter. #}
           {% for kind in ["audiobook", "music", "photo"] %}
@@ -53,7 +55,7 @@
         </form>{% endif %}
         <form method="post" action="/admin/rpc/user.delete" hx-post="/admin/rpc/user.delete" hx-target="#user-{{ user.id }}" hx-swap="outerHTML" hx-confirm="{{ t('users.confirm_delete') }}" class="foot-left">
           <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ user.id }}">
-          <button type="submit" class="link-danger">{{ t("users.delete") }}</button>
+          <button type="submit" class="link-danger">{{ icon("trash") }}<span>{{ t("users.delete") }}</span></button>
         </form>
         <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
         <button type="submit" class="btn" form="user-form-{{ user.id }}">{{ t("ui.save") }}</button>

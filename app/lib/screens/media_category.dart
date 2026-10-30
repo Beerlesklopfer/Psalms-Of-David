@@ -59,6 +59,8 @@ class CategoryChips extends StatelessWidget {
         (MediaCategory.hidden, l.settingsHiddenTitle, Icons.visibility_off_outlined),
     ];
     return Wrap(
+      // Justified: the buttons spread over the whole width of the page.
+      alignment: WrapAlignment.spaceBetween,
       spacing: 8,
       runSpacing: 4,
       children: [

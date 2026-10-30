@@ -52,7 +52,7 @@
         <form method="post" action="/admin/rpc/genre.move"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ g.id }}"><input type="hidden" name="by" value="-1"><button type="submit" class="btn outline" title="{{ t('genres.up') }}" aria-label="{{ t('genres.up') }}">&uarr;</button></form>
         <form method="post" action="/admin/rpc/genre.move"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ g.id }}"><input type="hidden" name="by" value="1"><button type="submit" class="btn outline" title="{{ t('genres.down') }}" aria-label="{{ t('genres.down') }}">&darr;</button></form>
         <form method="post" action="/admin/rpc/genre.visible"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ g.id }}"><input type="hidden" name="visible" value="{% if g.visible %}0{% else %}1{% endif %}"><button type="submit" class="btn outline">{% if g.visible %}{{ t("genres.hide") }}{% else %}{{ t("genres.show") }}{% endif %}</button></form>
-        <form method="post" action="/admin/rpc/genre.delete" data-confirm="{{ t('genres.confirm_delete') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ g.id }}"><button type="submit" class="btn outline danger-outline">{{ t("genres.delete") }}</button></form>
+        <form method="post" action="/admin/rpc/genre.delete" data-confirm="{{ t('genres.confirm_delete') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ g.id }}"><button type="submit" class="btn outline danger-outline">{{ icon("trash") }}<span>{{ t("genres.delete") }}</span></button></form>
       </td>
     </tr>
   {% endfor %}

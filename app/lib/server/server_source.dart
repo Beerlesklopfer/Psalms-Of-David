@@ -214,9 +214,45 @@ class ServerSource implements MediaSource {
   }
 }
 
+/// One member of the family and the books they listened to lately, the latest first.
+class FamilyMember {
+  const FamilyMember({required this.id, required this.name, required this.bookIds});
+
+  final int id;
+  final String name;
+  final List<String> bookIds;
+}
+
+/// The media time of one member of the family: the milliseconds listened on each of the last [days] days (the last is today), per kind of
+/// medium (`audiobook`, `music`, `podcast`) and together.
+class FamilyTime {
+  const FamilyTime({required this.id, required this.name, required this.me, required this.fromDay, required this.kinds, required this.total});
+
+  final int id;
+  final String name;
+
+  /// The member is the signed-in user.
+  final bool me;
+
+  /// The first day as days since 1970-01-01 (UTC).
+  final int fromDay;
+  final Map<String, List<int>> kinds;
+  final List<int> total;
+}
+
 /// The library of the signed-in user as the app's models, and where to resume.
 class LoadedLibrary {
-  LoadedLibrary(this.books, this.resume, {this.lastBookId, this.lastAt = 0, this.userName, this.recent = const [], this.genres = const [], this.newIds = const []});
+  LoadedLibrary(this.books, this.resume, {this.lastBookId, this.lastAt = 0, this.userName, this.recent = const [], this.genres = const [], this.newIds = const [], this.family = const [], this.heard = const [], this.shareListening = true, this.mayHideListening = true});
+
+  /// What the other members of the family listened to lately (the rows of the home page); empty for a server that does not tell.
+  final List<FamilyMember> heard;
+
+  /// The media time of the family (the charts of the home page); empty for a server that does not tell.
+  final List<FamilyTime> family;
+
+  /// Whether the family sees what this user listens to, and whether the user may turn that off (an administrator decides the latter).
+  final bool shareListening;
+  final bool mayHideListening;
 
   /// The ids of the books listened to, the latest first (what "continue listening" says), at most 20.
 
@@ -243,10 +279,42 @@ const _palette = [Color(0xFF6E1F2B), Color(0xFF1F2F4D), Color(0xFF2C4A3E), Color
 Future<LoadedLibrary> loadLibrary(ApiClient api) async {
   final items = await api.items();
   String? userName;
+  var shareListening = true;
+  var mayHideListening = true;
   try {
-    userName = (await api.me())['nickname'] as String?;
+    final me = await api.me();
+    userName = me['nickname'] as String?;
+    shareListening = me['share_listening'] != false;
+    mayHideListening = me['may_hide_listening'] != false;
   } on Object {
     // the greeting works without a name
+  }
+  var heard = <FamilyMember>[];
+  try {
+    heard = [
+      for (final m in await api.familyListening())
+        FamilyMember(id: m['user_id'] as int, name: '${m['name']}', bookIds: [for (final i in m['items'] as List) '${(i as Map)['item_id']}']),
+    ];
+  } on Object {
+    // an older server has no such list; the rows are optional
+  }
+  var family = <FamilyTime>[];
+  try {
+    final time = await api.familyMediaTime();
+    List<int> ints(Object? v) => [for (final n in v as List) n as int];
+    family = [
+      for (final m in time['members'] as List)
+        FamilyTime(
+          id: (m as Map)['user_id'] as int,
+          name: '${m['name']}',
+          me: m['me'] == true,
+          fromDay: time['from_day'] as int,
+          kinds: {for (final e in (m['kinds'] as Map).entries) '${e.key}': ints(e.value)},
+          total: ints(m['total']),
+        ),
+    ];
+  } on Object {
+    // an older server has no charts; they are optional
   }
   // The most recently listened book first; a failure here only means no "last book" is known.
   String? lastBookId;
@@ -345,7 +413,7 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
       }
     }
   }
-  return LoadedLibrary(books, resume, lastBookId: lastBookId, lastAt: lastAt, userName: userName, recent: recentIds, genres: genres, newIds: newIds);
+  return LoadedLibrary(books, resume, lastBookId: lastBookId, lastAt: lastAt, userName: userName, recent: recentIds, genres: genres, newIds: newIds, family: family, heard: heard, shareListening: shareListening, mayHideListening: mayHideListening);
 }
 
 extension on List<Map<String, dynamic>> {

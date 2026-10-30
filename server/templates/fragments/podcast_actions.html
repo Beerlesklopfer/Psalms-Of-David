@@ -10,7 +10,7 @@
   </form>
   <form method="post" action="/admin/rpc/podcast.delete" hx-post="/admin/rpc/podcast.delete" hx-swap="none" hx-confirm="{{ t('podcasts.confirm_delete') }}" hx-disabled-elt="find button">
     <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ feed.id }}"><input type="hidden" name="back" value="{{ back }}">
-    <button type="submit" class="btn outline danger-outline">{{ t("podcasts.delete") }}</button>
+    <button type="submit" class="btn outline danger-outline">{{ icon("trash") }}<span>{{ t("podcasts.delete") }}</span></button>
   </form>
 </div>
 <dialog id="dlg-podcast-{{ feed.id }}" class="window edit-window" aria-labelledby="dlg-podcast-title-{{ feed.id }}">

@@ -6,6 +6,26 @@
   'use strict';
   document.documentElement.classList.add('js');
 
+  // ---- Colour scheme: system -> light -> dark ---------------------------------------------
+  // The choice is kept in this browser only; `data-theme` on <html> overrides the system setting.
+  const themeButton = document.getElementById('theme-toggle');
+  if (themeButton) {
+    const modes = ['auto', 'light', 'dark'];
+    const read = () => { try { return localStorage.getItem('theme'); } catch (e) { return null; } };
+    const show = (mode) => {
+      themeButton.dataset.mode = mode;
+      themeButton.title = themeButton.dataset[mode] || '';
+      if (mode === 'auto') delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = mode;
+    };
+    show(modes.includes(read()) ? read() : 'auto');
+    themeButton.addEventListener('click', () => {
+      const next = modes[(modes.indexOf(themeButton.dataset.mode) + 1) % modes.length];
+      try { if (next === 'auto') localStorage.removeItem('theme'); else localStorage.setItem('theme', next); } catch (e) { /* private mode */ }
+      show(next);
+    });
+  }
+
   // ---- Popup menus -------------------------------------------------------------------
   const open = () => document.querySelectorAll('details.popup[open]');
 

@@ -8,6 +8,7 @@ import '../player_controller.dart';
 import '../profile.dart';
 import 'profile_screen.dart';
 import '../widgets.dart';
+import 'media_time_chart.dart';
 
 String _greeting(AppLocalizations l) {
   final h = DateTime.now().hour;
@@ -24,10 +25,6 @@ class HomeScreen extends StatelessWidget {
     final l = AppLocalizations.of(context);
     final p = PlayerScope.of(context);
     final wide = MediaQuery.sizeOf(context).width >= 800;
-    // One strip for each category that has something, in the order of the library: music, audiobooks
-    // (videos and e-books follow when David manages them).
-    final books = p.library.where((b) => b.kind == 'audiobook').toList();
-    final music = p.library.where((b) => b.kind == 'music').toList();
     // The shortcuts are the books listened to last, whatever their kind, the latest first.
     final recent = p.recentBooks();
     // New for this user, as the server decides; no row at all if there is nothing.
@@ -72,28 +69,31 @@ class HomeScreen extends StatelessWidget {
             children: [for (final b in recent) _Shortcut(book: b)],
           ),
         ),
-        if (fresh.isNotEmpty) ..._strip(l.sectionNew, fresh, badge: l.badgeNew),
-        if (music.isNotEmpty) ..._strip(l.sectionYourMusic, music),
-        if (books.isNotEmpty || music.isEmpty) ..._strip(l.sectionYourBooks, books),
+        // "New" as tiles, like the library (no strip that scrolls sideways).
+        if (fresh.isNotEmpty) ..._tiles(l.sectionNew, fresh, badge: l.badgeNew),
+        // One row for every other member of the family: what they listened to lately.
+        for (final m in p.heard)
+          if (p.booksOf(m).isNotEmpty) ..._strip(l.sectionHeardBy(m.name), p.booksOf(m)),
+        // The media time of the family as line charts: one for every member who listened lately, the own first.
+        for (final m in p.family) ...[
+          SliverToBoxAdapter(child: SectionHeader(m.me ? l.sectionMyMediaTime : l.sectionMediaTimeOf(m.name))),
+          SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: MediaTimeChart(time: m))),
+        ],
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],
     );
   }
 }
 
-/// A heading and a row of covers that scrolls sideways.
-List<Widget> _strip(String title, List<Book> books, {String? badge}) => [
+/// A heading and the covers as tiles that break into lines, as in the library.
+List<Widget> _tiles(String title, List<Book> books, {String? badge}) => [
       SliverToBoxAdapter(child: SectionHeader(title)),
-      SliverToBoxAdapter(
-        child: SizedBox(
-          height: 230,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            itemCount: books.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 4),
-            itemBuilder: (_, i) => SizedBox(width: 156, child: BookCard(book: books[i], badge: badge)),
-          ),
+      SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        sliver: SliverGrid.builder(
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 200, childAspectRatio: 0.74),
+          itemCount: books.length,
+          itemBuilder: (_, i) => BookCard(book: books[i], badge: badge),
         ),
       ),
     ];
@@ -206,3 +206,20 @@ class _Resume extends StatelessWidget {
     );
   }
 }
+
+/// A heading and a row of covers that scrolls sideways.
+List<Widget> _strip(String title, List<Book> books) => [
+      SliverToBoxAdapter(child: SectionHeader(title)),
+      SliverToBoxAdapter(
+        child: SizedBox(
+          height: 230,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            itemCount: books.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 4),
+            itemBuilder: (_, i) => SizedBox(width: 156, child: BookCard(book: books[i])),
+          ),
+        ),
+      ),
+    ];

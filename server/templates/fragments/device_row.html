@@ -1,5 +1,5 @@
 {# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
-   SPDX-License-Identifier: AGPL-3.0-or-later -#}<tr id="device-{{ device.id }}">
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<tr id="device-{{ device.id }}">
   <td><strong>{{ device.name }}</strong>{% if device.shared %} <span class="badge">{{ t("devices.shared") }}</span>{% endif %}</td>
   <td data-label="{{ t('devices.owner') }}">{{ device.user_name }}</td>
   <td data-label="{{ t('devices.state') }}">{% if device.revoked %}<span class="badge muted">{{ t("devices.revoked") }}</span>{% else %}<span class="badge ok">{{ t("devices.active") }}</span>{% endif %}</td>
@@ -14,7 +14,7 @@
     {% else %}
     <form method="post" action="/admin/rpc/device.delete" hx-post="/admin/rpc/device.delete" hx-target="#device-{{ device.id }}" hx-swap="outerHTML" hx-disabled-elt="find button" hx-confirm="{{ t('devices.confirm_delete') }}">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ device.id }}">
-      <button type="submit" class="btn outline danger-outline">{{ t("devices.delete") }}</button>
+      <button type="submit" class="btn outline danger-outline">{{ icon("trash") }}<span>{{ t("devices.delete") }}</span></button>
     </form>
     {% endif %}
   </td>

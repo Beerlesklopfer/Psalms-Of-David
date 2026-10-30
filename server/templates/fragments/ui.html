@@ -3,8 +3,8 @@
 {#- Building blocks for pages: icons and popup menus. A distribution can replace this file
     to change them everywhere. -#}
 
-{% macro icon(name) -%}
-<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+{% macro icon(name, extra="") -%}
+<svg class="ico{% if extra %} {{ extra }}{% endif %}" viewBox="0 0 24 24" aria-hidden="true">
   {% if name == "users" %}
     <circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18 14.3c2.2.6 3.5 2.4 3.5 5.7"/>
   {% elif name == "books" %}
@@ -29,6 +29,14 @@
     <path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>
   {% elif name == "profile" %}
     <circle cx="12" cy="8" r="3.8"/><path d="M4.5 20c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"/>
+  {% elif name == "trash" %}
+    <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/>
+  {% elif name == "sun" %}
+    <circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6L7 7M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>
+  {% elif name == "moon" %}
+    <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>
+  {% elif name == "theme-auto" %}
+    <circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17" /><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>
   {% elif name == "logout" %}
     <path d="M9 4.5H6A2 2 0 0 0 4 6.5v11a2 2 0 0 0 2 2h3"/><path d="M16 8l4 4-4 4M20 12H9"/>
   {% elif name == "calendar" %}
