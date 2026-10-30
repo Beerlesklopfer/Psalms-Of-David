@@ -2,6 +2,7 @@
    SPDX-License-Identifier: AGPL-3.0-or-later -#}{#- What an administrator does with one podcast (`feed`): read it again, change its labels, remove it, decide the requests of children.
     `back` is "page" on the page of the podcast itself (the answer comes back there; after a removal the list), empty on the list. -#}{% from "fragments/ui.html" import icon %}
 <div class="row-actions">
+  <button type="button" class="btn outline" data-dialog="dlg-followers-{{ feed.id }}">{{ icon("users") }}<span>{{ t("podcasts.followers_edit") }}</span></button>
   <button type="button" class="btn outline" data-dialog="dlg-podcast-{{ feed.id }}">{{ icon("tag") }}<span>{{ t("podcasts.labels_edit") }}</span></button>
   <form method="post" action="/admin/rpc/podcast.refresh" hx-post="/admin/rpc/podcast.refresh" hx-swap="none" hx-disabled-elt="find button">
     <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ feed.id }}"><input type="hidden" name="back" value="{{ back }}">
@@ -25,5 +26,24 @@
   <div class="window-foot">
     <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
     <button type="submit" class="btn" form="podcast-form-{{ feed.id }}">{{ t("ui.save") }}</button>
+  </div>
+</dialog>
+<dialog id="dlg-followers-{{ feed.id }}" class="window edit-window" aria-labelledby="dlg-followers-title-{{ feed.id }}">
+  <div class="window-head"><h3 id="dlg-followers-title-{{ feed.id }}">{{ t("podcasts.followers_edit") }}: {{ feed.title }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+  <div class="window-body">
+    <form id="followers-form-{{ feed.id }}" class="dialog-form" method="post" action="/admin/rpc/podcast.followers" hx-post="/admin/rpc/podcast.followers" hx-swap="none" hx-disabled-elt="find button" data-close-window>
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ feed.id }}"><input type="hidden" name="back" value="{{ back }}">
+      {#- The marker says that this is the whole list: without it a request changes nothing, with it and no tick nobody follows. -#}
+      <input type="hidden" name="followers_form" value="1">
+      {% for p in profiles %}
+      <label class="check span-all"><input type="checkbox" name="profiles" value="{{ p.id }}"{% if p.id in feed.follower_ids or p.id in feed.waiting_ids %} checked{% endif %}> <span>{{ p.name }} <small class="muted">({{ t("role." ~ p.role) }})</small>{% if p.id in feed.waiting_ids %} <span class="badge">{{ t("podcasts.waiting") }}</span>{% endif %}</span></label>
+      {% endfor %}
+      <small class="span-all">{{ t("podcasts.followers_hint") }}</small>
+      <div class="form-error span-all" role="alert"></div>
+    </form>
+  </div>
+  <div class="window-foot">
+    <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+    <button type="submit" class="btn" form="followers-form-{{ feed.id }}">{{ t("ui.save") }}</button>
   </div>
 </dialog>

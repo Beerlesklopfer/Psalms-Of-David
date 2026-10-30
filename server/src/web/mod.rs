@@ -93,6 +93,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/radio", get(handlers::radio_page))
         .route("/admin/rpc/podcast.add", post(handlers::podcast_add))
         .route("/admin/rpc/podcast.labels", post(handlers::podcast_labels))
+        .route("/admin/rpc/podcast.followers", post(handlers::podcast_followers))
         .route("/admin/rpc/podcast.refresh", post(handlers::podcast_refresh))
         .route("/admin/rpc/podcast.delete", post(handlers::podcast_delete))
         .route("/admin/rpc/podcast.decide", post(handlers::podcast_decide))

@@ -332,7 +332,14 @@ Two pages in the menu "Media" (administrators only; every change is a procedure 
   `list_page_size`, 10 to 500 per page, `page`, `per` and `q` in the address, `hx-push-url` like the books page). The list is complete (after the search) *before* it
   is cut into pages. A row shows title, address, the last error of reading, who follows it, the labels, and the requests of children that wait (release or refuse
   as on the page "Requests"). Buttons: edit the labels (a window with the chips entry and one Save), read now, remove (with the follows, episodes and the state of
-  listening; a label that only it carried goes), and "Add podcast" (the address of a feed or of a page that points to it; it is read at once and nobody follows it yet).
+  listening; a label that only it carried goes), "Followers" ("Folgen von": see below) and "Add podcast" (the address of a feed or of a page that points to it; it is read at once and nobody follows it yet).
+- **Followers of a podcast** (button "Followers" on the list and on the page of a podcast; procedure `/admin/rpc/podcast.followers`, administrators only, CSRF like the
+  others): a window with one Save lists **every profile** (name and role, sorted by name) with the followers ticked. A child that asked and waits for a release is
+  ticked and marked "waits for a release". Saving applies the **difference** in one transaction (`Store::set_feed_followers`): a ticked profile that does not
+  follow yet follows with the release (the administrator decides, also for a child); a ticked request that waits is released; an unticked profile (or a refused
+  request) stops following, its state of listening stays. The form carries the marker `followers_form=1`: without it the request is refused with 422 and changes
+  nothing, so a missing field never removes everybody; with the marker and no tick the list is emptied on purpose. An unknown profile marks the field `profiles`
+  (422), an unknown podcast is 404. The change is logged (`tracing` info: who changed whose follows of which podcast). The MCP tool `edit_podcasts` (follow, unfollow) does the same by name.
 - **`/admin/podcasts/{id}`**: the page of one podcast, with a breadcrumb back to the list: address, last error, followers, requests, labels, the same buttons, and
   its **episodes**, newest first, in pages (the same pager, per page 10 to 500) with the date, the length and who heard them to the end or began them. The size of an
   episode is not stored (the feed gives it rarely, and nothing downloads the audio), so there is no column for it. After a removal on this page the answer leads to the list.

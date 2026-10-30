@@ -1953,6 +1953,11 @@ async fn waiting_by_target(store: &Store, kind: &str) -> Result<std::collections
     Ok(out)
 }
 
+/// Every profile for the dialog "Followers" of a podcast: `{id, name, role}`, by name.
+async fn follower_choices(store: &Store) -> Result<Vec<serde_json::Value>> {
+    Ok(store.list_profiles().await?.into_iter().map(|p| serde_json::json!({ "id": p.id, "name": p.name, "role": p.role })).collect())
+}
+
 /// The text of a time of listening: `h:mm:ss`, or `m:ss` below an hour.
 fn clock(seconds: i64) -> String {
     let s = seconds.max(0);
@@ -1980,18 +1985,24 @@ impl AdminUi {
             .filter(|(f, _)| lower.as_ref().is_none_or(|n| f.title.to_lowercase().contains(n) || f.url.to_lowercase().contains(n)))
             .collect();
         let paging = Paging::of(store, feeds.len(), page, per).await?;
+        // For the dialog "Followers": every profile, and who follows (ticked) or asked (waits) per podcast, by id.
+        let profiles = follower_choices(store).await?;
+        let by_feed = store.follow_ids_by_feed().await?;
         let items: Vec<serde_json::Value> = feeds
             .into_iter()
             .skip(paging.from)
             .take(paging.per)
             .map(|(f, followers)| {
                 let followers: Vec<serde_json::Value> = followers.into_iter().filter(|(_, ok)| *ok).map(|(n, _)| serde_json::Value::String(n)).collect();
-                serde_json::json!({ "id": f.id, "url": f.url, "title": f.title, "last_error": f.last_error, "followers": followers, "waiting": waiting.get(&f.id).map(|w| serde_json::json!(w)).unwrap_or_else(|| serde_json::json!([])), "labels": labels.get(&f.id).cloned().unwrap_or_default() })
+                let ids = by_feed.get(&f.id).cloned().unwrap_or_default();
+                let follower_ids: Vec<i64> = ids.iter().filter(|(_, ok)| *ok).map(|(p, _)| *p).collect();
+                let waiting_ids: Vec<i64> = ids.iter().filter(|(_, ok)| !*ok).map(|(p, _)| *p).collect();
+                serde_json::json!({ "follower_ids": follower_ids, "waiting_ids": waiting_ids, "id": f.id, "url": f.url, "title": f.title, "last_error": f.last_error, "followers": followers, "waiting": waiting.get(&f.id).map(|w| serde_json::json!(w)).unwrap_or_else(|| serde_json::json!([])), "labels": labels.get(&f.id).cloned().unwrap_or_default() })
             })
             .collect();
         let pager = paging.json("/admin/podcasts", needle);
         let label_names = store.labels().await?;
-        self.render("podcasts.html", context! { feeds => Serde(items), pager => Serde(pager), q => needle.unwrap_or_default(), searched => needle.is_some(), label_names => Serde(label_names), ..view.into().context() })
+        self.render("podcasts.html", context! { profiles => Serde(profiles), feeds => Serde(items), pager => Serde(pager), q => needle.unwrap_or_default(), searched => needle.is_some(), label_names => Serde(label_names), ..view.into().context() })
     }
 
     /// One podcast with its episodes, newest first, in pages. `None` if there is no such podcast.
@@ -2010,8 +2021,12 @@ impl AdminUi {
             .collect();
         let pager = paging.json(&format!("/admin/podcasts/{id}"), None);
         let label_names = store.labels().await?;
-        let feed = serde_json::json!({ "id": head.id, "url": head.url, "title": head.title, "last_error": head.last_error, "followers": followers, "waiting": waiting, "labels": labels });
-        self.render("podcast.html", context! { feed => Serde(feed), episodes => Serde(episodes), pager => Serde(pager), label_names => Serde(label_names), ..view.into().context() }).map(Some)
+        let ids = store.follow_ids_by_feed().await?.remove(&id).unwrap_or_default();
+        let follower_ids: Vec<i64> = ids.iter().filter(|(_, ok)| *ok).map(|(p, _)| *p).collect();
+        let waiting_ids: Vec<i64> = ids.iter().filter(|(_, ok)| !*ok).map(|(p, _)| *p).collect();
+        let profiles = follower_choices(store).await?;
+        let feed = serde_json::json!({ "follower_ids": follower_ids, "waiting_ids": waiting_ids, "id": head.id, "url": head.url, "title": head.title, "last_error": head.last_error, "followers": followers, "waiting": waiting, "labels": labels });
+        self.render("podcast.html", context! { profiles => Serde(profiles), feed => Serde(feed), episodes => Serde(episodes), pager => Serde(pager), label_names => Serde(label_names), ..view.into().context() }).map(Some)
     }
 
     /// The radio stations: a list with a search field, cut into pages after the search.

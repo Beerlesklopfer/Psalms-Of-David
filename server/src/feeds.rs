@@ -162,6 +162,58 @@ impl Store {
         Ok(out)
     }
 
+    /// Who follows each feed, by id: `feed id -> [(profile id, approved)]` (a request of a child that waits has `approved` false). For the dialogs of the
+    /// administration, which tick the profiles by id.
+    pub async fn follow_ids_by_feed(&self) -> Result<std::collections::HashMap<i64, Vec<(i64, bool)>>> {
+        let rows = self.db.reader.query_all_raw(Statement::from_string(DbBackend::Sqlite, "SELECT feed_id, profile_id, approved FROM subscription ORDER BY feed_id, profile_id")).await?;
+        let mut out: std::collections::HashMap<i64, Vec<(i64, bool)>> = std::collections::HashMap::new();
+        for r in rows {
+            out.entry(r.try_get_by_index(0)?).or_default().push((r.try_get_by_index(1)?, r.try_get_by_index::<i64>(2)? == 1));
+        }
+        Ok(out)
+    }
+
+    /// An administrator saves the list of the followers of a feed. Only the difference is applied, in one transaction: a profile that is ticked and
+    /// does not follow yet follows with a release (the administrator decides, also for a child); a request of a child that waits and is ticked is
+    /// released; a profile that follows (or asked) and is not ticked stops following. Returns `(added, removed)` as profile ids. The caller checks
+    /// that the feed and the profiles exist.
+    pub async fn set_feed_followers(&self, feed_id: i64, wanted: &[i64]) -> Result<(Vec<i64>, Vec<i64>)> {
+        let txn = self.db.writer.begin().await?;
+        let rows = txn.query_all_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT profile_id, approved FROM subscription WHERE feed_id = ?", [feed_id.into()])).await?;
+        let mut current: Vec<(i64, bool)> = Vec::new();
+        for r in rows {
+            current.push((r.try_get_by_index(0)?, r.try_get_by_index::<i64>(1)? == 1));
+        }
+        let (mut added, mut removed) = (Vec::new(), Vec::new());
+        for &profile in wanted {
+            match current.iter().find(|(p, _)| *p == profile) {
+                Some((_, true)) => {}
+                Some((_, false)) => {
+                    txn.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE subscription SET approved = 1 WHERE profile_id = ? AND feed_id = ?", [profile.into(), feed_id.into()])).await?;
+                    added.push(profile);
+                }
+                None => {
+                    txn.execute_raw(Statement::from_sql_and_values(
+                        DbBackend::Sqlite,
+                        "INSERT INTO subscription (profile_id, feed_id, added_at, approved) VALUES (?, ?, ?, 1)",
+                        [profile.into(), feed_id.into(), now_ms().into()],
+                    ))
+                    .await
+                    .map_err(|_| Error::WriteFailed("no such feed or profile".into()))?;
+                    added.push(profile);
+                }
+            }
+        }
+        for &(profile, _) in &current {
+            if !wanted.contains(&profile) {
+                txn.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "DELETE FROM subscription WHERE profile_id = ? AND feed_id = ?", [profile.into(), feed_id.into()])).await?;
+                removed.push(profile);
+            }
+        }
+        txn.commit().await?;
+        Ok((added, removed))
+    }
+
     /// Follows a feed. `approved` is false for a child: it then waits for a release. Following again changes nothing
     /// (a release is never taken back by asking twice).
     pub async fn subscribe(&self, profile_id: i64, feed_id: i64, approved: bool) -> Result<()> {

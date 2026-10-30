@@ -2827,6 +2827,38 @@ pub async fn podcast_labels(State(state): State<AppState>, s: AdminSession, Form
     feed_done(&s, &podcast_here(&f), &podcast_here(&f), outcome)
 }
 
+/// An administrator changes who follows a podcast (the dialog "Followers"): the ticked profiles follow, the others do not. The form has to say that it
+/// is the dialog (`followers_form=1`): a request without it changes nothing, so a missing field never removes everybody; with it and no `profiles` the
+/// list is empty on purpose.
+pub async fn podcast_followers(State(state): State<AppState>, s: AdminSession, Form(pairs): Form<Vec<(String, String)>>) -> Response {
+    let get = |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str());
+    let id: i64 = get("id").and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+    let here = if get("back") == Some("page") { format!("/admin/podcasts/{id}") } else { "/admin/podcasts".to_owned() };
+    let outcome = async {
+        if get("followers_form") != Some("1") {
+            return Err(Failure::input());
+        }
+        let mut wanted: Vec<i64> = Vec::new();
+        for (_, v) in pairs.iter().filter(|(k, _)| k == "profiles") {
+            let p: i64 = v.trim().parse().map_err(|_| Failure::input().at("profiles"))?;
+            if !wanted.contains(&p) {
+                wanted.push(p);
+            }
+        }
+        let people = state.store.list_profiles().await?;
+        if wanted.iter().any(|w| !people.iter().any(|p| p.id == *w)) {
+            return Err(Failure::input().at("profiles"));
+        }
+        let head = state.store.feed_head(id).await?.ok_or_else(Failure::not_found)?;
+        let (added, removed) = state.store.set_feed_followers(id, &wanted).await?;
+        let names = |ids: &[i64]| ids.iter().filter_map(|i| people.iter().find(|p| p.id == *i).map(|p| p.name.clone())).collect::<Vec<_>>();
+        tracing::info!(by = s.user_id, podcast = %head.title, added = ?names(&added), removed = ?names(&removed), "followers of a podcast changed by an administrator");
+        Ok(None)
+    }
+    .await;
+    feed_done(&s, &here, &here, outcome)
+}
+
 /// Reads the feed again now; a feed that cannot be read keeps the reason, which the list shows.
 pub async fn podcast_refresh(State(state): State<AppState>, s: AdminSession, Form(f): Form<FeedForm>) -> Response {
     let outcome = async {

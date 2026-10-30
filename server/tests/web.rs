@@ -4078,7 +4078,7 @@ async fn the_pages_of_podcasts_and_radio_are_for_administrators_only() {
     }
     let csrf = csrf_token(&token);
     let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, ..Default::default() };
-    for rpc in ["podcast.add", "podcast.labels", "podcast.refresh", "podcast.delete", "podcast.decide", "station.add", "station.update", "station.delete", "station.decide"] {
+    for rpc in ["podcast.add", "podcast.labels", "podcast.followers", "podcast.refresh", "podcast.delete", "podcast.decide", "station.add", "station.update", "station.delete", "station.decide"] {
         assert_eq!(send(&a, post(&format!("/admin/rpc/{rpc}"), &form(&[("id", "1")]), &o)).await.status, StatusCode::FORBIDDEN, "{rpc}");
     }
     // Without the token of the page even an administrator is refused.
@@ -4212,6 +4212,75 @@ async fn a_podcast_is_removed_and_the_request_of_a_child_decided() {
     // Removing it twice: not found.
     let r = send(&a, post("/admin/rpc/podcast.delete", &form(&[("id", &id.to_string())]), &hx)).await;
     assert_eq!(r.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn the_administrator_edits_who_follows_a_podcast() {
+    let a = app().await;
+    let (cookie, token) = sign_in(&a).await;
+    let hx = Opts { cookie: Some(&cookie), csrf_header: Some(&token), htmx: true, ..Default::default() };
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    let id = a.store.save_feed("https://example.org/f.xml", &feed_of("Folgen", 1)).await.unwrap();
+    let anna = a.store.create_profile("Anna", false).await.unwrap();
+    let ben = a.store.create_profile("Ben", false).await.unwrap();
+    let kid = a.store.create_profile("Kid", false).await.unwrap();
+    a.store.subscribe(anna, id, true).await.unwrap();
+    a.store.subscribe(kid, id, false).await.unwrap();
+    let follows = |p: i64| {
+        let s = a.store.clone();
+        async move { s.follows(p, id).await.unwrap() }
+    };
+
+    // The dialog on the list and on the page of the podcast lists every profile: the followers and the child that waits are ticked.
+    for path in ["/admin/podcasts".to_owned(), format!("/admin/podcasts/{id}")] {
+        let page = send(&a, get(&path, &o)).await.body;
+        assert!(page.contains(&format!("id=\"dlg-followers-{id}\"")) && page.contains("/admin/rpc/podcast.followers"), "{path}: {page}");
+        assert!(page.contains(&format!("name=\"profiles\" value=\"{anna}\" checked")), "Anna follows: {path}");
+        assert!(page.contains(&format!("name=\"profiles\" value=\"{kid}\" checked")), "the request of Kid waits and counts as ticked: {path}");
+        assert!(page.contains(&format!("name=\"profiles\" value=\"{ben}\">")), "Ben does not follow: {path}");
+        assert!(page.contains("name=\"followers_form\" value=\"1\""), "the marker is in the form");
+    }
+
+    // Saving applies the difference: Ben is added, Kid (waiting, not ticked) is refused, Anna stays.
+    let save = |profiles: &[i64]| {
+        let mut fields: Vec<(String, String)> = vec![("id".into(), id.to_string()), ("followers_form".into(), "1".into()), ("back".into(), "page".into())];
+        fields.extend(profiles.iter().map(|p| ("profiles".to_owned(), p.to_string())));
+        serde_urlencoded::to_string(&fields).unwrap()
+    };
+    let r = send(&a, post("/admin/rpc/podcast.followers", &save(&[anna, ben]), &hx)).await;
+    assert_eq!((r.status, r.header("hx-refresh")), (StatusCode::OK, Some("true")), "{}", r.body);
+    assert!(follows(anna).await && follows(ben).await && !follows(kid).await);
+    assert!(a.store.follow_ids_by_feed().await.unwrap().get(&id).is_some_and(|v| v.iter().all(|(_, ok)| *ok) && v.len() == 2), "the request of Kid is gone");
+
+    // A child that is ticked follows at once, with the release; a request that waits and is ticked is released.
+    let r = send(&a, post("/admin/rpc/podcast.followers", &save(&[kid]), &hx)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(follows(kid).await && !follows(anna).await && !follows(ben).await, "only Kid follows now");
+    a.store.unsubscribe(kid, id).await.unwrap();
+    a.store.subscribe(kid, id, false).await.unwrap();
+    assert!(!follows(kid).await, "waits");
+    send(&a, post("/admin/rpc/podcast.followers", &save(&[kid, anna]), &hx)).await;
+    assert!(follows(kid).await && follows(anna).await, "the waiting request was released by ticking it");
+
+    // A request without the marker changes nothing (a missing field never removes everybody); with the marker and no tick the list is empty on purpose.
+    let r = send(&a, post("/admin/rpc/podcast.followers", &form(&[("id", &id.to_string())]), &hx)).await;
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let r = send(&a, post("/admin/rpc/podcast.followers", &form(&[("id", &id.to_string()), ("profiles", &anna.to_string())]), &hx)).await;
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY, "profiles without the marker");
+    assert!(follows(kid).await && follows(anna).await, "unchanged");
+    let r = send(&a, post("/admin/rpc/podcast.followers", &form(&[("id", &id.to_string()), ("followers_form", "1")]), &hx)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(!follows(kid).await && !follows(anna).await, "nobody follows");
+
+    // An unknown profile marks the field and changes nothing; an unknown podcast is not found; a page that is not htmx redirects with the message.
+    a.store.subscribe(anna, id, true).await.unwrap();
+    let r = send(&a, post("/admin/rpc/podcast.followers", &save(&[anna, 9999]), &hx)).await;
+    assert_eq!((r.status, r.header("x-invalid-field")), (StatusCode::UNPROCESSABLE_ENTITY, Some("profiles")));
+    assert!(follows(anna).await && !follows(ben).await);
+    let r = send(&a, post("/admin/rpc/podcast.followers", &form(&[("id", "9999"), ("followers_form", "1")]), &hx)).await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+    let r = send(&a, post("/admin/rpc/podcast.followers", &form(&[("id", "9999"), ("followers_form", "1"), ("profiles", "not a number")]), &hx)).await;
+    assert_eq!((r.status, r.header("x-invalid-field")), (StatusCode::UNPROCESSABLE_ENTITY, Some("profiles")));
 }
 
 #[tokio::test]
