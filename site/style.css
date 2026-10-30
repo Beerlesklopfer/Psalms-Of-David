@@ -16,3 +16,4 @@ a { color: var(--accent); }
 .lang { font-family: system-ui, sans-serif; font-size: .9rem; color: var(--muted); }
 footer { color: var(--muted); font: .9rem/1.5 system-ui, sans-serif; border-top: 1px solid var(--line); margin-top: 2rem; }
 ul { padding-left: 1.2rem; }
+.ticker { display: block; max-width: 100%; height: auto; margin: 1.5rem 0; }
