@@ -7,12 +7,13 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
+import 'audio/file_formats.dart';
 import 'podcasts.dart';
 import 'server/app_paths.dart';
 
 /// The file of an episode in the folder of the downloads, named by its address: an episode that was played from the publisher is kept there
 /// too (the player fetches it once), so "played" and "downloaded" are the same thing for the files.
-File episodeCacheFile(Directory cache, String url) => File('${cache.path}/ep-${sha1.convert(utf8.encode(url))}.audio');
+File episodeCacheFile(Directory cache, String url) => File('${cache.path}/ep-${sha1.convert(utf8.encode(url))}.${episodeFileEnding(url)}');
 
 /// Only http and https addresses are fetched: an episode address comes from a feed of the internet.
 bool isWebAddress(String url) {
@@ -281,7 +282,7 @@ class PodcastDownloads extends ChangeNotifier {
     try {
       if (!cache.existsSync()) return;
       for (final e in cache.listSync()) {
-        if (e is File && e.path.endsWith('.audio.part') && e.uri.pathSegments.last.startsWith('ep-')) e.deleteSync();
+        if (e is File && e.path.endsWith('.part') && e.uri.pathSegments.last.startsWith('ep-')) e.deleteSync();
       }
     } on FileSystemException {
       // left over

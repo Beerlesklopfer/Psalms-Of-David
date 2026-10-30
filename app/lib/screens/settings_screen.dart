@@ -15,6 +15,7 @@ import '../player_controller.dart';
 import '../server/credentials.dart';
 import '../server/device_pairing.dart';
 import 'connect_device.dart';
+import 'about_screen.dart';
 import 'labels_ui.dart';
 import 'podcast_downloads_ui.dart';
 import '../widgets.dart';
@@ -166,6 +167,21 @@ class SettingsScreen extends StatelessWidget {
             style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
           ),
         ],
+        // The page "About": on a narrow screen it has no place in the bar below (seven entries are too narrow there), so it is here.
+        const SizedBox(height: 24),
+        Card(
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            key: const Key('open-about'),
+            leading: Icon(Icons.info_outline, color: cs.primary),
+            title: Text(l.navAbout),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => Scaffold(appBar: AppBar(title: Text(l.navAbout)), body: const AboutScreen())),
+            ),
+          ),
+        ),
       ],
     );
   }

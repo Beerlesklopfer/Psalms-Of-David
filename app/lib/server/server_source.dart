@@ -67,7 +67,21 @@ class ServerSource implements MediaSource {
   bool get canDownload => true;
 
   /// The file of a part: named by its id; an MP3 that the server made for a platform that cannot play the format has its own name, so both can coexist.
-  File _fileOf(Track track) => File('${cache.path}/${track.partId}${needsTranscode(track.format, track.transcode) ? '-mp3' : ''}.audio');
+  File _fileOf(Track track) {
+    final mp3 = needsTranscode(track.format, track.transcode);
+    final ending = audioFileEnding(format: track.format, mime: track.mime, mp3: mp3);
+    final file = File('${cache.path}/${track.partId}${mp3 ? '-mp3' : ''}.$ending');
+    // A part loaded by an earlier version is called `<id>.audio`: it keeps its place (renamed once, no new download).
+    if (ending != 'audio' && !file.existsSync()) {
+      final old = File('${cache.path}/${track.partId}${mp3 ? '-mp3' : ''}.audio');
+      try {
+        if (old.existsSync()) old.renameSync(file.path);
+      } on FileSystemException {
+        // stays where it is; the part is loaded again
+      }
+    }
+    return file;
+  }
 
   /// The file of a track: a part of the server by its id, an episode by its address (a radio stream has none).
   File? _anyFileOf(Track track) {

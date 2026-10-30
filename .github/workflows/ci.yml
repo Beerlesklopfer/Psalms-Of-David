@@ -440,6 +440,19 @@ jobs:
           CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Distribution
           PROVISIONING_PROFILE_SPECIFIER = ${{ steps.sign.outputs.profile_name }}
           EOF
+          # The name the person gave the device (iOS 16 and later give an app only "iPhone" without it): only when Apple has granted the entitlement and the
+          # profiles were made again with it (repository variable IOS_DEVICE_NAME_ENTITLEMENT = true; see docs/releasing.md). Signing fails if the profile lacks it.
+          if [ "${{ vars.IOS_DEVICE_NAME_ENTITLEMENT }}" = "true" ]; then
+            cat > ios/Runner/Runner.entitlements <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>com.apple.developer.device-information.user-assigned-device-name</key><true/>
+          </dict></plist>
+          EOF
+            echo "CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements" >> ios/Flutter/Product.xcconfig
+            echo "Entitlement user-assigned-device-name is on."
+          fi
           flutter pub get
           flutter build ipa --release --build-name "$VERSION" --build-number "$GITHUB_RUN_NUMBER" --export-options-plist "$RUNNER_TEMP/ExportOptions.plist"
           mkdir -p ../dist

@@ -31,6 +31,7 @@ import 'screens/home_screen.dart';
 import 'server/api_client.dart';
 import 'server/app_paths.dart';
 import 'server/credentials.dart';
+import 'server/device_name.dart';
 import 'server/device_pairing.dart';
 import 'server/hiding_api.dart';
 import 'server/labels_api.dart';
@@ -181,6 +182,9 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     if (Platform.isLinux && !widget.demo) {
       unawaited(MprisService.start(_player).then((s) => _mpris = s));
     }
+    unawaited(defaultDeviceName().then((n) {
+      if (mounted) setState(() => _deviceName = n);
+    }));
     _start();
   }
 
@@ -224,6 +228,9 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
 
   Timer? _retryTimer;
   int _retries = 0;
+
+  /// What this device proposes as its name when it is paired (the model of a phone, the host name of a computer).
+  String _deviceName = Platform.localHostname;
 
   Future<void> _start() async {
     final demo = Platform.environment['PSALM_DEMO_FILE'];
@@ -475,7 +482,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
             home: switch (_phase) {
               _Phase.starting => const Scaffold(body: Center(child: CircularProgressIndicator())),
               _Phase.connect => ConnectScreen(
-                deviceName: Platform.localHostname,
+                deviceName: _deviceName,
                 error: _connectError,
                 searching: _canRetry && _connectError == ConnectError.network,
                 initialAddress: widget.pairing,
@@ -664,11 +671,13 @@ class _ShellState extends State<Shell> {
         mainAxisSize: MainAxisSize.min,
         children: [
           const MiniPlayer(),
+          // Six entries on a phone ("About" is a line in the settings): seven are too narrow for the German names, which broke in the middle of a word.
           NavigationBar(
-            selectedIndex: _index,
+            selectedIndex: _index < _icons.length - 1 ? _index : _icons.length - 2,
             onDestinationSelected: (i) => setState(() => _index = i),
+            labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
             destinations: [
-              for (final (i, (icon, selected)) in _icons.indexed)
+              for (final (i, (icon, selected)) in _icons.take(_icons.length - 1).toList().indexed)
                 NavigationDestination(
                   icon: Icon(icon),
                   selectedIcon: Icon(selected),

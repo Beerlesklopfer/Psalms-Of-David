@@ -55,6 +55,7 @@ class _Source extends MediaSource {
 }
 
 void main() {
+  legacyNameTest();
   tearDown(() => runsOnApple = () => false);
 
   test('an Apple platform (iPhone, iPad, Mac) cannot play Ogg and a few others; every other platform and an unknown format plays', () {
@@ -167,20 +168,33 @@ void main() {
     const mp3 = Track(disc: 1, number: 2, title: 'B', length: Duration(minutes: 1), partId: 11, format: 'mp3', transcode: null);
 
     final made = await source.fetchPart(ogg);
-    expect(made, '${dir.path}/10-mp3.audio');
+    expect(made, '${dir.path}/10-mp3.mp3');
     expect(asked, ['/api/v1/parts/10/stream?as=mp3']);
     expect(source.isDownloaded(ogg), isTrue);
-    expect(source.relativePath(ogg), '10-mp3.audio');
+    expect(source.relativePath(ogg), '10-mp3.mp3');
     // A second time it is on the device: no request.
     await source.fetchPart(ogg);
     expect(asked, hasLength(1));
     // A file that plays is fetched as it is.
-    expect(await source.fetchPart(mp3), '${dir.path}/11.audio');
+    expect(await source.fetchPart(mp3), '${dir.path}/11.mp3');
     expect(asked.last, '/api/v1/parts/11/stream');
     // Where the platform plays Ogg itself, the original is asked for.
     runsOnApple = () => false;
-    expect(await source.fetchPart(ogg), '${dir.path}/10.audio');
+    expect(await source.fetchPart(ogg), '${dir.path}/10.ogg');
     expect(asked.last, '/api/v1/parts/10/stream');
+  });
+}
+
+/// A part that an earlier version loaded as `<id>.audio` is renamed to the ending of its format (no new download).
+void legacyNameTest() {
+  test('a part loaded by an earlier version keeps its place under the new name', () {
+    final dir = Directory.systemTemp.createTempSync('psalm-legacy-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File('${dir.path}/21.audio').writeAsStringSync('x');
+    final source = ServerSource(ApiClient(address: '127.0.0.1:1', token: 't'), dir);
+    const t = Track(disc: 1, number: 1, title: 'A', length: Duration(minutes: 1), partId: 21, format: 'mp3');
+    expect(source.isDownloaded(t), isTrue);
+    expect(File('${dir.path}/21.mp3').existsSync() && !File('${dir.path}/21.audio').existsSync(), isTrue);
   });
 }
 

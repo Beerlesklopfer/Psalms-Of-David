@@ -219,3 +219,14 @@ a format that cannot keep a field refuses it, and then nothing is written to tha
   and in the `.deb`; `install-desktop-entry.sh` registers it for the current user.
 - `server/packaging/io.onesimus.david-admin.desktop`: "David Administration", opens `http://127.0.0.1:8484/admin/` in
   the browser (change `Exec=` if the server listens elsewhere). Shipped in David's `.deb` and `.rpm` with its icons.
+
+## The name of the device when it is paired
+
+Psalm proposes a name for the device in the field "Name of this device". Android: the name the person gave the device (the setting `device_name`),
+else the maker and the model. iOS and iPadOS: from iOS 16 an app gets the model ("iPhone", "iPad") and not the name the person gave the device, unless
+Apple has granted the entitlement `com.apple.developer.device-information.user-assigned-device-name`. To get it: ask Apple at
+https://developer.apple.com/contact/request/device-name (the account holder fills in the form, the answer can take days), then enable the capability
+"User Assigned Device Name" for both App IDs, make new App Store profiles, replace the secrets `IOS_PROFILE_*_BASE64`, and add the entitlement to
+the repository variable `IOS_DEVICE_NAME_ENTITLEMENT` set to `true` (Settings, Secrets and variables, Actions, Variables): then the CI writes
+`ios/Runner/Runner.entitlements` and sets `CODE_SIGN_ENTITLEMENTS` for that build. Do not set the variable before the profiles contain the entitlement: signing fails.
+The person can always change the name in the field.

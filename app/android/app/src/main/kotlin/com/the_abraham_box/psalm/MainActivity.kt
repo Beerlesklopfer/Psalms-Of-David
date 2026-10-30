@@ -3,6 +3,7 @@ package com.the_abraham_box.psalm
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.ryanheise.audioservice.AudioServiceActivity
@@ -23,6 +24,19 @@ class MainActivity : AudioServiceActivity() {
                         ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 4711)
                     }
                     result.success(null)
+                }
+                // The name the person gave the device ("Jörgs Pixel"), as the system settings show it; none on a device that has not got one.
+                "deviceName" -> {
+                    val name = try {
+                        Settings.Global.getString(contentResolver, "device_name")
+                    } catch (e: Exception) {
+                        null
+                    } ?: try {
+                        Settings.Secure.getString(contentResolver, "bluetooth_name")
+                    } catch (e: Exception) {
+                        null
+                    }
+                    result.success(name)
                 }
                 else -> result.notImplemented()
             }
