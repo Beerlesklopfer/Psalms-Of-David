@@ -90,6 +90,21 @@ void main() {
     expect(source.progress.last.startsWith('1/10@'), isTrue, reason: 'the track that was left is reported');
   });
 
+  testWidgets('the end of every track is reported as finished, not only the end of the list', (tester) async {
+    var now = Duration.zero;
+    final clocked = FakeBackend(clock: () => now, fileLength: const Duration(seconds: 20));
+    final src = FakeSource();
+    final q = PlayerController([_book('1', 10)], backend: clocked, source: src);
+    q.open(q.library.first, track: 0);
+    await tester.pump(const Duration(milliseconds: 100));
+    now = const Duration(seconds: 21);
+    await tester.pump(const Duration(seconds: 1));
+    expect(src.progress.any((r) => r.startsWith('1/10@20') && r.endsWith('finished')), isTrue, reason: src.progress.join(', '));
+    expect(q.trackIndex, 1, reason: 'the list goes on with the next track');
+    q.dispose();
+    await tester.pump();
+  });
+
   test('a failing fetch pauses and shows the error', () async {
     final failing = FakeSource();
     final q = PlayerController([_book('1', 10)], backend: backend, source: _Failing(failing));

@@ -244,6 +244,8 @@ class ApiClient implements FeedApi {
         'part_id': partId,
         'position_ms': position.inMilliseconds,
         'finished': finished,
+        // When the listening happened: the server keeps the newer state, whatever order the reports arrive in.
+        'at': DateTime.now().millisecondsSinceEpoch,
       });
 
   /// Where an audio Bible opens the passage [text]. Empty if no item can.

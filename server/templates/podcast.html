@@ -1,0 +1,58 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "podcasts" %}
+
+{% block title %}{{ feed.title }}{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="{{ t('podcasts.breadcrumb') }}"><a href="/admin/podcasts">{{ t("podcasts.title") }}</a> <span aria-hidden="true">&rsaquo;</span> <span>{{ feed.title }}</span></nav>
+<div class="page-head">
+  <h1>{{ feed.title }}</h1>
+</div>
+<datalist id="label-words">{% for l in label_names %}<option value="{{ l.name }}">{% endfor %}</datalist>
+
+<dl class="facts">
+  <dt>{{ t("podcasts.address") }}</dt><dd><a href="{{ feed.url }}" rel="noopener">{{ feed.url }}</a></dd>
+  {% if feed.last_error %}<dt>{{ t("podcasts.error") }}</dt><dd><span class="badge danger">{{ feed.last_error }}</span></dd>{% endif %}
+  <dt>{{ t("podcasts.followers") }}</dt>
+  <dd>{% for name in feed.followers %}<span class="badge">{{ name }}</span> {% else %}<span class="muted">&ndash;</span>{% endfor %}
+    {% set waiting = feed.waiting %}{% set kind = "podcast" %}{% set item_id = feed.id %}{% set back = "page" %}
+    {% include "fragments/waiting_requests.html" %}
+  </dd>
+  <dt>{{ t("podcasts.labels") }}</dt>
+  <dd>{% for name in feed.labels %}<span class="badge">{{ name }}</span> {% else %}<span class="muted">&ndash;</span>{% endfor %}</dd>
+</dl>
+{% set back = "page" %}
+{% include "fragments/podcast_actions.html" %}
+
+<h2>{{ t("podcasts.episodes") }}</h2>
+{% include "fragments/pager.html" %}
+{% if episodes %}
+<table class="stack" id="episode-list">
+  <thead>
+    <tr>
+      <th>{{ t("podcasts.ep_title") }}</th>
+      <th>{{ t("podcasts.ep_date") }}</th>
+      <th>{{ t("podcasts.ep_duration") }}</th>
+      <th>{{ t("podcasts.ep_heard") }}</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for e in episodes %}
+    <tr id="episode-{{ e.id }}">
+      <td><strong>{{ e.title }}</strong></td>
+      <td data-label="{{ t('podcasts.ep_date') }}">{{ e.published }}</td>
+      <td data-label="{{ t('podcasts.ep_duration') }}">{% if e.duration %}{{ e.duration }}{% else %}&ndash;{% endif %}</td>
+      <td data-label="{{ t('podcasts.ep_heard') }}">
+        {% for name in e.finished_by %}<span class="badge">{{ name }}</span> {% endfor %}
+        {% for name in e.started_by %}<span class="badge muted" title="{{ t('podcasts.ep_started') }}">{{ name }} &hellip;</span> {% endfor %}
+        {% if not e.finished_by and not e.started_by %}<span class="muted">&ndash;</span>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>{{ t("podcasts.episodes_none") }}</p>
+{% endif %}
+{% include "fragments/pager.html" %}
+{% endblock %}

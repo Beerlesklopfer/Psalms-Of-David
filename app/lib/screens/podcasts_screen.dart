@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../format.dart';
 import '../l10n/app_localizations.dart';
+import '../labels.dart';
 import '../player_controller.dart';
 import '../podcasts.dart';
 import '../server/api_client.dart';
 import '../widgets.dart';
+import 'labels_ui.dart';
 
 /// The state of the podcast list: loading, adding. Owned by the page or the library, shown by
 /// [PodcastsBody], operated by [PodcastsActions].
@@ -22,12 +24,23 @@ class PodcastsController extends ChangeNotifier {
   String? error;
   bool _disposed = false;
 
+  /// The labels the list is narrowed to (a podcast must carry all of them).
+  Set<String> chosen = {};
+
+  void choose(Set<String> labels) {
+    chosen = labels;
+    notifyListeners();
+  }
+
   Future<void> load() async {
     final api = this.api;
     if (api == null) return;
     try {
       final rows = await api.podcasts();
       podcasts = rows.map(Podcast.fromJson).toList();
+      // A chosen label that no podcast carries any more is dropped.
+      final rest = labelCountsOf([for (final p in podcasts!) p.labels]);
+      chosen.removeWhere((c) => !rest.any((r) => r.$1.toLowerCase() == c.toLowerCase()));
       error = null;
     } on ApiException catch (e) {
       error = e.code;
@@ -93,14 +106,40 @@ class PodcastsBody extends StatelessWidget {
         if (controller.error != null) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.serverUnreachableShort)));
         if (list == null) return const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator()));
         if (list.isEmpty) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.noPodcastsYet)));
-        return SliverList.builder(
-          itemCount: list.length,
+        final labels = LabelsScope.maybeOf(context);
+        final shown = [for (final p in list) if (carriesAll(p.labels, controller.chosen)) p];
+        return SliverMainAxisGroup(slivers: [
+          SliverToBoxAdapter(
+            child: LabelFilter(
+              counts: labelCountsOf([for (final p in list) p.labels]),
+              chosen: controller.chosen,
+              onChanged: controller.choose,
+            ),
+          ),
+          SliverList.builder(
+          itemCount: shown.length,
           itemBuilder: (context, i) {
-            final p = list[i];
+            final p = shown[i];
             return ListTile(
               leading: const Icon(Icons.podcasts),
               title: Text(p.title),
-              subtitle: Text(!p.approved ? l.waitingForRelease : (p.error != null ? l.feedProblem : p.description), maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(!p.approved ? l.waitingForRelease : (p.error != null ? l.feedProblem : p.description), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  FeedLabelsLine(
+                    idKey: 'podcast-${p.id}',
+                    title: p.title,
+                    labels: p.labels,
+                    canLabel: p.canLabel,
+                    onSave: (words) async {
+                      final ok = labels != null && await labels.savePodcast(p.id, words, current: p.labels, title: p.title);
+                      if (ok) await controller.load();
+                      return ok;
+                    },
+                  ),
+                ],
+              ),
               trailing: p.approved && p.unheard > 0 ? Badge(label: Text('${p.unheard}')) : null,
               enabled: p.approved,
               onTap: p.approved
@@ -108,7 +147,8 @@ class PodcastsBody extends StatelessWidget {
                   : null,
             );
           },
-        );
+        ),
+        ]);
       },
     );
   }

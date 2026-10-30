@@ -38,11 +38,13 @@ pub fn routes() -> Router<ApiState> {
         .route("/api/v1/podcasts/{id}", delete(unfollow))
         .route("/api/v1/podcasts/{id}/episodes", get(episodes))
         .route("/api/v1/podcasts/{id}/assign", post(assign_podcast))
+        .route("/api/v1/podcasts/{id}/labels", put(put_podcast_labels).patch(patch_podcast_labels))
         .route("/api/v1/episodes/{id}/state", put(episode_state))
         .route("/api/v1/radio", get(radio).post(add_station))
         .route("/api/v1/radio/search", get(search_radio))
         .route("/api/v1/radio/{id}", delete(remove_station))
         .route("/api/v1/radio/{id}/assign", post(assign_station))
+        .route("/api/v1/radio/{id}/labels", put(put_station_labels).patch(patch_station_labels))
 }
 
 fn not_found() -> ApiError {
@@ -66,8 +68,109 @@ fn may_assign(d: &Device) -> ApiResult<()> {
     matches!(d.role, Role::Admin | Role::Member).then_some(()).ok_or_else(refuse)
 }
 
+/// Whether this user may set the labels of a podcast or a station they follow: an administrator always, a member for what they follow themselves
+/// (a podcast or a station belongs to the family, not to one person); a child or a guest never.
+fn may_label(d: &Device, mine: bool) -> bool {
+    d.role == Role::Admin || (d.role == Role::Member && mine)
+}
+
 async fn podcasts(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
-    Ok(Json(json!({ "podcasts": s.store.subscriptions(d.user_id, false).await? })))
+    let labels = s.store.podcast_labels().await?;
+    let list: Vec<Value> = s
+        .store
+        .subscriptions(d.user_id, false)
+        .await?
+        .into_iter()
+        .map(|p| {
+            let mut j = json!(p);
+            j["labels"] = json!(labels.get(&p.id).cloned().unwrap_or_default());
+            j["can_label"] = json!(may_label(&d, true));
+            j
+        })
+        .collect();
+    Ok(Json(json!({ "podcasts": list })))
+}
+
+#[derive(Deserialize)]
+struct LabelsRequest {
+    labels: Vec<String>,
+}
+
+/// Labels to add and to take off, sent later by a device that had no connection (the labels others set in the meantime stay).
+#[derive(Deserialize)]
+struct LabelsDelta {
+    #[serde(default)]
+    add: Vec<String>,
+    #[serde(default)]
+    remove: Vec<String>,
+}
+
+/// Adds and removes labels of a podcast the user follows. Same rule as the PUT.
+async fn patch_podcast_labels(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, Json(req): Json<LabelsDelta>) -> ApiResult<Json<Value>> {
+    let mine = s.store.follows(d.user_id, id).await?;
+    if !mine && d.role != Role::Admin {
+        return Err(not_found());
+    }
+    if !may_label(&d, mine) {
+        return Err(refuse());
+    }
+    match s.store.change_podcast_labels(id, &req.add, &req.remove).await {
+        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+        Ok(None) => Err(not_found()),
+        Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Adds and removes labels of a radio station among the favourites of the user. Same rule as the PUT.
+async fn patch_station_labels(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, Json(req): Json<LabelsDelta>) -> ApiResult<Json<Value>> {
+    let mine = s.store.favorite_stations(d.user_id, false).await?.iter().any(|st| st.id == id);
+    if !mine && d.role != Role::Admin {
+        return Err(not_found());
+    }
+    if !may_label(&d, mine) {
+        return Err(refuse());
+    }
+    match s.store.change_station_labels(id, &req.add, &req.remove).await {
+        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+        Ok(None) => Err(not_found()),
+        Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Sets the labels of a podcast the user follows (all at once). Everybody who has the podcast sees its labels.
+async fn put_podcast_labels(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, Json(req): Json<LabelsRequest>) -> ApiResult<Json<Value>> {
+    let mine = s.store.follows(d.user_id, id).await?;
+    if !mine && d.role != Role::Admin {
+        return Err(not_found());
+    }
+    if !may_label(&d, mine) {
+        return Err(refuse());
+    }
+    match s.store.set_podcast_labels(id, &req.labels).await {
+        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+        Ok(None) => Err(not_found()),
+        Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Sets the labels of a radio station among the favourites of the user. Same rule as for podcasts.
+async fn put_station_labels(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, Json(req): Json<LabelsRequest>) -> ApiResult<Json<Value>> {
+    let mine = s.store.favorite_stations(d.user_id, false).await?.iter().any(|st| st.id == id);
+    if !mine && d.role != Role::Admin {
+        return Err(not_found());
+    }
+    if !may_label(&d, mine) {
+        return Err(refuse());
+    }
+    match s.store.set_station_labels(id, &req.labels).await {
+        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+        Ok(None) => Err(not_found()),
+        Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
+        Err(e) => Err(e.into()),
+    }
 }
 
 #[derive(Deserialize)]
@@ -170,7 +273,20 @@ async fn search_radio(State(s): State<ApiState>, _d: Device, Query(q): Query<Sea
 }
 
 async fn radio(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
-    Ok(Json(json!({ "stations": s.store.favorite_stations(d.user_id, false).await? })))
+    let labels = s.store.station_labels().await?;
+    let list: Vec<Value> = s
+        .store
+        .favorite_stations(d.user_id, false)
+        .await?
+        .into_iter()
+        .map(|st| {
+            let mut j = json!(st);
+            j["labels"] = json!(labels.get(&st.id).cloned().unwrap_or_default());
+            j["can_label"] = json!(may_label(&d, true));
+            j
+        })
+        .collect();
+    Ok(Json(json!({ "stations": list })))
 }
 
 #[derive(Deserialize)]

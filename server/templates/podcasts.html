@@ -1,0 +1,78 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "podcasts" %}
+
+{% block title %}{{ t("podcasts.title") }}{% endblock %}
+
+{% block content %}
+{% from "fragments/ui.html" import icon %}
+<div class="page-head">
+  <h1>{{ t("podcasts.title") }}</h1>
+  <button type="button" class="btn" data-dialog="dlg-new-podcast">{{ icon("plus") }}<span>{{ t("podcasts.add") }}</span></button>
+</div>
+
+<p class="lead">{{ t("podcasts.intro") }}</p>
+
+<form class="search-bar" method="get" action="/admin/podcasts" role="search"
+      hx-get="/admin/podcasts" hx-trigger="submit, input delay:300ms, change" hx-target="#podcast-results" hx-select="#podcast-results" hx-swap="outerHTML" hx-push-url="true" hx-sync="this:replace">
+  <input type="search" name="q" value="{{ q }}" autocomplete="off" spellcheck="false" maxlength="100" placeholder="{{ t('podcasts.search_hint') }}" aria-label="{{ t('books.search') }}">
+  <button type="submit" class="btn">{{ t("books.search") }}</button>
+  {% if searched %}<a class="btn outline" href="/admin/podcasts">{{ t("ui.cancel") }}</a>{% endif %}
+</form>
+<datalist id="label-words">{% for l in label_names %}<option value="{{ l.name }}">{% endfor %}</datalist>
+
+<div id="podcast-results">
+{% include "fragments/pager.html" %}
+{% if feeds %}
+<table class="stack" id="podcast-list">
+  <thead>
+    <tr>
+      <th>{{ t("podcasts.name") }}</th>
+      <th>{{ t("podcasts.followers") }}</th>
+      <th>{{ t("podcasts.labels") }}</th>
+      <th><span class="sr-only">{{ t("users.actions") }}</span></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for feed in feeds %}
+    <tr id="podcast-{{ feed.id }}">
+      <td>
+        <a href="/admin/podcasts/{{ feed.id }}"><strong>{{ feed.title }}</strong></a><br>
+        <small class="muted">{{ feed.url }}</small>
+        {% if feed.last_error %}<br><span class="badge danger" title="{{ feed.last_error }}">{{ t("podcasts.error") }}: {{ feed.last_error }}</span>{% endif %}
+      </td>
+      <td data-label="{{ t('podcasts.followers') }}">
+        {% for name in feed.followers %}<span class="badge">{{ name }}</span> {% else %}<span class="muted">&ndash;</span>{% endfor %}
+        {% set waiting = feed.waiting %}{% set kind = "podcast" %}{% set item_id = feed.id %}{% set back = "" %}
+        {% include "fragments/waiting_requests.html" %}
+      </td>
+      <td data-label="{{ t('podcasts.labels') }}">{% for name in feed.labels %}<span class="badge">{{ name }}</span> {% endfor %}</td>
+      <td class="actions">
+        {% set back = "" %}
+        {% include "fragments/podcast_actions.html" %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p id="podcast-list">{{ t("podcasts.none") }}</p>
+{% endif %}
+{% include "fragments/pager.html" %}
+</div>
+
+<dialog id="dlg-new-podcast" class="window edit-window" aria-labelledby="dlg-new-podcast-title">
+  <div class="window-head"><h3 id="dlg-new-podcast-title">{{ t("podcasts.add") }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+  <div class="window-body">
+    <form id="new-podcast-form" class="dialog-form" method="post" action="/admin/rpc/podcast.add" hx-post="/admin/rpc/podcast.add" hx-swap="none" hx-disabled-elt="find button" data-close-window data-reset>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field span-all"><input type="url" name="url" required maxlength="2000" autocomplete="off" placeholder=" "><span>{{ t("podcasts.address") }}</span></label>
+      <small class="span-all">{{ t("podcasts.add_hint") }}</small>
+      <div class="form-error span-all" role="alert"></div>
+    </form>
+  </div>
+  <div class="window-foot">
+    <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+    <button type="submit" class="btn" form="new-podcast-form">{{ t("podcasts.add") }}</button>
+  </div>
+</dialog>
+{% endblock %}

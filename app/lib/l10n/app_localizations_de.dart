@@ -1460,4 +1460,71 @@ class AppLocalizationsDe extends AppLocalizations {
   String labelsDeleteConfirm(String name, int count) {
     return '\"$name\" bei $count Büchern entfernen?';
   }
+
+  @override
+  String get offlineBannerManual =>
+      'Offline-Modus · nur heruntergeladene Titel werden angezeigt';
+
+  @override
+  String get offlineBannerUnreachable =>
+      'Server nicht erreichbar · nur heruntergeladene Titel werden angezeigt';
+
+  @override
+  String offlinePending(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Änderungen warten auf den Server',
+      one: '1 Änderung wartet auf den Server',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get offlineRetry => 'Erneut versuchen';
+
+  @override
+  String get offlineNeedsNetwork =>
+      'Diese Seite braucht den Server. Sie ist wieder da, sobald du online bist.';
+
+  @override
+  String get offlineSettingTitle => 'Offline-Modus';
+
+  @override
+  String get offlineSettingHint =>
+      'Zeigt nur die auf diesem Gerät heruntergeladenen Titel und fragt den Server nicht. Was du in der Zwischenzeit änderst (Schlagwörter, versteckte Alben, wo du aufgehört hast zu hören), wartet und wird beim Ausschalten gesendet.';
+
+  @override
+  String get offlineSyncNow => 'Änderungen jetzt senden';
+
+  @override
+  String get offlineSyncing => 'Änderungen werden gesendet …';
+
+  @override
+  String get offlineNothingWaits => 'Es warten keine Änderungen.';
+
+  @override
+  String get offlineRejectedTitle => 'Vom Server nicht übernommen';
+
+  @override
+  String offlineRejectedLabels(String title, String reason) {
+    return 'Schlagwörter von „$title“ ($reason)';
+  }
+
+  @override
+  String offlineRejectedHide(String title, String reason) {
+    return 'Verstecken von „$title“ ($reason)';
+  }
+
+  @override
+  String get offlineReasonForbidden => 'nicht erlaubt';
+
+  @override
+  String get offlineReasonGone => 'nicht mehr vorhanden';
+
+  @override
+  String get offlineReasonOther => 'abgelehnt';
+
+  @override
+  String get offlineDismiss => 'OK';
 }

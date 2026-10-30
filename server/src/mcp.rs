@@ -200,7 +200,7 @@ fn tool_list() -> Value {
         },
         {
             "name": "list_labels",
-            "description": "The labels (classic tagging: Gebet, Schule, Gemeinsame Urlaube ...) with the number of albums (`books`) and of single titles (`tracks`, see set_track_labels) that carry each. With ids it lists the labels of those albums instead. A label hangs on the album and everybody who sees the album sees it; the owner of an album sets its labels, an administrator may override. Labels are not the ID3 tags of the files (see get_tags).",
+            "description": "The labels (classic tagging: Gebet, Schule, Gemeinsame Urlaube ...) with the number of albums (`books`), of single titles (`tracks`, see set_track_labels), of podcasts (`podcasts`) and of radio stations (`stations`, see set_feed_labels) that carry each. With ids it lists the labels of those albums instead. A label hangs on the album and everybody who sees the album sees it; the owner of an album sets its labels, an administrator may override. Labels are not the ID3 tags of the files (see get_tags).",
             "inputSchema": { "type": "object", "properties": { "ids": { "type": "array", "items": { "type": "integer" }, "description": "Only the labels of these albums" } } }
         },
         {
@@ -212,6 +212,11 @@ fn tool_list() -> Value {
             "name": "set_track_labels",
             "description": "Gives single titles (tracks) of an album labels of their own (classic tagging, like set_labels, but for the title: a hymn of an album about prayer). The labels of the album stay and count for its titles as well. `tracks` are track ids of the album `id` (see get_album); without them all titles of the album. `add` puts labels on every title, `remove` takes them off, `set` replaces the own labels of each title (an empty list takes them all off); give `set` or `add`/`remove`, not both. Names as for set_labels; at most 10 own labels per title. Without dry_run=false it only reports what would change (the default). Needs a token that may write.",
             "inputSchema": { "type": "object", "properties": { "id": id, "tracks": { "type": "array", "items": { "type": "integer" } }, "add": { "type": "array", "items": { "type": "string" } }, "remove": { "type": "array", "items": { "type": "string" } }, "set": { "type": "array", "items": { "type": "string" } }, "dry_run": { "type": "boolean", "description": "true by default; false writes the labels" } }, "required": ["id"] }
+        },
+        {
+            "name": "set_feed_labels",
+            "description": "Gives podcasts or radio stations labels (classic tagging, like set_labels, so that the labels cover all media of the apps). `kind` is `podcast` or `station`; `names` are the titles or feed addresses of podcasts (see list_podcasts), or the names or stream addresses of stations (see list_stations). `add` puts labels on every one, `remove` takes them off, `set` replaces all labels of each (an empty list takes them all off); give `set` or `add`/`remove`, not both. Names as for set_labels; at most 30 labels per podcast or station. Everybody who has the podcast or the station sees its labels. Without dry_run=false it only reports what would change (the default). Needs a token that may write.",
+            "inputSchema": { "type": "object", "properties": { "kind": { "type": "string", "enum": ["podcast", "station"] }, "names": { "type": "array", "items": { "type": "string" } }, "add": { "type": "array", "items": { "type": "string" } }, "remove": { "type": "array", "items": { "type": "string" } }, "set": { "type": "array", "items": { "type": "string" } }, "dry_run": { "type": "boolean", "description": "true by default; false writes the labels" } }, "required": ["kind", "names"] }
         },
         {
             "name": "set_owner",
@@ -392,7 +397,7 @@ async fn prompt_of(s: &McpState) -> String {
 }
 
 /// The tools that change files; a token that may only read cannot use them.
-const WRITING_TOOLS: [&str; 25] = ["merge_albums", "set_discs_total", "set_labels", "set_track_labels", "move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
+const WRITING_TOOLS: [&str; 26] = ["merge_albums", "set_discs_total", "set_labels", "set_track_labels", "set_feed_labels", "move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
 
 /// A sample call of a tool, for `help_for`.
 fn example_of(tool: &str) -> Value {
@@ -416,6 +421,7 @@ fn example_of(tool: &str) -> Value {
         "set_discs_total" => json!({ "id": 143, "total": 4 }),
         "set_labels" => json!({ "ids": [12, 13], "add": ["Schule"], "dry_run": true }),
         "set_track_labels" => json!({ "id": 12, "tracks": [301, 302], "add": ["Gebet"], "dry_run": true }),
+        "set_feed_labels" => json!({ "kind": "station", "names": ["DWG Lyra"], "add": ["Gebet"], "dry_run": true }),
         "assign_owners" => json!({ "kind": "music", "dry_run": true }),
         "ignore" => json!({ "id": 152, "scope": "work", "what": "duplicate", "note": "both copies are wanted: the school set and the family set" }),
         "unignore" => json!({ "rule": 3 }),
@@ -1003,6 +1009,81 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             }
             Ok(json!({ "dry_run": dry, "changed": changed, "tracks": titles }))
         }
+        "set_feed_labels" => {
+            let dry = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
+            if !dry && !token.can_write {
+                return Err("this token may only read".into());
+            }
+            let kind = text("kind").ok_or("kind is required: podcast or station")?;
+            if kind != "podcast" && kind != "station" {
+                return Err("kind is podcast or station".into());
+            }
+            let wanted: Vec<String> = args.get("names").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).ok_or("names is required")?;
+            let names = |key: &str| -> Result<Option<Vec<String>>, String> {
+                match args.get(key) {
+                    None | Some(Value::Null) => Ok(None),
+                    Some(Value::Array(a)) => a.iter().map(|v| v.as_str().map(str::to_owned).ok_or_else(|| format!("{key} holds names, as text"))).collect::<Result<Vec<_>, _>>().map(Some),
+                    _ => Err(format!("{key} is a list of names")),
+                }
+            };
+            let (add, remove, set) = (names("add")?, names("remove")?, names("set")?);
+            if set.is_some() && (add.is_some() || remove.is_some()) {
+                return Err("give set, or add and remove, not both".into());
+            }
+            if set.is_none() && add.is_none() && remove.is_none() {
+                return Err("nothing to do: give add, remove or set".into());
+            }
+            for n in add.iter().chain(remove.iter()).chain(set.iter()).flatten() {
+                if crate::labels::clean_name(n).is_none() {
+                    return Err(format!("{n:?} is not a usable label (1 to 40 characters, no comma, semicolon or bar)"));
+                }
+            }
+            // The items by title or address: (id, shown name, address).
+            let items: Vec<(i64, String, String)> = if kind == "podcast" {
+                s.store.feeds_with_followers().await.map_err(db)?.into_iter().map(|(f, _)| (f.id, f.title, f.url)).collect()
+            } else {
+                s.store.stations_with_owners().await.map_err(db)?.into_iter().map(|(st, _)| (st.id, st.name, st.stream_url)).collect()
+            };
+            let current = if kind == "podcast" { s.store.podcast_labels().await.map_err(db)? } else { s.store.station_labels().await.map_err(db)? };
+            let (mut rows, mut changed) = (Vec::new(), 0usize);
+            for key in &wanted {
+                let hits: Vec<&(i64, String, String)> = items.iter().filter(|(_, name, address)| address == key.trim() || name.eq_ignore_ascii_case(key.trim())).collect();
+                let [(id, name, _)] = hits.as_slice() else {
+                    rows.push(json!({ "name": key, "problem": if hits.is_empty() { format!("no {kind} called {key}") } else { format!("several are called {key}; use the address") } }));
+                    continue;
+                };
+                let before = current.get(id).cloned().unwrap_or_default();
+                let after: Vec<String> = match &set {
+                    Some(set) => set.clone(),
+                    None => {
+                        let gone: Vec<String> = remove.iter().flatten().map(|r| r.trim().to_lowercase()).collect();
+                        before.iter().filter(|b| !gone.contains(&b.to_lowercase())).cloned().chain(add.iter().flatten().cloned()).collect()
+                    }
+                };
+                let result = if dry {
+                    let mut seen: Vec<String> = Vec::new();
+                    after.iter().filter_map(|n| crate::labels::clean_name(n)).filter(|n| { let low = n.to_lowercase(); if seen.contains(&low) { false } else { seen.push(low); true } }).collect::<Vec<_>>()
+                } else {
+                    let saved = if kind == "podcast" { s.store.set_podcast_labels(*id, &after).await } else { s.store.set_station_labels(*id, &after).await };
+                    saved.map_err(|e| match e { crate::error::Error::InvalidName => "too many labels (at most 30) or an unusable name".to_owned(), e => db(e) })?.unwrap_or_default()
+                };
+                let differs = {
+                    let (mut a, mut b): (Vec<String>, Vec<String>) = (before.iter().map(|x| x.to_lowercase()).collect(), result.iter().map(|x| x.to_lowercase()).collect());
+                    a.sort();
+                    b.sort();
+                    a != b
+                };
+                if differs {
+                    changed += 1;
+                    if !dry {
+                        tracing::info!(token = %token.name, %kind, item = %name, labels = ?result, "labels of a podcast or station changed");
+                        s.store.log_tag_change(&token.name, 0, "", "Labels", &format!("{name}: {}", before.join(", ")), &result.join(", ")).await.map_err(db)?;
+                    }
+                }
+                rows.push(json!({ "name": name, "before": before, "after": result, "changed": differs }));
+            }
+            Ok(json!({ "dry_run": dry, "kind": kind, "changed": changed, "items": rows }))
+        }
         "set_owner" => {
             if !token.can_write {
                 return Err("this token may only read".into());
@@ -1253,12 +1334,13 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 None => None,
             };
             let feeds = s.store.feeds_with_followers().await.map_err(db)?;
+            let podcast_labels = s.store.podcast_labels().await.map_err(db)?;
             let list: Vec<Value> = feeds
                 .into_iter()
                 .filter(|(_, followers)| only.as_ref().is_none_or(|n| followers.iter().any(|(f, _)| f.eq_ignore_ascii_case(n))))
                 .map(|(feed, followers)| {
                     let names: Vec<String> = followers.iter().map(|(n, ok)| if *ok { n.clone() } else { format!("{n} (waiting)") }).collect();
-                    json!({ "title": feed.title, "feed_url": feed.url, "followed_by": names, "last_error": feed.last_error })
+                    json!({ "title": feed.title, "feed_url": feed.url, "followed_by": names, "last_error": feed.last_error, "labels": podcast_labels.get(&feed.id).cloned().unwrap_or_default() })
                 })
                 .collect();
             Ok(json!({ "podcasts": list }))
@@ -1332,7 +1414,8 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
         }
         "list_stations" => {
             let stations = s.store.stations_with_owners().await.map_err(db)?;
-            let list: Vec<Value> = stations.into_iter().map(|(st, owners)| json!({ "name": st.name, "stream_url": st.stream_url, "homepage": st.homepage, "logo_url": st.logo_url, "favourite_of": owners })).collect();
+            let station_labels = s.store.station_labels().await.map_err(db)?;
+            let list: Vec<Value> = stations.into_iter().map(|(st, owners)| json!({ "labels": station_labels.get(&st.id).cloned().unwrap_or_default(), "name": st.name, "stream_url": st.stream_url, "homepage": st.homepage, "logo_url": st.logo_url, "favourite_of": owners })).collect();
             Ok(json!({ "stations": list }))
         }
         "edit_stations" => {

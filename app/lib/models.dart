@@ -63,6 +63,24 @@ class Track {
   final int number;
   final String title;
   final Duration length;
+
+  /// The same title with other labels of its own (a change made on the device, before the server has it).
+  Track withLabels(List<String> labels) => Track(
+    disc: disc,
+    number: number,
+    title: title,
+    length: length,
+    path: path,
+    partId: partId,
+    url: url,
+    live: live,
+    plays: plays,
+    lastPlayedAt: lastPlayedAt,
+    itemId: itemId,
+    bookTitle: bookTitle,
+    bookAuthor: bookAuthor,
+    labels: labels,
+  );
 }
 
 class Book {
@@ -152,4 +170,27 @@ class Book {
   /// The numbers of the CDs the book has, in order: 1, 2 and 4 when CD 3 is not (yet) there. A list of the CDs goes by these, not by
   /// the count: counting from 1 to [discs] would show an empty CD 3 and never reach CD 4.
   List<int> get discNumbers => (tracks.map((t) => t.disc).toSet().toList()..sort());
+
+  /// The same book with other titles, labels or hiding: what the offline view and a change made without the server need.
+  Book copyWith({List<Track>? tracks, List<String>? labels, List<String>? trackLabels, bool? hidden}) => Book(
+    id: id,
+    title: title,
+    author: author,
+    color: color,
+    tracks: tracks ?? this.tracks,
+    cover: cover,
+    coverUrl: coverUrl,
+    blurb: blurb,
+    kind: kind,
+    narrator: narrator,
+    genre: genre,
+    plays: plays,
+    lastPlayedAt: lastPlayedAt,
+    hidden: hidden ?? this.hidden,
+    owner: owner,
+    labels: labels ?? this.labels,
+    canLabel: canLabel,
+    canShare: canShare,
+    trackLabels: trackLabels ?? this.trackLabels,
+  );
 }

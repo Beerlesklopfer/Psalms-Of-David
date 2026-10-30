@@ -1,0 +1,29 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{#- What an administrator does with one podcast (`feed`): read it again, change its labels, remove it, decide the requests of children.
+    `back` is "page" on the page of the podcast itself (the answer comes back there; after a removal the list), empty on the list. -#}{% from "fragments/ui.html" import icon %}
+<div class="row-actions">
+  <button type="button" class="btn outline" data-dialog="dlg-podcast-{{ feed.id }}">{{ icon("tag") }}<span>{{ t("podcasts.labels_edit") }}</span></button>
+  <form method="post" action="/admin/rpc/podcast.refresh" hx-post="/admin/rpc/podcast.refresh" hx-swap="none" hx-disabled-elt="find button">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ feed.id }}"><input type="hidden" name="back" value="{{ back }}">
+    <button type="submit" class="btn outline">{{ t("podcasts.refresh") }}</button>
+  </form>
+  <form method="post" action="/admin/rpc/podcast.delete" hx-post="/admin/rpc/podcast.delete" hx-swap="none" hx-confirm="{{ t('podcasts.confirm_delete') }}" hx-disabled-elt="find button">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ feed.id }}"><input type="hidden" name="back" value="{{ back }}">
+    <button type="submit" class="btn outline danger-outline">{{ t("podcasts.delete") }}</button>
+  </form>
+</div>
+<dialog id="dlg-podcast-{{ feed.id }}" class="window edit-window" aria-labelledby="dlg-podcast-title-{{ feed.id }}">
+  <div class="window-head"><h3 id="dlg-podcast-title-{{ feed.id }}">{{ t("podcasts.labels_edit") }}: {{ feed.title }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+  <div class="window-body">
+    <form id="podcast-form-{{ feed.id }}" class="dialog-form" method="post" action="/admin/rpc/podcast.labels" hx-post="/admin/rpc/podcast.labels" hx-swap="none" hx-disabled-elt="find button" data-close-window>
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ feed.id }}"><input type="hidden" name="back" value="{{ back }}">
+      <div class="chips-field span-all"><span class="chips-label">{{ t("podcasts.labels") }}</span><input type="text" name="labels" maxlength="500" list="label-words" autocomplete="off" value="{{ feed.labels|join(', ') }}" data-chips data-suggest="/admin/rpc/label.suggest" data-add="{{ t('books.labels_add') }}" data-remove="{{ t('books.labels_remove') }}" data-placeholder="{{ t('books.labels_new') }}"></div>
+      <small class="span-all">{{ t("books.labels_hint") }}</small>
+      <div class="form-error span-all" role="alert"></div>
+    </form>
+  </div>
+  <div class="window-foot">
+    <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+    <button type="submit" class="btn" form="podcast-form-{{ feed.id }}">{{ t("ui.save") }}</button>
+  </div>
+</dialog>

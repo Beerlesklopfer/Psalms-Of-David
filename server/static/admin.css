@@ -755,3 +755,13 @@ dialog.book-window[open] { height: min(44rem, calc(100vh - 2rem)); }
 .track-labels { display: flex; flex-direction: column; gap: .5rem; margin-top: .5rem; max-height: 22rem; overflow: auto; }
 .track-label-row { display: flex; flex-direction: column; gap: .15rem; }
 .track-label-title { font-size: .9rem; color: var(--muted, #6b6252); }
+
+/* Podcasts and radio: the way back from the page of a podcast, its facts, and the requests of children that wait for a release. */
+.breadcrumb { margin: 0 0 .5rem; color: var(--muted); }
+.breadcrumb a { text-decoration: none; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: .4rem 1rem; margin: 0 0 1rem; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.waiting-request { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-top: .4rem; }
+.waiting-request form { margin: 0; }
+@media (max-width: 40rem) { .facts { grid-template-columns: 1fr; } }

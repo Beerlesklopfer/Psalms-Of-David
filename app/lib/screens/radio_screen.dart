@@ -5,11 +5,13 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../labels.dart';
 import '../player_controller.dart';
 import '../podcasts.dart';
 import '../server/api_client.dart';
 import '../station_logo.dart';
 import '../widgets.dart';
+import 'labels_ui.dart';
 
 /// The state of the station list; same roles as [PodcastsController].
 class RadioController extends ChangeNotifier {
@@ -22,12 +24,23 @@ class RadioController extends ChangeNotifier {
   String? error;
   bool _disposed = false;
 
+  /// The labels the list is narrowed to (a station must carry all of them).
+  Set<String> chosen = {};
+
+  void choose(Set<String> labels) {
+    chosen = labels;
+    notifyListeners();
+  }
+
   Future<void> load() async {
     final api = this.api;
     if (api == null) return;
     try {
       final rows = await api.stations();
       stations = rows.map(Station.fromJson).toList();
+      // A chosen label that no station carries any more is dropped.
+      final rest = labelCountsOf([for (final s in stations!) s.labels]);
+      chosen.removeWhere((c) => !rest.any((r) => r.$1.toLowerCase() == c.toLowerCase()));
       error = null;
     } on ApiException catch (e) {
       error = e.code;
@@ -95,14 +108,42 @@ class RadioBody extends StatelessWidget {
         if (controller.error != null) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.serverUnreachableShort)));
         if (list == null) return const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator()));
         if (list.isEmpty) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.noStationsYet)));
-        return SliverList.builder(
-          itemCount: list.length,
+        final labels = LabelsScope.maybeOf(context);
+        final shown = [for (final s in list) if (carriesAll(s.labels, controller.chosen)) s];
+        return SliverMainAxisGroup(slivers: [
+          SliverToBoxAdapter(
+            child: LabelFilter(
+              counts: labelCountsOf([for (final s in list) s.labels]),
+              chosen: controller.chosen,
+              onChanged: controller.choose,
+            ),
+          ),
+          SliverList.builder(
+          itemCount: shown.length,
           itemBuilder: (context, i) {
-            final s = list[i];
+            final s = shown[i];
             return ListTile(
               leading: _StationIcon(station: s),
               title: Text(s.name),
-              subtitle: s.approved ? null : Text(l.waitingForRelease),
+              subtitle: s.approved && s.labels.isEmpty && !s.canLabel
+                  ? null
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (!s.approved) Text(l.waitingForRelease),
+                        FeedLabelsLine(
+                          idKey: 'station-${s.id}',
+                          title: s.name,
+                          labels: s.labels,
+                          canLabel: s.canLabel,
+                          onSave: (words) async {
+                            final ok = labels != null && await labels.saveStation(s.id, words, current: s.labels, title: s.name);
+                            if (ok) await controller.load();
+                            return ok;
+                          },
+                        ),
+                      ],
+                    ),
               enabled: s.approved,
               trailing: IconButton(
                 tooltip: l.stationRemove,
@@ -121,7 +162,8 @@ class RadioBody extends StatelessWidget {
                   : null,
             );
           },
-        );
+        ),
+        ]);
       },
     );
   }

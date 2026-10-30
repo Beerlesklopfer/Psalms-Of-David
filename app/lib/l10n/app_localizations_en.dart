@@ -1443,4 +1443,71 @@ class AppLocalizationsEn extends AppLocalizations {
   String labelsDeleteConfirm(String name, int count) {
     return 'Take \"$name\" off $count books?';
   }
+
+  @override
+  String get offlineBannerManual =>
+      'Offline mode · only downloaded titles are shown';
+
+  @override
+  String get offlineBannerUnreachable =>
+      'Server not reachable · only downloaded titles are shown';
+
+  @override
+  String offlinePending(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count changes wait for the server',
+      one: '1 change waits for the server',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get offlineRetry => 'Try again';
+
+  @override
+  String get offlineNeedsNetwork =>
+      'This page needs the server. It is back as soon as you are online.';
+
+  @override
+  String get offlineSettingTitle => 'Offline mode';
+
+  @override
+  String get offlineSettingHint =>
+      'Shows only the titles downloaded on this device and does not ask the server. What you change meanwhile (labels, hidden albums, where you stopped listening) waits and is sent when you switch it off.';
+
+  @override
+  String get offlineSyncNow => 'Send changes now';
+
+  @override
+  String get offlineSyncing => 'Sending changes …';
+
+  @override
+  String get offlineNothingWaits => 'No changes are waiting.';
+
+  @override
+  String get offlineRejectedTitle => 'Not accepted by the server';
+
+  @override
+  String offlineRejectedLabels(String title, String reason) {
+    return 'Labels of “$title” ($reason)';
+  }
+
+  @override
+  String offlineRejectedHide(String title, String reason) {
+    return 'Hiding “$title” ($reason)';
+  }
+
+  @override
+  String get offlineReasonForbidden => 'not allowed';
+
+  @override
+  String get offlineReasonGone => 'no longer there';
+
+  @override
+  String get offlineReasonOther => 'refused';
+
+  @override
+  String get offlineDismiss => 'OK';
 }

@@ -2636,3 +2636,208 @@ mod tests {
         assert!(any == "0.0.0.0:8484" || !any.starts_with("0.0.0.0"), "{any}");
     }
 }
+
+
+// Podcasts and radio stations
+
+pub async fn podcasts_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
+    render(state.ui.podcasts(&state.store, view_for(&s, &q), q.q.as_deref(), q.page, q.per).await)
+}
+
+/// One podcast with its episodes in pages.
+pub async fn podcast_page(State(state): State<AppState>, s: AdminSession, axum::extract::Path(id): axum::extract::Path<i64>, Query(q): Query<PageQuery>) -> Response {
+    match state.ui.podcast_page(&state.store, view_for(&s, &q), id, q.page, q.per).await {
+        Ok(Some(html)) => Html(html).into_response(),
+        Ok(None) => plain_failure(StatusCode::NOT_FOUND, "err.not_found", s.lang, false),
+        Err(e) => {
+            tracing::error!(error = %e, "the page of a podcast failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+pub async fn radio_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
+    render(state.ui.radio(&state.store, view_for(&s, &q), q.q.as_deref(), q.page, q.per).await)
+}
+
+/// What the forms of the podcast and radio pages send; every procedure reads the fields it needs.
+#[derive(Deserialize, Default)]
+pub struct FeedForm {
+    #[serde(default)]
+    id: i64,
+    #[serde(default)]
+    url: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    stream_url: String,
+    #[serde(default)]
+    homepage: String,
+    #[serde(default)]
+    logo_url: String,
+    #[serde(default)]
+    labels: String,
+    #[serde(default)]
+    profile: i64,
+    /// `1` releases, anything else refuses.
+    #[serde(default)]
+    release: String,
+    /// `page`: the form sits on the page of one podcast, so the answer goes back there (a removal leads to the list).
+    #[serde(default)]
+    back: String,
+}
+
+/// The answer to a change on the podcast or radio pages. `Ok(Some(path))` leads somewhere else (after a removal on the page of the podcast itself),
+/// `Ok(None)` reloads the page that asked, with its page of the list and its search.
+fn feed_done(s: &AdminSession, list: &str, here: &str, outcome: std::result::Result<Option<&str>, Failure>) -> Response {
+    match (outcome, s.htmx) {
+        (Ok(Some(path)), true) => (StatusCode::OK, [("hx-redirect", path.to_owned())]).into_response(),
+        (Ok(None), true) => (StatusCode::OK, [("hx-refresh", "true")]).into_response(),
+        (Ok(Some(path)), false) => Redirect::to(&format!("{path}?msg=ok.saved")).into_response(),
+        (Ok(None), false) => Redirect::to(&format!("{here}{}msg=ok.saved", sep(here))).into_response(),
+        (Err(f), _) => finish(s, list, Err(f)),
+    }
+}
+
+fn invalid_feed() -> Failure {
+    Failure::new(StatusCode::UNPROCESSABLE_ENTITY, "err.invalid_feed").at("url")
+}
+
+/// The labels of a form as a list for a podcast or a station; the field they are typed in is marked when one is not usable.
+fn feed_labels(text: &str) -> std::result::Result<Vec<String>, Failure> {
+    crate::labels::parse_list(text).filter(|l| l.len() <= crate::labels::MAX_PER_FEED).ok_or_else(|| Failure::from(Error::InvalidName).at("labels"))
+}
+
+fn podcast_here(f: &FeedForm) -> String {
+    if f.back == "page" { format!("/admin/podcasts/{}", f.id) } else { "/admin/podcasts".to_owned() }
+}
+
+/// Adds a podcast by the address of its feed (or of a page that points to it); nobody follows it yet.
+pub async fn podcast_add(State(state): State<AppState>, s: AdminSession, Form(f): Form<FeedForm>) -> Response {
+    let outcome = async {
+        let url = f.url.trim();
+        if !crate::feeds::is_web_address(url) {
+            return Err(invalid_feed());
+        }
+        let (address, feed) = crate::api_feeds::read_feed(&state.store, url).await.map_err(|_| invalid_feed())?;
+        state.store.save_feed(&address, &feed).await.map_err(|_| invalid_feed())?;
+        Ok(None)
+    }
+    .await;
+    feed_done(&s, "/admin/podcasts", "/admin/podcasts", outcome)
+}
+
+pub async fn podcast_labels(State(state): State<AppState>, s: AdminSession, Form(f): Form<FeedForm>) -> Response {
+    let outcome = async {
+        let names = feed_labels(&f.labels)?;
+        match state.store.set_podcast_labels(f.id, &names).await {
+            Ok(Some(_)) => Ok(None),
+            Ok(None) => Err(Failure::not_found()),
+            Err(e) => Err(Failure::from(e).at("labels")),
+        }
+    }
+    .await;
+    feed_done(&s, &podcast_here(&f), &podcast_here(&f), outcome)
+}
+
+/// Reads the feed again now; a feed that cannot be read keeps the reason, which the list shows.
+pub async fn podcast_refresh(State(state): State<AppState>, s: AdminSession, Form(f): Form<FeedForm>) -> Response {
+    let outcome = async {
+        let url = state.store.feed_url(f.id).await?.ok_or_else(Failure::not_found)?;
+        if let Err(why) = crate::feeds::refresh_feed(&state.store, f.id, &url).await {
+            tracing::info!(feed = f.id, %why, "a feed could not be read");
+        }
+        Ok(None)
+    }
+    .await;
+    let here = podcast_here(&f);
+    feed_done(&s, &here, &here, outcome.map_err(|f: Failure| f))
+}
+
+pub async fn podcast_delete(State(state): State<AppState>, s: AdminSession, Form(f): Form<FeedForm>) -> Response {
+    let outcome = async {
+        state.store.feed_head(f.id).await?.ok_or_else(Failure::not_found)?;
+        state.store.delete_feed(f.id).await?;
+        Ok(if f.back == "page" { Some("/admin/podcasts") } else { None })
+    }
+    .await;
+    feed_done(&s, "/admin/podcasts", "/admin/podcasts", outcome)
+}
+
+/// An administrator releases or refuses what a child asked for: a podcast.
+pub async fn podcast_decide(State(state): State<AppState>, s: AdminSession, Form(f): Form<FeedForm>) -> Response {
+    let outcome = async {
+        state.store.decide_release("podcast", f.profile, f.id, f.release == "1").await?;
+        Ok(None)
+    }
+    .await;
+    let here = podcast_here(&f);
+    feed_done(&s, &here, &here, outcome.map_err(|f: Failure| f))
+}
+
+/// Checks the fields of a station: a name, an http or https stream address, and the home page and logo (when given) the same.
+fn station_fields(f: &FeedForm) -> std::result::Result<(), Failure> {
+    let web = crate::feeds::is_web_address;
+    let name = f.name.trim();
+    if name.is_empty() || name.chars().count() > 200 {
+        return Err(Failure::input().at("name"));
+    }
+    if !web(f.stream_url.trim()) {
+        return Err(Failure::input().at("stream_url"));
+    }
+    if !f.homepage.trim().is_empty() && !web(f.homepage.trim()) {
+        return Err(Failure::input().at("homepage"));
+    }
+    if !f.logo_url.trim().is_empty() && !web(f.logo_url.trim()) {
+        return Err(Failure::input().at("logo_url"));
+    }
+    Ok(())
+}
+
+pub async fn station_add(State(state): State<AppState>, s: AdminSession, Form(f): Form<FeedForm>) -> Response {
+    let outcome = async {
+        station_fields(&f)?;
+        state.store.save_station(f.stream_url.trim(), f.name.trim(), Some(f.homepage.trim()), Some(f.logo_url.trim())).await.map_err(|_| Failure::input().at("stream_url"))?;
+        Ok(None)
+    }
+    .await;
+    feed_done(&s, "/admin/radio", "/admin/radio", outcome)
+}
+
+/// Changes a station and its labels with one Save; an empty home page or logo removes it.
+pub async fn station_update(State(state): State<AppState>, s: AdminSession, Form(f): Form<FeedForm>) -> Response {
+    let outcome = async {
+        station_fields(&f)?;
+        let names = feed_labels(&f.labels)?;
+        if !state.store.stations_with_owners().await?.iter().any(|(st, _)| st.id == f.id) {
+            return Err(Failure::not_found());
+        }
+        state.store.update_station(f.id, Some(&f.name), Some(&f.stream_url), Some(&f.homepage), Some(&f.logo_url)).await.map_err(|_| Failure::input().at("stream_url"))?;
+        state.store.set_station_labels(f.id, &names).await.map_err(|e| Failure::from(e).at("labels"))?;
+        Ok(None)
+    }
+    .await;
+    feed_done(&s, "/admin/radio", "/admin/radio", outcome)
+}
+
+pub async fn station_delete(State(state): State<AppState>, s: AdminSession, Form(f): Form<FeedForm>) -> Response {
+    let outcome = async {
+        if !state.store.stations_with_owners().await?.iter().any(|(st, _)| st.id == f.id) {
+            return Err(Failure::not_found());
+        }
+        state.store.delete_station(f.id).await?;
+        Ok(None)
+    }
+    .await;
+    feed_done(&s, "/admin/radio", "/admin/radio", outcome)
+}
+
+/// An administrator releases or refuses what a child asked for: a station.
+pub async fn station_decide(State(state): State<AppState>, s: AdminSession, Form(f): Form<FeedForm>) -> Response {
+    let outcome = async {
+        state.store.decide_release("station", f.profile, f.id, f.release == "1").await?;
+        Ok(None)
+    }
+    .await;
+    feed_done(&s, "/admin/radio", "/admin/radio", outcome)
+}

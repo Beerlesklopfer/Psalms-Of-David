@@ -7,6 +7,8 @@ import '../audio/audio_backend.dart';
 import '../l10n/app_localizations.dart';
 import '../labels.dart';
 import '../library_hiding.dart';
+import '../offline/offline_controller.dart';
+import '../offline/offline_view.dart';
 import '../player_controller.dart';
 import '../server/credentials.dart';
 import '../server/device_pairing.dart';
@@ -21,8 +23,12 @@ class SettingsScreen extends StatelessWidget {
     this.credentials,
     this.onDisconnect,
     this.devicePairing,
+    this.onSync,
     this.openUrl = _launch,
   });
+
+  /// Looks for the server and sends the changes that wait (the offline mode); null in demo mode.
+  final Future<void> Function()? onSync;
 
   /// Opens an address in the browser of the system; replaced in tests.
   final Future<bool> Function(Uri url) openUrl;
@@ -58,6 +64,11 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           _BufferSlider(player: player),
+          const SizedBox(height: 24),
+        ],
+        // The offline mode: the switch, what waits for the server, what the server did not take.
+        if (OfflineScope.maybeOf(context) case final offline? when creds != null) ...[
+          OfflineCard(controller: offline, onSync: onSync == null ? null : () => onSync!()),
           const SizedBox(height: 24),
         ],
         // The own library: what this profile hid, and whether it is still listed.

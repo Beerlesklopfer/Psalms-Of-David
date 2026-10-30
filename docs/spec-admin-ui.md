@@ -316,3 +316,28 @@ each list as usable as the book's (at most 10 per title), nothing changes when o
 The list of titles below a book shows the own labels of a title as badges. **The filter of the list (several labels allowed, any of them) finds a book by the labels of its
 titles too**, and the numbers in the filter count books (the book or one of its titles carries the label). A title has the labels of its album besides; they are
 not repeated per title. The MCP tool `set_track_labels` and the API `PUT /api/v1/items/{id}/parts/{part}/labels` do the same (see `spec-app-api.md`).
+
+### Labels of podcasts and radio stations
+
+Schema 0047 (`podcast_label`, `station_label`): the labels of the family also hang on podcasts and radio stations ("the tagging of the app covers ALL media").
+The labels of those are set with `set_feed_labels`, in the app, and on the web pages for podcasts and radio (below); the label list of the administration (`labels()`) counts `books`, `tracks`, `podcasts` and `stations`, and renaming or
+deleting a label reaches all of them. Photos and e-books have no rows yet, playlists are personal: neither carries labels.
+
+### Podcasts and radio on the web (project owner, 2026-10-30)
+
+Two pages in the menu "Media" (administrators only; every change is a procedure `/admin/rpc/podcast.*` or `station.*` with the CSRF token of the page).
+
+- **`/admin/podcasts`**: the feeds of the library, sorted by title, with a search field (title or address) and the pager of the media lists (size from the setting
+  `list_page_size`, 10 to 500 per page, `page`, `per` and `q` in the address, `hx-push-url` like the books page). The list is complete (after the search) *before* it
+  is cut into pages. A row shows title, address, the last error of reading, who follows it, the labels, and the requests of children that wait (release or refuse
+  as on the page "Requests"). Buttons: edit the labels (a window with the chips entry and one Save), read now, remove (with the follows, episodes and the state of
+  listening; a label that only it carried goes), and "Add podcast" (the address of a feed or of a page that points to it; it is read at once and nobody follows it yet).
+- **`/admin/podcasts/{id}`**: the page of one podcast, with a breadcrumb back to the list: address, last error, followers, requests, labels, the same buttons, and
+  its **episodes**, newest first, in pages (the same pager, per page 10 to 500) with the date, the length and who heard them to the end or began them. The size of an
+  episode is not stored (the feed gives it rarely, and nothing downloads the audio), so there is no column for it. After a removal on this page the answer leads to the list.
+- **`/admin/radio`**: the stations with a search (name or address), the same pager, and per station the stream address, home page, favourite of, waiting requests, labels. A
+  window changes name, stream address, home page, logo and labels with one Save (an empty home page or logo removes it); the same fields add a station. A wrong
+  address or an address another station has gets a ring around its input (`X-Invalid-Field`). The recording of radio and the DWGload library are hidden features that are
+  designed but not built (see `spec-radio-recording-and-dwgload.md`); when they are, their settings belong on this page and show only if `/etc/david.toml` enables them.
+- After a successful change the page answers `HX-Refresh` (it reloads with its page of the list and its search); without JavaScript the form posts and the answer
+  redirects to the page with `msg=ok.saved`.

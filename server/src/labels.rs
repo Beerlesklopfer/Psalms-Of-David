@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Labels: the classic tagging (project owner, 2026-10-30: "everything about prayer, or school, or common holidays"). A label is a free word of the
-//! list of the family; a book (audiobook or album) and a single title (track) carry any number of them, and the lists are filtered by them. Not to be mixed up with the
-//! ID3 tags of the files (`tags.rs`). One list for the family, kept by the administrators; a label that no book carries any more goes.
+//! list of the family; a book (audiobook or album), a single title (track), a podcast and a radio station carry any number of them, and the lists are filtered by them. Not to be mixed up with the
+//! ID3 tags of the files (`tags.rs`). One list for the family, kept by the administrators; a label that nothing carries any more goes.
 
 use std::collections::HashMap;
 
@@ -38,12 +38,17 @@ pub fn parse_list(text: &str) -> Option<Vec<String>> {
     Some(out)
 }
 
-/// One label of the list with the number of books and of single titles that carry it.
+/// Most labels one podcast or one radio station carries.
+pub const MAX_PER_FEED: usize = 30;
+
+/// One label of the list with the number of books, of single titles, of podcasts and of radio stations that carry it.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct LabelRow {
     pub name: String,
     pub books: i64,
     pub tracks: i64,
+    pub podcasts: i64,
+    pub stations: i64,
 }
 
 impl Store {
@@ -54,10 +59,10 @@ impl Store {
             .reader
             .query_all_raw(Statement::from_string(
                 DbBackend::Sqlite,
-                "SELECT l.name, (SELECT COUNT(*) FROM book_label bl WHERE bl.label_id = l.id), (SELECT COUNT(*) FROM track_label tl WHERE tl.label_id = l.id) FROM label l ORDER BY l.name COLLATE NOCASE",
+                "SELECT l.name, (SELECT COUNT(*) FROM book_label bl WHERE bl.label_id = l.id), (SELECT COUNT(*) FROM track_label tl WHERE tl.label_id = l.id), (SELECT COUNT(*) FROM podcast_label pl WHERE pl.label_id = l.id), (SELECT COUNT(*) FROM station_label sl WHERE sl.label_id = l.id) FROM label l ORDER BY l.name COLLATE NOCASE",
             ))
             .await?;
-        rows.iter().map(|r| Ok(LabelRow { name: r.try_get_by_index(0)?, books: r.try_get_by_index(1)?, tracks: r.try_get_by_index(2)? })).collect()
+        rows.iter().map(|r| Ok(LabelRow { name: r.try_get_by_index(0)?, books: r.try_get_by_index(1)?, tracks: r.try_get_by_index(2)?, podcasts: r.try_get_by_index(3)?, stations: r.try_get_by_index(4)? })).collect()
     }
 
     /// The labels of every book: book id -> names, by name.
@@ -140,13 +145,63 @@ impl Store {
         Ok(out)
     }
 
+    /// The labels of every podcast (feed): feed id -> names, by name.
+    pub async fn podcast_labels(&self) -> Result<HashMap<i64, Vec<String>>> {
+        self.links_by_id("SELECT pl.feed_id, l.name FROM podcast_label pl JOIN label l ON l.id = pl.label_id ORDER BY l.name COLLATE NOCASE").await
+    }
+
+    /// The labels of every radio station: station id -> names, by name.
+    pub async fn station_labels(&self) -> Result<HashMap<i64, Vec<String>>> {
+        self.links_by_id("SELECT sl.station_id, l.name FROM station_label sl JOIN label l ON l.id = sl.label_id ORDER BY l.name COLLATE NOCASE").await
+    }
+
+    async fn links_by_id(&self, sql: &str) -> Result<HashMap<i64, Vec<String>>> {
+        let rows = self.db.reader.query_all_raw(Statement::from_string(DbBackend::Sqlite, sql)).await?;
+        let mut out: HashMap<i64, Vec<String>> = HashMap::new();
+        for r in rows {
+            let (id, name): (i64, String) = (r.try_get_by_index(0)?, r.try_get_by_index(1)?);
+            out.entry(id).or_default().push(name);
+        }
+        Ok(out)
+    }
+
+    /// Gives a podcast (feed) exactly these labels. Returns the labels it has now; `Ok(None)` if there is no such podcast. `Err(InvalidName)` as for books.
+    pub async fn set_podcast_labels(&self, feed_id: i64, names: &[String]) -> Result<Option<Vec<String>>> {
+        if !self.set_labels_of("feed", "podcast_label", "feed_id", feed_id, names, MAX_PER_FEED).await? {
+            return Ok(None);
+        }
+        Ok(Some(self.podcast_labels().await?.remove(&feed_id).unwrap_or_default()))
+    }
+
+    /// Gives a radio station exactly these labels. Same results as `set_podcast_labels`.
+    pub async fn set_station_labels(&self, station_id: i64, names: &[String]) -> Result<Option<Vec<String>>> {
+        if !self.set_labels_of("station", "station_label", "station_id", station_id, names, MAX_PER_FEED).await? {
+            return Ok(None);
+        }
+        Ok(Some(self.station_labels().await?.remove(&station_id).unwrap_or_default()))
+    }
+
+    /// Adds and removes labels of a podcast (the others stay).
+    pub async fn change_podcast_labels(&self, feed_id: i64, add: &[String], remove: &[String]) -> Result<Option<Vec<String>>> {
+        let mut names = self.podcast_labels().await?.remove(&feed_id).unwrap_or_default();
+        change(&mut names, add, remove);
+        self.set_podcast_labels(feed_id, &names).await
+    }
+
+    /// Adds and removes labels of a radio station (the others stay).
+    pub async fn change_station_labels(&self, station_id: i64, add: &[String], remove: &[String]) -> Result<Option<Vec<String>>> {
+        let mut names = self.station_labels().await?.remove(&station_id).unwrap_or_default();
+        change(&mut names, add, remove);
+        self.set_station_labels(station_id, &names).await
+    }
+
     /// The album a title belongs to.
     pub async fn book_of_track(&self, track_id: i64) -> Result<Option<i64>> {
         let row = self.db.reader.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT book_id FROM track WHERE id = ?", [track_id.into()])).await?;
         Ok(row.map(|r| r.try_get_by_index(0)).transpose()?)
     }
 
-    /// Replaces the labels of one row of `table` (`book` or `track`) in its link table. `false` if the row does not exist.
+    /// Replaces the labels of one row of `table` (`book`, `track`, `feed` or `station`) in its link table. `false` if the row does not exist.
     async fn set_labels_of(&self, table: &str, link: &str, column: &str, id: i64, names: &[String], max: usize) -> Result<bool> {
         let mut wanted: Vec<String> = Vec::new();
         for raw in names {
@@ -212,6 +267,9 @@ impl Store {
             Some(target) => {
                 w.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "INSERT OR IGNORE INTO book_label (book_id, label_id) SELECT book_id, ? FROM book_label WHERE label_id = ?", [target.into(), id.into()])).await?;
                 w.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "INSERT OR IGNORE INTO track_label (track_id, label_id) SELECT track_id, ? FROM track_label WHERE label_id = ?", [target.into(), id.into()])).await?;
+                for (link, column) in [("podcast_label", "feed_id"), ("station_label", "station_id")] {
+                    w.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, format!("INSERT OR IGNORE INTO {link} ({column}, label_id) SELECT {column}, ? FROM {link} WHERE label_id = ?"), [target.into(), id.into()])).await?;
+                }
                 w.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "DELETE FROM label WHERE id = ?", [id.into()])).await?;
             }
             None => {
@@ -228,9 +286,16 @@ impl Store {
     }
 
     pub(crate) async fn drop_unused_labels(&self) -> Result<()> {
-        self.db.writer.execute_raw(Statement::from_string(DbBackend::Sqlite, "DELETE FROM label WHERE id NOT IN (SELECT label_id FROM book_label) AND id NOT IN (SELECT label_id FROM track_label)")).await?;
+        self.db.writer.execute_raw(Statement::from_string(DbBackend::Sqlite, "DELETE FROM label WHERE id NOT IN (SELECT label_id FROM book_label) AND id NOT IN (SELECT label_id FROM track_label) AND id NOT IN (SELECT label_id FROM podcast_label) AND id NOT IN (SELECT label_id FROM station_label)")).await?;
         Ok(())
     }
+}
+
+/// The names after taking `remove` away and putting `add` on.
+fn change(names: &mut Vec<String>, add: &[String], remove: &[String]) {
+    let gone: Vec<String> = remove.iter().map(|r| r.trim().to_lowercase()).collect();
+    names.retain(|n| !gone.contains(&n.to_lowercase()));
+    names.extend(add.iter().cloned());
 }
 
 #[cfg(test)]

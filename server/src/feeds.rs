@@ -72,7 +72,7 @@ pub struct PendingRow {
     pub title: String,
 }
 
-fn is_web_address(url: &str) -> bool {
+pub(crate) fn is_web_address(url: &str) -> bool {
     (url.starts_with("https://") || url.starts_with("http://")) && url.len() <= 2000 && !url.chars().any(|c| c.is_control() || c == ' ')
 }
 
@@ -402,6 +402,8 @@ impl Store {
     /// Removes a station from the library: it disappears from every list of favourites.
     pub async fn delete_station(&self, id: i64) -> Result<()> {
         self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "DELETE FROM station WHERE id = ?", [id.into()])).await?;
+        // A label that only this station carried goes with it.
+        self.drop_unused_labels().await?;
         Ok(())
     }
 
@@ -440,6 +442,81 @@ impl Store {
         };
         self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, sql, [profile_id.into(), target_id.into()])).await?;
         Ok(())
+    }
+}
+
+/// One episode as the administration lists it: what it is and who has heard it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct AdminEpisode {
+    pub id: i64,
+    pub title: String,
+    pub published_at: i64,
+    pub duration_s: Option<i64>,
+    /// The profiles that heard it to the end.
+    pub finished_by: Vec<String>,
+    /// The profiles that began it and have not finished it.
+    pub started_by: Vec<String>,
+}
+
+impl Store {
+    /// One feed without the state of a profile, or `None`.
+    pub async fn feed_head(&self, feed_id: i64) -> Result<Option<FeedHead>> {
+        let row = self
+            .db
+            .reader
+            .query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT id, url, title, last_error FROM feed WHERE id = ?", [feed_id.into()]))
+            .await?;
+        row.map(|r| Ok(FeedHead { id: r.try_get_by_index(0)?, url: r.try_get_by_index(1)?, title: r.try_get_by_index(2)?, last_error: r.try_get_by_index(3)? })).transpose()
+    }
+
+    /// Removes a podcast from the library: its episodes, the follows and the state of listening go with it, and a label that only it carried.
+    pub async fn delete_feed(&self, feed_id: i64) -> Result<()> {
+        self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "DELETE FROM feed WHERE id = ?", [feed_id.into()])).await?;
+        self.drop_unused_labels().await?;
+        Ok(())
+    }
+
+    /// How many episodes a feed has.
+    pub async fn episode_count(&self, feed_id: i64) -> Result<usize> {
+        let row = self.db.reader.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT count(*) FROM episode WHERE feed_id = ?", [feed_id.into()])).await?;
+        Ok(row.map(|r| r.try_get_by_index::<i64>(0)).transpose()?.unwrap_or(0).max(0) as usize)
+    }
+
+    /// A page of the episodes of a feed, newest first, with who has heard each one (for the administration).
+    pub async fn admin_episodes(&self, feed_id: i64, limit: usize, offset: usize) -> Result<Vec<AdminEpisode>> {
+        let rows = self
+            .db
+            .reader
+            .query_all_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT id, title, published_at, duration_s FROM episode WHERE feed_id = ? ORDER BY published_at DESC, id DESC LIMIT ? OFFSET ?",
+                [feed_id.into(), (limit as i64).into(), (offset as i64).into()],
+            ))
+            .await?;
+        let mut out: Vec<AdminEpisode> = rows
+            .into_iter()
+            .map(|r| Ok(AdminEpisode { id: r.try_get_by_index(0)?, title: r.try_get_by_index(1)?, published_at: r.try_get_by_index(2)?, duration_s: r.try_get_by_index(3)?, finished_by: Vec::new(), started_by: Vec::new() }))
+            .collect::<Result<_>>()?;
+        if out.is_empty() {
+            return Ok(out);
+        }
+        let states = self
+            .db
+            .reader
+            .query_all_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT st.episode_id, p.name, st.finished FROM episode_state st JOIN profile p ON p.id = st.profile_id JOIN episode e ON e.id = st.episode_id \
+                 WHERE e.feed_id = ? AND (st.finished = 1 OR st.position_ms > 0) ORDER BY p.name COLLATE NOCASE",
+                [feed_id.into()],
+            ))
+            .await?;
+        for r in states {
+            let (episode, name, finished): (i64, String, i64) = (r.try_get_by_index(0)?, r.try_get_by_index(1)?, r.try_get_by_index(2)?);
+            if let Some(e) = out.iter_mut().find(|e| e.id == episode) {
+                if finished == 1 { e.finished_by.push(name) } else { e.started_by.push(name) }
+            }
+        }
+        Ok(out)
     }
 }
 

@@ -3985,3 +3985,233 @@ async fn the_book_window_sets_the_labels_of_single_titles_with_its_save_and_the_
     let rows = |b: &str| b.matches("<tr id=\"book-").count();
     assert_eq!(rows(&send(&a, get("/admin/books?label=stille", &plain)).await.body), 1);
 }
+
+// Podcasts and radio stations
+
+fn feed_of(title: &str, episodes: usize) -> david_server::podcast::Feed {
+    david_server::podcast::Feed {
+        title: title.into(),
+        site: None,
+        image: None,
+        description: String::new(),
+        episodes: (0..episodes)
+            .map(|i| david_server::podcast::Episode { guid: format!("{title}-{i}"), title: format!("{title} Folge {i:02}"), audio_url: format!("https://example.org/{title}/{i}.mp3"), published_ms: 1_700_000_000_000 + i as i64 * 86_400_000, duration_s: Some(600 + i as i64), description: String::new() })
+            .collect(),
+    }
+}
+
+/// Counts how often a text appears in a page.
+fn times(page: &str, text: &str) -> usize {
+    page.matches(text).count()
+}
+
+#[tokio::test]
+async fn the_pages_of_podcasts_and_radio_are_for_administrators_only() {
+    let a = app().await;
+    let anna = a.store.create_profile("Anna", false).await.unwrap();
+    let token = a.store.create_session(anna, Role::Member, None).await.unwrap();
+    let cookie = format!("david_session={token}");
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    for path in ["/admin/podcasts", "/admin/podcasts/1", "/admin/radio"] {
+        assert_eq!(send(&a, get(path, &o)).await.status, StatusCode::FORBIDDEN, "{path}");
+    }
+    let csrf = csrf_token(&token);
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, ..Default::default() };
+    for rpc in ["podcast.add", "podcast.labels", "podcast.refresh", "podcast.delete", "podcast.decide", "station.add", "station.update", "station.delete", "station.decide"] {
+        assert_eq!(send(&a, post(&format!("/admin/rpc/{rpc}"), &form(&[("id", "1")]), &o)).await.status, StatusCode::FORBIDDEN, "{rpc}");
+    }
+    // Without the token of the page even an administrator is refused.
+    let (cookie, _) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, ..Default::default() };
+    let id = a.store.save_feed("https://example.org/a.xml", &feed_of("Alpha", 1)).await.unwrap();
+    let r = send(&a, post("/admin/rpc/podcast.delete", &form(&[("id", &id.to_string())]), &o)).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    assert!(a.store.feed_head(id).await.unwrap().is_some(), "nothing was removed");
+}
+
+#[tokio::test]
+async fn the_list_of_podcasts_is_cut_into_pages_after_the_search() {
+    let a = app().await;
+    let (cookie, _) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    for i in 0..12 {
+        a.store.save_feed(&format!("https://example.org/feed{i:02}.xml"), &feed_of(&format!("Cast {i:02}"), 1)).await.unwrap();
+    }
+    a.store.save_feed("https://example.org/other.xml", &feed_of("Andacht", 1)).await.unwrap();
+    // 13 podcasts, 10 on a page: the first page has ten rows and the links to the second.
+    let first = send(&a, get("/admin/podcasts?per=10", &o)).await;
+    assert_eq!(first.status, StatusCode::OK);
+    assert_eq!(times(&first.body, "<tr id=\"podcast-"), 10, "ten rows on the first page: {}", first.body.len());
+    assert!(first.body.contains("1&ndash;10 of 13"), "{}", first.body);
+    assert!(first.body.contains("per=10&amp;page=2"));
+    // The second page has the other three, in the same order (by title, the list is complete before it is cut).
+    let second = send(&a, get("/admin/podcasts?per=10&page=2", &o)).await;
+    assert_eq!(times(&second.body, "<tr id=\"podcast-"), 3);
+    assert!(second.body.contains("11&ndash;13 of 13"));
+    assert!(second.body.contains("Cast 11") && !second.body.contains("Cast 00"));
+    // A page beyond the end shows the last one.
+    let beyond = send(&a, get("/admin/podcasts?per=10&page=99", &o)).await;
+    assert!(beyond.body.contains("11&ndash;13 of 13"));
+    // The search is applied before the cut: one hit, no pager of several pages, and the text stays in the field.
+    let found = send(&a, get("/admin/podcasts?q=andacht&per=10", &o)).await;
+    assert_eq!(times(&found.body, "<tr id=\"podcast-"), 1);
+    assert!(found.body.contains("Andacht") && !found.body.contains("Cast 00"));
+    assert!(found.body.contains("value=\"andacht\""));
+    // The links of a page keep the search and the size.
+    let many = send(&a, get("/admin/podcasts?q=cast&per=10", &o)).await;
+    assert!(many.body.contains("q=cast&amp;per=10&amp;page=2"), "{}", many.body);
+    // The answer for htmx is the page too (the search form picks the results out of it).
+    let hx = Opts { cookie: Some(&cookie), htmx: true, ..Default::default() };
+    assert_eq!(send(&a, get("/admin/podcasts?q=cast", &hx)).await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_podcast_has_its_own_page_with_its_episodes_in_pages() {
+    let a = app().await;
+    let (cookie, _) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    let id = a.store.save_feed("https://example.org/long.xml", &feed_of("Long", 23)).await.unwrap();
+    let boss = a.store.list_profiles().await.unwrap().iter().find(|p| p.name == "Boss").unwrap().id;
+    // The list leads to the page of the podcast.
+    let list = send(&a, get("/admin/podcasts", &o)).await;
+    assert!(list.body.contains(&format!("href=\"/admin/podcasts/{id}\"")));
+    // The newest episode comes first; ten on a page, the way back to the list is there.
+    let page = send(&a, get(&format!("/admin/podcasts/{id}?per=10"), &o)).await;
+    assert_eq!(page.status, StatusCode::OK);
+    assert_eq!(times(&page.body, "<tr id=\"episode-"), 10);
+    let newest = page.body.find("Long Folge 22").expect("the newest episode");
+    let older = page.body.find("Long Folge 13").expect("the tenth episode");
+    assert!(newest < older, "newest first");
+    assert!(!page.body.contains("Long Folge 12"), "the eleventh is on the next page");
+    assert!(page.body.contains("1&ndash;10 of 23"));
+    assert!(page.body.contains("href=\"/admin/podcasts\"") && page.body.contains("class=\"breadcrumb\""));
+    // (the address is escaped as a whole: the slashes come as `&#x2f;`, which the browser reads back)
+    assert!(page.body.contains(&format!("&#x2f;admin&#x2f;podcasts&#x2f;{id}?per=10&amp;page=2")), "the pager leads to the next page of the episodes");
+    let last = send(&a, get(&format!("/admin/podcasts/{id}?per=10&page=3"), &o)).await;
+    assert_eq!(times(&last.body, "<tr id=\"episode-"), 3);
+    assert!(last.body.contains("Long Folge 00") && last.body.contains("21&ndash;23 of 23"));
+    // Who has heard an episode: finished, and begun.
+    let episodes = a.store.episodes(boss, id, 100).await.unwrap();
+    let newest_id = episodes.iter().find(|e| e.title == "Long Folge 22").unwrap().id;
+    a.store.put_episode_state(boss, newest_id, 600_000, true).await.unwrap();
+    let heard = send(&a, get(&format!("/admin/podcasts/{id}?per=10"), &o)).await;
+    assert!(heard.body.contains("<span class=\"badge\">Boss</span>"), "{}", heard.body);
+    // No such podcast.
+    assert_eq!(send(&a, get("/admin/podcasts/9999", &o)).await.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn adding_a_podcast_marks_a_wrong_address_and_labels_are_kept() {
+    let a = app().await;
+    let (cookie, token) = sign_in(&a).await;
+    let hx = Opts { cookie: Some(&cookie), csrf_header: Some(&token), htmx: true, ..Default::default() };
+    // An address that is no web address is refused at once, with the input marked (and nothing is fetched).
+    let r = send(&a, post("/admin/rpc/podcast.add", &form(&[("url", "ftp://example.org/feed.xml")]), &hx)).await;
+    assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(r.header("x-invalid-field"), Some("url"));
+    // Labels with one Save: the dialog closes by the reload of the page; a label that is too long marks the field.
+    let id = a.store.save_feed("https://example.org/l.xml", &feed_of("Labelled", 1)).await.unwrap();
+    let r = send(&a, post("/admin/rpc/podcast.labels", &form(&[("id", &id.to_string()), ("labels", "Gebet, Schule")]), &hx)).await;
+    assert_eq!((r.status, r.header("hx-refresh")), (StatusCode::OK, Some("true")), "{}", r.body);
+    assert_eq!(a.store.podcast_labels().await.unwrap().get(&id).cloned().unwrap_or_default(), vec!["Gebet".to_owned(), "Schule".to_owned()]);
+    let long = "x".repeat(41);
+    let r = send(&a, post("/admin/rpc/podcast.labels", &form(&[("id", &id.to_string()), ("labels", &long)]), &hx)).await;
+    assert_eq!((r.status, r.header("x-invalid-field")), (StatusCode::UNPROCESSABLE_ENTITY, Some("labels")));
+    assert_eq!(a.store.podcast_labels().await.unwrap().get(&id).map(Vec::len), Some(2), "unchanged");
+    // The list shows the labels, and nothing else carries them.
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    let list = send(&a, get("/admin/podcasts", &o)).await;
+    assert!(list.body.contains("Gebet") && list.body.contains("Schule"));
+    // Without JavaScript the same form answers with a redirect to the page.
+    let plain = Opts { cookie: Some(&cookie), csrf_header: Some(&token), ..Default::default() };
+    let r = send(&a, post("/admin/rpc/podcast.labels", &form(&[("id", &id.to_string()), ("labels", "Gebet")]), &plain)).await;
+    assert_eq!((r.status, r.header("location")), (StatusCode::SEE_OTHER, Some("/admin/podcasts?msg=ok.saved")));
+}
+
+#[tokio::test]
+async fn a_podcast_is_removed_and_the_request_of_a_child_decided() {
+    let a = app().await;
+    let (cookie, token) = sign_in(&a).await;
+    let hx = Opts { cookie: Some(&cookie), csrf_header: Some(&token), htmx: true, ..Default::default() };
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    let id = a.store.save_feed("https://example.org/k.xml", &feed_of("Kids", 2)).await.unwrap();
+    let kid = a.store.create_profile("Kid", false).await.unwrap();
+    a.store.subscribe(kid, id, false).await.unwrap();
+    // The request waits: the page of the podcast shows who asked and offers release and refusal.
+    let page = send(&a, get(&format!("/admin/podcasts/{id}"), &o)).await;
+    assert!(page.body.contains("Kid") && page.body.contains("/admin/rpc/podcast.decide"), "{}", page.body);
+    let r = send(&a, post("/admin/rpc/podcast.decide", &form(&[("id", &id.to_string()), ("profile", &kid.to_string()), ("release", "1"), ("back", "page")]), &hx)).await;
+    assert_eq!((r.status, r.header("hx-refresh")), (StatusCode::OK, Some("true")));
+    assert!(a.store.follows(kid, id).await.unwrap(), "released");
+    // Removing from the page of the podcast leads back to the list; the episodes and the follows go with it.
+    let r = send(&a, post("/admin/rpc/podcast.delete", &form(&[("id", &id.to_string()), ("back", "page")]), &hx)).await;
+    assert_eq!((r.status, r.header("hx-redirect")), (StatusCode::OK, Some("/admin/podcasts")));
+    assert!(a.store.feed_head(id).await.unwrap().is_none());
+    assert_eq!(a.store.episode_count(id).await.unwrap(), 0);
+    // Removing it twice: not found.
+    let r = send(&a, post("/admin/rpc/podcast.delete", &form(&[("id", &id.to_string())]), &hx)).await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn radio_stations_are_added_changed_labelled_and_removed() {
+    let a = app().await;
+    let (cookie, token) = sign_in(&a).await;
+    let hx = Opts { cookie: Some(&cookie), csrf_header: Some(&token), htmx: true, ..Default::default() };
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    // A wrong stream address marks its input; nothing is added.
+    let r = send(&a, post("/admin/rpc/station.add", &form(&[("name", "Lyra"), ("stream_url", "rtsp://example.org/live")]), &hx)).await;
+    assert_eq!((r.status, r.header("x-invalid-field")), (StatusCode::UNPROCESSABLE_ENTITY, Some("stream_url")));
+    let r = send(&a, post("/admin/rpc/station.add", &form(&[("name", ""), ("stream_url", "https://example.org/live.mp3")]), &hx)).await;
+    assert_eq!((r.status, r.header("x-invalid-field")), (StatusCode::UNPROCESSABLE_ENTITY, Some("name")));
+    assert!(a.store.stations_with_owners().await.unwrap().is_empty());
+    let r = send(&a, post("/admin/rpc/station.add", &form(&[("name", "Lyra"), ("stream_url", "https://example.org/live.mp3"), ("homepage", "https://example.org/")]), &hx)).await;
+    assert_eq!((r.status, r.header("hx-refresh")), (StatusCode::OK, Some("true")), "{}", r.body);
+    let id = a.store.stations_with_owners().await.unwrap()[0].0.id;
+    // Name, addresses and labels with one Save; an empty home page removes it.
+    let r = send(&a, post("/admin/rpc/station.update", &form(&[("id", &id.to_string()), ("name", "Lyra 2"), ("stream_url", "https://example.org/live2.mp3"), ("homepage", ""), ("logo_url", ""), ("labels", "Gebet")]), &hx)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let station = a.store.stations_with_owners().await.unwrap().remove(0).0;
+    assert_eq!((station.name.as_str(), station.stream_url.as_str(), station.homepage), ("Lyra 2", "https://example.org/live2.mp3", None));
+    assert_eq!(a.store.station_labels().await.unwrap().get(&id).cloned().unwrap_or_default(), vec!["Gebet".to_owned()]);
+    let list = send(&a, get("/admin/radio", &o)).await;
+    assert!(list.body.contains("Lyra 2") && list.body.contains("Gebet"));
+    // A second station with the same address is refused and marks the address.
+    let other = a.store.save_station("https://example.org/other.mp3", "Other", None, None).await.unwrap();
+    let r = send(&a, post("/admin/rpc/station.update", &form(&[("id", &other.to_string()), ("name", "Other"), ("stream_url", "https://example.org/live2.mp3"), ("labels", "")]), &hx)).await;
+    assert_eq!((r.status, r.header("x-invalid-field")), (StatusCode::UNPROCESSABLE_ENTITY, Some("stream_url")));
+    // Removing takes the station and the label that only it carried.
+    let r = send(&a, post("/admin/rpc/station.delete", &form(&[("id", &id.to_string())]), &hx)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(a.store.stations_with_owners().await.unwrap().iter().all(|(s, _)| s.id != id));
+    assert!(a.store.labels().await.unwrap().iter().all(|l| l.name != "Gebet"));
+    assert_eq!(send(&a, post("/admin/rpc/station.delete", &form(&[("id", &id.to_string())]), &hx)).await.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn the_list_of_stations_is_cut_into_pages_after_the_search() {
+    let a = app().await;
+    let (cookie, _) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    for i in 0..12 {
+        a.store.save_station(&format!("https://example.org/s{i:02}.mp3"), &format!("Sender {i:02}"), None, None).await.unwrap();
+    }
+    a.store.save_station("https://example.org/dwg.mp3", "DWG Lyra", None, None).await.unwrap();
+    let first = send(&a, get("/admin/radio?per=10", &o)).await;
+    assert_eq!(times(&first.body, "<tr id=\"station-"), 10);
+    assert!(first.body.contains("1&ndash;10 of 13") && first.body.contains("page=2"));
+    let second = send(&a, get("/admin/radio?per=10&page=2", &o)).await;
+    assert_eq!(times(&second.body, "<tr id=\"station-"), 3);
+    let found = send(&a, get("/admin/radio?q=lyra", &o)).await;
+    assert_eq!(times(&found.body, "<tr id=\"station-"), 1);
+    assert!(found.body.contains("DWG Lyra"));
+}
+
+#[tokio::test]
+async fn the_menu_of_the_media_leads_to_podcasts_and_radio() {
+    let a = app().await;
+    let (cookie, _) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    let page = send(&a, get("/admin/genres", &o)).await;
+    assert!(page.body.contains("href=\"/admin/podcasts\"") && page.body.contains("href=\"/admin/radio\""));
+}

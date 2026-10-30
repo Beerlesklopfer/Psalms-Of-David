@@ -5,7 +5,8 @@
 //! day it was last played.
 //!
 //! The server finds out from the position reports (`PUT /api/v1/progress`), so every app is counted the same way. A track
-//! counts as played when a report comes within `END_MARGIN_MS` of its end. It counts once per pass: it is counted again only
+//! counts as played when a report comes within `END_MARGIN_MS` of its end, or when the app says `finished` in the last fifth of it
+//! (the app sends it at every end of a track, not only at the end of the list). It counts once per pass: it is counted again only
 //! after the position went back before the middle of the track. A book was played completely as often as its least played
 //! track (a track that was never played makes that 0).
 
@@ -45,9 +46,11 @@ pub fn book_plays(tracks: &[TrackPlays]) -> BookPlays {
 impl Store {
     /// Takes note of a position report: counts the track if it reached its end, re-arms it if the listener went back.
     /// True if this report counted a play.
-    pub async fn note_part_progress(&self, profile_id: i64, track_id: i64, position_ms: i64, duration_ms: i64) -> Result<bool> {
+    /// `finished` is the app's word that the track played to its end (the player reached the end of the file): it counts although the report is
+    /// more than `END_MARGIN_MS` before the length in the tags (variable bit rate files are often off by seconds), if the position is in the last fifth.
+    pub async fn note_part_progress(&self, profile_id: i64, track_id: i64, position_ms: i64, duration_ms: i64, finished: bool) -> Result<bool> {
         let run = |sql: &'static str, values: Vec<sea_orm::Value>| Statement::from_sql_and_values(DbBackend::Sqlite, sql, values);
-        if duration_ms > 0 && position_ms + END_MARGIN_MS >= duration_ms {
+        if duration_ms > 0 && (position_ms + END_MARGIN_MS >= duration_ms || (finished && position_ms * 5 >= duration_ms * 4)) {
             self.db.writer.execute_raw(run("INSERT OR IGNORE INTO track_play (profile_id, track_id) VALUES (?, ?)", vec![profile_id.into(), track_id.into()])).await?;
             let counted = self
                 .db

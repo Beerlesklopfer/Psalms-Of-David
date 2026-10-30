@@ -48,3 +48,9 @@ it (release, age, exceptions, the boxes of the matrix in the media list and `boo
   chosen genre narrows every group. Without any owner the music is shown by genre as before.
 - A profile that is deleted leaves its books without owner. Owners are the ground for the photo sync (`docs/spec-photo-sync.md`).
 
+## Offline (2026-10-30)
+
+Hiding and showing a book or an author is kept on the device while the server is out of reach and sent later (`POST /me/hidden` sets the state,
+so a repeat is harmless; the changes are replayed in order). The book leaves the lists at once. See `spec-app-api.md`, "Offline mode and
+synchronisation".
+

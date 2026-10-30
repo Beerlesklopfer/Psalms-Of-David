@@ -684,7 +684,7 @@ impl Store {
     /// anything an app would show changes, and an app that sees the same value need not reload.
     pub async fn library_version(&self) -> Result<String> {
         use sha2::{Digest, Sha256};
-        const QUERIES: [&str; 6] = [
+        const QUERIES: [&str; 8] = [
             "SELECT coalesce(group_concat(id || ':' || title || ':' || author_id || ':' || released || ':' || coalesce(min_age, '') || ':' || \
              quota_exempt || ':' || coalesce(description, '') || ':' || coalesce(genre_id, ''), '|'), '') FROM (SELECT * FROM book ORDER BY id)",
             "SELECT coalesce(group_concat(id || ':' || name || ':' || position || ':' || visible, '|'), '') FROM (SELECT * FROM genre ORDER BY id)",
@@ -693,6 +693,8 @@ impl Store {
             "SELECT coalesce(group_concat(book_id || ':' || profile_id, '|'), '') FROM (SELECT * FROM book_release ORDER BY book_id, profile_id)",
             "SELECT coalesce(group_concat(book_id || ':' || name, '|'), '') FROM (SELECT bl.book_id, l.name FROM book_label bl JOIN label l ON l.id = bl.label_id ORDER BY bl.book_id, l.name)",
             "SELECT coalesce(group_concat(track_id || ':' || name, '|'), '') FROM (SELECT tl.track_id, l.name FROM track_label tl JOIN label l ON l.id = tl.label_id ORDER BY tl.track_id, l.name)",
+            "SELECT coalesce(group_concat(feed_id || ':' || name, '|'), '') FROM (SELECT pl.feed_id, l.name FROM podcast_label pl JOIN label l ON l.id = pl.label_id ORDER BY pl.feed_id, l.name)",
+            "SELECT coalesce(group_concat(station_id || ':' || name, '|'), '') FROM (SELECT sl.station_id, l.name FROM station_label sl JOIN label l ON l.id = sl.label_id ORDER BY sl.station_id, l.name)",
         ];
         let mut hasher = Sha256::new();
         for q in QUERIES {

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'package:flutter/widgets.dart';
 
+import 'models.dart';
+import 'offline/offline_controller.dart';
 import 'server/api_client.dart' show ApiException;
 
 /// A book that this profile hid (`docs/spec-library-hiding.md`).
@@ -85,6 +87,19 @@ class HidingController extends ChangeNotifier {
   HidingApi? api;
   HiddenState state = const HiddenState();
 
+  /// Offline mode: what the person hides or shows is then kept for the server (and takes effect in the lists at once), and so is a change that
+  /// fails for want of a connection. The app sets the four; without them every change goes to the server at once.
+  OfflineController? offline;
+
+  /// The book of this id as the app has it now.
+  Book? Function(String id)? bookOf;
+
+  /// The books of the lists now.
+  Iterable<Book> Function()? booksNow;
+
+  /// Takes a book out of the lists of the app.
+  void Function(String id)? removeBook;
+
   /// The code of the last refusal or failure, or null.
   String? error;
 
@@ -110,14 +125,58 @@ class HidingController extends ChangeNotifier {
   Future<bool> hideBook(String bookId, bool hidden) {
     final id = int.tryParse(bookId);
     if (id == null) return Future.value(false);
-    return _change((a) => a.hideBook(id, hidden));
+    return _change((a) => a.hideBook(id, hidden), keep: () => _keepBook(bookId, id, hidden));
   }
 
   Future<bool> hideAuthor(String name, String kind, bool hidden) =>
-      _change((a) => a.hideAuthor(name, kind, hidden));
+      _change((a) => a.hideAuthor(name, kind, hidden), keep: () => _keepAuthor(name, kind, hidden));
 
-  Future<bool> _change(Future<HiddenState> Function(HidingApi) call) async {
+  /// Keeps "hide this book" for the server and shows the effect now: the book leaves the lists (unless hidden books are shown), the list of the
+  /// hidden ones has it. The server decides when the lists are loaded again.
+  bool _keepBook(String bookId, int id, bool hidden) {
+    final off = offline;
+    if (off == null) return false;
+    final book = bookOf?.call(bookId);
+    off.outbox.addHideBook(id, hidden, title: book?.title ?? '');
+    final others = [for (final b in state.books) if (b.id != id) b];
+    state = HiddenState(
+      showHidden: state.showHidden,
+      books: hidden ? [...others, HiddenBook(id: id, title: book?.title ?? '', author: book?.author ?? '')] : others,
+      authors: state.authors,
+    );
+    if (hidden && !state.showHidden) removeBook?.call(bookId);
+    error = null;
+    off.touch();
+    _notify();
+    return true;
+  }
+
+  bool _keepAuthor(String name, String kind, bool hidden) {
+    final off = offline;
+    if (off == null) return false;
+    off.outbox.addHideAuthor(name, kind, hidden);
+    bool same(HiddenAuthor a) => a.name.toLowerCase() == name.toLowerCase() && a.kind == kind;
+    final others = [for (final a in state.authors) if (!same(a)) a];
+    state = HiddenState(
+      showHidden: state.showHidden,
+      books: state.books,
+      // An entry the device made has no number of the server yet; the next load of the state brings the real one.
+      authors: hidden ? [...others, HiddenAuthor(id: -1, name: name, kind: kind)] : others,
+    );
+    if (hidden && !state.showHidden) {
+      for (final b in List.of(booksNow?.call() ?? const <Book>[])) {
+        if (b.author.toLowerCase() == name.toLowerCase() && (kind.isEmpty || b.kind == kind)) removeBook?.call(b.id);
+      }
+    }
+    error = null;
+    off.touch();
+    _notify();
+    return true;
+  }
+
+  Future<bool> _change(Future<HiddenState> Function(HidingApi) call, {bool Function()? keep}) async {
     final a = api;
+    if (keep != null && offline?.active == true) return keep();
     if (a == null) return false;
     try {
       state = await call(a);
@@ -126,6 +185,7 @@ class HidingController extends ChangeNotifier {
       onChanged?.call();
       return true;
     } on ApiException catch (e) {
+      if (e.code == 'network' && keep != null && keep()) return true;
       error = e.code;
       _notify();
       return false;

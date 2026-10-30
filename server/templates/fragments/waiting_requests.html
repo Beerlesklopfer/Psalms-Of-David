@@ -1,0 +1,15 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{#- The requests of children for `item` (`waiting`): release or refuse each. `kind` is "podcast" or "station", `back` as in podcast_actions.html. -#}
+{% for w in waiting %}
+<div class="waiting-request">
+  <span class="badge muted">{{ w.name }} &middot; {{ t("podcasts.waiting") }}</span>
+  <form method="post" action="/admin/rpc/{{ kind }}.decide" hx-post="/admin/rpc/{{ kind }}.decide" hx-swap="none" hx-disabled-elt="find button">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ item_id }}"><input type="hidden" name="profile" value="{{ w.profile_id }}"><input type="hidden" name="back" value="{{ back }}"><input type="hidden" name="release" value="1">
+    <button type="submit" class="btn">{{ t("releases.release") }}</button>
+  </form>
+  <form method="post" action="/admin/rpc/{{ kind }}.decide" hx-post="/admin/rpc/{{ kind }}.decide" hx-swap="none" hx-confirm="{{ t('releases.confirm_refuse') }}" hx-disabled-elt="find button">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ item_id }}"><input type="hidden" name="profile" value="{{ w.profile_id }}"><input type="hidden" name="back" value="{{ back }}"><input type="hidden" name="release" value="0">
+    <button type="submit" class="btn outline danger-outline">{{ t("releases.refuse") }}</button>
+  </form>
+</div>
+{% endfor %}

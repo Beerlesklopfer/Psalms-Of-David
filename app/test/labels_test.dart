@@ -43,6 +43,20 @@ class FakeLabels implements LabelApi {
   }
 
   @override
+  Future<List<String>> setPodcastLabels(int id, List<String> labels) async {
+    managed.add('podcast:$id:${labels.join('|')}');
+    if (refuse != null) throw refuse!;
+    return labels;
+  }
+
+  @override
+  Future<List<String>> setStationLabels(int id, List<String> labels) async {
+    managed.add('station:$id:${labels.join('|')}');
+    if (refuse != null) throw refuse!;
+    return labels;
+  }
+
+  @override
   Future<List<String>> setLabels(int id, List<String> labels) async {
     calls.add((id, labels));
     if (refuse != null) throw refuse!;

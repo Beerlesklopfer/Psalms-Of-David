@@ -77,6 +77,82 @@ Future<void> showTrackLabelEditor(BuildContext context, Book book, Track track) 
   );
 }
 
+/// Opens the editor for the labels of a podcast or a radio station (the same list of labels as for books); [onSave] saves them on the server.
+Future<void> showFeedLabelEditor(
+  BuildContext context, {
+  required List<String> initial,
+  required String title,
+  required Future<bool> Function(List<String> words) onSave,
+}) {
+  final controller = LabelsScope.maybeOf(context);
+  if (controller == null) return Future.value();
+  final library = PlayerScope.maybeOf(context)?.library ?? const <Book>[];
+  return showDialog<void>(
+    context: context,
+    builder: (_) => LabelEditor(
+      initial: initial,
+      library: library,
+      title: title,
+      extra: [for (final (name, _) in controller.list.labels) name],
+      onSave: onSave,
+    ),
+  );
+}
+
+/// The labels of a podcast or a station in its list entry: a small chip for each and, for those who may set them, a chip that opens the editor.
+/// [idKey] makes the keys of the chips unique in a list (`podcast-3`).
+class FeedLabelsLine extends StatelessWidget {
+  const FeedLabelsLine({
+    super.key,
+    required this.idKey,
+    required this.title,
+    required this.labels,
+    required this.canLabel,
+    required this.onSave,
+  });
+
+  final String idKey;
+  final String title;
+  final List<String> labels;
+  final bool canLabel;
+  final Future<bool> Function(List<String> words) onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final controller = LabelsScope.maybeOf(context);
+    final editable = canLabel && controller != null && controller.available;
+    if (labels.isEmpty && !editable) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 2,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          for (final name in labels)
+            Chip(
+              key: ValueKey('feed-label-$idKey-$name'),
+              label: Text(name),
+              labelStyle: Theme.of(context).textTheme.labelSmall,
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+            ),
+          if (editable)
+            ActionChip(
+              key: ValueKey('feed-labels-edit-$idKey'),
+              avatar: const Icon(Icons.sell_outlined, size: 16),
+              label: Text(labels.isEmpty ? l.labelsEdit : l.labelsTitle),
+              labelStyle: Theme.of(context).textTheme.labelSmall,
+              visualDensity: VisualDensity.compact,
+              onPressed: () => showFeedLabelEditor(context, initial: labels, title: title, onSave: onSave),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// The labels of one title as small chips, and, for the owner and an administrator, a button that opens the editor.
 class TrackLabels extends StatelessWidget {
   const TrackLabels({super.key, required this.book, required this.track});
@@ -143,6 +219,7 @@ class LabelEditor extends StatefulWidget {
     required this.onSave,
     required this.library,
     this.title,
+    this.extra = const [],
   });
 
   /// The labels the book (or the title) has now.
@@ -156,6 +233,9 @@ class LabelEditor extends StatefulWidget {
 
   /// The books that are known: the labels in use are suggested from them.
   final List<Book> library;
+
+  /// More labels in use to suggest (the ones of podcasts and stations that no book carries).
+  final List<String> extra;
 
   @override
   State<LabelEditor> createState() => _LabelEditorState();
@@ -242,7 +322,16 @@ class _LabelEditorState extends State<LabelEditor> {
                   child: RawAutocomplete<String>(
                     textEditingController: _text,
                     focusNode: _focus,
-                    optionsBuilder: (value) => labelSuggestions(widget.library, value.text, _words),
+                    optionsBuilder: (value) {
+                      final fits = labelSuggestions(widget.library, value.text, _words);
+                      final needle = value.text.trim().toLowerCase();
+                      final seen = {for (final f in fits) f.toLowerCase(), for (final w in _words) w.toLowerCase()};
+                      return [
+                        ...fits,
+                        for (final e in widget.extra)
+                          if (!seen.contains(e.toLowerCase()) && (needle.isEmpty || e.toLowerCase().contains(needle))) e,
+                      ];
+                    },
                     onSelected: (name) {
                       _add(name);
                     },

@@ -1,0 +1,105 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "radio" %}
+
+{% block title %}{{ t("radio.title") }}{% endblock %}
+
+{% block content %}
+{% from "fragments/ui.html" import icon %}
+<div class="page-head">
+  <h1>{{ t("radio.title") }}</h1>
+  <button type="button" class="btn" data-dialog="dlg-new-station">{{ icon("plus") }}<span>{{ t("radio.add") }}</span></button>
+</div>
+
+<p class="lead">{{ t("radio.intro") }}</p>
+
+<form class="search-bar" method="get" action="/admin/radio" role="search"
+      hx-get="/admin/radio" hx-trigger="submit, input delay:300ms, change" hx-target="#station-results" hx-select="#station-results" hx-swap="outerHTML" hx-push-url="true" hx-sync="this:replace">
+  <input type="search" name="q" value="{{ q }}" autocomplete="off" spellcheck="false" maxlength="100" placeholder="{{ t('radio.search_hint') }}" aria-label="{{ t('books.search') }}">
+  <button type="submit" class="btn">{{ t("books.search") }}</button>
+  {% if searched %}<a class="btn outline" href="/admin/radio">{{ t("ui.cancel") }}</a>{% endif %}
+</form>
+<datalist id="label-words">{% for l in label_names %}<option value="{{ l.name }}">{% endfor %}</datalist>
+
+<div id="station-results">
+{% include "fragments/pager.html" %}
+{% if stations %}
+<table class="stack" id="station-list">
+  <thead>
+    <tr>
+      <th>{{ t("radio.name") }}</th>
+      <th>{{ t("radio.favourite_of") }}</th>
+      <th>{{ t("radio.labels") }}</th>
+      <th><span class="sr-only">{{ t("users.actions") }}</span></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for station in stations %}
+    <tr id="station-{{ station.id }}">
+      <td>
+        <strong>{{ station.name }}</strong><br>
+        <small class="muted">{{ station.stream_url }}</small>
+        {% if station.homepage %}<br><small><a href="{{ station.homepage }}" rel="noopener">{{ station.homepage }}</a></small>{% endif %}
+      </td>
+      <td data-label="{{ t('radio.favourite_of') }}">
+        {% for name in station.favourite %}<span class="badge">{{ name }}</span> {% else %}<span class="muted">&ndash;</span>{% endfor %}
+        {% set waiting = station.waiting %}{% set kind = "station" %}{% set item_id = station.id %}{% set back = "" %}
+        {% include "fragments/waiting_requests.html" %}
+      </td>
+      <td data-label="{{ t('radio.labels') }}">{% for name in station.labels %}<span class="badge">{{ name }}</span> {% endfor %}</td>
+      <td class="actions">
+        <div class="row-actions">
+          <button type="button" class="btn outline" data-dialog="dlg-station-{{ station.id }}">{{ icon("edit") }}<span>{{ t("radio.edit") }}</span></button>
+          <form method="post" action="/admin/rpc/station.delete" hx-post="/admin/rpc/station.delete" hx-swap="none" hx-confirm="{{ t('radio.confirm_delete') }}" hx-disabled-elt="find button">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ station.id }}">
+            <button type="submit" class="btn outline danger-outline">{{ t("radio.delete") }}</button>
+          </form>
+        </div>
+        <dialog id="dlg-station-{{ station.id }}" class="window edit-window" aria-labelledby="dlg-station-title-{{ station.id }}">
+          <div class="window-head"><h3 id="dlg-station-title-{{ station.id }}">{{ t("radio.edit") }}: {{ station.name }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+          <div class="window-body">
+            <form id="station-form-{{ station.id }}" class="dialog-form" method="post" action="/admin/rpc/station.update" hx-post="/admin/rpc/station.update" hx-swap="none" hx-disabled-elt="find button" data-close-window>
+              <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ station.id }}">
+              <label class="field span-all"><input type="text" name="name" required maxlength="200" value="{{ station.name }}" placeholder=" "><span>{{ t("radio.name") }}</span></label>
+              <label class="field span-all"><input type="url" name="stream_url" required maxlength="2000" value="{{ station.stream_url }}" placeholder=" "><span>{{ t("radio.stream_url") }}</span></label>
+              <label class="field span-all"><input type="url" name="homepage" maxlength="2000"{% if station.homepage %} value="{{ station.homepage }}"{% endif %} placeholder=" "><span>{{ t("radio.homepage") }}</span></label>
+              <label class="field span-all"><input type="url" name="logo_url" maxlength="2000"{% if station.logo_url %} value="{{ station.logo_url }}"{% endif %} placeholder=" "><span>{{ t("radio.logo") }}</span></label>
+              <div class="chips-field span-all"><span class="chips-label">{{ t("radio.labels") }}</span><input type="text" name="labels" maxlength="500" list="label-words" autocomplete="off" value="{{ station.labels|join(', ') }}" data-chips data-suggest="/admin/rpc/label.suggest" data-add="{{ t('books.labels_add') }}" data-remove="{{ t('books.labels_remove') }}" data-placeholder="{{ t('books.labels_new') }}"></div>
+              <small class="span-all">{{ t("books.labels_hint") }}</small>
+              <div class="form-error span-all" role="alert"></div>
+            </form>
+          </div>
+          <div class="window-foot">
+            <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+            <button type="submit" class="btn" form="station-form-{{ station.id }}">{{ t("ui.save") }}</button>
+          </div>
+        </dialog>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p id="station-list">{{ t("radio.none") }}</p>
+{% endif %}
+{% include "fragments/pager.html" %}
+</div>
+
+<dialog id="dlg-new-station" class="window edit-window" aria-labelledby="dlg-new-station-title">
+  <div class="window-head"><h3 id="dlg-new-station-title">{{ t("radio.add") }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+  <div class="window-body">
+    <form id="new-station-form" class="dialog-form" method="post" action="/admin/rpc/station.add" hx-post="/admin/rpc/station.add" hx-swap="none" hx-disabled-elt="find button" data-close-window data-reset>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field span-all"><input type="text" name="name" required maxlength="200" autocomplete="off" placeholder=" "><span>{{ t("radio.name") }}</span></label>
+      <label class="field span-all"><input type="url" name="stream_url" required maxlength="2000" autocomplete="off" placeholder=" "><span>{{ t("radio.stream_url") }}</span></label>
+      <label class="field span-all"><input type="url" name="homepage" maxlength="2000" autocomplete="off" placeholder=" "><span>{{ t("radio.homepage") }}</span></label>
+      <label class="field span-all"><input type="url" name="logo_url" maxlength="2000" autocomplete="off" placeholder=" "><span>{{ t("radio.logo") }}</span></label>
+      <small class="span-all">{{ t("radio.add_hint") }}</small>
+      <div class="form-error span-all" role="alert"></div>
+    </form>
+  </div>
+  <div class="window-foot">
+    <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+    <button type="submit" class="btn" form="new-station-form">{{ t("radio.add") }}</button>
+  </div>
+</dialog>
+{% endblock %}

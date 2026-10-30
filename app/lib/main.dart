@@ -16,6 +16,10 @@ import 'models.dart';
 import 'l10n/app_localizations.dart';
 import 'labels.dart';
 import 'library_hiding.dart';
+import 'offline/library_cache.dart';
+import 'offline/offline_controller.dart';
+import 'offline/offline_view.dart';
+import 'offline/outbox.dart';
 import 'player_controller.dart';
 import 'playlists.dart';
 import 'screens/share_button.dart';
@@ -31,6 +35,7 @@ import 'server/playlist_api.dart';
 import 'server/discovery.dart';
 import 'audio/playback_settings.dart';
 import 'server/last_played.dart';
+import 'server/outbox_api.dart';
 import 'server/server_source.dart';
 import 'screens/about_screen.dart';
 import 'screens/library_screen.dart';
@@ -126,6 +131,13 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   late final PlaylistController _playlists = PlaylistController(
     store: widget.demo ? null : PlaylistStore.standard(),
   );
+  // Offline mode: the switch and the changes that wait for the server, and the library as it was last loaded.
+  late final OfflineController _offline = OfflineController(
+    outbox: widget.demo ? Outbox.memory() : Outbox(File('${AppPaths.base.path}/outbox.json')),
+    store: widget.demo ? null : OfflineSettingsStore.standard(),
+  );
+  final _cache = LibraryCache.standard();
+  bool _wasManual = false;
   final _credentials = CredentialStore.standard();
   _Phase _phase = _Phase.starting;
   ConnectError? _connectError;
@@ -142,11 +154,55 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _player.onPlaylistPosition = _playlists.remember;
+    _player.offline = _offline;
+    _labels
+      ..offline = _offline
+      ..bookOf = _bookOf
+      ..patchBook = _player.patchBook;
+    _hiding
+      ..offline = _offline
+      ..bookOf = _bookOf
+      ..booksNow = (() => _player.library)
+      ..removeBook = _player.removeBookLocally;
+    _wasManual = _offline.manual;
+    _offline.addListener(_onOfflineChanged);
     // The media keys of the keyboard and the sound menu of the desktop (Linux): the player announces itself on the session bus.
     if (Platform.isLinux && !widget.demo) {
       unawaited(MprisService.start(_player).then((s) => _mpris = s));
     }
     _start();
+  }
+
+  Book? _bookOf(String id) => _player.fullLibrary.where((b) => b.id == id).firstOrNull;
+
+  /// The lists follow the offline mode; switching it off sends what waited and loads the library again.
+  void _onOfflineChanged() {
+    _player.setOfflineView(_offline.active);
+    if (_wasManual && !_offline.manual) unawaited(_reloadLibrary(force: true));
+    _wasManual = _offline.manual;
+  }
+
+  /// Sends the changes made without the server. True if the server took or refused any (the library is then loaded again).
+  Future<bool> _syncOutbox() async {
+    final api = _api;
+    if (api == null || _offline.manual) return false;
+    final r = await _offline.sync(ServerOutboxApi(api));
+    return r != null && (r.sent > 0 || r.rejected.isNotEmpty);
+  }
+
+  /// The button "try again" of the offline bar: looks for the server now.
+  Future<void> _retryOnline() => _reloadLibrary(force: true);
+
+  /// The library as it was loaded last, for the start without the server (or in the offline mode): the person can listen to what is downloaded.
+  Future<bool> _openCached(Credentials creds, {required bool unreachable}) async {
+    final cached = _cache.read();
+    if (cached == null) return false;
+    final api = ApiClient(address: creds.address, fingerprint: creds.fingerprint, ca: creds.ca, token: creds.token);
+    _player.attachServer(ServerSource(api, partCache()), cached);
+    _offline.setUnreachable(unreachable);
+    _player.setOfflineView(_offline.active);
+    _watchLibrary(api);
+    return true;
   }
 
   /// When the app leaves the screen or is closed, where the listening is gets written down first.
@@ -179,6 +235,8 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   /// where it was, it is looked for by mDNS under its id; a new address is kept.
   Future<ConnectError?> _signIn(Credentials stored) async {
     var creds = stored;
+    // The offline mode is on: the server is not asked; the library of the last time is shown.
+    if (_offline.manual && await _openCached(creds, unreachable: false)) return null;
     for (var attempt = 0; attempt < 2; attempt++) {
       final api = ApiClient(
         address: creds.address,
@@ -187,8 +245,14 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
         token: creds.token,
       );
       try {
-        _player.attachServer(ServerSource(api, partCache()), await loadLibrary(api));
+        final loaded = await loadLibrary(api);
+        _player.attachServer(ServerSource(api, partCache()), loaded);
+        _offline.setUnreachable(false);
+        _player.setOfflineView(_offline.active);
+        unawaited(_cache.write(loaded));
         _watchLibrary(api);
+        // What was changed without the server the last time goes now; the library is loaded again afterwards.
+        unawaited(_syncOutbox().then((changed) => changed ? _reloadLibrary(force: true) : null));
         return null;
       } on ApiException catch (e) {
         api.close();
@@ -200,10 +264,12 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
         // The name of a server with a certificate from a certificate authority has to stay: another
         // address found by mDNS would not match the certificate.
         if (e.code != 'network' || attempt == 1 || creds.serverId.isEmpty || creds.ca) {
-          return ConnectError.network;
+          return e.code == 'network' && await _openCached(creds, unreachable: true) ? null : ConnectError.network;
         }
         final found = await findServer(creds.serverId);
-        if (found == null || found.address == creds.address) return ConnectError.network;
+        if (found == null || found.address == creds.address) {
+          return await _openCached(creds, unreachable: true) ? null : ConnectError.network;
+        }
         creds = Credentials(
           serverId: creds.serverId,
           address: found.address,
@@ -215,7 +281,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
         _credentials.save(creds);
       }
     }
-    return ConnectError.network;
+    return await _openCached(creds, unreachable: true) ? null : ConnectError.network;
   }
 
   Future<ConnectError?> _pair(String text, String deviceName) async {
@@ -273,9 +339,16 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
 
   Future<void> _reloadLibrary({required bool force}) async {
     final api = _api;
-    if (api == null || !mounted) return;
+    // The offline mode (the person's switch) does not ask the server at all.
+    if (api == null || !mounted || _offline.manual) return;
     try {
       final v = await api.libraryVersions();
+      // The server answers again: what waits is sent first, so that the library that is loaded has it, and everything is loaded again.
+      if (_offline.unreachable) {
+        _offline.setUnreachable(false);
+        force = true;
+      }
+      if (await _syncOutbox()) force = true;
       // The playlists of this profile have their own fingerprint: a change of another profile's lists is not seen here.
       final playlistsChanged = v.playlists != _playlistsVersion;
       _playlistsVersion = v.playlists;
@@ -288,13 +361,15 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
         if (!mounted) return;
         _libraryVersion = v.version;
         _player.updateLibrary(loaded);
+        unawaited(_cache.write(loaded));
         // A change of the library can change which entries are available.
         unawaited(_playlists.load(force: force));
       } else if (playlistsChanged) {
         unawaited(_playlists.load());
       }
-    } on ApiException {
-      // The server is not reachable right now; the next look tries again.
+    } on ApiException catch (e) {
+      // The server is not reachable right now; the next look tries again. The lists show what is downloaded meanwhile.
+      if (e.code == 'network') _offline.setUnreachable(true);
     }
   }
 
@@ -308,6 +383,10 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _api = null;
     if (_player.playing) _player.toggle();
     _credentials.clear();
+    // What waits and the cached library belong to this pairing, not to the next one.
+    _offline.outbox.clear();
+    _offline.setUnreachable(false);
+    unawaited(_cache.clear());
     setState(() {
       _connectError = null;
       _canRetry = false;
@@ -319,6 +398,8 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _libraryTimer?.cancel();
+    _offline.removeListener(_onOfflineChanged);
+    _offline.dispose();
     unawaited(_mpris?.stop());
     _player.dispose();
     _playlists.dispose();
@@ -373,6 +454,8 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
                 credentials: widget.demo ? null : _credentials.load(),
                 onDisconnect: widget.demo ? null : _disconnect,
                 api: widget.demo ? null : _api,
+                offline: _offline,
+                onSync: widget.demo ? null : _retryOnline,
               ),
             },
           ),
@@ -387,7 +470,13 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
 /// Frame with navigation: at the bottom on phones, on the left on the desktop.
 /// The mini player always sits above or below it.
 class Shell extends StatefulWidget {
-  const Shell({super.key, this.credentials, this.onDisconnect, this.api});
+  const Shell({super.key, this.credentials, this.onDisconnect, this.api, this.offline, this.onSync});
+
+  /// The offline mode (the bar, the switch, the changes that wait); null in tests that do not need it.
+  final OfflineController? offline;
+
+  /// Looks for the server and sends what waits.
+  final Future<void> Function()? onSync;
 
   /// The server, for podcasts and radio; null in demo mode.
   final ApiClient? api;
@@ -406,22 +495,42 @@ class _ShellState extends State<Shell> {
   /// The CD symbols: the server's drive and jobs; null without a server.
   late final CdKit? _cd = widget.api == null ? null : createCdKit(widget.api!);
 
+  int _toldRejected = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.offline?.addListener(_tellRejected);
+  }
+
+  /// A change that the server did not take is told once, in a bar; the settings keep the list until the person has seen it.
+  void _tellRejected() {
+    final n = widget.offline?.rejected.length ?? 0;
+    if (n > _toldRejected && mounted) {
+      final l = AppLocalizations.of(context);
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('${l.offlineRejectedTitle}: $n')));
+    }
+    _toldRejected = n;
+  }
+
   @override
   void dispose() {
+    widget.offline?.removeListener(_tellRejected);
     _cd?.dispose();
     super.dispose();
   }
 
   late final _pages = [
     const HomeScreen(),
-    const SearchScreen(),
+    SearchScreen(api: widget.api),
     LibraryScreen(cd: _cd, api: widget.api),
-    PodcastsScreen(api: widget.api),
-    RadioScreen(api: widget.api),
+    OnlineOnly(child: PodcastsScreen(api: widget.api)),
+    OnlineOnly(child: RadioScreen(api: widget.api)),
     SettingsScreen(
       credentials: widget.credentials,
       onDisconnect: widget.onDisconnect,
       devicePairing: widget.api == null ? null : ServerDevicePairingApi(widget.api!),
+      onSync: widget.onSync,
     ),
     const AboutScreen(),
   ];
@@ -437,6 +546,12 @@ class _ShellState extends State<Shell> {
 
   @override
   Widget build(BuildContext context) {
+    final offline = widget.offline;
+    final shell = _build(context);
+    return offline == null ? shell : OfflineScope(controller: offline, child: shell);
+  }
+
+  Widget _build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final labels = [
       l.navHome,
@@ -449,11 +564,14 @@ class _ShellState extends State<Shell> {
     ];
     final wide = MediaQuery.sizeOf(context).width >= 800;
     final body = IndexedStack(index: _index, children: _pages);
+    // The bar of the offline mode sits above the pages, over the whole width.
+    final banner = OfflineBanner(onSync: widget.onSync == null ? null : () => unawaited(widget.onSync!()));
 
     if (wide) {
       return Scaffold(
         body: Column(
           children: [
+            banner,
             Expanded(
               child: Row(
                 children: [
@@ -507,7 +625,7 @@ class _ShellState extends State<Shell> {
     }
 
     return Scaffold(
-      body: body,
+      body: Column(children: [banner, Expanded(child: body)]),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

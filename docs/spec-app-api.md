@@ -22,13 +22,14 @@ Status: **built and tested** for audiobooks (`server/src/api.rs`, `server/tests/
 | `GET /api/v1/me`, `POST /api/v1/logout` | the user; `204` |
 | `GET /api/v1/items` | `[{id, kind, title, creator, min_age, recommended_age, part_count, discs, duration_ms}]` |
 | `GET /api/v1/items/{id}` | the same plus `parts:[{id,disc,number,title,duration_ms,labels}]` (`labels`: the labels of the title of its own; the ones of the album come with the item), `progress`, `access:{state, next_start}` |
-| `GET /api/v1/labels` | `{labels:[{name, books}], can_manage}`: the labels with the number of the books (of those the asker sees) that carry each; a book counts once, whether the book or one of its titles carries the label |
+| `GET /api/v1/labels` | `{labels:[{name, books, podcasts, stations, count}], can_manage}`: the labels with the number of the books (of those the asker sees), podcasts (that they follow) and radio stations (their favourites) that carry each; an item counts once, a book whether the book or one of its titles carries the label; `count` adds the kinds up |
 | `PUT /api/v1/items/{id}/labels` `{labels:[..]}` | all labels of a book at once (the owner, a member, and an administrator) -> `{labels}`; `422 invalid_label` |
+| `PUT /api/v1/podcasts/{id}/labels` `{labels:[..]}` and `PUT /api/v1/radio/{id}/labels` | **labels of a podcast / a radio station** (schema 0047), all at once -> `{labels}`; an administrator always, a member for what they follow / have as a favourite themselves, a child or a guest never (`403`); a podcast or station the member does not have is `404`; at most 30, `422 invalid_label`. The lists `GET /api/v1/podcasts` and `GET /api/v1/radio` carry `labels` and `can_label` for each entry |
 | `PUT /api/v1/items/{id}/parts/{part}/labels` `{labels:[..]}` | **labels of a single title** (schema 0046), all of its own at once (same permission as for the book: its owner and an administrator; `part` is the id of the part as the item lists it, `404` for a part of another item); at most 10 of its own, `422 invalid_label` otherwise -> `{labels}` |
 | `GET /api/v1/continue` | `[{item_id, kind, title, creator, part_id, position_ms, updated_at}]` |
 | `GET /api/v1/parts/{id}/stream` | the file (`200`, or `206` for a range) |
 | `GET /api/v1/bible/resolve?q=` | passages of an audio Bible: part and position to start at; see `spec-bible.md` |
-| `PUT /api/v1/progress` | `204`; `404` for an invisible item, `422` for a part of another item or a negative position |
+| `PUT /api/v1/progress` | body as above plus the optional `at` (Unix ms of the listening; later than now counts as now): the newer state wins, an older report never overwrites it. `204`; `404` for an invisible item, `422` for a part of another item or a negative position |
 
 Errors are `{"error": "<code>"}`: `unauthorized`, `not_found`, `outside_schedule`, `enrollment_invalid`, `invalid_public_key`, `invalid_device_name`, `device_limit_reached`, `invalid_progress`, `invalid_reference`, `internal`.
 
@@ -85,3 +86,57 @@ its titles carry, without doubles. **The lists filter and search by `labels` and
 hymn about prayer is found under "Prayer"; the app shows the labels of a title under its name and, for the owner and an administrator, a button that opens the editor
 (`LabelApi.setTrackLabels`). A label that only titles carry stays in the list; renaming merges the titles as well. The administrators' MCP tool `set_track_labels`
 (dry run by default) sets them for the titles of an album; `get_album` is not changed, `list_labels` counts `books` and `tracks`.
+
+### Labels on all media (podcasts and radio)
+
+Project owner, 2026-10-30: "the tagging of the app covers ALL media". Besides books and titles the labels hang on **podcasts** (`feed`, table
+`podcast_label`) and **radio stations** (`station`, table `station_label`), schema 0047. Both belong to the family, so their labels are shared: everybody who
+has the podcast or the station sees them. Who sets them: an administrator always; a member for the podcasts they follow and the stations among their
+favourites; a child or a guest never. The label list (`GET /api/v1/labels`) counts every kind (`books`, `podcasts`, `stations`, `count`), renaming and
+deleting reach every kind, a label that nothing carries any more goes, `library_version` contains them. In the app the label filter of the library and the
+search also find podcasts and stations (`labels`), and their screens show the labels with an editor for those who may. The administrators' MCP tool
+`set_feed_labels` (`kind` podcast or station, `names`, add/remove/set, dry run by default) sets them; `list_podcasts` and `list_stations` show them and
+`list_labels` counts `podcasts` and `stations`. **Not covered:** photos and e-books (only import folders so far, no rows to hang a label on) and playlists
+(a personal collection of a profile, not a medium of the library); the web administration has no page for podcasts and radio, so there is no chips editor there.
+
+## Offline mode and synchronisation (project owner, 2026-10-30)
+
+"The app needs an offline mode: only the downloaded titles are shown. What a user changes meanwhile (new tags, ignored albums) has to be
+synchronised, and the listening progress too."
+
+**The view.** Offline is the person's switch (settings, device-local, `offline.json`) **or** the fact that the server does not answer (the look
+at the library every 30 seconds fails). The lists, the search and the start page then show the **downloaded** titles only: an album of which some
+titles are downloaded shows those, one without any is left out, radio stations are left out. The pages Podcasts and Radio say that they need the
+server. A bar at the top says "Offline mode" or "Server not reachable", how many changes wait, and (unreachable only) has "Try again". What is
+downloaded plays without the server. With the switch on the app does not ask the server at all (no look at the library, no sending); switching
+it off sends what waits and loads the library again.
+
+**The cache.** Every library that is loaded is written to `library/library.json` (+ `cover-<id>` files) in the data folder of the app
+(`AppPaths.base`). A start without the server (or with the switch on) opens it, so the offline view works after a restart. The list of what
+the profile hid (the page "Hidden") is not cached; the hidden flag of the items is. Forgetting the pairing deletes the cache and the outbox.
+
+**The outbox** (`outbox.json`, `lib/offline/outbox.dart`). Changes made while the server is out of reach, or whose sending fails for want of a
+connection, are written down and survive a restart. They are sent in the order in which they were made, as soon as the look at the library
+succeeds (or the switch goes off, or the person taps "Send changes now"); then the library is loaded again, **the server decides**.
+
+| change | what is kept | merged with an earlier change of the same thing | sent as |
+|---|---|---|---|
+| labels of a book, a title, a podcast, a station | a delta `add`/`remove` against what the app showed | for each word the last thing done to it counts | `PATCH /items/{id}/labels`, `/items/{id}/parts/{part}/labels`, `/podcasts/{id}/labels`, `/radio/{id}/labels` with `{"add":[],"remove":[]}` |
+| a book hidden or shown | the state | the last state wins | `POST /me/hidden` (sets the state) |
+| an author hidden or shown | the state | the last state wins | `POST /me/hidden` |
+| where the listening to a book is | item, part, position, finished, time | only the newest of a book | `PUT /progress` with `at` |
+
+- A label **delta** (not the whole list) is sent, so two devices that change the labels of the same book at the same time do not overwrite each
+  other: the words added and taken off are applied to what the server has. Same permission as the `PUT` (administrator, or the owner of the
+  book; podcasts and stations: what the member follows). Sending a delta twice is harmless; unusable words are `422 invalid_label`.
+- Hiding sets a state, so a repeat is harmless; the changes are replayed in order, so the last one made on the device is the last one applied.
+  Offline a hidden book (or the books of a hidden author) leaves the lists at once (unless hidden books are shown); showing it again offline
+  takes effect when the library is loaded again.
+- The listening position is stamped with the time of the listening (`at`). The server keeps the position with the newest time per user and
+  book, so an old offline report cannot overwrite what another device wrote later. Episodes and stations have no offline position.
+- Answers: `0`/`5xx`/`429`/`401` stop the round and keep the rest; `403`, `404`, `409`, `422` drop the change and tell the person ("Not accepted
+  by the server": labels of / hiding of "<title>" with the reason not allowed, no longer there, refused), in a bar and in the settings until
+  dismissed. Refused listening positions are dropped silently.
+- Labels of podcasts and stations can only be set with the server (their pages are offline-only placeholders); a change that fails for want of a
+  connection while the page is open waits like the others, but is not shown until it is sent.
+

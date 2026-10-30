@@ -31,6 +31,11 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("pairing.html", include_str!("../../templates/pairing.html")),
     ("genres.html", include_str!("../../templates/genres.html")),
     ("releases.html", include_str!("../../templates/releases.html")),
+    ("podcasts.html", include_str!("../../templates/podcasts.html")),
+    ("fragments/podcast_actions.html", include_str!("../../templates/fragments/podcast_actions.html")),
+    ("fragments/waiting_requests.html", include_str!("../../templates/fragments/waiting_requests.html")),
+    ("podcast.html", include_str!("../../templates/podcast.html")),
+    ("radio.html", include_str!("../../templates/radio.html")),
     // Sub-templates. A list is a frame (`*_list`) around rows (`*_row`). The page
     // includes them, and a procedure can answer with the same fragment alone.
     ("fragments/message.html", include_str!("../../templates/fragments/message.html")),
@@ -1767,5 +1772,153 @@ impl AdminUi {
             Err(e) => (None, Some(e.to_string())),
         };
         self.render("fragments/folder_picker.html", context! { listing => Serde(listing), error => error, create_error => create_error, target => target, ..view.into().context() })
+    }
+}
+
+/// The numbers of one page of a list that is cut after it is complete.
+struct Paging {
+    page: usize,
+    per: usize,
+    default_per: usize,
+    total: usize,
+    pages: usize,
+    from: usize,
+    to: usize,
+}
+
+/// The sizes of a page that the lists offer.
+const PAGE_SIZES: [usize; 6] = [10, 25, 50, 100, 250, 500];
+
+impl Paging {
+    /// `per` and `page` as asked (10 to 500 per page; the setting `list_page_size` when absent); the page is brought into range.
+    async fn of(store: &Store, total: usize, page: Option<usize>, per: Option<usize>) -> Result<Paging> {
+        let default_per = store.setting("list_page_size").await?.and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(50);
+        let per = per.unwrap_or(default_per).clamp(10, 500);
+        let pages = total.div_ceil(per).max(1);
+        let page = page.unwrap_or(1).clamp(1, pages);
+        Ok(Paging { page, per, default_per, total, pages, from: (page - 1) * per, to: (page * per).min(total) })
+    }
+
+    /// What `fragments/pager.html` needs: `path` is the page the links lead to, `query` the search text that is kept.
+    fn json(&self, path: &str, query: Option<&str>) -> serde_json::Value {
+        let mut pairs: Vec<(&str, String)> = Vec::new();
+        if let Some(q) = query {
+            pairs.push(("q", q.to_owned()));
+        }
+        if self.per != self.default_per {
+            pairs.push(("per", self.per.to_string()));
+        }
+        let base = serde_urlencoded::to_string(pairs).unwrap_or_default();
+        let shown: Vec<usize> = (1..=self.pages).filter(|n| *n == 1 || *n == self.pages || n.abs_diff(self.page) <= 2).collect();
+        let numbers: Vec<serde_json::Value> = shown.iter().enumerate().map(|(i, n)| serde_json::json!({ "n": n, "gap": i > 0 && n - shown[i - 1] > 1 })).collect();
+        serde_json::json!({
+            "path": path, "page": self.page, "pages": self.pages, "per": self.per, "total": self.total, "from": if self.total == 0 { 0 } else { self.from + 1 }, "to": self.to,
+            "base": base, "numbers": numbers, "prev": self.page.saturating_sub(1).max(1), "next": (self.page + 1).min(self.pages), "default_per": self.default_per, "sizes": PAGE_SIZES,
+            "q": query.unwrap_or(""), "problems": false, "label": "",
+        })
+    }
+}
+
+/// A person that asked for a podcast or a station and waits for a release.
+#[derive(serde::Serialize)]
+struct Waiting {
+    profile_id: i64,
+    name: String,
+}
+
+/// The requests of children, by what they asked for: `(kind, target id)` -> who.
+async fn waiting_by_target(store: &Store, kind: &str) -> Result<std::collections::HashMap<i64, Vec<Waiting>>> {
+    let mut out: std::collections::HashMap<i64, Vec<Waiting>> = std::collections::HashMap::new();
+    for p in store.pending_releases().await?.into_iter().filter(|p| p.kind == kind) {
+        out.entry(p.target_id).or_default().push(Waiting { profile_id: p.profile_id, name: p.profile });
+    }
+    Ok(out)
+}
+
+/// The text of a time of listening: `h:mm:ss`, or `m:ss` below an hour.
+fn clock(seconds: i64) -> String {
+    let s = seconds.max(0);
+    if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, (s % 3600) / 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) }
+}
+
+/// "2026-10-27" in the time zone of the server.
+fn day(ms: i64, zone: Option<&str>) -> String {
+    stamp(ms, zone).chars().take(10).collect()
+}
+
+impl AdminUi {
+    /// The podcasts: a list with a search field, cut into pages after the search; every podcast has its own page (`/admin/podcasts/{id}`).
+    pub async fn podcasts<'a>(&self, store: &Store, view: impl Into<View<'a>>, query: Option<&str>, page: Option<usize>, per: Option<usize>) -> Result<String> {
+        let needle = query.map(str::trim).filter(|q| !q.is_empty());
+        let waiting = waiting_by_target(store, "podcast").await?;
+        let labels = store.podcast_labels().await?;
+        let lower = needle.map(str::to_lowercase);
+        let feeds: Vec<_> = store
+            .feeds_with_followers()
+            .await?
+            .into_iter()
+            .filter(|(f, _)| lower.as_ref().is_none_or(|n| f.title.to_lowercase().contains(n) || f.url.to_lowercase().contains(n)))
+            .collect();
+        let paging = Paging::of(store, feeds.len(), page, per).await?;
+        let items: Vec<serde_json::Value> = feeds
+            .into_iter()
+            .skip(paging.from)
+            .take(paging.per)
+            .map(|(f, followers)| {
+                let followers: Vec<serde_json::Value> = followers.into_iter().filter(|(_, ok)| *ok).map(|(n, _)| serde_json::Value::String(n)).collect();
+                serde_json::json!({ "id": f.id, "url": f.url, "title": f.title, "last_error": f.last_error, "followers": followers, "waiting": waiting.get(&f.id).map(|w| serde_json::json!(w)).unwrap_or_else(|| serde_json::json!([])), "labels": labels.get(&f.id).cloned().unwrap_or_default() })
+            })
+            .collect();
+        let pager = paging.json("/admin/podcasts", needle);
+        let label_names = store.labels().await?;
+        self.render("podcasts.html", context! { feeds => Serde(items), pager => Serde(pager), q => needle.unwrap_or_default(), searched => needle.is_some(), label_names => Serde(label_names), ..view.into().context() })
+    }
+
+    /// One podcast with its episodes, newest first, in pages. `None` if there is no such podcast.
+    pub async fn podcast_page<'a>(&self, store: &Store, view: impl Into<View<'a>>, id: i64, page: Option<usize>, per: Option<usize>) -> Result<Option<String>> {
+        let Some(head) = store.feed_head(id).await? else { return Ok(None) };
+        let zone = store.setting("time_zone").await?;
+        let followers: Vec<String> = store.feeds_with_followers().await?.into_iter().find(|(f, _)| f.id == id).map(|(_, fs)| fs.into_iter().filter(|(_, ok)| *ok).map(|(n, _)| n).collect()).unwrap_or_default();
+        let waiting = waiting_by_target(store, "podcast").await?.remove(&id).unwrap_or_default();
+        let labels = store.podcast_labels().await?.remove(&id).unwrap_or_default();
+        let paging = Paging::of(store, store.episode_count(id).await?, page, per).await?;
+        let episodes: Vec<serde_json::Value> = store
+            .admin_episodes(id, paging.per, paging.from)
+            .await?
+            .into_iter()
+            .map(|e| serde_json::json!({ "id": e.id, "title": e.title, "published": day(e.published_at, zone.as_deref()), "duration": e.duration_s.map(clock), "finished_by": e.finished_by, "started_by": e.started_by }))
+            .collect();
+        let pager = paging.json(&format!("/admin/podcasts/{id}"), None);
+        let label_names = store.labels().await?;
+        let feed = serde_json::json!({ "id": head.id, "url": head.url, "title": head.title, "last_error": head.last_error, "followers": followers, "waiting": waiting, "labels": labels });
+        self.render("podcast.html", context! { feed => Serde(feed), episodes => Serde(episodes), pager => Serde(pager), label_names => Serde(label_names), ..view.into().context() }).map(Some)
+    }
+
+    /// The radio stations: a list with a search field, cut into pages after the search.
+    pub async fn radio<'a>(&self, store: &Store, view: impl Into<View<'a>>, query: Option<&str>, page: Option<usize>, per: Option<usize>) -> Result<String> {
+        let needle = query.map(str::trim).filter(|q| !q.is_empty());
+        let waiting = waiting_by_target(store, "station").await?;
+        let labels = store.station_labels().await?;
+        let lower = needle.map(str::to_lowercase);
+        let stations: Vec<_> = store
+            .stations_with_owners()
+            .await?
+            .into_iter()
+            .filter(|(s, _)| lower.as_ref().is_none_or(|n| s.name.to_lowercase().contains(n) || s.stream_url.to_lowercase().contains(n)))
+            .collect();
+        let paging = Paging::of(store, stations.len(), page, per).await?;
+        let items: Vec<serde_json::Value> = stations
+            .into_iter()
+            .skip(paging.from)
+            .take(paging.per)
+            .map(|(s, owners)| {
+                // The names that wait for a release come marked "(waiting)" from the store; they are listed apart.
+                let favourite: Vec<String> = owners.into_iter().filter(|n| !n.ends_with(" (waiting)")).collect();
+                serde_json::json!({ "id": s.id, "name": s.name, "stream_url": s.stream_url, "homepage": s.homepage, "logo_url": s.logo_url, "favourite": favourite, "waiting": waiting.get(&s.id).map(|w| serde_json::json!(w)).unwrap_or_else(|| serde_json::json!([])), "labels": labels.get(&s.id).cloned().unwrap_or_default() })
+            })
+            .collect();
+        let pager = paging.json("/admin/radio", needle);
+        let label_names = store.labels().await?;
+        self.render("radio.html", context! { stations => Serde(items), pager => Serde(pager), q => needle.unwrap_or_default(), searched => needle.is_some(), label_names => Serde(label_names), ..view.into().context() })
     }
 }

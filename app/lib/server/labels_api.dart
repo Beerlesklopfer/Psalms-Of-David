@@ -5,7 +5,7 @@ import 'dart:convert';
 import '../labels.dart';
 import 'api_client.dart';
 
-/// The labels of a book on the server (`PUT /api/v1/items/{id}/labels`).
+/// The labels of a book, a podcast and a radio station on the server (`PUT /api/v1/items/{id}/labels`, `/podcasts/{id}/labels`, `/radio/{id}/labels`).
 class ServerLabelApi implements LabelApi {
   ServerLabelApi(this.api);
 
@@ -37,6 +37,18 @@ class ServerLabelApi implements LabelApi {
     ];
   }
 
+  @override
+  Future<List<String>> setPodcastLabels(int id, List<String> labels) async {
+    final (_, text) = await _call('PUT', '/api/v1/podcasts/$id/labels', body: {'labels': labels});
+    return [for (final l in (jsonDecode(text) as Map<String, dynamic>)['labels'] as List) l as String];
+  }
+
+  @override
+  Future<List<String>> setStationLabels(int id, List<String> labels) async {
+    final (_, text) = await _call('PUT', '/api/v1/radio/$id/labels', body: {'labels': labels});
+    return [for (final l in (jsonDecode(text) as Map<String, dynamic>)['labels'] as List) l as String];
+  }
+
   Future<(String, String)> _call(String method, String path, {Object? body}) async {
     final res = await api.sendRaw(method, path, body: body);
     final text = await utf8.decodeStream(res);
@@ -59,7 +71,8 @@ class ServerLabelApi implements LabelApi {
     return LabelList(
       [
         for (final l in (j['labels'] as List? ?? const []))
-          ((l as Map<String, dynamic>)['name'] as String, l['books'] as int),
+          // `count` adds books, podcasts and stations; an older server only has `books`.
+          ((l as Map<String, dynamic>)['name'] as String, (l['count'] ?? l['books']) as int),
       ],
       j['can_manage'] == true,
     );

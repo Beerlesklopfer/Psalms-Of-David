@@ -910,5 +910,25 @@
         "type": "int"
       }
     }
-  }
+  },
+  "offlineBannerManual": "Offline mode · only downloaded titles are shown",
+  "offlineBannerUnreachable": "Server not reachable · only downloaded titles are shown",
+  "offlinePending": "{count, plural, =1{1 change waits for the server} other{{count} changes wait for the server}}",
+  "@offlinePending": {"placeholders": {"count": {"type": "int"}}},
+  "offlineRetry": "Try again",
+  "offlineNeedsNetwork": "This page needs the server. It is back as soon as you are online.",
+  "offlineSettingTitle": "Offline mode",
+  "offlineSettingHint": "Shows only the titles downloaded on this device and does not ask the server. What you change meanwhile (labels, hidden albums, where you stopped listening) waits and is sent when you switch it off.",
+  "offlineSyncNow": "Send changes now",
+  "offlineSyncing": "Sending changes …",
+  "offlineNothingWaits": "No changes are waiting.",
+  "offlineRejectedTitle": "Not accepted by the server",
+  "offlineRejectedLabels": "Labels of “{title}” ({reason})",
+  "@offlineRejectedLabels": {"placeholders": {"title": {"type": "String"}, "reason": {"type": "String"}}},
+  "offlineRejectedHide": "Hiding “{title}” ({reason})",
+  "@offlineRejectedHide": {"placeholders": {"title": {"type": "String"}, "reason": {"type": "String"}}},
+  "offlineReasonForbidden": "not allowed",
+  "offlineReasonGone": "no longer there",
+  "offlineReasonOther": "refused",
+  "offlineDismiss": "OK"
 }

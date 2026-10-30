@@ -19,7 +19,7 @@ abstract class FeedApi {
 
 /// A podcast the account follows. [approved] is false while a request of a child waits for a release.
 class Podcast {
-  const Podcast({required this.id, required this.title, required this.description, required this.approved, required this.unheard, this.imageUrl, this.error});
+  const Podcast({required this.id, required this.title, required this.description, required this.approved, required this.unheard, this.imageUrl, this.error, this.labels = const [], this.canLabel = false});
 
   factory Podcast.fromJson(Map<String, dynamic> j) => Podcast(
         id: j['id'] as int,
@@ -29,6 +29,8 @@ class Podcast {
         unheard: j['unheard'] as int? ?? 0,
         imageUrl: j['image_url'] as String?,
         error: j['last_error'] as String?,
+        labels: [for (final l in (j['labels'] as List? ?? const [])) l as String],
+        canLabel: j['can_label'] == true,
       );
 
   final int id;
@@ -38,6 +40,12 @@ class Podcast {
   final int unheard;
   final String? imageUrl;
   final String? error;
+
+  /// The labels (classic tagging) of the podcast; everybody who follows it sees them.
+  final List<String> labels;
+
+  /// This user may set the labels: the server says so (an administrator, or a member who follows it).
+  final bool canLabel;
 }
 
 /// One episode with where this account stopped (the same on every device of the account).
@@ -78,7 +86,7 @@ class Episode {
 
 /// A radio station of the favourites.
 class Station {
-  const Station({required this.id, required this.name, required this.streamUrl, required this.approved, this.homepage, this.logoUrl});
+  const Station({required this.id, required this.name, required this.streamUrl, required this.approved, this.homepage, this.logoUrl, this.labels = const [], this.canLabel = false});
 
   factory Station.fromJson(Map<String, dynamic> j) => Station(
         id: j['id'] as int,
@@ -87,6 +95,8 @@ class Station {
         approved: j['approved'] as bool? ?? true,
         homepage: j['homepage'] as String?,
         logoUrl: j['logo_url'] as String?,
+        labels: [for (final l in (j['labels'] as List? ?? const [])) l as String],
+        canLabel: j['can_label'] == true,
       );
 
   final int id;
@@ -95,6 +105,10 @@ class Station {
   final bool approved;
   final String? homepage;
   final String? logoUrl;
+
+  /// The labels (classic tagging) of the station, and whether this user may set them.
+  final List<String> labels;
+  final bool canLabel;
 
   /// The station as something the player plays: a live stream without an end.
   Book asBook({Uint8List? logo}) => Book(

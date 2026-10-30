@@ -2515,6 +2515,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Take \"{name}\" off {count} books?'**
   String labelsDeleteConfirm(String name, int count);
+
+  /// No description provided for @offlineBannerManual.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline mode · only downloaded titles are shown'**
+  String get offlineBannerManual;
+
+  /// No description provided for @offlineBannerUnreachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Server not reachable · only downloaded titles are shown'**
+  String get offlineBannerUnreachable;
+
+  /// No description provided for @offlinePending.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 change waits for the server} other{{count} changes wait for the server}}'**
+  String offlinePending(int count);
+
+  /// No description provided for @offlineRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get offlineRetry;
+
+  /// No description provided for @offlineNeedsNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'This page needs the server. It is back as soon as you are online.'**
+  String get offlineNeedsNetwork;
+
+  /// No description provided for @offlineSettingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline mode'**
+  String get offlineSettingTitle;
+
+  /// No description provided for @offlineSettingHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Shows only the titles downloaded on this device and does not ask the server. What you change meanwhile (labels, hidden albums, where you stopped listening) waits and is sent when you switch it off.'**
+  String get offlineSettingHint;
+
+  /// No description provided for @offlineSyncNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Send changes now'**
+  String get offlineSyncNow;
+
+  /// No description provided for @offlineSyncing.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending changes …'**
+  String get offlineSyncing;
+
+  /// No description provided for @offlineNothingWaits.
+  ///
+  /// In en, this message translates to:
+  /// **'No changes are waiting.'**
+  String get offlineNothingWaits;
+
+  /// No description provided for @offlineRejectedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Not accepted by the server'**
+  String get offlineRejectedTitle;
+
+  /// No description provided for @offlineRejectedLabels.
+  ///
+  /// In en, this message translates to:
+  /// **'Labels of “{title}” ({reason})'**
+  String offlineRejectedLabels(String title, String reason);
+
+  /// No description provided for @offlineRejectedHide.
+  ///
+  /// In en, this message translates to:
+  /// **'Hiding “{title}” ({reason})'**
+  String offlineRejectedHide(String title, String reason);
+
+  /// No description provided for @offlineReasonForbidden.
+  ///
+  /// In en, this message translates to:
+  /// **'not allowed'**
+  String get offlineReasonForbidden;
+
+  /// No description provided for @offlineReasonGone.
+  ///
+  /// In en, this message translates to:
+  /// **'no longer there'**
+  String get offlineReasonGone;
+
+  /// No description provided for @offlineReasonOther.
+  ///
+  /// In en, this message translates to:
+  /// **'refused'**
+  String get offlineReasonOther;
+
+  /// No description provided for @offlineDismiss.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get offlineDismiss;
 }
 
 class _AppLocalizationsDelegate

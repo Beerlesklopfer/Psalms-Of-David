@@ -120,7 +120,7 @@ async fn the_owner_sets_the_labels_of_a_book_an_administrator_may_override_and_e
 
     // The list of labels counts the books the asker sees; a name that is not usable is refused and nothing changes.
     let all = call(&a, "GET", "/api/v1/labels", &tb, None).await;
-    assert_eq!(all.json["labels"], json!([{ "name": "Gebet", "books": 1 }, { "name": "gemeinsame Urlaube", "books": 1 }]));
+    assert_eq!(all.json["labels"], json!([{ "name": "Gebet", "books": 1, "podcasts": 0, "stations": 0, "count": 1 }, { "name": "gemeinsame Urlaube", "books": 1, "podcasts": 0, "stations": 0, "count": 1 }]));
     assert_eq!(all.json["can_manage"], false, "only an administrator manages the list");
     let r = call(&a, "PUT", &url(mine), &ta, Some(json!({ "labels": ["Gebet", "a,b"] }))).await;
     assert_eq!((r.status, r.json["error"].as_str()), (StatusCode::UNPROCESSABLE_ENTITY, Some("invalid_label")), "{}", r.json);
@@ -210,7 +210,7 @@ async fn single_titles_carry_labels_of_their_own_next_to_the_ones_of_their_album
     a.store.set_book_labels(mine, &["Gebet".into()]).await.unwrap();
     a.store.set_track_labels(tracks[1], &["Gebet".into()]).await.unwrap();
     let all = call(&a, "GET", "/api/v1/labels", &tb, None).await;
-    assert_eq!(all.json["labels"], json!([{ "name": "Gebet", "books": 1 }, { "name": "Stille", "books": 1 }]));
+    assert_eq!(all.json["labels"], json!([{ "name": "Gebet", "books": 1, "podcasts": 0, "stations": 0, "count": 1 }, { "name": "Stille", "books": 1, "podcasts": 0, "stations": 0, "count": 1 }]));
     let names = |l: Vec<david_server::labels::LabelRow>| l.into_iter().map(|r| (r.name, r.books, r.tracks)).collect::<Vec<_>>();
     assert_eq!(names(a.store.labels().await.unwrap()), vec![("Gebet".to_owned(), 1, 2), ("Stille".to_owned(), 0, 1)]);
 
@@ -228,4 +228,121 @@ async fn single_titles_carry_labels_of_their_own_next_to_the_ones_of_their_album
     a.store.set_track_labels(tracks[2], &["Nur Titel".into()]).await.unwrap();
     assert!(a.store.delete_book(mine).await.unwrap());
     assert!(a.store.labels().await.unwrap().is_empty());
+}
+
+const FEED: &str = r#"<?xml version="1.0"?><rss version="2.0"><channel><title>Kinderfunk</title><link>https://example.org/</link><description>Geschichten</description>
+  <item><title>Folge 1</title><guid>a</guid><enclosure url="https://example.org/1.mp3" type="audio/mpeg"/><pubDate>Tue, 13 Oct 2026 10:00:00 GMT</pubDate></item></channel></rss>"#;
+
+#[tokio::test]
+async fn podcasts_and_radio_stations_carry_labels_too_a_member_labels_what_they_have() {
+    let a = api().await;
+    let anna = a.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    let ben = a.store.create_user(NewProfile::new("Ben", Role::Member)).await.unwrap();
+    let kind = a.store.create_user(NewProfile::child("Kind", 10, Schedule::always())).await.unwrap();
+    let (ta, tb, tk, tadmin) = (pair(&a, anna, 1).await, pair(&a, ben, 2).await, pair(&a, kind, 3).await, pair(&a, a.admin, 4).await);
+    let feed = david_server::podcast::parse(FEED).unwrap();
+    let pod = a.store.save_feed("https://example.org/feed.xml", &feed).await.unwrap();
+    let station = a.store.save_station("https://stream.example.org/a", "Radio A", None, None).await.unwrap();
+    for who in [anna, kind] {
+        a.store.subscribe(who, pod, true).await.unwrap();
+        a.store.favorite_station(who, station, true).await.unwrap();
+    }
+    let (pod_url, station_url) = (format!("/api/v1/podcasts/{pod}/labels"), format!("/api/v1/radio/{station}/labels"));
+
+    // The lists carry the field and say who may set it: a member for what they have, never a child.
+    let list = |r: &Reply, key: &str| r.json[key].as_array().unwrap()[0].clone();
+    let (pa, pk) = (call(&a, "GET", "/api/v1/podcasts", &ta, None).await, call(&a, "GET", "/api/v1/podcasts", &tk, None).await);
+    assert_eq!((list(&pa, "podcasts")["labels"].clone(), list(&pa, "podcasts")["can_label"].clone(), list(&pk, "podcasts")["can_label"].clone()), (json!([]), json!(true), json!(false)));
+    let v0 = call(&a, "GET", "/api/v1/library/version", &ta, None).await.json["version"].as_str().unwrap().to_owned();
+
+    // Anna labels both; Ben does not have them (not found), the child may not, an administrator may always.
+    let r = call(&a, "PUT", &pod_url, &ta, Some(json!({ "labels": ["Kinder", " gebet ", "kinder"] }))).await;
+    assert_eq!((r.status, r.json["labels"].clone()), (StatusCode::OK, json!(["gebet", "Kinder"])), "{}", r.json);
+    assert_eq!(call(&a, "PUT", &station_url, &ta, Some(json!({ "labels": ["Gebet"] }))).await.status, StatusCode::OK, "same word, other case: the label of the list keeps its first spelling");
+    assert_eq!(call(&a, "PUT", &pod_url, &tb, Some(json!({ "labels": ["x"] }))).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(call(&a, "PUT", &pod_url, &tk, Some(json!({ "labels": ["x"] }))).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(call(&a, "PUT", &station_url, &tk, Some(json!({ "labels": ["x"] }))).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(call(&a, "PUT", &pod_url, &ta, Some(json!({ "labels": ["a,b"] }))).await.json["error"], "invalid_label");
+    assert_eq!(call(&a, "PUT", "/api/v1/podcasts/9999/labels", &tadmin, Some(json!({ "labels": ["x"] }))).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(call(&a, "PUT", &pod_url, &tadmin, Some(json!({ "labels": ["Kinder", "gebet", "Weihnachten"] }))).await.status, StatusCode::OK, "an administrator may always");
+
+    // Everybody who has them sees the labels; the version changes; the list of labels counts every kind once per label.
+    let seen = call(&a, "GET", "/api/v1/radio", &tk, None).await;
+    assert_eq!(list(&seen, "stations")["labels"], json!(["gebet"]), "{}", seen.json);
+    assert_ne!(v0, call(&a, "GET", "/api/v1/library/version", &ta, None).await.json["version"].as_str().unwrap());
+    let all = call(&a, "GET", "/api/v1/labels", &ta, None).await;
+    assert_eq!(
+        all.json["labels"],
+        json!([
+            { "name": "gebet", "books": 0, "podcasts": 1, "stations": 1, "count": 2 },
+            { "name": "Kinder", "books": 0, "podcasts": 1, "stations": 0, "count": 1 },
+            { "name": "Weihnachten", "books": 0, "podcasts": 1, "stations": 0, "count": 1 }
+        ]),
+        "{}",
+        all.json
+    );
+    // What Ben does not have does not count for Ben.
+    assert_eq!(call(&a, "GET", "/api/v1/labels", &tb, None).await.json["labels"], json!([]));
+
+    // Renaming reaches every kind; deleting a station keeps the labels that others carry.
+    assert!(a.store.rename_label("Gebet", "Andacht").await.unwrap());
+    assert_eq!(a.store.station_labels().await.unwrap().get(&station).cloned(), Some(vec!["Andacht".to_owned()]));
+    a.store.delete_station(station).await.unwrap();
+    let names: Vec<String> = a.store.labels().await.unwrap().into_iter().map(|l| l.name).collect();
+    assert_eq!(names, vec!["Andacht".to_owned(), "Kinder".to_owned(), "Weihnachten".to_owned()], "the podcast still carries Andacht");
+}
+
+#[tokio::test]
+async fn labels_are_changed_by_deltas_the_owner_and_the_administrator_may_and_the_same_change_twice_is_harmless() {
+    let a = api().await;
+    let anna = a.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    let ben = a.store.create_user(NewProfile::new("Ben", Role::Member)).await.unwrap();
+    let (ta, tb, tadmin) = (pair(&a, anna, 1).await, pair(&a, ben, 2).await, pair(&a, a.admin, 3).await);
+    let (mine, tracks) = add_book(&a, "Taizé", "Lieder zur Stille", &[2]).await;
+    assert!(a.store.set_book_owner(mine, Some(anna)).await.unwrap());
+    let (url, part_url) = (format!("/api/v1/items/{mine}/labels"), format!("/api/v1/items/{mine}/parts/{}/labels", tracks[0]));
+
+    // The administrator set "Gebet" in the meantime; the delta of Anna (who was offline) adds and removes only its own words.
+    assert_eq!(call(&a, "PUT", &url, &tadmin, Some(json!({ "labels": ["Gebet", "Alt"] }))).await.status, StatusCode::OK);
+    let r = call(&a, "PATCH", &url, &ta, Some(json!({ "add": ["Schule", "schule"], "remove": ["alt", "Nie da"] }))).await;
+    assert_eq!((r.status, r.json["labels"].clone()), (StatusCode::OK, json!(["Gebet", "Schule"])), "{}", r.json);
+    // Sent again: the same state.
+    let again = call(&a, "PATCH", &url, &ta, Some(json!({ "add": ["Schule"], "remove": ["alt"] }))).await;
+    assert_eq!(again.json["labels"], json!(["Gebet", "Schule"]));
+    // A title as well.
+    let r = call(&a, "PATCH", &part_url, &ta, Some(json!({ "add": ["Abend"] }))).await;
+    assert_eq!((r.status, r.json["labels"].clone()), (StatusCode::OK, json!(["Abend"])), "{}", r.json);
+    assert_eq!(call(&a, "PATCH", &part_url, &ta, Some(json!({ "remove": ["abend"] }))).await.json["labels"], json!([]));
+
+    // Anybody but the owner and the administrator is refused; a title of another book and an unknown book are not found; a bad word is invalid.
+    assert_eq!(call(&a, "PATCH", &url, &tb, Some(json!({ "add": ["x"] }))).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(call(&a, "PATCH", "/api/v1/items/9999/labels", &tadmin, Some(json!({ "add": ["x"] }))).await.status, StatusCode::NOT_FOUND);
+    let (other, other_tracks) = add_book(&a, "Lindgren", "Pippi", &[1]).await;
+    assert_eq!(call(&a, "PATCH", &format!("/api/v1/items/{mine}/parts/{}/labels", other_tracks[0]), &tadmin, Some(json!({ "add": ["x"] }))).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(call(&a, "PATCH", &url, &ta, Some(json!({ "add": ["a,b"] }))).await.json["error"], "invalid_label");
+    let _ = other;
+}
+
+#[tokio::test]
+async fn labels_of_podcasts_and_stations_are_changed_by_deltas_too() {
+    let a = api().await;
+    let anna = a.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    let ben = a.store.create_user(NewProfile::new("Ben", Role::Member)).await.unwrap();
+    let kind = a.store.create_user(NewProfile::child("Kind", 10, Schedule::always())).await.unwrap();
+    let (ta, tb, tk) = (pair(&a, anna, 1).await, pair(&a, ben, 2).await, pair(&a, kind, 3).await);
+    let feed = david_server::podcast::parse(FEED).unwrap();
+    let pod = a.store.save_feed("https://example.org/feed.xml", &feed).await.unwrap();
+    let station = a.store.save_station("https://stream.example.org/a", "Radio A", None, None).await.unwrap();
+    for who in [anna, kind] {
+        a.store.subscribe(who, pod, true).await.unwrap();
+        a.store.favorite_station(who, station, true).await.unwrap();
+    }
+    for url in [format!("/api/v1/podcasts/{pod}/labels"), format!("/api/v1/radio/{station}/labels")] {
+        let r = call(&a, "PATCH", &url, &ta, Some(json!({ "add": ["Kinder", "kinder"] }))).await;
+        assert_eq!((r.status, r.json["labels"].clone()), (StatusCode::OK, json!(["Kinder"])), "{}", r.json);
+        assert_eq!(call(&a, "PATCH", &url, &ta, Some(json!({ "add": ["Kinder"], "remove": ["x"] }))).await.json["labels"], json!(["Kinder"]), "twice is harmless");
+        assert_eq!(call(&a, "PATCH", &url, &tb, Some(json!({ "add": ["x"] }))).await.status, StatusCode::NOT_FOUND, "not theirs");
+        assert_eq!(call(&a, "PATCH", &url, &tk, Some(json!({ "add": ["x"] }))).await.status, StatusCode::FORBIDDEN, "a child may not");
+        assert_eq!(call(&a, "PATCH", &url, &ta, Some(json!({ "remove": ["kinder"] }))).await.json["labels"], json!([]));
+    }
 }

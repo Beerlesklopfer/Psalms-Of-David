@@ -71,8 +71,8 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/v1/items", get(items))
         .route("/api/v1/genres", get(genres))
         .route("/api/v1/items/{id}", get(item_detail))
-        .route("/api/v1/items/{id}/labels", get(item_labels).put(put_item_labels))
-        .route("/api/v1/items/{id}/parts/{part}/labels", put(put_part_labels))
+        .route("/api/v1/items/{id}/labels", get(item_labels).put(put_item_labels).patch(patch_item_labels))
+        .route("/api/v1/items/{id}/parts/{part}/labels", put(put_part_labels).patch(patch_part_labels))
         .route("/api/v1/labels", get(all_labels))
         .route("/api/v1/labels/{name}", put(rename_label).delete(delete_label))
         .route("/api/v1/new", get(new_items))
@@ -306,11 +306,21 @@ async fn genres(State(s): State<ApiState>, _d: Device) -> ApiResult<Json<Value>>
     Ok(Json(Value::Array(list.iter().filter(|g| g.visible).map(|g| json!({ "name": g.name })).collect())))
 }
 
-/// The labels of the library (classic tagging): `{ "labels": [{ "name": "Gebet", "books": 3 }], "can_manage": bool }`. Only the books this user sees count;
-/// an administrator may rename and delete labels (`can_manage`).
+/// The labels of the library (classic tagging): `{ "labels": [{ "name": "Gebet", "books": 3, "podcasts": 1, "stations": 0, "count": 4 }], "can_manage": bool }`.
+/// Only what this user sees counts (books, the podcasts they follow, their favourite stations); an item counts once for a label, and `count` adds the
+/// kinds up. An administrator may rename and delete labels (`can_manage`).
 async fn all_labels(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
     let visible: std::collections::HashSet<i64> = s.store.visible_books(d.user_id).await?.iter().map(|b| b.id).collect();
-    let mut counts: std::collections::BTreeMap<String, (String, i64)> = std::collections::BTreeMap::new();
+    // The name as first spelled, and the numbers of books, podcasts and stations.
+    let mut counts: std::collections::BTreeMap<String, (String, [i64; 3])> = std::collections::BTreeMap::new();
+    let mut count = |names: Vec<String>, kind: usize| {
+        let mut seen = std::collections::HashSet::new();
+        for n in names {
+            if seen.insert(n.to_lowercase()) {
+                counts.entry(n.to_lowercase()).or_insert((n, [0; 3])).1[kind] += 1;
+            }
+        }
+    };
     // A book counts once for a label, whether the book or one of its titles carries it.
     let mut per_book = s.store.book_labels().await?;
     for (id, names) in s.store.track_labels_by_book().await? {
@@ -318,15 +328,22 @@ async fn all_labels(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Valu
     }
     for (id, names) in per_book {
         if visible.contains(&id) {
-            let mut seen = std::collections::HashSet::new();
-            for n in names {
-                if seen.insert(n.to_lowercase()) {
-                    counts.entry(n.to_lowercase()).or_insert((n, 0)).1 += 1;
-                }
-            }
+            count(names, 0);
         }
     }
-    let labels: Vec<Value> = counts.into_values().map(|(name, books)| json!({ "name": name, "books": books })).collect();
+    let podcast_labels = s.store.podcast_labels().await?;
+    for p in s.store.subscriptions(d.user_id, true).await? {
+        count(podcast_labels.get(&p.id).cloned().unwrap_or_default(), 1);
+    }
+    let station_labels = s.store.station_labels().await?;
+    for st in s.store.favorite_stations(d.user_id, true).await? {
+        count(station_labels.get(&st.id).cloned().unwrap_or_default(), 2);
+    }
+    let labels: Vec<Value> = counts
+        .into_values()
+        .filter(|(_, n)| n.iter().sum::<i64>() > 0)
+        .map(|(name, n)| json!({ "name": name, "books": n[0], "podcasts": n[1], "stations": n[2], "count": n.iter().sum::<i64>() }))
+        .collect();
     Ok(Json(json!({ "labels": labels, "can_manage": d.role == Role::Admin })))
 }
 
@@ -367,6 +384,53 @@ async fn item_labels(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<
 #[derive(serde::Deserialize)]
 struct LabelsRequest {
     labels: Vec<String>,
+}
+
+/// Labels to add and to take off (a change that was made on a device without the server and is sent later: the labels others set in the meantime stay).
+#[derive(Deserialize)]
+struct LabelsDelta {
+    #[serde(default)]
+    add: Vec<String>,
+    #[serde(default)]
+    remove: Vec<String>,
+}
+
+/// Who may change the labels of a book (and of its titles): the owner and an administrator; 404 for a book the user does not see.
+async fn may_label_book(s: &ApiState, d: &Device, id: i64) -> ApiResult<()> {
+    if !s.store.visible_books(d.user_id).await?.iter().any(|b| b.id == id) {
+        return Err(ApiError(StatusCode::NOT_FOUND, "not_found"));
+    }
+    let row = s.store.admin_book_row(id).await?.ok_or(ApiError(StatusCode::NOT_FOUND, "not_found"))?;
+    if d.role == Role::Admin || (d.role == Role::Member && row.owner_id == Some(d.user_id)) {
+        Ok(())
+    } else {
+        Err(ApiError(StatusCode::FORBIDDEN, "forbidden"))
+    }
+}
+
+/// Adds and removes labels of a book (`{ "add": [], "remove": [] }`); the others stay. Same permission as the PUT. Sending the same change twice does no harm.
+async fn patch_item_labels(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, Json(req): Json<LabelsDelta>) -> ApiResult<Json<Value>> {
+    may_label_book(&s, &d, id).await?;
+    match s.store.change_book_labels(id, &req.add, &req.remove).await {
+        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+        Ok(None) => Err(ApiError(StatusCode::NOT_FOUND, "not_found")),
+        Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// The same for one title (part) of a book.
+async fn patch_part_labels(State(s): State<ApiState>, d: Device, UrlPath((id, part)): UrlPath<(i64, i64)>, Json(req): Json<LabelsDelta>) -> ApiResult<Json<Value>> {
+    if s.store.book_of_track(part).await? != Some(id) {
+        return Err(ApiError(StatusCode::NOT_FOUND, "not_found"));
+    }
+    may_label_book(&s, &d, id).await?;
+    match s.store.change_track_labels(part, &req.add, &req.remove).await {
+        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+        Ok(None) => Err(ApiError(StatusCode::NOT_FOUND, "not_found")),
+        Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// Sets the labels of a book (all of them at once). The owner of the book may, and an administrator may always (project owner, 2026-10-30:
@@ -659,6 +723,10 @@ struct ProgressRequest {
     position_ms: i64,
     #[serde(default)]
     finished: bool,
+    /// When the listening happened (Unix milliseconds on the device), for a report that is sent later (the device had no connection). The newer
+    /// state wins: an older report never overwrites what a more recent one (from this or another device) wrote. Without it, or in the future, now counts.
+    #[serde(default)]
+    at: Option<i64>,
 }
 
 async fn put_progress(State(s): State<ApiState>, d: Device, Json(req): Json<ProgressRequest>) -> ApiResult<StatusCode> {
@@ -671,7 +739,7 @@ async fn put_progress(State(s): State<ApiState>, d: Device, Json(req): Json<Prog
         return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_progress"));
     };
     // The statistics: a part that reached its end counts once per pass (see plays.rs).
-    s.store.note_part_progress(d.user_id, part.id, req.position_ms, part.duration_ms).await?;
+    s.store.note_part_progress(d.user_id, part.id, req.position_ms, part.duration_ms, req.finished).await?;
     s.store
         .save_progress(ProgressUpdate {
             profile_id: d.user_id,
@@ -679,7 +747,7 @@ async fn put_progress(State(s): State<ApiState>, d: Device, Json(req): Json<Prog
             track_id: req.part_id,
             position_ms: req.position_ms,
             finished: req.finished,
-            updated_at: now_ms(),
+            updated_at: req.at.map_or_else(now_ms, |at| at.clamp(1, now_ms())),
         })
         .await?;
     Ok(StatusCode::NO_CONTENT)

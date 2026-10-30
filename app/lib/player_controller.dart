@@ -9,6 +9,9 @@ import 'audio/playback_settings.dart';
 import 'm3u.dart';
 import 'models.dart';
 import 'playlists.dart' show kPlaylistBookPrefix, kPlaylistKind;
+import 'offline/offline_controller.dart';
+import 'offline/offline_view.dart';
+import 'server/api_client.dart' show ApiException;
 import 'server/last_played.dart';
 import 'server/server_source.dart';
 
@@ -28,7 +31,56 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
+  /// What the lists show: the library of the server, or in the offline view the downloaded titles of it.
   List<Book> library;
+
+  List<Book>? _full;
+  bool _offlineView = false;
+
+  /// The whole library of the server (what [library] is when the app is online).
+  List<Book> get fullLibrary => _full ?? library;
+
+  /// Offline mode: set by the app; the progress of the listening then waits in its outbox for the server.
+  OfflineController? offline;
+
+  /// Shows only the downloaded titles (the offline view), or everything again. What plays is not interrupted.
+  void setOfflineView(bool value) {
+    if (_offlineView == value) return;
+    _offlineView = value;
+    _full ??= library;
+    final openId = book?.id;
+    final partId = track?.partId;
+    library = _visible(fullLibrary);
+    final same = openId == null ? null : library.where((b) => b.id == openId).firstOrNull;
+    if (same != null) {
+      final i = partId == null ? -1 : same.tracks.indexWhere((t) => t.partId == partId);
+      if (i >= 0) {
+        book = same;
+        trackIndex = i;
+      }
+    } else if (book == null && library.isNotEmpty) {
+      book = library.first;
+    }
+    notifyListeners();
+  }
+
+  List<Book> _visible(List<Book> all) => _offlineView && source != null ? downloadedOnly(all, source!.isDownloaded) : all;
+
+  /// Changes a book of the library on this device (labels set without the server, a title with new labels): the change shows at once.
+  void patchBook(String id, Book Function(Book) change) {
+    List<Book> apply(List<Book> list) => [for (final b in list) b.id == id ? change(b) : b];
+    _full = apply(fullLibrary);
+    library = apply(library);
+    if (book?.id == id) book = library.where((b) => b.id == id).firstOrNull ?? change(book!);
+    notifyListeners();
+  }
+
+  /// Takes a book out of the lists (hidden without the server; the server decides when it is back).
+  void removeBookLocally(String id) {
+    _full = [for (final b in fullLibrary) if (b.id != id) b];
+    library = [for (final b in library) if (b.id != id) b];
+    notifyListeners();
+  }
 
   /// The genres in the order of the administration; music is shown by them.
   List<String> genres = const [];
@@ -357,7 +409,8 @@ class PlayerController extends ChangeNotifier {
         ..addAll(loaded.recent);
     }
     final openId = book?.id;
-    library = loaded.books;
+    _full = loaded.books;
+    library = _visible(_full!);
     genres = loaded.genres;
     for (final e in loaded.resume.entries) {
       _resume.putIfAbsent(e.key, () => e.value);
@@ -389,7 +442,8 @@ class PlayerController extends ChangeNotifier {
     playing = false;
     backend?.stop();
     _loadedKey = null;
-    library = loaded.books;
+    _full = loaded.books;
+    library = _visible(_full!);
     genres = loaded.genres;
     _resume
       ..clear()
@@ -473,7 +527,24 @@ class PlayerController extends ChangeNotifier {
     final now = DateTime.now();
     if (!force && now.difference(_lastReport) < const Duration(seconds: 10)) return;
     _lastReport = now;
-    s.saveProgress(b, t, position, finished: finished).catchError((Object _) {});
+    // Offline the position waits for the server; a report that fails for want of a connection waits as well.
+    if (offline?.active == true) {
+      _queueProgress(b, t, finished);
+      return;
+    }
+    s.saveProgress(b, t, position, finished: finished).catchError((Object e) {
+      if (e is ApiException && e.code == 'network') _queueProgress(b, t, finished);
+    });
+  }
+
+  /// Keeps where the listening is for the server (a book of the library only: an episode or a station is not).
+  void _queueProgress(Book b, Track t, bool finished) {
+    final off = offline;
+    final part = t.partId;
+    final item = int.tryParse(t.itemId ?? b.id);
+    if (off == null || part == null || item == null || b.kind == 'podcast' || b.isStream) return;
+    off.outbox.addProgress(item: item, part: part, positionMs: position.inMilliseconds, finished: finished);
+    off.touch();
   }
 
   /// Makes the backend follow the controller: loads the current track if it is
@@ -653,6 +724,9 @@ class PlayerController extends ChangeNotifier {
       _report(force: false);
       if (backend!.state == BackendState.ended) {
         if (trackIndex < book!.tracks.length - 1) {
+          // The end of every track is reported, not only the last one of the list: the server counts a play from it.
+          position = t.length;
+          _report(finished: true);
           trackIndex++;
           position = Duration.zero;
           _syncBackend();

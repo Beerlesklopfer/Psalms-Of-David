@@ -693,7 +693,7 @@ async fn labels_are_listed_and_set_by_a_token_that_may_write() {
     let (_, removed) = tool(&m, &write, "set_labels", json!({ "ids": [two], "remove": ["GEBET"], "dry_run": false })).await;
     assert_eq!(removed["albums"][0]["after"], json!(["Schule"]), "{removed}");
     let (_, list) = tool(&m, &read, "list_labels", json!({})).await;
-    assert_eq!(list["labels"], json!([{ "name": "Gebet", "books": 1, "tracks": 0 }, { "name": "Schule", "books": 2, "tracks": 0 }]), "{list}");
+    assert_eq!(list["labels"], json!([{ "name": "Gebet", "books": 1, "tracks": 0, "podcasts": 0, "stations": 0 }, { "name": "Schule", "books": 2, "tracks": 0, "podcasts": 0, "stations": 0 }]), "{list}");
     let (_, of) = tool(&m, &read, "list_labels", json!({ "ids": [one, 99999] })).await;
     assert_eq!(of["albums"][0]["labels"], json!(["Gebet", "Schule"]), "{of}");
     // set replaces them all, an empty list takes them off; an unknown album is told.
@@ -1283,8 +1283,51 @@ async fn labels_of_single_titles_are_set_by_a_token_that_may_write() {
     let own = m.store.track_labels().await.unwrap();
     assert_eq!((own.get(&tracks[0]).cloned(), own.get(&tracks[2]).cloned()), (Some(vec!["Gebet".to_owned()]), None));
     let (_, list) = tool(&m, &read, "list_labels", json!({})).await;
-    assert_eq!(list["labels"], json!([{ "name": "Gebet", "books": 0, "tracks": 2 }]), "{list}");
+    assert_eq!(list["labels"], json!([{ "name": "Gebet", "books": 0, "tracks": 2, "podcasts": 0, "stations": 0 }]), "{list}");
     let (_, set) = tool(&m, &write, "set_track_labels", json!({ "id": one, "set": [], "dry_run": false })).await;
     assert_eq!(set["changed"], 2, "{set}");
+    assert!(m.store.labels().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn podcasts_and_stations_are_labelled_by_name_or_address_with_a_look_first() {
+    let m = mcp().await;
+    let write = m.store.create_mcp_token("w", true, m.admin).await.unwrap();
+    let read = m.store.create_mcp_token("r", false, m.admin).await.unwrap();
+    let (err, _) = tool(&m, &write, "edit_stations", json!({ "action": "add", "name": "DWG Lyra", "stream_url": "https://server34599.streamplus.de/stream.mp3", "for": ["*"] })).await;
+    assert!(!err);
+    let feed = david_server::podcast::parse(r#"<?xml version="1.0"?><rss version="2.0"><channel><title>Kinderfunk</title><link>https://example.org/</link><description>x</description>
+      <item><title>Folge 1</title><guid>a</guid><enclosure url="https://example.org/1.mp3" type="audio/mpeg"/><pubDate>Tue, 13 Oct 2026 10:00:00 GMT</pubDate></item></channel></rss>"#).unwrap();
+    let feed_id = m.store.save_feed("https://example.org/feed.xml", &feed).await.unwrap();
+    m.store.subscribe(m.admin, feed_id, true).await.unwrap();
+
+    // A look changes nothing; a reading token may not write; a bad kind, a bad name and an empty request are refused.
+    let (err, look) = tool(&m, &read, "set_feed_labels", json!({ "kind": "station", "names": ["dwg lyra"], "add": ["Gebet"] })).await;
+    assert!(!err && look["dry_run"] == true && look["changed"] == 1 && m.store.labels().await.unwrap().is_empty(), "{look}");
+    assert!(tool(&m, &read, "set_feed_labels", json!({ "kind": "station", "names": ["DWG Lyra"], "add": ["Gebet"], "dry_run": false })).await.0);
+    assert!(tool(&m, &write, "set_feed_labels", json!({ "kind": "radio", "names": ["x"], "add": ["Gebet"] })).await.0);
+    assert!(tool(&m, &write, "set_feed_labels", json!({ "kind": "station", "names": ["DWG Lyra"], "add": ["a,b"], "dry_run": false })).await.0);
+    assert!(tool(&m, &write, "set_feed_labels", json!({ "kind": "station", "names": ["DWG Lyra"] })).await.0);
+    let (_, odd) = tool(&m, &write, "set_feed_labels", json!({ "kind": "podcast", "names": ["Nope"], "add": ["x"] })).await;
+    assert_eq!(odd["items"][0]["problem"], "no podcast called Nope", "{odd}");
+
+    // By name (any case) or by address; the labels show in the lists and in the counts of list_labels.
+    let (err, done) = tool(&m, &write, "set_feed_labels", json!({ "kind": "station", "names": ["dwg lyra"], "add": ["Gebet"], "dry_run": false })).await;
+    assert!(!err && done["changed"] == 1, "{done}");
+    let (err, done) = tool(&m, &write, "set_feed_labels", json!({ "kind": "podcast", "names": ["https://example.org/feed.xml"], "add": ["gebet", "Kinder"], "dry_run": false })).await;
+    assert!(!err && done["changed"] == 1, "{done}");
+    let (_, stations) = tool(&m, &read, "list_stations", json!({})).await;
+    let (_, podcasts) = tool(&m, &read, "list_podcasts", json!({})).await;
+    assert_eq!((stations["stations"][0]["labels"].clone(), podcasts["podcasts"][0]["labels"].clone()), (json!(["Gebet"]), json!(["Gebet", "Kinder"])));
+    let (_, list) = tool(&m, &read, "list_labels", json!({})).await;
+    assert_eq!(list["labels"], json!([{ "name": "Gebet", "books": 0, "tracks": 0, "podcasts": 1, "stations": 1 }, { "name": "Kinder", "books": 0, "tracks": 0, "podcasts": 1, "stations": 0 }]), "{list}");
+    let (_, again) = tool(&m, &write, "set_feed_labels", json!({ "kind": "podcast", "names": ["Kinderfunk"], "add": ["GEBET"], "dry_run": false })).await;
+    assert_eq!(again["changed"], 0, "{again}");
+
+    // Remove and set; a label nothing carries any more goes.
+    let (_, set) = tool(&m, &write, "set_feed_labels", json!({ "kind": "podcast", "names": ["Kinderfunk"], "set": [], "dry_run": false })).await;
+    assert_eq!(set["changed"], 1, "{set}");
+    let (_, set) = tool(&m, &write, "set_feed_labels", json!({ "kind": "station", "names": ["DWG Lyra"], "remove": ["gebet"], "dry_run": false })).await;
+    assert_eq!(set["items"][0]["after"], json!([]), "{set}");
     assert!(m.store.labels().await.unwrap().is_empty());
 }

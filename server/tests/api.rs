@@ -248,6 +248,45 @@ async fn progress_is_stored_and_listed_for_continuing() {
     let _ = other_book;
 }
 
+async fn position_of(a: &Api, token: &str, book: i64) -> serde_json::Value {
+    call(a, "GET", &format!("/api/v1/items/{book}"), Some(token), None, None).await.json()["progress"]["position_ms"].clone()
+}
+
+#[tokio::test]
+async fn a_late_report_of_progress_never_overwrites_a_newer_state() {
+    let a = api().await;
+    let anna = a.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    let token = pair(&a, anna, 1).await;
+    let (book_id, track) = add_book(&a, "Shown", Some(0)).await;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+    let put = |p: i64, at: Option<i64>| {
+        let mut j = json!({ "item_id": book_id, "part_id": track, "position_ms": p, "finished": false });
+        if let Some(at) = at {
+            j["at"] = json!(at);
+        }
+        j
+    };
+    // Another device listened a minute ago; this device was offline longer ago and reports now: the newer state stays.
+    assert_eq!(call(&a, "PUT", "/api/v1/progress", Some(&token), Some(put(90_000, Some(now - 60_000))), None).await.status, StatusCode::NO_CONTENT);
+    a.store.flush().await.unwrap();
+    assert_eq!(call(&a, "PUT", "/api/v1/progress", Some(&token), Some(put(10_000, Some(now - 3_600_000))), None).await.status, StatusCode::NO_CONTENT);
+    a.store.flush().await.unwrap();
+    assert_eq!(position_of(&a, &token, book_id).await, 90_000, "an older report does not overwrite");
+    // A newer one does; the same report twice is the same state.
+    for _ in 0..2 {
+        assert_eq!(call(&a, "PUT", "/api/v1/progress", Some(&token), Some(put(120_000, Some(now - 1_000))), None).await.status, StatusCode::NO_CONTENT);
+        a.store.flush().await.unwrap();
+        assert_eq!(position_of(&a, &token, book_id).await, 120_000);
+    }
+    // A time in the future counts as now (a device with a wrong clock cannot block the others), and without a time the report is of now.
+    assert_eq!(call(&a, "PUT", "/api/v1/progress", Some(&token), Some(put(130_000, Some(now + 86_400_000))), None).await.status, StatusCode::NO_CONTENT);
+    a.store.flush().await.unwrap();
+    assert_eq!(position_of(&a, &token, book_id).await, 130_000);
+    assert_eq!(call(&a, "PUT", "/api/v1/progress", Some(&token), Some(put(140_000, None)), None).await.status, StatusCode::NO_CONTENT);
+    a.store.flush().await.unwrap();
+    assert_eq!(position_of(&a, &token, book_id).await, 140_000);
+}
+
 #[tokio::test]
 async fn progress_of_an_unseen_book_is_refused() {
     let a = api().await;
@@ -557,8 +596,32 @@ async fn the_station_search_needs_a_directory_in_the_settings() {
 }
 
 async fn report(a: &Api, token: &str, book: i64, track: i64, position_ms: i64) {
-    let r = call(a, "PUT", "/api/v1/progress", Some(token), Some(json!({ "item_id": book, "part_id": track, "position_ms": position_ms, "finished": false })), None).await;
+    report_with(a, token, book, track, position_ms, false).await;
+}
+
+async fn report_with(a: &Api, token: &str, book: i64, track: i64, position_ms: i64, finished: bool) {
+    let r = call(a, "PUT", "/api/v1/progress", Some(token), Some(json!({ "item_id": book, "part_id": track, "position_ms": position_ms, "finished": finished })), None).await;
     assert_eq!(r.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&r.bytes));
+}
+
+#[tokio::test]
+async fn a_track_the_app_says_is_finished_counts_although_the_last_report_was_seconds_before_its_end() {
+    let a = api().await;
+    let me = pair(&a, a.admin, 1).await;
+    let (book, t1, t2) = {
+        let b = two_track_book(&a).await;
+        (b.0, b.1, b.2)
+    };
+    let detail = || async { call(&a, "GET", &format!("/api/v1/items/{book}"), Some(&me), None, None).await.json() };
+    // Without the word of the app a report 10 s before the end counts nothing (length from the tags is 240 s).
+    report(&a, &me, book, t1, 230_000).await;
+    assert_eq!(detail().await["parts"][0]["plays"].as_i64(), Some(0));
+    // With it, it does, once; a "finished" far from the end (a jump, a wrong report) does not.
+    report_with(&a, &me, book, t1, 230_000, true).await;
+    report_with(&a, &me, book, t1, 230_000, true).await;
+    report_with(&a, &me, book, t2, 60_000, true).await;
+    let d = detail().await;
+    assert_eq!((d["parts"][0]["plays"].as_i64(), d["parts"][1]["plays"].as_i64()), (Some(1), Some(0)));
 }
 
 #[tokio::test]
