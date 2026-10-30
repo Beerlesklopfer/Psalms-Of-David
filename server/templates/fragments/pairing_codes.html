@@ -3,8 +3,8 @@
   <h2>{{ t("pairing.codes") }}{% if open_codes > 0 %} <span class="badge ok">{{ open_codes }} {{ t("pairing.state_open") }}</span>{% endif %}</h2>
   {% for e in events %}
   <p class="message{% if e.kind == 'expired' %} warn{% endif %}" role="status">
-    {% if e.kind == "paired" %}{{ t("pairing.event_paired") }}: <strong>{{ e.device }}</strong> {{ t("pairing.of_user") }} <strong>{{ e.user_name }}</strong>, {{ t("pairing.ago_before") }} {{ e.minutes }} {{ t("pairing.ago_after") }}
-    {% else %}{{ t("pairing.event_expired") }}: <strong>{{ e.user_name }}</strong>, {{ t("pairing.ago_before") }} {{ e.minutes }} {{ t("pairing.ago_after") }}{% endif %}
+    {% if e.kind == "paired" %}{{ t("pairing.event_paired") }}: <strong>{{ e.device }}</strong> {{ t("pairing.of_user") }} <strong>{{ e.user_name }}</strong>, {{ t("pairing.ago_before") }}{{ e.minutes }} {{ t("pairing.ago_after") }}
+    {% else %}{{ t("pairing.event_expired") }}: <strong>{{ e.user_name }}</strong>, {{ t("pairing.ago_before") }}{{ e.minutes }} {{ t("pairing.ago_after") }}{% endif %}
   </p>
   {% endfor %}
   {% if codes %}

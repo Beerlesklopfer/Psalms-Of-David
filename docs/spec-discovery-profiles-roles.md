@@ -200,6 +200,8 @@ Steps:
 2. The server checks the code and the owner's `max_devices` (section 3a), stores the device under the user (table `device`), marks the code as used, and answers with the tunnel settings if the device is outside the home network.
 3. The device **pins** `id` and `fp`. From then on a server with another identity is refused.
 
+What became of a code stays visible to the administrator (migration `0053`: the device that used it, the moment it was revoked): see `spec-admin-ui.md`, "Pairing codes". A revoked code cannot be redeemed.
+
 Devices without a camera (desktop) paste the same URI or type the code; there is no other way in. Scanner and generator: a Dart scanner package in the app (for example `mobile_scanner`), and a QR generator both in the app and in the server's command line. **Open**: which packages.
 
 ## 5. Data model changes (migration `0003`, built)

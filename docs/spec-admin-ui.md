@@ -91,7 +91,8 @@ GET  /admin/fragments/<name>       read-only fragments (lists, dialogs)
 | `schedule.save` | store the weekly planner of a user (the grid sends its 672 cells) |
 | `book.release`, `book.unrelease`, `book.set_exempt`, `book.set_recommendation` | release with an age rating, withdraw, quota-exempt flag |
 | `book.grant_user`, `book.grant_role`, `book.revoke_grant` | exceptions |
-| `pairing.create` | creates the one-time code and answers with the QR code fragment |
+| `pairing.create` | creates the one-time code and answers with the QR code fragment (and the header `HX-Trigger: pairing-created`, so the list of the codes and the number at the menu refresh) |
+| `pairing.revoke`, `pairing.delete_code` | withdraw a pairing code that is still open; delete one that is not open any more (an open one is refused with 409: revoke it first, the same rule as for devices) |
 | `device.revoke`, `device.set_shared` | devices |
 | `import.save_criteria`, `import.unlock`, `import.lock` | the release criteria and the import lock |
 | `setting.confirm` | confirms a proposed value |
@@ -398,3 +399,23 @@ without it (`POST /admin/rpc/user.remove_avatar`, administrators only). Nobody b
 ## File formats in the album dialog
 
 The tab "Ablage" lists the distinct formats of the tracks of the album (format, codec, sample rate, channels, with the number of tracks), and the list of the titles shows a format badge per track. A track the importer has not looked at yet shows no badge until the next import.
+
+## Pairing codes (list, number at the menu, messages)
+
+A code made in the pairing window of the administration or by an app (`POST /api/v1/devices/pairing`, "connect a further device") is a row of the table
+`enrollment` (only the hash of the code, never the code). Since migration `0053` the row also holds the device that redeemed it (`device_id`) and the moment
+it was revoked (`revoked_at`). The page "Pair a device" has a section **Pairing codes** above the device list: the codes of the last 14 days and every code that
+is still open, newest first (at most 100): user, who made it, made, valid until, state (**open**, **used by** a device with the time, **revoked**, **expired**).
+The code itself is never shown again. An open code has a button "Revoke"; a code that is not open has "Delete" (open: revoke first). The section refreshes
+itself every 30 seconds and at once after a new code was made (`pairing-created`); `GET /admin/fragments/pairing-codes`.
+
+Hints that do not need the pairing page: a small **number** at the menu item "Pair a device" (open codes; hidden when there are none; `GET
+/admin/fragments/pairing-badge`, loaded with every page and refreshed every 30 seconds) and a line on the **overview** ("N open pairing codes, valid until ..."
+with a link). On the pairing page a message says "Device paired: X of Y, (3 min ago)" for a code redeemed in the last 15 minutes and "A pairing code ran out
+unused" for one that expired in that time.
+
+The server **logs** (tracing, never the code or its hash): `pairing code made` (user, who made it, shared, validity), `device paired` (device, user, device id),
+`pairing code revoked`, and `pairing refused` with the reason (`unknown_code`, `code_used`, `code_revoked`, `code_expired`, `device_limit_reached`,
+`invalid_public_key`, `invalid_device_name`). The peer address is not logged (the server does not keep the connection info of the request). There is no general
+change log of the administration (the MCP `change_log` and the table `tag_change` record tag changes only); the audit fields of the tables say who changed a row.
+
