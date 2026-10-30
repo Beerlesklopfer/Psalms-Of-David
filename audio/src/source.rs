@@ -34,13 +34,15 @@ pub struct Source {
     pub channels: u32,
     /// Length of the file if the container says so (an MP3 without a header may not).
     pub duration: Option<Duration>,
+    /// Frames to drop from the start of the decoded audio: a seek lands on a packet boundary at or before the requested time.
+    skip: u64,
 }
 
 impl Source {
     /// Opens `path` and starts at `start`. Fails if the file cannot be read or has
     /// no audio. The first block is already decoded, so rate and channels are known.
     pub fn open(path: &Path, start: Duration) -> Result<(Source, Vec<f32>), Error> {
-        let file = Box::new(File::open(path)?);
+        let file = Box::new(File::open(path).map_err(|e| Error::Decode(format!("{}: {e}", path.display())))?);
         let mss = MediaSourceStream::new(file, Default::default());
         let mut hint = Hint::new();
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
@@ -78,23 +80,31 @@ impl Source {
             .ok_or_else(|| Error::Decode("no audio parameters".into()))?;
         let header_rate = params.sample_rate;
         let num_frames = track.num_frames;
+        let time_base = track.time_base;
         let decoder = symphonia::default::get_codecs()
-            .make_audio_decoder(params, &AudioDecoderOptions::default())
+            .make_audio_decoder(params, &AudioDecoderOptions::default().gapless(true))
             .map_err(|e| Error::Decode(format!("no decoder: {e}")))?;
         let duration = match (num_frames, header_rate) {
             (Some(frames), Some(rate)) if rate > 0 => Some(Duration::from_secs_f64(frames as f64 / rate as f64)),
             _ => None,
         };
 
+        let mut skip = 0u64;
         if !start.is_zero() {
             let time = Time::try_from_secs_f64(start.as_secs_f64())
                 .ok_or_else(|| Error::Decode("cannot seek to that time".into()))?;
-            format
+            let seeked = format
                 .seek(SeekMode::Accurate, SeekTo::Time { time, track_id: Some(track_id) })
                 .map_err(|e| Error::Decode(format!("seek failed: {e}")))?;
+            // The seek lands at or before the requested time; the difference is decoded and dropped, so that the start is exact.
+            let ticks = seeked.required_ts.get().saturating_sub(seeked.actual_ts.get()).max(0) as u128;
+            skip = match (time_base, header_rate) {
+                (Some(tb), Some(rate)) => (ticks * u128::from(tb.numer.get()) * u128::from(rate) / u128::from(tb.denom.get())) as u64,
+                _ => ticks as u64,
+            };
         }
 
-        let mut source = Source { format, decoder, track_id, scratch: Vec::new(), rate: 0, channels: 0, duration };
+        let mut source = Source { format, decoder, track_id, scratch: Vec::new(), rate: 0, channels: 0, duration, skip };
         if !start.is_zero() {
             source.decoder.reset();
         }
@@ -119,6 +129,12 @@ impl Source {
                     self.channels = buf.spec().channels().count() as u32;
                     self.scratch.resize(buf.samples_interleaved(), f32::MID);
                     buf.copy_to_slice_interleaved(&mut self.scratch);
+                    if self.skip > 0 {
+                        let frames = (self.scratch.len() / self.channels as usize) as u64;
+                        let drop = self.skip.min(frames);
+                        self.skip -= drop;
+                        self.scratch.drain(..drop as usize * self.channels as usize);
+                    }
                     if self.scratch.is_empty() {
                         continue;
                     }

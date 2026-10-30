@@ -9,16 +9,22 @@
 //!   from the ring buffer (no allocation, no locking, no file access),
 //! - the stream declares the file's own rate and channel count, PipeWire resamples.
 //!
-//! `Engine` is the controllable player (load, play, pause, seek, volume, position).
+//! `Engine` is the controllable player (load, play, pause, seek, volume, position, gapless `enqueue_next`).
+//!
+//! The engine core (decoder, ring buffer, time stretch, session state) is portable; where the audio goes is an `output`:
+//! PipeWire, or the null output that runs without a sound card (`Engine::start_null`).
 //! `play_file` plays one file to its end and is what the command line example uses.
 
+mod core;
 mod engine;
 pub mod ffi;
+pub mod output;
 mod source;
 mod stretch;
 pub mod stream;
 
 pub use engine::{BUFFER_SECONDS, DEFAULT_BUFFER_SECONDS, Engine, EngineOptions, State};
+pub use output::null::{NullCapture, NullMode, NullOptions};
 pub use source::STREAM_UNSUPPORTED;
 
 use std::path::Path;
@@ -76,7 +82,7 @@ pub struct Report {
 pub fn play_file(path: &Path, options: &PlayOptions) -> Result<Report, Error> {
     let engine = Engine::start(EngineOptions { target: options.target.clone(), role: None })?;
     engine.load(path, Duration::ZERO, true, &options.media_name)?;
-    engine.wait_for(|s| !matches!(s, State::Playing | State::Paused | State::Buffering), Duration::from_secs(60 * 60 * 24));
+    engine.wait_for(|s| !matches!(s, State::Loading | State::Playing | State::Paused | State::Buffering), Duration::from_secs(60 * 60 * 24));
     if engine.state() == State::Failed {
         return Err(Error::Decode(engine.error().unwrap_or_else(|| "playback failed".into())));
     }

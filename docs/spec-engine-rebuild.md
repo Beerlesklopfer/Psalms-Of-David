@@ -91,7 +91,7 @@ is accepted, it replaces the isolate on Linux. Without a Rust HTTP/TLS stack the
 | P1 | radio network read in a background isolate (**being built**) | ~2 | local TCP/ICY server, a busy UI loop in the test, no byte lost | radio for 30 min |
 | P2 | `PlayerController` talks to the backend through a narrow async port; `InProcessTransport` | 4 | all existing tests green, contract tests on `FakeBackend` | - |
 | P2b | **gapless on the phones and macOS/Windows:** `enqueueNext` in `AudioBackend`, `JustAudioBackend` with a queue of the current and the next file | 4-6 | `FakeBackend` contract test: the next track is queued before the end, the controller keeps track/position when the engine switches by itself | a gapless album on the emulator and on a phone (TestFlight): no gap, no click |
-| P3 | Rust engine: output trait, handle registry, async load, **`enqueue_next` (gapless)**, event port, status struct | 10-14 | `cargo test` with the null output vs an f32 reference, stale handle, load while loading | PipeWire listening |
+| P3 | Rust engine: output trait, handle registry, async load, **`enqueue_next` (gapless)**, event port, status struct (**output trait, handles, async load, gapless done 2026-10-30; event port and status struct still open**) | 10-14 | `cargo test` with the null output vs an f32 reference, stale handle, load while loading | PipeWire listening |
 | P4 | player service in an isolate on Linux, `PositionBuilder` in the UI | 5-7 | the same service tests with a blocked UI isolate, isolate restart | Linux app |
 | P5 | car browse tree in `PsalmAudioHandler`, `automotive_app_desc.xml` | 4 (+3 CarPlay, blocked by Apple) | `getChildren('root')` for a fake library with visibility and age filter | Android emulator + Desktop Head Unit |
 | P6 | voice (App Intents, Google): `docs/spec-voice.md`, Siri first | 8-10 | server-side intent resolution tests | TestFlight, emulator |
@@ -140,7 +140,7 @@ Done, all in-process, no isolate yet, playback behaviour unchanged (analyze clea
   at the first tick in the 45 s window; parts of the server after the prefetch.
 - `FakeBackend(gapless: true)` implements the contract; `test/gapless_test.dart` (controller + fake: queued before the end, no `ended`/loading at any pump, progress once, seek back, skip/next/book change
   clear the queue) and the `gapless` group of `test/player_state_machine_test.dart`.
-- `PipeWireBackend.supportsGapless` stays false; TODO in the code points to P3 (`psalm_engine_enqueue_next`).
+- `PipeWireBackend.supportsGapless` was false until P3; since P3 it is true (see below).
 - **Must be checked by hand (nothing of this is proven on a device):** a gapless album on the Android emulator and on an iPhone via TestFlight; MP3 encoder delay on Android (ExoPlayer trims with a LAME/Xing
   header, to be heard) and iOS (AVPlayer, iTunSMPB); Windows and macOS (just_audio_windows / darwin may not be gapless at all); that adding an item to a playing list does not hiccup; that the
   `positionDiscontinuity`/`currentIndex` events arrive in the order assumed.
@@ -159,3 +159,12 @@ Next: `IsolateTransport` (the engine builds backend and source inside the isolat
 field and is dropped by the isolate transport); `EngineState` supervision and restart from the last snapshot; STAGE C machines (radio connection, podcast download lifecycle and list controllers).
 Known gaps: `Core.book` holds the whole track list as `BookData` (cheap, but rebuilt on every `open`); the engine rebuilds a `Book` without author/cover when no live
 book is given (enough for the source, not for the UI).
+
+
+**P3, Rust engine (2026-10-30, built; null output only, PipeWire path not run).** Details in `docs/spec-audio-pipewire.md`, "Engine architecture since P3".
+- Done: (1) `Output` trait with `output/pipewire.rs` and `output/null.rs`, portable `core.rs`; `Engine::start_null`, `psalm_engine_new_null`; `cargo test` needs no sound card (tests/null_output.rs, tests/gapless.rs, tests/common).
+  (2) `u64` handles in a registry, per-engine `last_error`, `psalm_abi_version()` = 2.0 and the check in Dart; stale/zero/double free/reuse/threads tests. (3) `load` and `stream_open` return a request id at once, `Source::open` on a worker, state `loading` (6); no decoder joins on the engine thread.
+  (4) `psalm_engine_enqueue_next`/`_clear_next`/`_track_generation`: splice in `feed()` at the exact sample, MP3 delay/padding trimmed by symphonia's decoder-level gapless; `PipeWireBackend` implements `supportsGapless`, `enqueueNext`, `clearNext`, `onAdvanced`.
+- Bugs found on the way: a live stream's first bytes were cleared when the engine thread started the stream after the caller had pushed (invisible while `load_stream` waited); the engine's seek was only accurate to a packet (now exact).
+- Still open in P3: event port (`Dart_PostCObject`) and the status struct (the Dart side polls), the Rust network reader, cpal output. Not verified: the PipeWire path after the split (`audio/scripts/verify*.sh`), anything audible (the seam of a gapless album), MP3s without a LAME header.
+- `BackendState` has no `loading`: `PipeWireBackend` reports the asked-for state while the engine opens the file, so the player machine is unchanged.

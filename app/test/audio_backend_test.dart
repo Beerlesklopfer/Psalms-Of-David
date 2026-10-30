@@ -119,6 +119,10 @@ void main() {
       b.load(clip!, play: false, title: 'Dart test');
       expect(b.state, BackendState.paused);
       expect(b.position, Duration.zero);
+      // The engine opens the file on a worker thread: the length is known a moment after load returned.
+      for (var i = 0; i < 200 && b.duration == null; i++) {
+        sleep(const Duration(milliseconds: 10));
+      }
       expect(b.duration, isNotNull);
       expect(b.duration!.inSeconds, greaterThan(5));
 
