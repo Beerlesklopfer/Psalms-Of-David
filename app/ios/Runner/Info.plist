@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Psalm</string>
+	<string>$(PSALM_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -31,6 +31,14 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<!-- The server announces itself by mDNS (_david._tcp): without this entry iOS 14+ does not let the app browse for it. -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_david._tcp</string>
+	</array>
+	<!-- Only standard HTTPS is used: the export compliance question of App Store Connect is answered "no" with this. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<!-- The server of the family is on the local network: iOS asks once for permission to reach it. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Psalm connects to the David server of your family on your home network.</string>

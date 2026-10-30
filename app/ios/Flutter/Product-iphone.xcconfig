@@ -1,0 +1,4 @@
+// Psalm for iPhone: its own app on the App Store (bundle id io.onesimus.psalm), runs on iPhone only.
+PSALM_BUNDLE_ID = io.onesimus.psalm
+PSALM_DEVICE_FAMILY = 1
+PSALM_NAME = Psalm

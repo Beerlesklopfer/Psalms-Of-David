@@ -4,6 +4,8 @@
 # Tests on every push and pull request. On pushes to main and on tags v* the packages are built too:
 #   - David (server): .deb, .rpm, .tar.gz          - Psalm for Linux: .deb, .rpm, .tar.gz
 #   - Psalm for Android: .apk (one per processor type)
+#   - Psalm for iPhone and Psalm for iPad: two apps (two bundle ids), built on macOS runners; signed .ipa and the upload to
+#     TestFlight only if the iOS secrets exist (see docs/releasing.md), otherwise only a build without signing as a check.
 # A tag v1.2.3 also makes a release with all of them, their SHA256SUMS and, if a signing key is set
 # up (secret GPG_PRIVATE_KEY), a signature of the sums.
 # Android signing: set the secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
@@ -13,7 +15,7 @@
 name: ci
 on:
   push:
-    branches: [main]
+    branches: [main, development]
     tags: ["v*"]
   pull_request:
 
@@ -152,6 +154,111 @@ jobs:
           ls -l ../dist
       - uses: actions/upload-artifact@v4
         with: { name: packages-android, path: dist/*, retention-days: 14 }
+
+  # The iOS app builds without signing on every push and pull request (a check that it still compiles); two products from one project.
+  ios-build:
+    needs: [app]
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        product: [iphone, ipad]
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - run: cp ios/Flutter/Product-${{ matrix.product }}.xcconfig ios/Flutter/Product.xcconfig
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign
+      - name: The product has its own bundle id and device family
+        run: |
+          plist=build/ios/iphoneos/Runner.app/Info.plist
+          id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")
+          family=$(/usr/libexec/PlistBuddy -c 'Print :UIDeviceFamily' "$plist" | tr -d ' \n')
+          echo "bundle id: $id, device family: $family"
+          case "${{ matrix.product }}" in
+            iphone) [ "$id" = "io.onesimus.psalm" ] && echo "$family" | grep -q "1" && ! echo "$family" | grep -q "2" ;;
+            ipad) [ "$id" = "io.onesimus.psalm.ipad" ] && echo "$family" | grep -q "2" && ! echo "$family" | grep -q "1" ;;
+          esac
+
+  # Signed apps for iPhone and iPad; the upload to TestFlight when the App Store Connect key is set.
+  package-ios:
+    needs: [app, version, ios-build]
+    # Not on every push of development: a build in TestFlight is made for tags and for main only.
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        product: [iphone, ipad]
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      CERT_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+      CERT_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+      TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+      PROFILE_BASE64: ${{ matrix.product == 'iphone' && secrets.IOS_PROFILE_IPHONE_BASE64 || secrets.IOS_PROFILE_IPAD_BASE64 }}
+      ASC_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
+      ASC_KEY_BASE64: ${{ secrets.APPSTORE_API_KEY_P8_BASE64 }}
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Signing material (only if the secrets exist)
+        id: sign
+        run: |
+          if [ -z "$CERT_BASE64" ] || [ -z "$PROFILE_BASE64" ] || [ -z "$TEAM_ID" ]; then
+            echo "::warning::No iOS signing secrets: no .ipa for ${{ matrix.product }} (the unsigned build above is the check)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          keychain="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p ci "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p ci "$keychain"
+          echo "$CERT_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          echo "$PROFILE_BASE64" | base64 -d > "$RUNNER_TEMP/p.mobileprovision"
+          security cms -D -i "$RUNNER_TEMP/p.mobileprovision" > "$RUNNER_TEMP/p.plist"
+          uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/p.plist")
+          name=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/p.plist")
+          cp "$RUNNER_TEMP/p.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
+          case "${{ matrix.product }}" in iphone) bundle=io.onesimus.psalm ;; ipad) bundle=io.onesimus.psalm.ipad ;; esac
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key><dict><key>$bundle</key><string>$name</string></dict>
+          </dict></plist>
+          EOF
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - if: steps.sign.outputs.ready == 'true'
+        uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - if: steps.sign.outputs.ready == 'true'
+        run: |
+          cp ios/Flutter/Product-${{ matrix.product }}.xcconfig ios/Flutter/Product.xcconfig
+          flutter pub get
+          flutter build ipa --release --build-name "$VERSION" --build-number "$GITHUB_RUN_NUMBER" --export-options-plist "$RUNNER_TEMP/ExportOptions.plist"
+          mkdir -p ../dist
+          cp build/ios/ipa/*.ipa "../dist/psalm-$VERSION-ios-${{ matrix.product }}.ipa"
+      - name: Upload to TestFlight (only with the App Store Connect key)
+        if: steps.sign.outputs.ready == 'true' && env.ASC_KEY_ID != ''
+        run: |
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          echo "$ASC_KEY_BASE64" | base64 -d > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          xcrun altool --upload-app --type ios --file "../dist/psalm-$VERSION-ios-${{ matrix.product }}.ipa" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+      - if: steps.sign.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-ios-${{ matrix.product }}
+          path: dist/*
+          retention-days: 14
 
   release:
     needs: [package-server, package-app-linux, package-android]

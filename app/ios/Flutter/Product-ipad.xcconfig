@@ -1,0 +1,4 @@
+// Psalm for iPad: its own app on the App Store (bundle id io.onesimus.psalm.ipad), runs on iPad only.
+PSALM_BUNDLE_ID = io.onesimus.psalm.ipad
+PSALM_DEVICE_FAMILY = 2
+PSALM_NAME = Psalm

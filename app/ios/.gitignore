@@ -32,3 +32,6 @@ Runner/GeneratedPluginRegistrant.*
 !default.mode2v3
 !default.pbxuser
 !default.perspectivev3
+
+# The product chosen for a build (copied from Product-iphone.xcconfig or Product-ipad.xcconfig).
+Flutter/Product.xcconfig

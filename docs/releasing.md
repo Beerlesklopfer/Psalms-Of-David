@@ -32,10 +32,51 @@ Nothing is signed unless the secrets exist; the build then still works and says 
 - **Checksums and packages**: secret `GPG_PRIVATE_KEY` (`gpg --armor --export-secret-keys <id>`, ideally a
   signing sub-key). The release gets `SHA256SUMS.asc`; users check with `gpg --verify SHA256SUMS.asc SHA256SUMS`
   and `sha256sum -c SHA256SUMS`. Signing the `.rpm` itself (`rpmsign`) and a signed apt repository are not set up.
-- Windows and macOS/iOS builds and their certificates are not part of this workflow.
+- **iOS** (iPhone and iPad): see the next section. Windows and macOS builds are not part of this workflow.
 
 Not verified here: the workflow has not run on GitHub; the Linux client packages need `nfpm` (downloaded in
 CI), which could not be tried on this machine.
+
+## Psalm for iPhone and Psalm for iPad (iOS)
+
+Two products come out of one Xcode project: **Psalm** for iPhone (bundle id `io.onesimus.psalm`, device family iPhone) and **Psalm for iPad**
+(`io.onesimus.psalm.ipad`, device family iPad). They are two apps on the App Store with two listings, two builds and two profiles. The project
+reads three settings from `app/ios/Flutter/Product.xcconfig` (`PSALM_BUNDLE_ID`, `PSALM_DEVICE_FAMILY`, `PSALM_NAME`); CI copies
+`Product-iphone.xcconfig` or `Product-ipad.xcconfig` to it before the build. Without that file a build is universal (`io.onesimus.psalm`,
+iPhone and iPad), for a quick try with Xcode.
+
+CI (`ios-build`, macOS runner, matrix iphone/ipad): `flutter build ios --release --no-codesign` on every push and pull request, and a check of the
+bundle id and the device family. It needs no Apple account. On a private repository macOS minutes cost ten times as much as Linux minutes; a
+public repository has them free.
+`package-ios` (pushes to main and tags) builds the signed `.ipa` of both products and uploads them to TestFlight, **only if the secrets exist**:
+
+| Secret | What |
+|---|---|
+| `IOS_CERTIFICATE_P12_BASE64`, `IOS_CERTIFICATE_PASSWORD` | the "Apple Distribution" certificate with its private key as .p12 (`base64 -w0`) |
+| `IOS_TEAM_ID` | the ten characters of the team (developer account, membership) |
+| `IOS_PROFILE_IPHONE_BASE64`, `IOS_PROFILE_IPAD_BASE64` | the App Store provisioning profile of each bundle id (`base64 -w0 x.mobileprovision`) |
+| `APPSTORE_API_KEY_ID`, `APPSTORE_API_ISSUER_ID`, `APPSTORE_API_KEY_P8_BASE64` | the App Store Connect API key (role App Manager) for the upload; without it the .ipa stays an artifact |
+
+One-time setup (everything works from Linux, a Mac is not needed):
+1. Apple Developer Program (99 EUR a year, an individual or a company account). The free Apple ID is not enough for TestFlight, CarPlay or a profile that lasts.
+2. Developer portal: two App IDs (`io.onesimus.psalm`, `io.onesimus.psalm.ipad`).
+3. A certificate: make a key and a request with `openssl req -new -newkey rsa:2048 -nodes -keyout dist.key -out dist.csr -subj "/CN=Psalm"`,
+   upload `dist.csr` as "Apple Distribution", download the `.cer`, then `openssl x509 -inform der -in dist.cer -out dist.pem` and
+   `openssl pkcs12 -export -inkey dist.key -in dist.pem -out dist.p12`. Keep the key safe: whoever has it can sign as the team.
+4. Two App Store provisioning profiles (one per App ID, type "App Store Connect").
+5. App Store Connect: two app records (for example "Psalm" and "Psalm for iPad", the names must be free), and an API key (users and access, integrations).
+6. Put the secrets into the repository settings. Tag or push to main: the builds appear in TestFlight after Apple has processed them (about ten minutes).
+
+How the family gets it: TestFlight. Internal testers (up to 100 people of the team, no review) need an invitation by Apple ID; external
+testers (up to 10 000, a public link) need one beta review of the first build. A TestFlight build runs for 90 days. For a longer life without the
+public App Store: "unlisted" distribution after a normal review. Ad hoc builds (up to 100 devices by UDID a year) are possible but need a profile per device list.
+Trying it with a free Apple ID: only with Xcode on a Mac (the app lasts seven days); there is no way from Linux alone.
+
+CarPlay needs more: the entitlement `com.apple.developer.carplay-audio` has to be requested from Apple for the iPhone app (a form, the answer can take
+weeks), then an entitlements file in the project and a profile that contains it. See `docs/spec-car.md`.
+
+Not verified here: the workflow has not run on GitHub (no Mac runner available), and the Xcode project was edited by hand on Linux. The first CI run
+will show if `flutter build ios` accepts the product settings. The CI runs on pushes to `main` and `development`, on tags and on pull requests; the signed iOS builds and the upload to TestFlight only for tags and `main` (the repository has no `main` yet: its default branch is `development`).
 
 ## The David service and its folders
 
