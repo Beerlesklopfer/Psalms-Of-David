@@ -85,6 +85,14 @@ abstract class AudioBackend {
   void dispose();
 }
 
+/// Optional extension of a backend that the system can control from outside (the notification, the lock screen, the buttons of headphones and
+/// cars, a phone call, unplugged headphones). The player checks `backend is ExternalControl`; backends without it (PipeWire) need nothing.
+abstract class ExternalControl {
+  /// Called when the engine started or paused by itself, or the position was moved from outside, so that the player can follow.
+  /// [state] and [position] of the backend are already up to date then.
+  set onExternalChange(void Function()? callback);
+}
+
 /// Optional extension of a backend that plays internet radio. The player checks
 /// `backend is StreamInfo`; backends without it (just_audio, the fake) need nothing.
 abstract class StreamInfo {

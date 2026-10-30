@@ -11,6 +11,7 @@ import 'cd/cd_kit.dart';
 import 'audio/just_audio_backend.dart';
 import 'audio/mpris.dart';
 import 'audio/pipewire_backend.dart';
+import 'audio/psalm_audio_handler.dart';
 import 'demo_data.dart';
 import 'models.dart';
 import 'l10n/app_localizations.dart';
@@ -22,6 +23,8 @@ import 'offline/offline_view.dart';
 import 'offline/outbox.dart';
 import 'player_controller.dart';
 import 'playlists.dart';
+import 'profile.dart';
+import 'server/profile_api.dart';
 import 'screens/share_button.dart';
 import 'screens/connect_screen.dart';
 import 'screens/home_screen.dart';
@@ -50,7 +53,7 @@ import 'widgets.dart';
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppPaths.init();
-  await JustAudioBackend.initBackground();
+  await PsalmAudioHandler.init();
   runApp(PsalmApp(pairing: _pairingAddress(args)));
 }
 
@@ -128,6 +131,10 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   late final LabelsController _labels = LabelsController(
     onChanged: () => unawaited(_reloadLibrary(force: true)),
   );
+  // The own profile: names, picture, language, PIN (not in the demo); the copy on this device serves the offline view.
+  late final ProfileController _profile = ProfileController(
+    store: widget.demo ? null : ProfileStore.standard(),
+  );
   late final PlaylistController _playlists = PlaylistController(
     store: widget.demo ? null : PlaylistStore.standard(),
   );
@@ -154,6 +161,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _player.onPlaylistPosition = _playlists.remember;
+    PsalmAudioHandler.instance?.attach(_player);
     _player.offline = _offline;
     _labels
       ..offline = _offline
@@ -325,6 +333,8 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     unawaited(_playlists.load());
     _hiding.api = ServerHidingApi(api);
     _labels.api = ServerLabelApi(api);
+    _profile.api = ServerProfileApi(api);
+    unawaited(_profile.load());
     unawaited(_hiding.load());
     api.libraryVersions().then((v) {
       _libraryVersion = v.version;
@@ -380,6 +390,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _playlists.api = null;
     _hiding.api = null;
     _labels.api = null;
+    unawaited(_profile.forget());
     _api = null;
     if (_player.playing) _player.toggle();
     _credentials.clear();
@@ -401,10 +412,12 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _offline.removeListener(_onOfflineChanged);
     _offline.dispose();
     unawaited(_mpris?.stop());
+    PsalmAudioHandler.instance?.detach(_player);
     _player.dispose();
     _playlists.dispose();
     _hiding.dispose();
     _labels.dispose();
+    _profile.dispose();
     super.dispose();
   }
 
@@ -420,6 +433,8 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
             controller: _labels,
             child: ServerAddressScope(
             address: widget.demo ? null : _credentials.load()?.address,
+            child: ProfileScope(
+            controller: _profile,
             child: MaterialApp(
             onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
             debugShowCheckedModeBanner: false,
@@ -458,6 +473,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
                 onSync: widget.demo ? null : _retryOnline,
               ),
             },
+          ),
           ),
           ),
           ),

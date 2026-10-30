@@ -1331,3 +1331,49 @@ async fn podcasts_and_stations_are_labelled_by_name_or_address_with_a_look_first
     assert_eq!(set["items"][0]["after"], json!([]), "{set}");
     assert!(m.store.labels().await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn the_blacklist_is_kept_with_a_look_first_marks_albums_and_the_mark_is_taken_off_with_set_labels() {
+    let m = mcp().await;
+    let write = m.store.create_mcp_token("w", true, m.admin).await.unwrap();
+    let read = m.store.create_mcp_token("r", false, m.admin).await.unwrap();
+    let one = album(&m, &[]).await;
+
+    // Nothing comes with the program.
+    let (err, list) = tool(&m, &read, "edit_blacklist", json!({})).await;
+    assert!(!err && list["words"] == json!([]) && list["marked"] == json!([]), "{list}");
+
+    // A look (the default) shows what would be marked and changes nothing; a reading token may not write; broken lines are refused.
+    let (err, look) = tool(&m, &write, "edit_blacklist", json!({ "action": "add", "words": ["WINTER"] })).await;
+    assert!(!err && look["dry_run"] == true && look["would_mark"] == 1 && look["media"][0]["id"] == one, "{look}");
+    assert!(m.store.blacklist_words().await.unwrap().is_empty());
+    assert!(tool(&m, &read, "edit_blacklist", json!({ "action": "add", "words": ["x"], "dry_run": false })).await.0);
+    assert!(tool(&m, &write, "edit_blacklist", json!({ "action": "add", "words": ["/(/"], "dry_run": false })).await.0);
+    assert!(tool(&m, &write, "edit_blacklist", json!({ "action": "add" })).await.0);
+    assert!(tool(&m, &write, "edit_blacklist", json!({ "action": "remove", "words": ["nope"], "dry_run": false })).await.0);
+
+    // Saved: the albums are marked; the list names the album and the word that hit; list_labels counts the system mark.
+    let (err, done) = tool(&m, &write, "edit_blacklist", json!({ "action": "add", "words": ["WINTER", "winter"], "dry_run": false })).await;
+    assert!(!err && done["words"] == json!(["WINTER"]) && done["marked"] == 1, "{done}");
+    let (_, list) = tool(&m, &read, "edit_blacklist", json!({ "action": "list" })).await;
+    assert_eq!((list["marked"][0]["kind"].clone(), list["marked"][0]["id"].clone(), list["marked"][0]["word"].clone(), list["marked"][0]["approved"].clone()), (json!("book"), json!(one), json!("WINTER"), json!(false)), "{list}");
+    let (_, labels) = tool(&m, &read, "list_labels", json!({})).await;
+    assert_eq!(labels["labels"][0]["name"], "Blacklist", "{labels}");
+    let (_, of) = tool(&m, &read, "list_labels", json!({ "ids": [one] })).await;
+    assert_eq!(of["albums"][0]["labels"], json!(["Blacklist"]), "{of}");
+
+    // The mark is not set by hand; taking it off approves the album, and the next check does not put it on again.
+    assert!(tool(&m, &write, "set_labels", json!({ "ids": [one], "add": ["blacklist"], "dry_run": false })).await.0);
+    assert!(tool(&m, &write, "set_labels", json!({ "ids": [one], "set": ["Blacklist"], "dry_run": false })).await.0);
+    let (err, off) = tool(&m, &write, "set_labels", json!({ "ids": [one], "remove": ["Blacklist"], "dry_run": false })).await;
+    assert!(!err && off["albums"][0]["mark_approved"] == true, "{off}");
+    assert!(m.store.blacklist_marked(david_server::blacklist::Kind::Book).await.unwrap().is_empty());
+    m.store.blacklist_check(david_server::blacklist::Scope::All).await.unwrap();
+    let (_, list) = tool(&m, &read, "edit_blacklist", json!({})).await;
+    assert_eq!(list["marked"][0]["approved"], true, "{list}");
+
+    // Remove the word: nothing is marked and nothing is approved any more.
+    let (err, gone) = tool(&m, &write, "edit_blacklist", json!({ "action": "remove", "words": ["winter"], "dry_run": false })).await;
+    assert!(!err && gone["words"] == json!([]) && gone["marked"] == 0, "{gone}");
+    assert!(m.store.blacklist_rows().await.unwrap().is_empty());
+}

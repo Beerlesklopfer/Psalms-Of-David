@@ -19,11 +19,12 @@ pub const MAX_PER_BOOK: usize = 30;
 /// Most labels of its own one title (track) carries; it has the ones of its album besides.
 pub const MAX_PER_TRACK: usize = 10;
 
-/// A name as it is stored: inner white space made one space, 1 to 40 characters, nothing that separates a list (`,` `;` `|`) and no control character.
+/// A name as it is stored: inner white space made one space, 1 to 40 characters, nothing that separates a list (`,` `;` `|`) and no control character,
+/// and not the reserved name of the system mark (`blacklist::MARK`).
 pub fn clean_name(raw: &str) -> Option<String> {
     let name = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     let n = name.chars().count();
-    (n >= 1 && n <= MAX_NAME_CHARS && !name.chars().any(|c| c.is_control() || matches!(c, ',' | ';' | '|'))).then_some(name)
+    (n >= 1 && n <= MAX_NAME_CHARS && !name.chars().any(|c| c.is_control() || matches!(c, ',' | ';' | '|')) && !crate::blacklist::is_mark(&name)).then_some(name)
 }
 
 /// The names of a list written with commas (`Gebet, Schule`), cleaned and without doubles (case ignored); `None` if one is not usable.
@@ -236,6 +237,14 @@ impl Store {
             .await?;
         }
         self.drop_unused_labels().await?;
+        // The labels are checked against the blacklist as well.
+        match table {
+            "book" => self.blacklist_check_quietly(crate::blacklist::Scope::One(crate::blacklist::Kind::Book, id)).await,
+            "track" => self.blacklist_check_track_quietly(id).await,
+            "feed" => self.blacklist_check_quietly(crate::blacklist::Scope::One(crate::blacklist::Kind::Podcast, id)).await,
+            "station" => self.blacklist_check_quietly(crate::blacklist::Scope::One(crate::blacklist::Kind::Station, id)).await,
+            _ => {}
+        }
         Ok(true)
     }
 
@@ -276,13 +285,18 @@ impl Store {
                 w.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE label SET name = ? WHERE id = ?", [new.into(), id.into()])).await?;
             }
         }
+        self.blacklist_check_quietly(crate::blacklist::Scope::All).await;
         Ok(true)
     }
 
     /// Removes a label from every book and title. `false` if there is no such label.
     pub async fn delete_label(&self, name: &str) -> Result<bool> {
         let res = self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "DELETE FROM label WHERE name = ? COLLATE NOCASE", [name.trim().to_owned().into()])).await?;
-        Ok(res.rows_affected() > 0)
+        let gone = res.rows_affected() > 0;
+        if gone {
+            self.blacklist_check_quietly(crate::blacklist::Scope::All).await;
+        }
+        Ok(gone)
     }
 
     pub(crate) async fn drop_unused_labels(&self) -> Result<()> {

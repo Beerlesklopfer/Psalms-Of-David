@@ -1030,6 +1030,16 @@ pub async fn user_delete(State(state): State<AppState>, s: AdminSession, Form(f)
     finish(&s, "/admin/users", outcome)
 }
 
+/// An administrator removes the picture of a user (one that should not be there); the row is drawn again without it.
+pub async fn user_remove_avatar(State(state): State<AppState>, s: AdminSession, Form(f): Form<IdForm>) -> Response {
+    let outcome = async {
+        state.store.remove_avatar(f.id).await?;
+        state.ui.user_row_fragment(&state.store, view(&s), f.id).await?.ok_or_else(Failure::not_found)
+    }
+    .await;
+    finish(&s, "/admin/users", outcome)
+}
+
 async fn book_row(state: &AppState, s: &AdminSession, id: i64) -> Outcome {
     state.ui.book_row_fragment(&state.store, state.library.as_deref(), view(s), id).await?.ok_or_else(Failure::not_found)
 }
@@ -1100,8 +1110,14 @@ pub async fn book_update(State(state): State<AppState>, s: AdminSession, Form(f)
             return Err(Failure::from(Error::DescriptionTooLong).at("description"));
         }
         // The labels are read first: nothing changes when one is not usable.
+        // The system mark "Blacklist" is no ordinary label: it is taken out of the list first; leaving it out of the list of a marked book approves the book.
+        let mut mark_left_out = false;
         let labels = match f.labels.as_deref() {
-            Some(text) => Some(crate::labels::parse_list(text).filter(|l| l.len() <= crate::labels::MAX_PER_BOOK).ok_or_else(|| Failure::from(Error::InvalidName).at("labels"))?),
+            Some(text) => {
+                let (text, had_mark) = crate::blacklist::strip_mark_text(text);
+                mark_left_out = !had_mark;
+                Some(crate::labels::parse_list(&text).filter(|l| l.len() <= crate::labels::MAX_PER_BOOK).ok_or_else(|| Failure::from(Error::InvalidName).at("labels"))?)
+            }
             None => None,
         };
         // The labels of titles: only titles of this book, each list as good as the one of the book.
@@ -1161,6 +1177,9 @@ pub async fn book_update(State(state): State<AppState>, s: AdminSession, Form(f)
             }
             if let Some(names) = &labels {
                 state.store.set_book_labels(f.id, names).await.map_err(|e| Failure::from(e).at("labels"))?.ok_or_else(Failure::not_found)?;
+                if mark_left_out {
+                    state.store.blacklist_approve(crate::blacklist::Kind::Book, f.id).await?;
+                }
             }
             for (track, names) in &track_labels {
                 state.store.set_track_labels(*track, names).await.map_err(|e| Failure::from(e).at("track_labels"))?;
@@ -2638,6 +2657,8 @@ mod tests {
 }
 
 
+pub mod blacklist_admin;
+
 // Podcasts and radio stations
 
 pub async fn podcasts_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
@@ -2705,7 +2726,7 @@ fn invalid_feed() -> Failure {
 
 /// The labels of a form as a list for a podcast or a station; the field they are typed in is marked when one is not usable.
 fn feed_labels(text: &str) -> std::result::Result<Vec<String>, Failure> {
-    crate::labels::parse_list(text).filter(|l| l.len() <= crate::labels::MAX_PER_FEED).ok_or_else(|| Failure::from(Error::InvalidName).at("labels"))
+    crate::labels::parse_list(&crate::blacklist::strip_mark_text(text).0).filter(|l| l.len() <= crate::labels::MAX_PER_FEED).ok_or_else(|| Failure::from(Error::InvalidName).at("labels"))
 }
 
 fn podcast_here(f: &FeedForm) -> String {
@@ -2731,7 +2752,13 @@ pub async fn podcast_labels(State(state): State<AppState>, s: AdminSession, Form
     let outcome = async {
         let names = feed_labels(&f.labels)?;
         match state.store.set_podcast_labels(f.id, &names).await {
-            Ok(Some(_)) => Ok(None),
+            Ok(Some(_)) => {
+                // Leaving the system mark out of the list of a marked podcast approves it.
+                if !crate::blacklist::strip_mark_text(&f.labels).1 {
+                    state.store.blacklist_approve(crate::blacklist::Kind::Podcast, f.id).await?;
+                }
+                Ok(None)
+            }
             Ok(None) => Err(Failure::not_found()),
             Err(e) => Err(Failure::from(e).at("labels")),
         }
@@ -2814,6 +2841,9 @@ pub async fn station_update(State(state): State<AppState>, s: AdminSession, Form
         }
         state.store.update_station(f.id, Some(&f.name), Some(&f.stream_url), Some(&f.homepage), Some(&f.logo_url)).await.map_err(|_| Failure::input().at("stream_url"))?;
         state.store.set_station_labels(f.id, &names).await.map_err(|e| Failure::from(e).at("labels"))?;
+        if !crate::blacklist::strip_mark_text(&f.labels).1 {
+            state.store.blacklist_approve(crate::blacklist::Kind::Station, f.id).await?;
+        }
         Ok(None)
     }
     .await;

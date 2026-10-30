@@ -1,0 +1,12 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{#- What a word would hit (`state`: ok, bad or empty; `total`; `hits`: the first ones with title, owner, kind and field). -#}
+{% if state == "bad" %}<small class="form-error" role="note">{{ t("blacklist.preview_bad") }}</small>
+{% elif state == "empty" %}<small class="muted">{{ t("blacklist.preview_hint") }}</small>
+{% elif total == 0 %}<small class="muted">{{ t("blacklist.preview_none") }}</small>
+{% else %}
+<p><strong>{{ t("blacklist.preview_would") }} {{ total }} {{ t("blacklist.preview_media") }}</strong></p>
+<ul class="blacklist-hits">
+  {% for h in hits %}<li><span class="badge muted">{{ t("blacklist.media." ~ h.kind) }}</span> {{ h.title }}{% if h.owner %} <small class="muted">({{ h.owner }})</small>{% endif %} &middot; <small>{{ t("blacklist.field." ~ h.field) }}</small></li>{% endfor %}
+  {% if total > hits|length %}<li class="muted">{{ t("blacklist.preview_more") }} {{ total - hits|length }}</li>{% endif %}
+</ul>
+{% endif %}

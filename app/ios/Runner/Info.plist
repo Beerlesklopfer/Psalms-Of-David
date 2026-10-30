@@ -36,9 +36,9 @@
 	<string>Psalm connects to the David server of your family on your home network.</string>
 	<!-- The QR code of a pairing is read from a picture or, later, with the camera. -->
 	<key>NSCameraUsageDescription</key>
-	<string>Psalm scans the QR code that pairs this device with your David server.</string>
+	<string>Psalm scans the QR code that pairs this device with your David server and takes your profile picture.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Psalm reads a picture of the QR code that pairs this device with your David server.</string>
+	<string>Psalm reads a picture of the QR code that pairs this device with your David server, or a photo that you choose as your profile picture.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

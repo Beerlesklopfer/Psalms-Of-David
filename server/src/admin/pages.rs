@@ -68,6 +68,10 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("profile.html", include_str!("../../templates/profile.html")),
     ("fragments/ui.html", include_str!("../../templates/fragments/ui.html")),
     ("fragments/avatar.html", include_str!("../../templates/fragments/avatar.html")),
+    ("blacklist.html", include_str!("../../templates/blacklist.html")),
+    ("blacklist_hits.html", include_str!("../../templates/blacklist_hits.html")),
+    ("fragments/blacklist_form.html", include_str!("../../templates/fragments/blacklist_form.html")),
+    ("fragments/blacklist_preview.html", include_str!("../../templates/fragments/blacklist_preview.html")),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -774,7 +778,7 @@ impl AdminUi {
             None => all,
         };
         // Labels: only the books with the chosen one, the names for the filter and the labels of every book for the rows.
-        let label_map = store.book_labels().await?;
+        let label_map = store.book_labels_with_mark().await?;
         // A book is found by the labels of its titles as well.
         let mut found_by = label_map.clone();
         for (id, names) in store.track_labels_by_book().await? {
@@ -787,7 +791,7 @@ impl AdminUi {
         };
         let label_texts: std::collections::HashMap<String, Vec<String>> = label_map.iter().map(|(id, names)| (id.to_string(), names.clone())).collect();
         // The names for the filter with the number of books (the book or one of its titles carries the label).
-        let mut label_names = store.labels().await?;
+        let mut label_names = store.labels_with_mark().await?;
         for row in &mut label_names {
             row.books = found_by.values().filter(|names| names.iter().any(|n| n.eq_ignore_ascii_case(&row.name))).count() as i64;
         }
@@ -911,7 +915,7 @@ impl AdminUi {
         gaps.retain(|b, _| *b == id && !crate::ignore::ignored(&rules, &book, "track_number_gaps"));
         let nocover: Vec<String> = if crate::ignore::ignored(&rules, &book, "missing_cover") { Vec::new() } else if crate::api::find_cover(store, library, id).await.is_some() { Vec::new() } else { vec![id.to_string()] };
         let (members, seen) = visibility_columns(store, Some(id)).await?;
-        self.render("fragments/book_row.html", context! { book => Serde(book), gaps => Serde(gaps), nocover => Serde(nocover), members => Serde(members), seen => Serde(seen), owners => Serde(owners_list(store).await?), label_list => Serde(store.labels_of(id).await?), label_names => Serde(store.labels().await?), ..view.into().context() }).map(Some)
+        self.render("fragments/book_row.html", context! { book => Serde(book), gaps => Serde(gaps), nocover => Serde(nocover), members => Serde(members), seen => Serde(seen), owners => Serde(owners_list(store).await?), label_list => Serde(store.book_labels_with_mark().await?.remove(&id).unwrap_or_default()), label_names => Serde(store.labels_with_mark().await?), ..view.into().context() }).map(Some)
     }
 
     /// The upload queue of the import page: the newest jobs, with a timer while one is still open.
@@ -1841,6 +1845,8 @@ fn clock(seconds: i64) -> String {
     if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, (s % 3600) / 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) }
 }
 
+pub mod blacklist_pages;
+
 /// "2026-10-27" in the time zone of the server.
 fn day(ms: i64, zone: Option<&str>) -> String {
     stamp(ms, zone).chars().take(10).collect()
@@ -1851,7 +1857,7 @@ impl AdminUi {
     pub async fn podcasts<'a>(&self, store: &Store, view: impl Into<View<'a>>, query: Option<&str>, page: Option<usize>, per: Option<usize>) -> Result<String> {
         let needle = query.map(str::trim).filter(|q| !q.is_empty());
         let waiting = waiting_by_target(store, "podcast").await?;
-        let labels = store.podcast_labels().await?;
+        let labels = store.podcast_labels_with_mark().await?;
         let lower = needle.map(str::to_lowercase);
         let feeds: Vec<_> = store
             .feeds_with_followers()
@@ -1880,7 +1886,7 @@ impl AdminUi {
         let zone = store.setting("time_zone").await?;
         let followers: Vec<String> = store.feeds_with_followers().await?.into_iter().find(|(f, _)| f.id == id).map(|(_, fs)| fs.into_iter().filter(|(_, ok)| *ok).map(|(n, _)| n).collect()).unwrap_or_default();
         let waiting = waiting_by_target(store, "podcast").await?.remove(&id).unwrap_or_default();
-        let labels = store.podcast_labels().await?.remove(&id).unwrap_or_default();
+        let labels = store.podcast_labels_with_mark().await?.remove(&id).unwrap_or_default();
         let paging = Paging::of(store, store.episode_count(id).await?, page, per).await?;
         let episodes: Vec<serde_json::Value> = store
             .admin_episodes(id, paging.per, paging.from)
@@ -1898,7 +1904,7 @@ impl AdminUi {
     pub async fn radio<'a>(&self, store: &Store, view: impl Into<View<'a>>, query: Option<&str>, page: Option<usize>, per: Option<usize>) -> Result<String> {
         let needle = query.map(str::trim).filter(|q| !q.is_empty());
         let waiting = waiting_by_target(store, "station").await?;
-        let labels = store.station_labels().await?;
+        let labels = store.station_labels_with_mark().await?;
         let lower = needle.map(str::to_lowercase);
         let stations: Vec<_> = store
             .stations_with_owners()

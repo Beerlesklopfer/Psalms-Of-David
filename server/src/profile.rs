@@ -216,6 +216,33 @@ impl Store {
         }))
     }
 
+    /// The version of the picture (when it was stored), `None` without a picture. The apps load it again when it changed.
+    pub async fn avatar_version(&self, user_id: i64) -> Result<Option<i64>> {
+        let row = self
+            .db
+            .reader
+            .query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT updated_at FROM avatar WHERE profile_id = ?", [Value::from(user_id)]))
+            .await?;
+        row.map(|r| Ok(r.try_get_by_index(0)?)).transpose()
+    }
+
+    /// The device a session token belongs to; `None` for a session of the administration pages.
+    pub async fn session_device(&self, token: &str) -> Result<Option<i64>> {
+        let row = self
+            .db
+            .reader
+            .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT device_id FROM session WHERE token_hash = ?",
+                [Value::from(crate::auth::sha256_hex(token))],
+            ))
+            .await?;
+        Ok(match row {
+            Some(r) => r.try_get_by_index::<Option<i64>>(0)?,
+            None => None,
+        })
+    }
+
     pub async fn has_avatar(&self, user_id: i64) -> Result<bool> {
         Ok(self
             .db

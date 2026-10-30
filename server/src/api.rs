@@ -82,6 +82,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/v1/progress", put(put_progress))
         .route("/api/v1/bible/resolve", get(bible_resolve))
         .merge(crate::api_feeds::routes())
+        .merge(crate::api_me::routes())
         .merge(crate::api_playlists::routes())
         .merge(crate::api_cd::routes())
         .layer(axum::middleware::from_fn(crate::actor::scope))
@@ -197,9 +198,7 @@ async fn pairing_code(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Va
 }
 
 async fn me(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
-    let user = s.store.profile_by_id(d.user_id).await?.ok_or(ApiError(StatusCode::UNAUTHORIZED, "unauthorized"))?;
-    Ok(Json(json!({ "id": user.id, "name": user.name, "nickname": user.name, "first_name": user.first_name, "last_name": user.last_name,
-                  "role": d.role.as_str(), "max_age": user.max_age, "language": user.language })))
+    Ok(Json(crate::api_me::me_json(&s, &d).await?))
 }
 
 async fn logout(State(s): State<ApiState>, d: Device) -> ApiResult<StatusCode> {
@@ -224,6 +223,8 @@ async fn items(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
     let labels = s.store.book_labels().await?;
     // The labels that single titles of an item carry: the item is found by them too ("Items list": `track_labels`).
     let track_labels = s.store.track_labels_by_book().await?;
+    // The system mark "Blacklist" is seen by administrators only.
+    let marked = if d.role == Role::Admin { s.store.blacklist_marked(crate::blacklist::Kind::Book).await? } else { Default::default() };
     // Whether this user may set the labels of a book: its owner (a member) and an administrator, whoever owns it.
     let me = s.store.profile_by_id(d.user_id).await?.map(|u| u.name);
     Ok(Json(Value::Array(
@@ -233,7 +234,7 @@ async fn items(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
                 let mut j = item_json(b);
                 j["hidden"] = json!(ids.contains(&b.id));
                 j["owner"] = json!(b.owner);
-                j["labels"] = json!(labels.get(&b.id).cloned().unwrap_or_default());
+                j["labels"] = json!(crate::blacklist::with_mark(labels.get(&b.id).cloned().unwrap_or_default(), marked.contains(&b.id), d.role == Role::Admin));
                 j["track_labels"] = json!(track_labels.get(&b.id).cloned().unwrap_or_default());
                 // Only a parent (an administrator or a member) passes content on; a child or a guest does not.
                 j["can_share"] = json!(matches!(d.role, Role::Admin | Role::Member));
@@ -339,11 +340,19 @@ async fn all_labels(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Valu
     for st in s.store.favorite_stations(d.user_id, true).await? {
         count(station_labels.get(&st.id).cloned().unwrap_or_default(), 2);
     }
-    let labels: Vec<Value> = counts
+    let mut labels: Vec<Value> = counts
         .into_values()
         .filter(|(_, n)| n.iter().sum::<i64>() > 0)
         .map(|(name, n)| json!({ "name": name, "books": n[0], "podcasts": n[1], "stations": n[2], "count": n.iter().sum::<i64>() }))
         .collect();
+    // The system mark of the blacklist: administrators see it with the number of media that carry it.
+    if d.role == Role::Admin {
+        use crate::blacklist::Kind;
+        let n = [s.store.blacklist_marked(Kind::Book).await?.len() as i64, s.store.blacklist_marked(Kind::Podcast).await?.len() as i64, s.store.blacklist_marked(Kind::Station).await?.len() as i64];
+        if n.iter().sum::<i64>() > 0 {
+            labels.insert(0, json!({ "name": crate::blacklist::MARK, "books": n[0], "podcasts": n[1], "stations": n[2], "count": n.iter().sum::<i64>() }));
+        }
+    }
     Ok(Json(json!({ "labels": labels, "can_manage": d.role == Role::Admin })))
 }
 
@@ -378,7 +387,24 @@ async fn item_labels(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<
     if !s.store.visible_books(d.user_id).await?.iter().any(|b| b.id == id) {
         return Err(ApiError(StatusCode::NOT_FOUND, "not_found"));
     }
-    Ok(Json(json!({ "labels": s.store.labels_of(id).await? })))
+    Ok(Json(json!({ "labels": shown_labels(&s, &d, crate::blacklist::Kind::Book, id, s.store.labels_of(id).await?).await? })))
+}
+
+/// The labels as this user sees them: an administrator sees the system mark of the blacklist on a marked medium, nobody else does.
+pub(crate) async fn shown_labels(s: &ApiState, d: &Device, kind: crate::blacklist::Kind, id: i64, labels: Vec<String>) -> ApiResult<Vec<String>> {
+    if d.role != Role::Admin {
+        return Ok(labels);
+    }
+    let marked = s.store.blacklist_marked(kind).await?.contains(&id);
+    Ok(crate::blacklist::with_mark(labels, marked, true))
+}
+
+/// An administrator who took the mark off the labels of a marked medium approves it: the next check does not put it on again.
+pub(crate) async fn approve_if_removed(s: &ApiState, d: &Device, kind: crate::blacklist::Kind, id: i64, removed: bool) -> ApiResult<()> {
+    if removed && d.role == Role::Admin {
+        s.store.blacklist_approve(kind, id).await?;
+    }
+    Ok(())
 }
 
 #[derive(serde::Deserialize)]
@@ -411,8 +437,13 @@ async fn may_label_book(s: &ApiState, d: &Device, id: i64) -> ApiResult<()> {
 /// Adds and removes labels of a book (`{ "add": [], "remove": [] }`); the others stay. Same permission as the PUT. Sending the same change twice does no harm.
 async fn patch_item_labels(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, Json(req): Json<LabelsDelta>) -> ApiResult<Json<Value>> {
     may_label_book(&s, &d, id).await?;
-    match s.store.change_book_labels(id, &req.add, &req.remove).await {
-        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+    // The reserved name is no ordinary label: adding it does nothing, an administrator who removes it approves the medium.
+    let ((add, _), (remove, removes)) = (crate::blacklist::split_mark(&req.add), crate::blacklist::split_mark(&req.remove));
+    match s.store.change_book_labels(id, &add, &remove).await {
+        Ok(Some(labels)) => {
+            approve_if_removed(&s, &d, crate::blacklist::Kind::Book, id, removes).await?;
+            Ok(Json(json!({ "labels": shown_labels(&s, &d, crate::blacklist::Kind::Book, id, labels).await? })))
+        }
         Ok(None) => Err(ApiError(StatusCode::NOT_FOUND, "not_found")),
         Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
         Err(e) => Err(e.into()),
@@ -425,7 +456,8 @@ async fn patch_part_labels(State(s): State<ApiState>, d: Device, UrlPath((id, pa
         return Err(ApiError(StatusCode::NOT_FOUND, "not_found"));
     }
     may_label_book(&s, &d, id).await?;
-    match s.store.change_track_labels(part, &req.add, &req.remove).await {
+    let ((add, _), (remove, _)) = (crate::blacklist::split_mark(&req.add), crate::blacklist::split_mark(&req.remove));
+    match s.store.change_track_labels(part, &add, &remove).await {
         Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
         Ok(None) => Err(ApiError(StatusCode::NOT_FOUND, "not_found")),
         Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
@@ -444,8 +476,13 @@ async fn put_item_labels(State(s): State<ApiState>, d: Device, UrlPath(id): UrlP
     if !allowed {
         return Err(ApiError(StatusCode::FORBIDDEN, "forbidden"));
     }
-    match s.store.set_book_labels(id, &req.labels).await {
-        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+    // An administrator who sends the list of a marked medium without the mark approves it; the mark is never set by a list.
+    let (names, wants_mark) = crate::blacklist::split_mark(&req.labels);
+    match s.store.set_book_labels(id, &names).await {
+        Ok(Some(labels)) => {
+            approve_if_removed(&s, &d, crate::blacklist::Kind::Book, id, !wants_mark).await?;
+            Ok(Json(json!({ "labels": shown_labels(&s, &d, crate::blacklist::Kind::Book, id, labels).await? })))
+        }
         Ok(None) => Err(ApiError(StatusCode::NOT_FOUND, "not_found")),
         Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
         Err(e) => Err(e.into()),
@@ -463,7 +500,8 @@ async fn put_part_labels(State(s): State<ApiState>, d: Device, UrlPath((id, part
     if !allowed {
         return Err(ApiError(StatusCode::FORBIDDEN, "forbidden"));
     }
-    match s.store.set_track_labels(part, &req.labels).await {
+    let (names, _) = crate::blacklist::split_mark(&req.labels);
+    match s.store.set_track_labels(part, &names).await {
         Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
         Ok(None) => Err(ApiError(StatusCode::NOT_FOUND, "not_found")),
         Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),

@@ -1,0 +1,57 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "blacklist" %}
+
+{% block title %}{{ t("blacklist.hits_title") }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>{{ t("blacklist.title") }}</h1>
+</div>
+<nav class="tabs" aria-label="{{ t('blacklist.title') }}">
+  <a class="tab" href="/admin/blacklist">{{ t("blacklist.tab_words") }}</a>
+  <a class="tab" href="/admin/blacklist/hits" aria-current="page">{{ t("blacklist.tab_hits") }}</a>
+</nav>
+
+<p class="lead">{{ t("blacklist.hits_intro") }}</p>
+
+<form class="search-bar" method="get" action="/admin/blacklist/hits" role="search"
+      hx-get="/admin/blacklist/hits" hx-trigger="submit, input delay:300ms, change" hx-target="#hits-results" hx-select="#hits-results" hx-swap="outerHTML" hx-push-url="true" hx-sync="this:replace">
+  <input type="search" name="q" value="{{ q }}" autocomplete="off" spellcheck="false" maxlength="100" placeholder="{{ t('blacklist.hits_search_hint') }}" aria-label="{{ t('books.search') }}">
+  <button type="submit" class="btn">{{ t("books.search") }}</button>
+  {% if searched %}<a class="btn outline" href="/admin/blacklist/hits">{{ t("ui.cancel") }}</a>{% endif %}
+</form>
+
+<div id="hits-results">
+{% include "fragments/pager.html" %}
+{% if rows %}
+<table class="stack" id="hits-list">
+  <thead>
+    <tr>
+      <th>{{ t("blacklist.medium") }}</th>
+      <th>{{ t("blacklist.owner") }}</th>
+      <th>{{ t("blacklist.matched") }}</th>
+      <th><span class="sr-only">{{ t("users.actions") }}</span></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr id="hit-{{ r.kind }}-{{ r.id }}">
+      <td><strong>{% if r.href %}<a href="{{ r.href }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}</strong><br><span class="badge muted">{{ t("blacklist.media." ~ r.kind) }}</span>{% if r.approved %} <span class="badge">{{ t("blacklist.approved") }}</span>{% endif %}</td>
+      <td data-label="{{ t('blacklist.owner') }}">{{ r.owner }}</td>
+      <td data-label="{{ t('blacklist.matched') }}"><code>{{ r.word }}</code>{% if r.field %} <small class="muted">&middot; {{ t("blacklist.field." ~ r.field) }}</small>{% endif %}</td>
+      <td class="actions">
+        <form method="post" action="/admin/rpc/{{ 'blacklist.unapprove' if r.approved else 'blacklist.approve' }}" hx-post="/admin/rpc/{{ 'blacklist.unapprove' if r.approved else 'blacklist.approve' }}" hx-swap="none" hx-disabled-elt="find button">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="{{ r.kind }}"><input type="hidden" name="id" value="{{ r.id }}"><input type="hidden" name="back" value="{{ back }}">
+          <button type="submit" class="btn outline">{{ t("blacklist.unapprove") if r.approved else t("blacklist.approve") }}</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p id="hits-list">{{ t("blacklist.hits_none") }}</p>
+{% endif %}
+{% include "fragments/pager.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,72 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "blacklist" %}
+
+{% block title %}{{ t("blacklist.title") }}{% endblock %}
+
+{% block content %}
+{% from "fragments/ui.html" import icon %}
+<div class="page-head">
+  <h1>{{ t("blacklist.title") }}</h1>
+  <button type="button" class="btn" data-dialog="dlg-new-blacklist">{{ icon("plus") }}<span>{{ t("blacklist.add") }}</span></button>
+</div>
+<nav class="tabs" aria-label="{{ t('blacklist.title') }}">
+  <a class="tab" href="/admin/blacklist" aria-current="page">{{ t("blacklist.tab_words") }}</a>
+  <a class="tab" href="/admin/blacklist/hits">{{ t("blacklist.tab_hits") }}{% if marked_total %} ({{ marked_total }}){% endif %}</a>
+</nav>
+
+<p class="lead">{{ t("blacklist.intro") }}</p>
+{% if report %}<p class="message" id="blacklist-result" role="status"><strong>{{ t("blacklist.result") }}:</strong> {{ report.added }} {{ t("blacklist.result_added") }}, {{ report.removed }} {{ t("blacklist.result_removed") }}, {{ report.marked }} {{ t("blacklist.result_marked") }}.</p>{% endif %}
+
+<form class="search-bar" method="get" action="/admin/blacklist" role="search"
+      hx-get="/admin/blacklist" hx-trigger="submit, input delay:300ms, change" hx-target="#blacklist-results" hx-select="#blacklist-results" hx-swap="outerHTML" hx-push-url="true" hx-sync="this:replace">
+  <input type="search" name="q" value="{{ q }}" autocomplete="off" spellcheck="false" maxlength="100" placeholder="{{ t('blacklist.search_hint') }}" aria-label="{{ t('books.search') }}">
+  <button type="submit" class="btn">{{ t("books.search") }}</button>
+  {% if searched %}<a class="btn outline" href="/admin/blacklist">{{ t("ui.cancel") }}</a>{% endif %}
+</form>
+
+<div id="blacklist-results">
+{% include "fragments/pager.html" %}
+{% if words %}
+<table class="stack" id="blacklist-list">
+  <thead>
+    <tr>
+      <th>{{ t("blacklist.word") }}</th>
+      <th>{{ t("blacklist.kind") }}</th>
+      <th>{{ t("blacklist.note") }}</th>
+      <th>{{ t("blacklist.hits_count") }}</th>
+      <th>{{ t("blacklist.updated") }}</th>
+      <th><span class="sr-only">{{ t("users.actions") }}</span></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for word in words %}
+    <tr id="blacklist-{{ word.id }}">
+      <td><code>{{ word.pattern }}</code></td>
+      <td data-label="{{ t('blacklist.kind') }}"><span class="badge muted">{{ t("blacklist.kind." ~ word.kind) }}</span></td>
+      <td data-label="{{ t('blacklist.note') }}">{{ word.note }}</td>
+      <td data-label="{{ t('blacklist.hits_count') }}">{{ word.hits }}</td>
+      <td data-label="{{ t('blacklist.updated') }}"><small>{{ word.updated }}{% if word.updated_by %} &middot; {{ word.updated_by }}{% endif %}</small></td>
+      <td class="actions">
+        <div class="row-actions">
+          <button type="button" class="btn outline" data-dialog="dlg-blacklist-edit-{{ word.id }}">{{ icon("edit") }}<span>{{ t("blacklist.edit") }}</span></button>
+          <form method="post" action="/admin/rpc/blacklist.delete" hx-post="/admin/rpc/blacklist.delete" hx-swap="none" hx-confirm="{{ t('blacklist.confirm_delete') }}" hx-disabled-elt="find button">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ word.id }}"><input type="hidden" name="back" value="{{ back }}">
+            <button type="submit" class="btn outline danger-outline">{{ t("blacklist.delete") }}</button>
+          </form>
+        </div>
+        {% set form_id = "blacklist-edit-" ~ word.id %}{% set action = "blacklist.update" %}
+        {% include "fragments/blacklist_form.html" %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p id="blacklist-list">{{ t("blacklist.none") }}</p>
+{% endif %}
+{% include "fragments/pager.html" %}
+</div>
+
+{% set word = none %}{% set form_id = "blacklist-new" %}{% set action = "blacklist.add" %}
+{% include "fragments/blacklist_form.html" %}
+{% endblock %}

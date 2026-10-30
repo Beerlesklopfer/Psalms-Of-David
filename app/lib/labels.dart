@@ -111,6 +111,7 @@ List<String> labelSuggestions(
   final fits = [
     for (final (name, count) in labelCounts(books))
       if (!taken.contains(name.toLowerCase()) &&
+          !isReservedLabel(name) &&
           (needle.isEmpty || name.toLowerCase().contains(needle)))
         (name, count),
   ];
@@ -129,11 +130,18 @@ List<String> labelSuggestions(
   return ([for (final a in after) if (!had.contains(a.toLowerCase())) a], [for (final b in before) if (!has.contains(b.toLowerCase())) b]);
 }
 
+/// The system label of the blacklist: only administrators receive it from the server, and nobody can type or rename it (the server decides what is
+/// marked). An administrator may take it off a medium (which approves the medium).
+const kBlacklistLabel = 'Blacklist';
+
+bool isReservedLabel(String name) => name.trim().toLowerCase() == kBlacklistLabel.toLowerCase();
+
 /// A label as the server keeps it: white space made one space, 1 to 40 characters, no comma, semicolon or bar; null if it is not usable.
 String? cleanLabel(String raw) {
   final name = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
   if (name.isEmpty || name.length > 40) return null;
   if (RegExp(r'[,;|\u0000-\u001f]').hasMatch(name)) return null;
+  if (isReservedLabel(name)) return null;
   return name;
 }
 

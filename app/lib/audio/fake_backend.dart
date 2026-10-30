@@ -4,7 +4,7 @@ import 'audio_backend.dart';
 
 /// A sound engine that makes no sound: position runs by a clock that a test can
 /// move. Behaves like the real one in the things the player depends on.
-class FakeBackend implements AudioBackend {
+class FakeBackend implements AudioBackend, ExternalControl {
   FakeBackend({Duration Function()? clock, this.fileLength = const Duration(minutes: 10)})
     : _clock = clock ?? _systemClock();
 
@@ -30,6 +30,23 @@ class FakeBackend implements AudioBackend {
   bool _disposed = false;
 
   String? get loadedPath => _path;
+
+  void Function()? _onExternalChange;
+
+  @override
+  set onExternalChange(void Function()? callback) => _onExternalChange = callback;
+
+  /// The system pauses the engine (a call, unplugged headphones, the notification) and says so.
+  void pauseFromOutside() {
+    pause();
+    _onExternalChange?.call();
+  }
+
+  /// The system starts the engine (the notification, a headset button) and says so.
+  void playFromOutside() {
+    play();
+    _onExternalChange?.call();
+  }
 
   void _check() {
     if (_disposed) throw StateError('the backend was disposed');

@@ -1,6 +1,6 @@
 {# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
    SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<tr id="user-{{ user.id }}">
-  <td><strong>{{ user.name }}</strong>{% if user.first_name or user.last_name %}<br><small>{% if user.first_name %}{{ user.first_name }}{% endif %}{% if user.first_name and user.last_name %} {% endif %}{% if user.last_name %}{{ user.last_name }}{% endif %}</small>{% endif %}</td>
+  <td>{% if user.has_avatar %}<img class="avatar" src="/avatar/{{ user.id }}" alt=""> {% endif %}<strong>{{ user.name }}</strong>{% if user.first_name or user.last_name %}<br><small>{% if user.first_name %}{{ user.first_name }}{% endif %}{% if user.first_name and user.last_name %} {% endif %}{% if user.last_name %}{{ user.last_name }}{% endif %}</small>{% endif %}</td>
   <td data-label="{{ t('users.role') }}">{{ t("role." ~ user.role) }}</td>
   <td data-label="{{ t('users.age_limit') }}">{% if user.max_age is none %}&ndash;{% else %}{{ user.max_age }}{% endif %}{% if user.birth_date %}<br><small>{{ user.birth_date }}</small>{% endif %}</td>
   <td data-label="{{ t('users.devices') }}">{{ user.devices }}</td>
@@ -47,6 +47,10 @@
         </form>
       </div>
       <div class="window-foot">
+        {% if user.has_avatar %}<form method="post" action="/admin/rpc/user.remove_avatar" hx-post="/admin/rpc/user.remove_avatar" hx-target="#user-{{ user.id }}" hx-swap="outerHTML" hx-confirm="{{ t('users.confirm_remove_avatar') }}" class="foot-left">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ user.id }}">
+          <button type="submit" class="link-danger">{{ t("users.remove_avatar") }}</button>
+        </form>{% endif %}
         <form method="post" action="/admin/rpc/user.delete" hx-post="/admin/rpc/user.delete" hx-target="#user-{{ user.id }}" hx-swap="outerHTML" hx-confirm="{{ t('users.confirm_delete') }}" class="foot-left">
           <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ user.id }}">
           <button type="submit" class="link-danger">{{ t("users.delete") }}</button>

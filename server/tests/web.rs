@@ -4215,3 +4215,233 @@ async fn the_menu_of_the_media_leads_to_podcasts_and_radio() {
     let page = send(&a, get("/admin/genres", &o)).await;
     assert!(page.body.contains("href=\"/admin/podcasts\"") && page.body.contains("href=\"/admin/radio\""));
 }
+
+// The blacklist administration
+
+#[tokio::test]
+async fn the_blacklist_pages_are_for_administrators_only() {
+    let a = app().await;
+    let anna = a.store.create_profile("Anna", false).await.unwrap();
+    let token = a.store.create_session(anna, Role::Member, None).await.unwrap();
+    let cookie = format!("david_session={token}");
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    for path in ["/admin/blacklist", "/admin/blacklist/hits", "/admin/blacklist/preview?pattern=x"] {
+        assert_eq!(send(&a, get(path, &o)).await.status, StatusCode::FORBIDDEN, "{path}");
+    }
+    let csrf = csrf_token(&token);
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, ..Default::default() };
+    for (proc, body) in [("add", "pattern=x"), ("update", "id=1&pattern=x"), ("delete", "id=1"), ("approve", "kind=book&id=1"), ("unapprove", "kind=book&id=1")] {
+        let r = send(&a, post(&format!("/admin/rpc/blacklist.{proc}"), body, &o)).await;
+        assert_eq!(r.status, StatusCode::FORBIDDEN, "{proc}");
+    }
+    assert!(a.store.blacklist_words().await.unwrap().is_empty(), "nothing was written");
+}
+
+#[tokio::test]
+async fn the_blacklist_words_are_rows_the_settings_page_only_links_to_them() {
+    let a = app().await;
+    let (cookie, _) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let page = send(&a, get("/admin/settings?tab=values", &plain)).await.body;
+    assert!(!page.contains("label_blacklist"), "the textarea is gone");
+    assert!(page.contains("href=\"/admin/blacklist\""), "{page}");
+    assert_eq!(a.store.setting("label_blacklist").await.unwrap(), None, "the setting went with the migration");
+    let menu = send(&a, get("/admin/genres", &plain)).await.body;
+    assert!(menu.contains("href=\"/admin/blacklist\""), "the menu of the media leads to the blacklist");
+}
+
+#[tokio::test]
+async fn a_word_is_added_edited_and_removed_on_the_blacklist_page_and_the_page_says_what_it_did_to_the_marks() {
+    use david_server::blacklist::Kind;
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, ..Default::default() };
+    a.store.import_books(vec![book("A", "Die Katze", &[1]), book("B", "Zwei", &[1])]).await.unwrap();
+    let empty = send(&a, get("/admin/blacklist", &plain)).await.body;
+    assert!(empty.contains("No word on the list yet.") && empty.contains("dlg-blacklist-new"), "{empty}");
+
+    // Create: the answer leads back to the list with what the change did.
+    let r = send(&a, post("/admin/rpc/blacklist.add", &form(&[("pattern", " katze "), ("note", "pets"), ("back", "/admin/blacklist?page=1")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let to = r.header("hx-redirect").unwrap().to_owned();
+    assert!(to.starts_with("/admin/blacklist?page=1&added=1&removed=0&marked=1&msg=ok.saved"), "{to}");
+    assert_eq!(a.store.blacklist_marked(Kind::Book).await.unwrap().len(), 1);
+    let page = send(&a, get(&to, &plain)).await.body;
+    assert!(page.contains("<code>katze</code>") && page.contains("pets") && page.contains("1 newly marked, 0 marks removed, 1 media marked in total"), "{page}");
+
+    // The same word again, in another case or with accents folded, and a broken expression are refused and mark the input.
+    for bad in ["KATZE", "Kätze", "/(/", "   ", &"x".repeat(101)] {
+        let r = send(&a, post("/admin/rpc/blacklist.add", &form(&[("pattern", bad), ("note", "")]), &o)).await;
+        assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY, "{bad:?}");
+        assert_eq!(r.header("x-invalid-field"), Some("pattern"), "{bad:?}");
+    }
+    assert_eq!(a.store.blacklist_words().await.unwrap(), vec!["katze".to_owned()]);
+
+    // Edit: the word and the note change, the marks follow (the other book hits now, the first does not).
+    let id = a.store.blacklist_entries().await.unwrap()[0].id.to_string();
+    let r = send(&a, post("/admin/rpc/blacklist.update", &form(&[("id", &id), ("pattern", "zwei"), ("note", "number")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(r.header("hx-redirect").unwrap().contains("added=1&removed=1&marked=1"), "{:?}", r.header("hx-redirect"));
+    let entry = &a.store.blacklist_entries().await.unwrap()[0];
+    assert_eq!((entry.pattern.as_str(), entry.note.as_str(), entry.kind), ("zwei", "number", "word"));
+    assert!(entry.updated_by.is_some(), "the audit fields are filled");
+    // A word that is not there is not found; a word cannot take the place of another.
+    assert_eq!(send(&a, post("/admin/rpc/blacklist.update", &form(&[("id", "9999"), ("pattern", "x")]), &o)).await.status, StatusCode::NOT_FOUND);
+
+    // Remove: the marks only it set go.
+    let r = send(&a, post("/admin/rpc/blacklist.delete", &form(&[("id", &id)]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(r.header("hx-redirect").unwrap().contains("removed=1"), "{:?}", r.header("hx-redirect"));
+    assert!(a.store.blacklist_words().await.unwrap().is_empty() && a.store.blacklist_marked(Kind::Book).await.unwrap().is_empty());
+    assert_eq!(send(&a, post("/admin/rpc/blacklist.delete", &form(&[("id", &id)]), &o)).await.status, StatusCode::NOT_FOUND);
+
+    // Without the token of the form nothing is written.
+    let wrong = Opts { cookie: Some(&cookie), csrf_header: Some("wrong"), htmx: true, ..Default::default() };
+    assert_eq!(send(&a, post("/admin/rpc/blacklist.add", &form(&[("pattern", "x")]), &wrong)).await.status, StatusCode::FORBIDDEN);
+    assert!(a.store.blacklist_words().await.unwrap().is_empty());
+
+    // Without script the answer is a redirect.
+    let r = send(&a, post("/admin/rpc/blacklist.add", &form(&[("pattern", "mit ? katze"), ("back", "https://evil.example/")]), &Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), ..Default::default() })).await;
+    assert!(r.header("location").is_some_and(|l| l.starts_with("/admin/blacklist?")), "a foreign address is not followed: {:?}", r.header("location"));
+}
+
+#[tokio::test]
+async fn the_blacklist_list_shows_kind_and_hits_and_is_searched_and_cut_into_pages() {
+    let a = app().await;
+    let (cookie, _) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let books: Vec<_> = (1..=3).map(|i| book("A", &format!("Die Katze {i}"), &[1])).collect();
+    a.store.import_books(books).await.unwrap();
+    let mut words = vec!["katze".to_owned(), "sex * hund".to_owned(), "/^die/".to_owned()];
+    words.extend((1..=12).map(|i| format!("wort{i:02}")));
+    a.store.save_blacklist_words(&words).await.unwrap();
+
+    let page = send(&a, get("/admin/blacklist?per=10", &plain)).await.body;
+    assert_eq!(times(&page, "<tr id=\"blacklist-"), 10, "{page}");
+    assert!(page.contains("class=\"pager\"") && page.contains("&#x2f;admin&#x2f;blacklist?per=10&amp;page=2"), "{page}");
+    assert!(page.contains("<td data-label=\"Hits\">3</td>"), "katze hits the three books: {page}");
+    assert!(page.contains("pattern") && page.contains("regular expression") && page.contains("<span class=\"badge muted\">word</span>"), "{page}");
+    let second = send(&a, get("/admin/blacklist?per=10&page=2", &plain)).await.body;
+    assert_eq!(times(&second, "<tr id=\"blacklist-"), 5);
+    // The search looks at the word and the note, before the pages are cut.
+    let found = send(&a, get("/admin/blacklist?q=hund", &plain)).await.body;
+    assert_eq!(times(&found, "<tr id=\"blacklist-"), 1);
+    assert!(found.contains("sex * hund"));
+}
+
+#[tokio::test]
+async fn the_preview_says_what_a_word_would_hit_before_it_is_saved() {
+    let a = app().await;
+    let (cookie, _) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, ..Default::default() };
+    a.store.import_books(vec![book("A", "Die Katze", &[1]), book("B", "Zwei", &[1])]).await.unwrap();
+    let hit = send(&a, get("/admin/blacklist/preview?pattern=katze", &o)).await.body;
+    assert!(hit.contains("This word would hit 1 media") && hit.contains("A \u{2013} Die Katze") && hit.contains("title"), "{hit}");
+    assert!(send(&a, get("/admin/blacklist/preview?pattern=nirgends", &o)).await.body.contains("hits no medium"));
+    assert!(send(&a, get("/admin/blacklist/preview?pattern=%2F(%2F", &o)).await.body.contains("Not usable"));
+    assert!(send(&a, get("/admin/blacklist/preview?pattern=", &o)).await.body.contains("appears while you type"));
+    assert!(a.store.blacklist_words().await.unwrap().is_empty(), "nothing is written by a preview");
+}
+
+#[tokio::test]
+async fn the_hits_page_lists_the_marked_media_with_word_and_field_and_approves_and_marks_again() {
+    use david_server::blacklist::Kind;
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, ..Default::default() };
+    let books: Vec<_> = (1..=13).map(|i| book("A", &format!("Die Katze {i:02}"), &[1])).collect();
+    a.store.import_books(books).await.unwrap();
+    assert!(send(&a, get("/admin/blacklist/hits", &plain)).await.body.contains("No medium is marked."));
+    a.store.save_blacklist_words(&["katze".to_owned()]).await.unwrap();
+
+    let page = send(&a, get("/admin/blacklist/hits?per=10", &plain)).await.body;
+    assert_eq!(times(&page, "<tr id=\"hit-book-"), 10, "{page}");
+    assert!(page.contains("<code>katze</code>") && page.contains("title") && page.contains("&#x2f;admin&#x2f;blacklist&#x2f;hits?per=10&amp;page=2"), "{page}");
+    assert_eq!(times(&send(&a, get("/admin/blacklist/hits?per=10&page=2", &plain)).await.body, "<tr id=\"hit-book-"), 3);
+    assert_eq!(times(&send(&a, get("/admin/blacklist/hits?q=katze+07", &plain)).await.body, "<tr id=\"hit-book-"), 1);
+
+    // Approve one: the mark goes, the row says so and offers to mark again; the word keeps hitting.
+    let id = a.store.find_book("A/Die Katze 07").await.unwrap().unwrap().id;
+    let r = send(&a, post("/admin/rpc/blacklist.approve", &form(&[("kind", "book"), ("id", &id.to_string()), ("back", "/admin/blacklist/hits?per=10")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(r.header("hx-redirect").is_some_and(|t| t.starts_with("/admin/blacklist/hits?per=10")), "{:?}", r.header("hx-redirect"));
+    assert!(!a.store.blacklist_marked(Kind::Book).await.unwrap().contains(&id));
+    let row = send(&a, get("/admin/blacklist/hits?q=katze+07", &plain)).await.body;
+    assert!(row.contains("approved") && row.contains("Mark again"), "{row}");
+    // Approving twice or something else is not found; a kind that does not exist is invalid.
+    assert_eq!(send(&a, post("/admin/rpc/blacklist.approve", &form(&[("kind", "book"), ("id", &id.to_string())]), &o)).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(send(&a, post("/admin/rpc/blacklist.approve", &form(&[("kind", "video"), ("id", "1")]), &o)).await.status, StatusCode::UNPROCESSABLE_ENTITY);
+    // Mark again.
+    let r = send(&a, post("/admin/rpc/blacklist.unapprove", &form(&[("kind", "book"), ("id", &id.to_string())]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(a.store.blacklist_marked(Kind::Book).await.unwrap().contains(&id));
+}
+
+#[tokio::test]
+async fn the_pages_show_the_blacklist_mark_in_the_filter_and_the_rows_and_leaving_it_out_approves_the_book() {
+    use david_server::blacklist::Kind;
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, ..Default::default() };
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    for (author, title) in [("A", "Die Katze"), ("B", "Zwei")] {
+        a.store.import_books(vec![book(author, title, &[1])]).await.unwrap();
+    }
+    let hit = a.store.find_book("A/Die Katze").await.unwrap().unwrap().id;
+    a.store.save_blacklist_words(&["katze".to_owned()]).await.unwrap();
+
+    // The administration shows the system mark in the row and as an entry of the filter, and the filter finds the book by it.
+    let page = send(&a, get("/admin/books", &plain)).await.body;
+    assert!(page.contains("<span class=\"badge label\">Blacklist</span>") && page.contains("data-label=\"Blacklist\""), "{page}");
+    let only = send(&a, get("/admin/books?label=Blacklist", &plain)).await.body;
+    assert!(only.contains("Die Katze") && !only.contains(">Zwei<"), "{only}");
+
+    // Saving the window with the mark in the list changes nothing; without it the book is approved.
+    let id = hit.to_string();
+    assert_eq!(send(&a, post("/admin/rpc/book.update", &form(&[("id", &id), ("labels", "Blacklist, Gebet")]), &o)).await.status, StatusCode::OK);
+    assert_eq!(a.store.blacklist_marked(Kind::Book).await.unwrap().len(), 1);
+    assert_eq!(a.store.labels_of(hit).await.unwrap(), vec!["Gebet".to_owned()], "the reserved name is not a label of the list");
+    assert_eq!(send(&a, post("/admin/rpc/book.update", &form(&[("id", &id), ("labels", "Gebet")]), &o)).await.status, StatusCode::OK);
+    assert!(a.store.blacklist_marked(Kind::Book).await.unwrap().is_empty());
+}
+
+// The pictures of the users
+
+#[tokio::test]
+async fn the_user_list_shows_pictures_and_an_administrator_removes_one() {
+    let a = app().await;
+    let anna = a.store.create_profile("Anna", false).await.unwrap();
+    let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    png.extend_from_slice(&[0; 32]);
+    a.store.set_avatar(anna, &png).await.unwrap();
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    let page = send(&a, get("/admin/users", &o)).await;
+    assert!(page.body.contains(&format!("src=\"/avatar/{anna}\"")), "the picture of Anna is shown");
+    assert!(page.body.contains("/admin/rpc/user.remove_avatar"));
+
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, ..Default::default() };
+    let r = send(&a, post("/admin/rpc/user.remove_avatar", &form(&[("id", &anna.to_string())]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(!a.store.has_avatar(anna).await.unwrap());
+    assert!(!r.body.contains("/avatar/"), "the row is drawn again without the picture");
+}
+
+#[tokio::test]
+async fn only_an_administrator_removes_the_picture_of_another_user() {
+    let a = app().await;
+    let anna = a.store.create_profile("Anna", false).await.unwrap();
+    let ben = a.store.create_profile("Ben", false).await.unwrap();
+    let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    png.extend_from_slice(&[0; 32]);
+    a.store.set_avatar(ben, &png).await.unwrap();
+    let token = a.store.create_session(anna, Role::Member, None).await.unwrap();
+    let cookie = format!("david_session={token}");
+    let csrf = csrf_token(&token);
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, ..Default::default() };
+    let r = send(&a, post("/admin/rpc/user.remove_avatar", &form(&[("id", &ben.to_string())]), &o)).await;
+    assert_eq!(r.status, StatusCode::FORBIDDEN);
+    assert!(a.store.has_avatar(ben).await.unwrap());
+}

@@ -6,6 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../audio/audio_backend.dart';
 import '../l10n/app_localizations.dart';
 import '../labels.dart';
+import '../profile.dart';
+import 'profile_screen.dart';
 import '../library_hiding.dart';
 import '../offline/offline_controller.dart';
 import '../offline/offline_view.dart';
@@ -57,6 +59,25 @@ class SettingsScreen extends StatelessWidget {
       title: l.navSettings,
       children: [
         const SizedBox(height: 8),
+        // The own profile: name, picture, language, PIN.
+        if (ProfileScope.maybeOf(context) case final profile? when creds != null) ...[
+          ListenableBuilder(
+            listenable: profile,
+            builder: (context, _) => Card(
+              margin: EdgeInsets.zero,
+              clipBehavior: Clip.antiAlias,
+              child: ListTile(
+                key: const ValueKey('open-profile'),
+                leading: const OwnAvatar(),
+                title: Text(profile.profile?.name ?? l.profileTitle),
+                subtitle: Text(l.profileSettingsHint),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => openProfile(context),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
         if (player != null && player.bufferAdjustable) ...[
           Text(
             l.settingsPlayback,

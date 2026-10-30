@@ -403,6 +403,8 @@ impl Store {
         let pruned = self.prune_missing(false, false).await?;
         total.books_removed = pruned.removed.len();
         total.problems.extend(pruned.problems);
+        // Everything that came in or changed is checked against the blacklist (a failure is logged only).
+        self.blacklist_check_quietly(crate::blacklist::Scope::All).await;
         self.fill_library_counts(&mut total).await?;
         // The last result is kept, so the import page can show it later: the problems of a run (a folder
         // without permission) are then readable without the server log.

@@ -1527,4 +1527,141 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get offlineDismiss => 'OK';
+
+  @override
+  String get profileTitle => 'Mein Profil';
+
+  @override
+  String get profileSettingsHint => 'Name, Bild, Sprache und PIN';
+
+  @override
+  String get profilePicture => 'Bild';
+
+  @override
+  String get profileTakePhoto => 'Foto aufnehmen';
+
+  @override
+  String get profileChoosePhoto => 'Bild auswählen';
+
+  @override
+  String get profileRemovePhoto => 'Bild entfernen';
+
+  @override
+  String get profileNickname => 'Spitzname';
+
+  @override
+  String get profileFirstName => 'Vorname';
+
+  @override
+  String get profileLastName => 'Nachname';
+
+  @override
+  String get profileLanguage => 'Sprache';
+
+  @override
+  String get profileLanguageAuto => 'Wie das Gerät';
+
+  @override
+  String get profileRole => 'Rolle';
+
+  @override
+  String get roleAdmin => 'Administrator';
+
+  @override
+  String get roleMember => 'Mitglied';
+
+  @override
+  String get roleChild => 'Kind';
+
+  @override
+  String get roleGuest => 'Gast';
+
+  @override
+  String get profileDevices => 'Meine Geräte';
+
+  @override
+  String get profileDeviceThis => 'dieses Gerät';
+
+  @override
+  String get profileNeverSeen => 'nie gesehen';
+
+  @override
+  String get profileSave => 'Speichern';
+
+  @override
+  String get profileSaved => 'Gespeichert.';
+
+  @override
+  String get profilePinTitle => 'PIN oder Passwort ändern';
+
+  @override
+  String get profilePinCurrent => 'Aktuelle PIN oder Passwort';
+
+  @override
+  String get profilePinNew => 'Neue PIN oder neues Passwort';
+
+  @override
+  String get profilePinRepeat => 'Neue wiederholen';
+
+  @override
+  String get profilePinChanged => 'Die PIN wurde geändert.';
+
+  @override
+  String get profileErrOffline =>
+      'Dafür braucht es den Server. Versuche es erneut, wenn du verbunden bist.';
+
+  @override
+  String get profileErrExists => 'Dieser Spitzname ist vergeben.';
+
+  @override
+  String get profileErrName => 'Dieser Name geht nicht.';
+
+  @override
+  String get profileErrPinWrong => 'Die aktuelle PIN stimmt nicht.';
+
+  @override
+  String get profileErrPinInvalid =>
+      'Die neue PIN oder das neue Passwort geht nicht.';
+
+  @override
+  String get profileErrPinMismatch =>
+      'Die beiden neuen Eingaben unterscheiden sich.';
+
+  @override
+  String get profileErrLocked =>
+      'Zu viele falsche Versuche. Versuche es später erneut.';
+
+  @override
+  String get profileErrAvatarType => 'Diese Datei ist kein Bild.';
+
+  @override
+  String get profileErrAvatarSize => 'Das Bild ist zu groß.';
+
+  @override
+  String get profileErrCameraDenied =>
+      'Die Kamera oder die Fotos dürfen nicht benutzt werden. Erlaube es in den Einstellungen des Systems.';
+
+  @override
+  String get profileErrCameraNone => 'Hier gibt es keine Kamera.';
+
+  @override
+  String get profileErrGeneric => 'Das hat nicht geklappt.';
+
+  @override
+  String get profileAvatarTooltip => 'Dein Profil öffnen';
+
+  @override
+  String profileLastSeen(String date) {
+    return 'zuletzt gesehen $date';
+  }
+
+  @override
+  String profileDeviceCount(int used, int max) {
+    return 'Geräte: $used von $max';
+  }
+
+  @override
+  String profileDeviceCountFree(int used) {
+    return 'Geräte: $used';
+  }
 }

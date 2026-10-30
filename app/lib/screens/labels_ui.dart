@@ -565,7 +565,7 @@ class _LabelsCardState extends State<LabelsCard> {
                             leading: const Icon(Icons.sell_outlined),
                             title: Text(name),
                             subtitle: Text('$count'),
-                            trailing: list.canManage
+                            trailing: list.canManage && !isReservedLabel(name)
                                 ? Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [

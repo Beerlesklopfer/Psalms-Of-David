@@ -2617,6 +2617,258 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OK'**
   String get offlineDismiss;
+
+  /// No description provided for @profileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'My profile'**
+  String get profileTitle;
+
+  /// No description provided for @profileSettingsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Name, picture, language and PIN'**
+  String get profileSettingsHint;
+
+  /// No description provided for @profilePicture.
+  ///
+  /// In en, this message translates to:
+  /// **'Picture'**
+  String get profilePicture;
+
+  /// No description provided for @profileTakePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Take a photo'**
+  String get profileTakePhoto;
+
+  /// No description provided for @profileChoosePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a picture'**
+  String get profileChoosePhoto;
+
+  /// No description provided for @profileRemovePhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove picture'**
+  String get profileRemovePhoto;
+
+  /// No description provided for @profileNickname.
+  ///
+  /// In en, this message translates to:
+  /// **'Nickname'**
+  String get profileNickname;
+
+  /// No description provided for @profileFirstName.
+  ///
+  /// In en, this message translates to:
+  /// **'First name'**
+  String get profileFirstName;
+
+  /// No description provided for @profileLastName.
+  ///
+  /// In en, this message translates to:
+  /// **'Last name'**
+  String get profileLastName;
+
+  /// No description provided for @profileLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get profileLanguage;
+
+  /// No description provided for @profileLanguageAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow the device'**
+  String get profileLanguageAuto;
+
+  /// No description provided for @profileRole.
+  ///
+  /// In en, this message translates to:
+  /// **'Role'**
+  String get profileRole;
+
+  /// No description provided for @roleAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Administrator'**
+  String get roleAdmin;
+
+  /// No description provided for @roleMember.
+  ///
+  /// In en, this message translates to:
+  /// **'Member'**
+  String get roleMember;
+
+  /// No description provided for @roleChild.
+  ///
+  /// In en, this message translates to:
+  /// **'Child'**
+  String get roleChild;
+
+  /// No description provided for @roleGuest.
+  ///
+  /// In en, this message translates to:
+  /// **'Guest'**
+  String get roleGuest;
+
+  /// No description provided for @profileDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'My devices'**
+  String get profileDevices;
+
+  /// No description provided for @profileDeviceThis.
+  ///
+  /// In en, this message translates to:
+  /// **'this device'**
+  String get profileDeviceThis;
+
+  /// No description provided for @profileNeverSeen.
+  ///
+  /// In en, this message translates to:
+  /// **'never seen'**
+  String get profileNeverSeen;
+
+  /// No description provided for @profileSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get profileSave;
+
+  /// No description provided for @profileSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved.'**
+  String get profileSaved;
+
+  /// No description provided for @profilePinTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Change PIN or password'**
+  String get profilePinTitle;
+
+  /// No description provided for @profilePinCurrent.
+  ///
+  /// In en, this message translates to:
+  /// **'Current PIN or password'**
+  String get profilePinCurrent;
+
+  /// No description provided for @profilePinNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New PIN or password'**
+  String get profilePinNew;
+
+  /// No description provided for @profilePinRepeat.
+  ///
+  /// In en, this message translates to:
+  /// **'Repeat the new one'**
+  String get profilePinRepeat;
+
+  /// No description provided for @profilePinChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'The PIN has been changed.'**
+  String get profilePinChanged;
+
+  /// No description provided for @profileErrOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'This needs the server. Try again when you are connected.'**
+  String get profileErrOffline;
+
+  /// No description provided for @profileErrExists.
+  ///
+  /// In en, this message translates to:
+  /// **'This nickname is taken.'**
+  String get profileErrExists;
+
+  /// No description provided for @profileErrName.
+  ///
+  /// In en, this message translates to:
+  /// **'This name cannot be used.'**
+  String get profileErrName;
+
+  /// No description provided for @profileErrPinWrong.
+  ///
+  /// In en, this message translates to:
+  /// **'The current PIN is not right.'**
+  String get profileErrPinWrong;
+
+  /// No description provided for @profileErrPinInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The new PIN or password cannot be used.'**
+  String get profileErrPinInvalid;
+
+  /// No description provided for @profileErrPinMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'The two new entries differ.'**
+  String get profileErrPinMismatch;
+
+  /// No description provided for @profileErrLocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many wrong tries. Try again later.'**
+  String get profileErrLocked;
+
+  /// No description provided for @profileErrAvatarType.
+  ///
+  /// In en, this message translates to:
+  /// **'This file is not a picture.'**
+  String get profileErrAvatarType;
+
+  /// No description provided for @profileErrAvatarSize.
+  ///
+  /// In en, this message translates to:
+  /// **'The picture is too large.'**
+  String get profileErrAvatarSize;
+
+  /// No description provided for @profileErrCameraDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'The camera or the photos may not be used. Allow it in the settings of the system.'**
+  String get profileErrCameraDenied;
+
+  /// No description provided for @profileErrCameraNone.
+  ///
+  /// In en, this message translates to:
+  /// **'There is no camera to use here.'**
+  String get profileErrCameraNone;
+
+  /// No description provided for @profileErrGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'That did not work.'**
+  String get profileErrGeneric;
+
+  /// No description provided for @profileAvatarTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Open your profile'**
+  String get profileAvatarTooltip;
+
+  /// No description provided for @profileLastSeen.
+  ///
+  /// In en, this message translates to:
+  /// **'last seen {date}'**
+  String profileLastSeen(String date);
+
+  /// No description provided for @profileDeviceCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Devices: {used} of {max}'**
+  String profileDeviceCount(int used, int max);
+
+  /// No description provided for @profileDeviceCountFree.
+  ///
+  /// In en, this message translates to:
+  /// **'Devices: {used}'**
+  String profileDeviceCountFree(int used);
 }
 
 class _AppLocalizationsDelegate

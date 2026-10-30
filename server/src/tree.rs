@@ -28,7 +28,7 @@ pub enum Item {
 }
 
 /// A name as it is sorted: lower case, accents of German and French folded.
-fn fold(s: &str) -> String {
+pub(crate) fn fold(s: &str) -> String {
     s.to_lowercase()
         .chars()
         .flat_map(|c| match c {

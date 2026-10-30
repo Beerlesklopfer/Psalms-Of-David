@@ -4,8 +4,8 @@ import 'dart:async';
 
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:just_audio_background/just_audio_background.dart';
 
 import 'audio_backend.dart';
 
@@ -16,25 +16,50 @@ import 'audio_backend.dart';
 /// after the other through a chain of futures, so their order is kept, and what the getters
 /// return is what the player last said. A file that cannot be opened is reported by the state
 /// `failed` a moment later, not by an exception from [load].
-class JustAudioBackend implements AudioBackend {
-  /// Lets playback go on in the background and shows it on the lock screen, with the keys of the
-  /// headphones and the car (iOS: the remote command centre). Call once before the first player is made.
-  /// Only iOS for now: Android needs entries in its manifest for the same, which are not made yet.
-  static Future<void> initBackground() async {
-    if (!Platform.isIOS || _background) return;
-    await JustAudioBackground.init();
-    _background = true;
-  }
+class JustAudioBackend implements AudioBackend, ExternalControl {
+  static const _notifications = MethodChannel('io.onesimus.psalm/notifications');
 
-  static bool _background = false;
+  /// Asks once, at the first playback, for the permission to show the notification with the controls (Android 13 and later). Playback
+  /// goes on without it, only the notification of the service stays hidden.
+  static bool _asked = false;
+  static void _askForNotifications() {
+    if (_asked || !Platform.isAndroid) return;
+    _asked = true;
+    _notifications.invokeMethod<void>('request').catchError((Object _) {});
+  }
 
   JustAudioBackend() : _player = AudioPlayer() {
     _subs.add(
       _player.playerStateStream.listen((s) {
         if (_loaded && s.processingState == ProcessingState.completed) _ended = true;
+        _followOutside(s);
       }),
     );
     _subs.add(_player.durationStream.listen((d) => _duration = d));
+    _subs.add(_player.positionDiscontinuityStream.listen((d) {
+      // A jump that the app did not ask for (the seek bar of the lock screen, a headset button).
+      if (d.reason == PositionDiscontinuityReason.seek && _pending == 0 && _loaded) _onExternalChange?.call();
+    }));
+  }
+
+  void Function()? _onExternalChange;
+
+  @override
+  set onExternalChange(void Function()? callback) => _onExternalChange = callback;
+
+  /// Commands of the app that are on their way to the player; while there are some, a change of the player is the app's own doing.
+  int _pending = 0;
+
+  /// The system started or paused the player (notification, headset, phone call, unplugged headphones): the engine says so and the
+  /// player of the app follows through [onExternalChange].
+  void _followOutside(PlayerState s) {
+    if (!_loaded || _disposed || _pending > 0 || _ended || _failed) return;
+    final playingNow = s.playing && s.processingState != ProcessingState.idle;
+    if (playingNow == _wantPlaying) return;
+    // Loading and buffering are not a pause: only a settled player counts.
+    if (s.processingState == ProcessingState.loading) return;
+    _wantPlaying = playingNow;
+    _onExternalChange?.call();
   }
 
   final AudioPlayer _player;
@@ -51,19 +76,26 @@ class JustAudioBackend implements AudioBackend {
 
   /// Runs [step] after everything asked before it. A failure marks the engine as failed.
   void _then(Future<void> Function() step) {
+    _pending++;
     _chain = _chain.then((_) async {
-      if (_disposed) return;
       try {
-        await step();
-      } on Object {
-        _failed = true;
-        _wantPlaying = false;
+        if (_disposed) return;
+        try {
+          await step();
+        } on Object {
+          _failed = true;
+          _wantPlaying = false;
+        }
+      } finally {
+        // The player reports its own change a moment after the command; the app's own doing must not count as an outside one.
+        Future<void>.delayed(const Duration(milliseconds: 400), () => _pending = _pending > 0 ? _pending - 1 : 0);
       }
     });
   }
 
   @override
   void load(String path, {Duration start = Duration.zero, bool play = true, String title = ''}) {
+    if (play) _askForNotifications();
     _loaded = true;
     _ended = false;
     _failed = false;
@@ -72,14 +104,7 @@ class JustAudioBackend implements AudioBackend {
     _then(() async {
       // A radio stream comes as an address, everything else as a file.
       final stream = path.startsWith('http://') || path.startsWith('https://');
-      if (_background) {
-        // The tag is what the lock screen shows.
-        final tag = MediaItem(id: path, title: title.isEmpty ? path.split('/').last : title);
-        await _player.setAudioSource(
-          stream ? AudioSource.uri(Uri.parse(path), tag: tag) : AudioSource.file(path, tag: tag),
-          initialPosition: start,
-        );
-      } else if (stream) {
+      if (stream) {
         await _player.setUrl(path, initialPosition: start);
       } else {
         await _player.setFilePath(path, initialPosition: start);

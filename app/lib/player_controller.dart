@@ -22,6 +22,8 @@ class PlayerController extends ChangeNotifier {
   PlayerController(this.library, {this.backend, this.source, this.lastStore, this.playbackStore}) {
     final b = backend;
     if (b != null && b.bufferAdjustable) b.setBufferSeconds(playbackStore?.readBufferSeconds() ?? kBufferDefaultSeconds);
+    // The system may start or pause the engine (notification, headset, a call, unplugged headphones): the controller follows.
+    if (b is ExternalControl) (b as ExternalControl).onExternalChange = _followBackend;
     // Demo: the first book has already been listened to.
     if (library.isEmpty) return;
     book = library.first;
@@ -516,6 +518,39 @@ class PlayerController extends ChangeNotifier {
     return true;
   }
 
+  /// The engine started, paused or moved by itself (see [ExternalControl]): the state of the controller, and with it the screen and the
+  /// notification, follows it, so they never disagree.
+  void _followBackend() {
+    final b = backend;
+    if (b == null || _disposed || book == null || _loadedKey != '${book!.id}:$trackIndex') return;
+    position = b.position;
+    final state = b.state;
+    if (state == BackendState.paused && playing) {
+      playing = false;
+      _timer?.cancel();
+      _report();
+    } else if (state == BackendState.playing && !playing) {
+      playing = true;
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(milliseconds: 500), _onTick);
+    }
+    notifyListeners();
+  }
+
+  /// The track after this one is fetched before this one ends, so that the next one starts at once: with the screen locked the app must
+  /// not wait for the network between two tracks (the system may stop a service that plays nothing).
+  String? _prefetched;
+  void _prefetchNext() {
+    final b = book, t = track, s = source;
+    if (b == null || t == null || s == null || b.isStream || t.live) return;
+    if (trackIndex >= b.tracks.length - 1 || t.length - position > const Duration(seconds: 45)) return;
+    final next = b.tracks[trackIndex + 1];
+    final key = '${b.id}:${trackIndex + 1}';
+    if (next.path != null || _prefetched == key) return;
+    _prefetched = key;
+    s.fetchPart(next).then<void>((_) {}, onError: (Object _) => _prefetched = null);
+  }
+
   /// Tells the server where the listening is, at most every few seconds unless
   /// [force]d (on pause, on leaving a track).
   void _report({bool finished = false, bool force = true}) {
@@ -722,6 +757,7 @@ class PlayerController extends ChangeNotifier {
       streamDetails = info is StreamInfo ? (info as StreamInfo).streamDetails.value : null;
       _markHeard(ended: backend!.state == BackendState.ended);
       _report(force: false);
+      _prefetchNext();
       if (backend!.state == BackendState.ended) {
         if (trackIndex < book!.tracks.length - 1) {
           // The end of every track is reported, not only the last one of the list: the server counts a play from it.

@@ -346,3 +346,204 @@ async fn labels_of_podcasts_and_stations_are_changed_by_deltas_too() {
         assert_eq!(call(&a, "PATCH", &url, &ta, Some(json!({ "remove": ["kinder"] }))).await.json["labels"], json!([]));
     }
 }
+
+// ---- The blacklist (schema 0048): a system mark that only administrators see ----
+
+#[tokio::test]
+async fn a_medium_that_hits_the_blacklist_carries_a_mark_only_administrators_see_and_an_administrator_may_approve_it() {
+    use david_server::blacklist::{Kind, Scope};
+    let a = api().await;
+    let ben = a.store.create_user(NewProfile::new("Ben", Role::Member)).await.unwrap();
+    let kind = a.store.create_user(NewProfile::child("Kind", 10, Schedule::always())).await.unwrap();
+    let (tb, tk, tadmin) = (pair(&a, ben, 2).await, pair(&a, kind, 3).await, pair(&a, a.admin, 4).await);
+    let (hit, _) = add_book(&a, "Autor", "Die Katze im Sack", &[2]).await;
+    let (clean, _) = add_book(&a, "Autor", "Pippi", &[2]).await;
+    assert!(a.store.set_book_owner(hit, Some(ben)).await.unwrap());
+    let of = |r: &Reply, id: i64| r.json.as_array().unwrap().iter().find(|i| i["id"] == id).unwrap()["labels"].clone();
+
+    // No word comes with the program: nothing is marked.
+    assert_eq!(a.store.blacklist_check(Scope::All).await.unwrap().marked, 0);
+    assert!(a.store.blacklist_words().await.unwrap().is_empty());
+
+    // The word is saved and the media are checked at once; the same run again changes nothing.
+    let report = a.store.save_blacklist_words(&["KATZE".to_owned()]).await.unwrap();
+    assert_eq!((report.marked, report.added, report.removed), (1, 1, 0));
+    let again = a.store.blacklist_check(Scope::All).await.unwrap();
+    assert_eq!((again.marked, again.added, again.removed), (1, 0, 0), "idempotent");
+    assert_eq!(a.store.blacklist_marked(Kind::Book).await.unwrap().into_iter().collect::<Vec<_>>(), vec![hit]);
+
+    // Administrators see the mark in the list of items and of labels; a member and a child see nothing of it.
+    let (ia, ib, ik) = (call(&a, "GET", "/api/v1/items", &tadmin, None).await, call(&a, "GET", "/api/v1/items", &tb, None).await, call(&a, "GET", "/api/v1/items", &tk, None).await);
+    assert_eq!((of(&ia, hit), of(&ia, clean)), (json!(["Blacklist"]), json!([])));
+    assert_eq!(of(&ib, hit), json!([]), "the owner does not see it");
+    assert!(ik.json.as_array().unwrap().iter().all(|i| i["labels"] == json!([])));
+    let names = |r: &Reply| r.json["labels"].as_array().unwrap().iter().map(|l| l["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>();
+    let (la, lb) = (call(&a, "GET", "/api/v1/labels", &tadmin, None).await, call(&a, "GET", "/api/v1/labels", &tb, None).await);
+    assert_eq!((names(&la), names(&lb)), (vec!["Blacklist".to_owned()], Vec::<String>::new()));
+    assert_eq!(la.json["labels"][0]["books"], json!(1));
+    assert_eq!(call(&a, "GET", &format!("/api/v1/items/{hit}/labels"), &tb, None).await.json["labels"], json!([]));
+    assert_eq!(call(&a, "GET", &format!("/api/v1/items/{hit}/labels"), &tadmin, None).await.json["labels"], json!(["Blacklist"]));
+
+    // Nobody can use the name as an ordinary label: a member's list with it is cleaned, the mark stays, and the label list does not get it.
+    let r = call(&a, "PUT", &format!("/api/v1/items/{hit}/labels"), &tb, Some(json!({ "labels": ["Gebet", "blacklist"] }))).await;
+    assert_eq!((r.status, r.json["labels"].clone()), (StatusCode::OK, json!(["Gebet"])), "{}", r.json);
+    assert_eq!(a.store.blacklist_marked(Kind::Book).await.unwrap().len(), 1, "a member cannot take the mark off");
+    assert!(!a.store.labels().await.unwrap().iter().any(|l| l.name.eq_ignore_ascii_case("blacklist")));
+    let r = call(&a, "PATCH", &format!("/api/v1/items/{hit}/labels"), &tb, Some(json!({ "add": ["Blacklist"], "remove": ["Blacklist"] }))).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(a.store.blacklist_marked(Kind::Book).await.unwrap().len(), 1, "nor with a delta");
+    // The rename of a label to the reserved name is refused.
+    assert_eq!(call(&a, "PUT", "/api/v1/labels/Gebet", &tadmin, Some(json!({ "name": "BLACKLIST" }))).await.status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // An administrator who sends the list without the mark approves the book: it is not marked again by the next run.
+    let r = call(&a, "PUT", &format!("/api/v1/items/{hit}/labels"), &tadmin, Some(json!({ "labels": ["Gebet"] }))).await;
+    assert_eq!((r.status, r.json["labels"].clone()), (StatusCode::OK, json!(["Gebet"])));
+    assert!(a.store.blacklist_marked(Kind::Book).await.unwrap().is_empty());
+    let run = a.store.blacklist_check(Scope::All).await.unwrap();
+    assert_eq!((run.marked, run.added), (0, 0), "the approved book stays unmarked while it hits");
+    assert_eq!(a.store.blacklist_rows().await.unwrap().iter().filter(|r| r.approved).count(), 1);
+
+    // A word that does not hit any more drops the mark and the approval; when it hits again, the book is marked again.
+    a.store.save_blacklist_words(&["pippi".to_owned()]).await.unwrap();
+    assert_eq!(a.store.blacklist_marked(Kind::Book).await.unwrap().into_iter().collect::<Vec<_>>(), vec![clean]);
+    a.store.save_blacklist_words(&["katze".to_owned()]).await.unwrap();
+    assert_eq!(a.store.blacklist_marked(Kind::Book).await.unwrap().into_iter().collect::<Vec<_>>(), vec![hit]);
+
+    // Empty list: all marks go.
+    a.store.save_blacklist_words(&[]).await.unwrap();
+    assert!(a.store.blacklist_rows().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn the_blacklist_looks_at_the_blurb_the_labels_the_titles_of_podcasts_and_the_names_of_stations() {
+    use david_server::blacklist::{Kind, Scope};
+    let a = api().await;
+    let (book_id, _) = add_book(&a, "Autor", "Harmlos", &[2]).await;
+    let pod = a.store.save_feed("https://example.org/feed.xml", &david_server::podcast::parse(FEED).unwrap()).await.unwrap();
+    let station = a.store.save_station("https://stream.example.org/a", "Radio Äther", None, None).await.unwrap();
+    a.store.save_blacklist_words(&["blurbwort".to_owned(), "kinderfunk".to_owned(), "mit?ther".to_owned(), "labelwort".to_owned()]).await.unwrap();
+    let marked = |k: Kind| { let s = a.store.clone(); async move { s.blacklist_marked(k).await.unwrap().len() } };
+    assert_eq!((marked(Kind::Book).await, marked(Kind::Podcast).await, marked(Kind::Station).await), (0, 1, 0), "the title of the podcast hits");
+    // The station name has an accent and the line a wildcard: `mit?ther` does not match `Radio Äther`, `?ther` would.
+    a.store.save_blacklist_words(&["radio ?ther".to_owned()]).await.unwrap();
+    assert_eq!((marked(Kind::Podcast).await, marked(Kind::Station).await), (0, 1), "wildcard and folded accent");
+    // The blurb of the book: the edit checks the book at once.
+    a.store.set_book_description(book_id, "Ein Satz mit Blurbwort darin").await.unwrap();
+    a.store.save_blacklist_words(&["blurbwort".to_owned()]).await.unwrap();
+    assert_eq!(marked(Kind::Book).await, 1);
+    // A label of the book hits as well (and the label itself is an ordinary one).
+    a.store.set_book_description(book_id, "nichts").await.unwrap();
+    assert_eq!(marked(Kind::Book).await, 0);
+    a.store.save_blacklist_words(&["labelwort".to_owned()]).await.unwrap();
+    a.store.set_book_labels(book_id, &["Mein Labelwort".to_owned()]).await.unwrap();
+    assert_eq!(marked(Kind::Book).await, 1, "setting a label runs the check for the book");
+    a.store.set_book_labels(book_id, &[]).await.unwrap();
+    assert_eq!(marked(Kind::Book).await, 0, "and taking it off removes the mark");
+    // A podcast's labels count, and the preview does not write anything.
+    let preview = a.store.blacklist_preview(&["geschichten".to_owned()]).await.unwrap();
+    assert_eq!((preview.len(), preview[0].kind.as_str(), preview[0].id), (1, "podcast", pod));
+    assert_eq!(marked(Kind::Podcast).await, 0);
+    assert!(a.store.blacklist_check(Scope::All).await.unwrap().marked <= 1);
+    // Wrong lines are refused.
+    assert!(a.store.save_blacklist_words(&["/(/".to_owned()]).await.is_err());
+}
+
+// The words of the blacklist as rows (migration 0050)
+
+#[tokio::test]
+async fn a_mark_remembers_the_word_and_the_field_that_hit_and_the_words_are_counted_one_by_one() {
+    let (_dir, store) = open().await;
+    store.import_books(vec![book("Autor Eins", "Die Katze", &[2]), book("Autor Zwei", "Pippi", &[1])]).await.unwrap();
+    store.save_blacklist_words(&["katze".to_owned(), "autor".to_owned(), "pippi_cd01".to_owned()]).await.unwrap();
+    let rows = store.blacklist_rows().await.unwrap();
+    assert_eq!(rows.len(), 2);
+    let by_title = |t: &str| {
+        let store = store.clone();
+        let t = t.to_owned();
+        async move { store.find_book(&format!("Autor {}/{t}", if t == "Die Katze" { "Eins" } else { "Zwei" })).await.unwrap().unwrap().id }
+    };
+    let (katze, pippi) = (by_title("Die Katze").await, by_title("Pippi").await);
+    let of = |id: i64| rows.iter().find(|r| r.id == id).unwrap();
+    // The first word of the list that hits wins, in the first field that has it.
+    assert_eq!((of(katze).word.as_str(), of(katze).field.as_str()), ("katze", "title"));
+    assert_eq!((of(pippi).word.as_str(), of(pippi).field.as_str()), ("autor", "author"));
+    // Every word counts the media it hits on its own, whichever word marked the medium.
+    let counts = store.blacklist_word_counts().await.unwrap();
+    assert_eq!((counts["katze"], counts["autor"], counts["pippi_cd01"]), (1, 2, 1));
+    // The field changes with the word.
+    store.save_blacklist_words(&["pippi_cd01".to_owned()]).await.unwrap();
+    let rows = store.blacklist_rows().await.unwrap();
+    assert_eq!((rows.len(), rows[0].word.as_str(), rows[0].field.as_str()), (1, "pippi_cd01", "track"));
+}
+
+#[tokio::test]
+async fn words_are_added_changed_and_removed_one_by_one_with_their_notes_and_a_clash_is_found_without_regard_to_case_and_accents() {
+    use david_server::blacklist::WordOutcome;
+    let (_dir, store) = open().await;
+    store.import_books(vec![book("A", "Die Katze", &[1])]).await.unwrap();
+    let WordOutcome::Saved(report) = store.blacklist_add("  Katze ", " a note ").await.unwrap() else { panic!("not saved") };
+    assert_eq!((report.added, report.marked), (1, 1));
+    let entries = store.blacklist_entries().await.unwrap();
+    assert_eq!((entries[0].pattern.as_str(), entries[0].note.as_str(), entries[0].kind), ("Katze", "a note", "word"));
+    assert!(entries[0].created_at > 0 && entries[0].created_by.is_some(), "the audit triggers fill the fields");
+
+    assert_eq!(store.blacklist_add("KÄTZE", "").await.unwrap(), WordOutcome::Duplicate);
+    for bad in ["", "   ", "/(/", "a\nb", &"x".repeat(101)] {
+        assert_eq!(store.blacklist_add(bad, "").await.unwrap(), WordOutcome::Invalid, "{bad:?}");
+    }
+    assert_eq!(store.blacklist_add("ok", &"n".repeat(201)).await.unwrap(), WordOutcome::Invalid);
+
+    // Another word to clash with; a word may keep its own name when it is edited.
+    assert!(matches!(store.blacklist_add("mit * hund", "").await.unwrap(), WordOutcome::Saved(_)));
+    let (first, second) = (entries[0].id, store.blacklist_entries().await.unwrap()[1].id);
+    assert!(matches!(store.blacklist_update(first, "katze", "changed").await.unwrap(), WordOutcome::Saved(_)));
+    assert_eq!(store.blacklist_update(first, "MIT * HUND", "").await.unwrap(), WordOutcome::Duplicate);
+    assert_eq!(store.blacklist_update(9999, "x", "").await.unwrap(), WordOutcome::Missing);
+    assert_eq!(store.blacklist_update(second, "/(/", "").await.unwrap(), WordOutcome::Invalid);
+    assert_eq!(store.blacklist_entries().await.unwrap().iter().map(|w| (w.pattern.as_str(), w.note.as_str(), w.kind)).collect::<Vec<_>>(), vec![("katze", "changed", "word"), ("mit * hund", "", "wildcard")]);
+
+    // Replacing the whole list keeps the notes of the words that stay.
+    store.save_blacklist_words(&["katze".to_owned(), "/^x$/".to_owned()]).await.unwrap();
+    let now = store.blacklist_entries().await.unwrap();
+    assert_eq!(now.iter().map(|w| (w.pattern.as_str(), w.note.as_str(), w.kind)).collect::<Vec<_>>(), vec![("katze", "changed", "word"), ("/^x$/", "", "regex")]);
+
+    let WordOutcome::Saved(report) = store.blacklist_delete(first).await.unwrap() else { panic!("not removed") };
+    assert_eq!((report.removed, report.marked), (1, 0));
+    assert_eq!(store.blacklist_delete(first).await.unwrap(), WordOutcome::Missing);
+}
+
+#[tokio::test]
+async fn the_preview_of_one_word_lists_what_it_hits_and_writes_nothing() {
+    let (_dir, store) = open().await;
+    store.import_books(vec![book("A", "Die Katze", &[1]), book("B", "Zwei", &[1])]).await.unwrap();
+    let hits = store.blacklist_preview_word("KATZE").await.unwrap();
+    assert_eq!((hits.len(), hits[0].kind.as_str(), hits[0].field.as_str()), (1, "book", "title"));
+    assert!(store.blacklist_preview_word("/(/").await.is_err());
+    assert!(store.blacklist_preview_word("").await.is_err());
+    assert!(store.blacklist_words().await.unwrap().is_empty() && store.blacklist_rows().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn the_lines_of_the_old_setting_become_rows_once_and_blank_lines_and_duplicates_are_dropped() {
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    // The statement of the migration itself, on a small database with the old setting.
+    let sql = include_str!("../migrations/0050_blacklist_word.sql");
+    let from = sql.find("WITH RECURSIVE").unwrap();
+    let to = sql.find("DELETE FROM setting").unwrap();
+    let db = Database::connect("sqlite::memory:").await.unwrap();
+    for stmt in [
+        "CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        "CREATE TABLE blacklist_word (id INTEGER PRIMARY KEY, pattern TEXT NOT NULL, note TEXT NOT NULL DEFAULT '')",
+        "CREATE UNIQUE INDEX w ON blacklist_word (pattern COLLATE NOCASE)",
+        "INSERT INTO setting VALUES ('label_blacklist', '  katze \r\n\r\nsex * hund\nKATZE\n  \n/^x$/\n')",
+    ] {
+        db.execute_raw(Statement::from_string(DbBackend::Sqlite, stmt)).await.unwrap();
+    }
+    for _ in 0..2 {
+        // Run twice: the second run finds the words in already.
+        db.execute_raw(Statement::from_string(DbBackend::Sqlite, &sql[from..to])).await.unwrap();
+    }
+    let rows = db.query_all_raw(Statement::from_string(DbBackend::Sqlite, "SELECT pattern FROM blacklist_word ORDER BY id")).await.unwrap();
+    let words: Vec<String> = rows.iter().map(|r| r.try_get_by_index(0).unwrap()).collect();
+    assert_eq!(words, vec!["katze", "sex * hund", "/^x$/"]);
+}

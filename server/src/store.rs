@@ -96,6 +96,8 @@ pub struct UserRow {
     pub max_devices: Option<i64>,
     /// Active (not revoked) devices.
     pub devices: i64,
+    /// Whether the user has a picture (the list shows it in a small circle).
+    pub has_avatar: bool,
 }
 
 /// One book as the administration interface shows it (all books, released or not).
@@ -225,7 +227,8 @@ const ADMIN_BOOKS: &str = "SELECT b.id, b.kind, b.folder, b.title, a.name AS aut
 
 /// The columns of one line of the user list; the callers add the ordering or the filter.
 const USER_ROWS: &str = "SELECT p.id, p.name, p.first_name, p.last_name, p.birth_date, p.role, p.max_age, p.max_devices, \
-    (SELECT count(*) FROM device d WHERE d.user_id = p.id AND d.revoked_at IS NULL) AS devices \
+    (SELECT count(*) FROM device d WHERE d.user_id = p.id AND d.revoked_at IS NULL) AS devices, \
+    EXISTS (SELECT 1 FROM avatar a WHERE a.profile_id = p.id) AS has_avatar \
     FROM profile p";
 
 /// The one place that decides which books a user sees (spec section 3b):
@@ -553,6 +556,8 @@ impl Store {
             .writer
             .execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE book SET description = ? WHERE id = ?", [value, Value::from(id)]))
             .await?;
+        // The blurb is checked against the blacklist.
+        self.blacklist_check_quietly(crate::blacklist::Scope::One(crate::blacklist::Kind::Book, id)).await;
         Ok(())
     }
 

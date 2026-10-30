@@ -765,3 +765,9 @@ dialog.book-window[open] { height: min(44rem, calc(100vh - 2rem)); }
 .waiting-request { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-top: .4rem; }
 .waiting-request form { margin: 0; }
 @media (max-width: 40rem) { .facts { grid-template-columns: 1fr; } }
+
+/* The blacklist: the preview of a word in its dialog (what it would hit) and the code of a word in the list. */
+.blacklist-preview { min-height: 2.5rem; padding: .5rem .75rem; border: 1px dashed var(--line, #c9bfa8); border-radius: .4rem; }
+.blacklist-hits { margin: .25rem 0 0; padding-left: 1.1rem; max-height: 12rem; overflow: auto; }
+.blacklist-hits li { margin: .15rem 0; }
+#blacklist-list code, #hits-list code { white-space: pre-wrap; word-break: break-word; }

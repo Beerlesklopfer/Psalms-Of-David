@@ -140,3 +140,41 @@ succeeds (or the switch goes off, or the person taps "Send changes now"); then t
 - Labels of podcasts and stations can only be set with the server (their pages are offline-only placeholders); a change that fails for want of a
   connection while the page is open waits like the others, but is not shown until it is sent.
 
+
+## The system label "Blacklist" (administrators only)
+
+The server marks media that hit the blacklist words (see `spec-admin-ui.md`, "The blacklist"). The mark is the reserved label `Blacklist`: it appears in the
+`labels` of items, podcasts and stations and as a row of `GET /api/v1/labels` **only for an administrator**; every other role never receives it, so the
+app needs no filter of its own. The app does not let a user type the name (`cleanLabel` refuses it) or suggest it, and the settings list offers no rename or delete
+for it (the server answers 404 / 422). An administrator who removes the chip from a medium (PUT without it, or PATCH `remove: ["Blacklist"]`, also from the
+outbox) approves the medium; adding it does nothing.
+
+## Personal profile (`/api/v1/me`)
+
+Project owner, 2026-10-30: "the app needs the personal profile settings; the picture can be taken with the camera". What a person may change about
+themself, nothing else (role, age limit, owner and the limits of the devices stay with the administrator); every role may, a guest too.
+Implemented in `server/src/api_me.rs`.
+
+| Request | Answer |
+|---|---|
+| `GET /me` | `{id, name, nickname, first_name, last_name, role, max_age, language, has_avatar, avatar_version, device_count, device_limit}` |
+| `PUT /me` `{nickname?, first_name?, last_name?, language?}` | changes what is given and answers like `GET /me`. `language`: `en`, `de` or `""` (follow the device). `409 exists` (nickname taken, no regard to case), `422 invalid_name`, `422 invalid_language`. Other fields (`role`, `max_age` ...) are ignored. |
+| `PUT /me/pin` `{current, new}` | `204`; `403 wrong_pin` (counts like a wrong sign-in), `429 locked`, `422 invalid_pin`. The sessions of the browser end, the paired devices keep theirs. |
+| `GET /me/devices` | `[{id, name, shared, last_seen, this}]` (not revoked) |
+| `GET /me/avatar` | the picture (`ETag` = `avatar_version`, `304` for a repeated request), `404` without one |
+| `PUT /me/avatar` | the picture as the body; type from the first bytes (JPEG, PNG, WebP; SVG and GIF are refused), at most 256 KiB: `415 avatar_type`, `413 avatar_size`, `422 avatar_none`. Answers like `GET /me`. |
+| `DELETE /me/avatar` | removes it; answers like `GET /me` |
+
+**The app** crops the picture square from the middle, makes it at most 512 pixels and encodes it as JPEG (under about 200 KiB) *before* it sends it; this
+also drops the metadata of the camera (place, time) and applies the orientation. The server only checks and stores it (the image decoders are not a
+dependency of the server). The camera and the photos come from `image_picker` on Android and iOS (the camera of the system, no `CAMERA` permission of
+its own on Android; `NSCameraUsageDescription` and `NSPhotoLibraryUsageDescription` on iOS); on a computer there is no camera button and a file
+chooser takes its place. A camera or photos that may not be used are said in a message and break nothing.
+
+The profile and the picture are kept on the device (`<app data>/profile`), so that the offline view shows them. A change needs the server: nothing
+waits in the outbox for it, and without the server the page says so and its buttons are off. Disconnecting the app deletes the copy. The profile page
+is reached from the first entry of the settings and from the picture on the home page.
+
+## Background playback and the car
+
+The app keeps playing with the screen locked and shows the controls on the lock screen and in the notification (Android: foreground service, iOS: remote command centre); a car (CarPlay, Android Auto) is the next step. What is built, the wiring of the extension point for the car and what each platform needs: `docs/spec-car.md`.

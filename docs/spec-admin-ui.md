@@ -341,3 +341,56 @@ Two pages in the menu "Media" (administrators only; every change is a procedure 
   designed but not built (see `spec-radio-recording-and-dwgload.md`); when they are, their settings belong on this page and show only if `/etc/david.toml` enables them.
 - After a successful change the page answers `HX-Refresh` (it reloads with its page of the list and its search); without JavaScript the form posts and the answer
   redirects to the page with `msg=ok.saved`.
+
+## The blacklist (system label "Blacklist", schema 0048)
+
+Project owner, 2026-10-30: "there is a blacklist, MCP can search for it". The administrators keep a list of words; a medium whose text contains one of them
+carries the **system mark "Blacklist"**. Nothing is blocked or hidden by it: it only marks, so that an administrator (or an agent through MCP) can find it.
+
+- **The words** are rows of the table `blacklist_word` (schema 0050: `pattern`, `note`, audit fields and triggers; a unique index without regard to case), kept on
+  their own page `/admin/blacklist` (menu "Media", administrators only; see "The page of the blacklist" below). They were the lines of the setting
+  `label_blacklist` before; the migration moved them into rows (idempotent, blank lines and duplicates dropped) and removed the setting, so the settings page
+  only links to the new page. **No word comes with the program**: the list is empty. A word that does not compile (a broken regular expression), over 100
+  characters or with a control character is refused (red ring); at most 500 words; a note has at most 200 characters.
+- **How a line matches** (`src/blacklist.rs`): case is ignored and the accents of German and French are folded (`ä` = `a`, `ß` = `ss`, as the lists sort), so
+  `ueberfall` does not hit `Überfall`. A line without `*` and `?` matches when the text **contains** it anywhere, also inside a longer word (`katze` hits
+  `Katzenjammer`); to be stricter use wildcards (`* katze *`) or a regular expression between slashes (`/\bkatze\b/`). `*` is any run of characters and `?` one
+  character, as in the search (`search.rs`). Every field is checked on its own: a wildcard does not reach from the title into the blurb.
+- **What is checked:** an album or audiobook: title, author, narrator, blurb, the titles of its tracks, its labels and the labels of its tracks. A podcast: title,
+  description and labels. A radio station: name and labels. Addresses and the titles of episodes are not checked.
+- **The mark** is a row of `blacklist_mark` (kind, item, the word and the **field** that hit (since 0050), `approved`; audit fields and triggers as everywhere), not a label of the family's
+  list. The name `Blacklist` is reserved: nobody can use it as an ordinary label (`labels::clean_name` refuses it in any spelling) or rename a label to it.
+- **Who sees it:** only administrators. The API gives it to administrators in the labels of items, podcasts and stations and as a row of `GET /api/v1/labels`;
+  members, children and guests never receive it (no list, count, filter or suggestion). The administration pages show it as a label (row, filter entry
+  `Blacklist`, the filter by it works). MCP is an administrator: `list_labels` counts it.
+- **Approval:** an administrator takes the mark off a medium by leaving it out of the labels in the window of the book (or the podcast / station), by the API
+  (PUT without it, PATCH `remove`) or by MCP (`set_labels` / `set_feed_labels` with `remove: ["Blacklist"]`). The row stays with `approved = 1`, so the next check
+  does not put the mark on again as long as the medium hits; when it does not hit any more the row (and the approval) goes. Nobody else can take it off; nobody
+  can put it on by hand.
+- **When it runs:** after every import (`run_import`, so also `david reindex` and its timer), when a word is added, changed or removed, when the blurb or the labels of a
+  medium change (only that medium is checked), when a label is renamed or deleted (all media). A run is idempotent and reads everything with a handful of queries.
+- **MCP `edit_blacklist`:** `list` (the words and the marked media with the word and the field that hit and whether they are approved), `add` and `remove` (words; they work on the table, a word that stays keeps its note). `dry_run`
+  is true by default and shows what would be marked (`would_mark`, `media`), so false positives can be judged before the words are saved.
+
+### The page of the blacklist
+
+`/admin/blacklist` (menu "Media" > "Blacklist"; administrators only, every procedure checks the token of the form like the other pages):
+
+- **Words:** a list with the word (code), its kind (word, pattern with `*`/`?`, regular expression, derived from how it is written), the note, the **number of
+  media it hits** (every word counted on its own, whichever word marked a medium) and who changed it last and when (audit fields). Search over word and note
+  (accents and case folded) before the list is cut into pages (pager of the other lists, `pager.path`, `q`, `page`, `per` in the address).
+- **Create, edit, delete:** a dialog with the word, the note, a **preview** and one footer Save (`blacklist.add`, `blacklist.update`, `blacklist.delete` with a
+  confirmation). A word that is empty, too long, has a control character, does not compile or is in the list already (case and accents do not count) is refused
+  with the red ring around the input (`X-Invalid-Field: pattern`). Every change checks the media again and leads back to the list (the page and search kept)
+  with a line that says how many media were **newly marked**, how many marks were **removed** and how many media are marked in total.
+- **Preview** (`GET /admin/blacklist/preview?pattern=`): while the admin types (htmx, 400 ms), the dialog says "This word would hit N media" and lists the first ten
+  (kind, title, owner, the field that hit); "not usable" for a broken word. Nothing is written, so false positives are judged before saving.
+- **Hits** (`/admin/blacklist/hits`, tab "Hits"): the marked media (albums, podcasts, stations, the approved ones included) with the word and the **field** that hit,
+  the owner, search and pages. **Approve** (`blacklist.approve`) takes the mark off (the row stays with `approved = 1`), **Mark again** (`blacklist.unapprove`)
+  undoes it. A mark from before 0050 shows no field.
+
+## Pictures of the users
+
+The picture a user chose (on the page `/profile` or in the app, see `spec-app-api.md`, "Personal profile") is shown in a small circle before the
+nickname in the list of users. In the edit window of a user an administrator finds "Remove picture" (with a question first); the row is drawn again
+without it (`POST /admin/rpc/user.remove_avatar`, administrators only). Nobody but the user and an administrator can change or remove a picture.

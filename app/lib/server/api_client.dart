@@ -171,6 +171,26 @@ class ApiClient implements FeedApi {
 
   Future<void> logout() => _json('POST', '/api/v1/logout');
 
+  /// Sends [bytes] as the body (a picture) and returns the response without reading it.
+  Future<HttpClientResponse> sendBytes(String method, String path, List<int> bytes, {required String contentType}) async {
+    try {
+      final req = await _http.openUrl(method, _uri(path));
+      if (token != null) req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      req.headers.set(HttpHeaders.contentTypeHeader, contentType);
+      req.headers.contentLength = bytes.length;
+      req.add(bytes);
+      return await req.close().timeout(const Duration(seconds: 60));
+    } on SocketException {
+      throw ApiException(0, 'network');
+    } on HandshakeException {
+      throw ApiException(0, 'certificate');
+    } on TimeoutException {
+      throw ApiException(0, 'network');
+    } on HttpException {
+      throw ApiException(0, 'network');
+    }
+  }
+
   Future<List<Map<String, dynamic>>> items() async =>
       ((await _json('GET', '/api/v1/items')) as List).cast<Map<String, dynamic>>();
 

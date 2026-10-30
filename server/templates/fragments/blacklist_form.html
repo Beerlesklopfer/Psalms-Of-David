@@ -1,0 +1,21 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{#- The dialog of one word of the blacklist: `form_id`, `action` (the procedure), `word` (the row, empty for a new word), `back` (the list to return to). -#}{% from "fragments/ui.html" import icon %}
+<dialog id="dlg-{{ form_id }}" class="window edit-window" aria-labelledby="dlg-{{ form_id }}-title">
+  <div class="window-head"><h3 id="dlg-{{ form_id }}-title">{% if word %}{{ t("blacklist.edit") }}{% else %}{{ t("blacklist.add") }}{% endif %}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+  <div class="window-body">
+    <form id="{{ form_id }}" class="dialog-form" method="post" action="/admin/rpc/{{ action }}" hx-post="/admin/rpc/{{ action }}" hx-swap="none" hx-disabled-elt="find button"{% if not word %} data-reset{% endif %}>
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="back" value="{{ back }}">{% if word %}<input type="hidden" name="id" value="{{ word.id }}">{% endif %}
+      <label class="field span-all"><input type="text" name="pattern" required maxlength="100" autocomplete="off" spellcheck="false" placeholder=" " value="{{ word.pattern if word else '' }}"
+        hx-get="/admin/blacklist/preview" hx-trigger="input changed delay:400ms" hx-target="#preview-{{ form_id }}" hx-swap="innerHTML" hx-sync="this:replace"><span>{{ t("blacklist.word") }}</span></label>
+      <small class="span-all">{{ t("blacklist.pattern_hint") }}</small>
+      <label class="field span-all"><input type="text" name="note" maxlength="200" autocomplete="off" placeholder=" " value="{{ word.note if word else '' }}"><span>{{ t("blacklist.note") }}</span></label>
+      <small class="span-all">{{ t("blacklist.note_hint") }}</small>
+      <div id="preview-{{ form_id }}" class="span-all blacklist-preview" aria-live="polite"><small class="muted">{{ t("blacklist.preview_hint") }}</small></div>
+      <div class="form-error span-all" role="alert"></div>
+    </form>
+  </div>
+  <div class="window-foot">
+    <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
+    <button type="submit" class="btn" form="{{ form_id }}">{{ t("ui.save") }}</button>
+  </div>
+</dialog>

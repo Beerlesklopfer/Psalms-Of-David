@@ -76,6 +76,8 @@ fn may_label(d: &Device, mine: bool) -> bool {
 
 async fn podcasts(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
     let labels = s.store.podcast_labels().await?;
+    // The system mark of the blacklist is for administrators only.
+    let marked = if d.role == Role::Admin { s.store.blacklist_marked(crate::blacklist::Kind::Podcast).await? } else { Default::default() };
     let list: Vec<Value> = s
         .store
         .subscriptions(d.user_id, false)
@@ -83,7 +85,7 @@ async fn podcasts(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>
         .into_iter()
         .map(|p| {
             let mut j = json!(p);
-            j["labels"] = json!(labels.get(&p.id).cloned().unwrap_or_default());
+            j["labels"] = json!(crate::blacklist::with_mark(labels.get(&p.id).cloned().unwrap_or_default(), marked.contains(&p.id), d.role == Role::Admin));
             j["can_label"] = json!(may_label(&d, true));
             j
         })
@@ -114,8 +116,13 @@ async fn patch_podcast_labels(State(s): State<ApiState>, d: Device, UrlPath(id):
     if !may_label(&d, mine) {
         return Err(refuse());
     }
-    match s.store.change_podcast_labels(id, &req.add, &req.remove).await {
-        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+    // The reserved name is no ordinary label: adding it does nothing, an administrator who removes it approves the medium.
+    let ((add, _), (remove, removes)) = (crate::blacklist::split_mark(&req.add), crate::blacklist::split_mark(&req.remove));
+    match s.store.change_podcast_labels(id, &add, &remove).await {
+        Ok(Some(labels)) => {
+            crate::api::approve_if_removed(&s, &d, crate::blacklist::Kind::Podcast, id, removes).await?;
+            Ok(Json(json!({ "labels": crate::api::shown_labels(&s, &d, crate::blacklist::Kind::Podcast, id, labels).await? })))
+        }
         Ok(None) => Err(not_found()),
         Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
         Err(e) => Err(e.into()),
@@ -131,8 +138,13 @@ async fn patch_station_labels(State(s): State<ApiState>, d: Device, UrlPath(id):
     if !may_label(&d, mine) {
         return Err(refuse());
     }
-    match s.store.change_station_labels(id, &req.add, &req.remove).await {
-        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+    // The reserved name is no ordinary label: adding it does nothing, an administrator who removes it approves the medium.
+    let ((add, _), (remove, removes)) = (crate::blacklist::split_mark(&req.add), crate::blacklist::split_mark(&req.remove));
+    match s.store.change_station_labels(id, &add, &remove).await {
+        Ok(Some(labels)) => {
+            crate::api::approve_if_removed(&s, &d, crate::blacklist::Kind::Station, id, removes).await?;
+            Ok(Json(json!({ "labels": crate::api::shown_labels(&s, &d, crate::blacklist::Kind::Station, id, labels).await? })))
+        }
         Ok(None) => Err(not_found()),
         Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
         Err(e) => Err(e.into()),
@@ -148,8 +160,12 @@ async fn put_podcast_labels(State(s): State<ApiState>, d: Device, UrlPath(id): U
     if !may_label(&d, mine) {
         return Err(refuse());
     }
-    match s.store.set_podcast_labels(id, &req.labels).await {
-        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+    let (names, wants_mark) = crate::blacklist::split_mark(&req.labels);
+    match s.store.set_podcast_labels(id, &names).await {
+        Ok(Some(labels)) => {
+            crate::api::approve_if_removed(&s, &d, crate::blacklist::Kind::Podcast, id, !wants_mark).await?;
+            Ok(Json(json!({ "labels": crate::api::shown_labels(&s, &d, crate::blacklist::Kind::Podcast, id, labels).await? })))
+        }
         Ok(None) => Err(not_found()),
         Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
         Err(e) => Err(e.into()),
@@ -165,8 +181,12 @@ async fn put_station_labels(State(s): State<ApiState>, d: Device, UrlPath(id): U
     if !may_label(&d, mine) {
         return Err(refuse());
     }
-    match s.store.set_station_labels(id, &req.labels).await {
-        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+    let (names, wants_mark) = crate::blacklist::split_mark(&req.labels);
+    match s.store.set_station_labels(id, &names).await {
+        Ok(Some(labels)) => {
+            crate::api::approve_if_removed(&s, &d, crate::blacklist::Kind::Station, id, !wants_mark).await?;
+            Ok(Json(json!({ "labels": crate::api::shown_labels(&s, &d, crate::blacklist::Kind::Station, id, labels).await? })))
+        }
         Ok(None) => Err(not_found()),
         Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
         Err(e) => Err(e.into()),
@@ -274,6 +294,7 @@ async fn search_radio(State(s): State<ApiState>, _d: Device, Query(q): Query<Sea
 
 async fn radio(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
     let labels = s.store.station_labels().await?;
+    let marked = if d.role == Role::Admin { s.store.blacklist_marked(crate::blacklist::Kind::Station).await? } else { Default::default() };
     let list: Vec<Value> = s
         .store
         .favorite_stations(d.user_id, false)
@@ -281,7 +302,7 @@ async fn radio(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
         .into_iter()
         .map(|st| {
             let mut j = json!(st);
-            j["labels"] = json!(labels.get(&st.id).cloned().unwrap_or_default());
+            j["labels"] = json!(crate::blacklist::with_mark(labels.get(&st.id).cloned().unwrap_or_default(), marked.contains(&st.id), d.role == Role::Admin));
             j["can_label"] = json!(may_label(&d, true));
             j
         })

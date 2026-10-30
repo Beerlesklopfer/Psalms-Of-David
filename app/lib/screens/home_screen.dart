@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../models.dart';
 import '../player_controller.dart';
+import '../profile.dart';
+import 'profile_screen.dart';
 import '../widgets.dart';
 
 String _greeting(AppLocalizations l) {
@@ -36,6 +38,19 @@ class HomeScreen extends StatelessWidget {
         SliverAppBar(
           floating: true,
           backgroundColor: Theme.of(context).colorScheme.surface,
+          // The picture and the greeting open the own profile (with a server; the demo has none).
+          leading: ProfileScope.maybeOf(context) == null
+              ? null
+              : Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: IconButton(
+                    key: const ValueKey('home-avatar'),
+                    tooltip: l.profileAvatarTooltip,
+                    padding: EdgeInsets.zero,
+                    onPressed: () => openProfile(context),
+                    icon: const OwnAvatar(size: 36),
+                  ),
+                ),
           title: Text(
             p.userName == null || p.userName!.trim().isEmpty ? _greeting(l) : l.greetingNamed(_greeting(l), p.userName!),
             style: Theme.of(context).textTheme.headlineSmall,

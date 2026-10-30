@@ -302,6 +302,11 @@ fn tool_list() -> Value {
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
+            "name": "edit_blacklist",
+            "description": "The blacklist: words (one word or phrase each; `*` and `?` as in the search, case and accents ignored, a word without them matches anywhere in the text, so `katze` also hits `Katzenjammer`). A medium whose title, author, narrator, blurb, track titles or labels (podcasts: title, description, labels; stations: name, labels) contain one of them gets the system label \"Blacklist\", which only administrators see; nothing is blocked. action: list (default; the words and the marked media with the word that hit, and whether an administrator approved them: set_labels with remove [\"Blacklist\"] takes the mark off), add or remove (words; dry_run is true by default and then only shows what would be marked, so false positives can be judged first). No word comes with the program. Reading needs a token; add and remove need a token that may write.",
+            "inputSchema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["list", "add", "remove"] }, "words": { "type": "array", "items": { "type": "string" } }, "dry_run": { "type": "boolean", "description": "true by default for add and remove; false saves the words and marks the media" } } }
+        },
+        {
             "name": "edit_stations",
             "description": "Maintains the radio stations. action: add (name, stream_url, optional homepage, logo_url, and for: profile names that get it as a favourite at once, or [\"*\"] for every profile that is not a child or guest), update (station, then any of name, stream_url, homepage, logo_url; an empty homepage or logo removes it), assign or unassign (station, for: profile names), delete (station: gone from every list). station is the name or the stream address of a station, profiles are named, never numbered. Needs a token that may write. See list_stations.",
             "inputSchema": { "type": "object", "properties": {
@@ -397,7 +402,7 @@ async fn prompt_of(s: &McpState) -> String {
 }
 
 /// The tools that change files; a token that may only read cannot use them.
-const WRITING_TOOLS: [&str; 26] = ["merge_albums", "set_discs_total", "set_labels", "set_track_labels", "set_feed_labels", "move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
+const WRITING_TOOLS: [&str; 27] = ["edit_blacklist", "merge_albums", "set_discs_total", "set_labels", "set_track_labels", "set_feed_labels", "move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
 
 /// A sample call of a tool, for `help_for`.
 fn example_of(tool: &str) -> Value {
@@ -434,6 +439,7 @@ fn example_of(tool: &str) -> Value {
         "list_podcasts" => json!({ "profile": "Anna" }),
         "edit_podcasts" => json!({ "action": "follow", "url": "https://example.org/podcast/feed.xml", "for": ["Anna"] }),
         "list_stations" => json!({}),
+        "edit_blacklist" => json!({ "action": "add", "words": ["sex * katze"], "dry_run": true }),
         "edit_stations" => json!({ "action": "add", "name": "DWG Lyra", "stream_url": "https://server34599.streamplus.de/stream.mp3", "for": ["*"] }),
         "list_playlists" => json!({ "profile": "Anna" }),
         "get_playlist" => json!({ "profile": "Anna", "name": "Car trip" }),
@@ -867,12 +873,12 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             let ids: Option<Vec<i64>> = args.get("ids").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_i64).collect());
             match ids {
                 Some(ids) => {
-                    let all = s.store.book_labels().await.map_err(db)?;
+                    let all = s.store.book_labels_with_mark().await.map_err(db)?;
                     let albums: Vec<Value> = ids.iter().map(|id| json!({ "id": id, "labels": all.get(id).cloned().unwrap_or_default() })).collect();
                     Ok(json!({ "albums": albums }))
                 }
                 None => {
-                    let labels = s.store.labels().await.map_err(db)?;
+                    let labels = s.store.labels_with_mark().await.map_err(db)?;
                     Ok(json!({ "labels": labels }))
                 }
             }
@@ -891,6 +897,17 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 }
             };
             let (add, remove, set) = (names("add")?, names("remove")?, names("set")?);
+            // The system mark "Blacklist" is no ordinary label: it is not set by hand (the words decide, see edit_blacklist); taking it off approves the medium.
+            if add.iter().chain(set.iter()).flatten().any(|n| crate::blacklist::is_mark(n)) {
+                return Err("\"Blacklist\" is the system mark of the blacklist words (see edit_blacklist); it cannot be set by hand, only taken off with `remove`".into());
+            }
+            let (remove, approve_mark) = match remove {
+                Some(r) => {
+                    let (rest, had) = crate::blacklist::split_mark(&r);
+                    (Some(rest), had)
+                }
+                None => (None, false),
+            };
             if set.is_some() && (add.is_some() || remove.is_some()) {
                 return Err("give set, or add and remove, not both".into());
             }
@@ -938,7 +955,11 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                         s.store.log_tag_change(&token.name, *id, "", "Labels", &before.join(", "), &result.join(", ")).await.map_err(db)?;
                     }
                 }
-                albums.push(json!({ "id": id, "title": row.title, "author": row.author, "before": before, "after": result, "changed": differs }));
+                let mut approved = false;
+                if approve_mark && !dry {
+                    approved = s.store.blacklist_approve(crate::blacklist::Kind::Book, *id).await.map_err(db)?;
+                }
+                albums.push(json!({ "id": id, "title": row.title, "author": row.author, "before": before, "after": result, "changed": differs, "mark_approved": approved }));
             }
             Ok(json!({ "dry_run": dry, "changed": changed, "albums": albums }))
         }
@@ -956,6 +977,17 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 }
             };
             let (add, remove, set) = (names("add")?, names("remove")?, names("set")?);
+            // The system mark "Blacklist" is no ordinary label: it is not set by hand (the words decide, see edit_blacklist); taking it off approves the medium.
+            if add.iter().chain(set.iter()).flatten().any(|n| crate::blacklist::is_mark(n)) {
+                return Err("\"Blacklist\" is the system mark of the blacklist words (see edit_blacklist); it cannot be set by hand, only taken off with `remove`".into());
+            }
+            let (remove, _approve_mark) = match remove {
+                Some(r) => {
+                    let (rest, had) = crate::blacklist::split_mark(&r);
+                    (Some(rest), had)
+                }
+                None => (None, false),
+            };
             if set.is_some() && (add.is_some() || remove.is_some()) {
                 return Err("give set, or add and remove, not both".into());
             }
@@ -1027,6 +1059,17 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 }
             };
             let (add, remove, set) = (names("add")?, names("remove")?, names("set")?);
+            // The system mark "Blacklist" is no ordinary label: it is not set by hand (the words decide, see edit_blacklist); taking it off approves the medium.
+            if add.iter().chain(set.iter()).flatten().any(|n| crate::blacklist::is_mark(n)) {
+                return Err("\"Blacklist\" is the system mark of the blacklist words (see edit_blacklist); it cannot be set by hand, only taken off with `remove`".into());
+            }
+            let (remove, approve_mark) = match remove {
+                Some(r) => {
+                    let (rest, had) = crate::blacklist::split_mark(&r);
+                    (Some(rest), had)
+                }
+                None => (None, false),
+            };
             if set.is_some() && (add.is_some() || remove.is_some()) {
                 return Err("give set, or add and remove, not both".into());
             }
@@ -1080,7 +1123,11 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                         s.store.log_tag_change(&token.name, 0, "", "Labels", &format!("{name}: {}", before.join(", ")), &result.join(", ")).await.map_err(db)?;
                     }
                 }
-                rows.push(json!({ "name": name, "before": before, "after": result, "changed": differs }));
+                let mut approved = false;
+                if approve_mark && !dry {
+                    approved = s.store.blacklist_approve(if kind == "podcast" { crate::blacklist::Kind::Podcast } else { crate::blacklist::Kind::Station }, *id).await.map_err(db)?;
+                }
+                rows.push(json!({ "name": name, "before": before, "after": result, "changed": differs, "mark_approved": approved }));
             }
             Ok(json!({ "dry_run": dry, "kind": kind, "changed": changed, "items": rows }))
         }
@@ -1334,7 +1381,7 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 None => None,
             };
             let feeds = s.store.feeds_with_followers().await.map_err(db)?;
-            let podcast_labels = s.store.podcast_labels().await.map_err(db)?;
+            let podcast_labels = s.store.podcast_labels_with_mark().await.map_err(db)?;
             let list: Vec<Value> = feeds
                 .into_iter()
                 .filter(|(_, followers)| only.as_ref().is_none_or(|n| followers.iter().any(|(f, _)| f.eq_ignore_ascii_case(n))))
@@ -1414,9 +1461,66 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
         }
         "list_stations" => {
             let stations = s.store.stations_with_owners().await.map_err(db)?;
-            let station_labels = s.store.station_labels().await.map_err(db)?;
+            let station_labels = s.store.station_labels_with_mark().await.map_err(db)?;
             let list: Vec<Value> = stations.into_iter().map(|(st, owners)| json!({ "labels": station_labels.get(&st.id).cloned().unwrap_or_default(), "name": st.name, "stream_url": st.stream_url, "homepage": st.homepage, "logo_url": st.logo_url, "favourite_of": owners })).collect();
             Ok(json!({ "stations": list }))
+        }
+        "edit_blacklist" => {
+            let action = text("action").unwrap_or_else(|| "list".to_owned());
+            let words: Vec<String> = args.get("words").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect()).unwrap_or_default();
+            let current = s.store.blacklist_words().await.map_err(db)?;
+            if action == "list" {
+                let rows = s.store.blacklist_rows().await.map_err(db)?;
+                let books = s.store.admin_book_rows().await.map_err(db)?;
+                let feeds = s.store.feeds_with_followers().await.map_err(db)?;
+                let stations = s.store.stations_with_owners().await.map_err(db)?;
+                let marked: Vec<Value> = rows
+                    .iter()
+                    .map(|r| {
+                        let title = match r.kind.as_str() {
+                            "book" => books.iter().find(|b| b.id == r.id).map(|b| album_label(&b.title, &b.author)),
+                            "podcast" => feeds.iter().find(|(f, _)| f.id == r.id).map(|(f, _)| f.title.clone()),
+                            _ => stations.iter().find(|(st, _)| st.id == r.id).map(|(st, _)| st.name.clone()),
+                        };
+                        json!({ "kind": r.kind, "id": r.id, "title": title, "word": r.word, "field": r.field, "approved": r.approved })
+                    })
+                    .collect();
+                return Ok(json!({ "words": current, "marked": marked }));
+            }
+            let dry = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
+            if !dry && !token.can_write {
+                return Err("this token may only read".into());
+            }
+            if words.iter().all(|w| w.trim().is_empty()) {
+                return Err("words is required: the words to add or to remove".into());
+            }
+            let wanted: Vec<String> = match action.as_str() {
+                "add" => {
+                    let mut all = current.clone();
+                    for w in words.iter().map(|w| w.trim()).filter(|w| !w.is_empty()) {
+                        if !all.iter().any(|c| c.eq_ignore_ascii_case(w)) {
+                            all.push(w.to_owned());
+                        }
+                    }
+                    all
+                }
+                "remove" => {
+                    let gone: Vec<String> = words.iter().map(|w| w.trim().to_lowercase()).collect();
+                    if let Some(missing) = gone.iter().find(|g| !current.iter().any(|c| c.to_lowercase() == **g)) {
+                        return Err(format!("{missing:?} is not in the list"));
+                    }
+                    current.iter().filter(|c| !gone.contains(&c.to_lowercase())).cloned().collect()
+                }
+                _ => return Err("action is list, add or remove".into()),
+            };
+            crate::blacklist::Blacklist::parse(&wanted.join("\n")).map_err(|line| format!("not usable (a broken regular expression, a control character, a line over {} characters or more than {} lines): {line}", crate::blacklist::MAX_LINE_CHARS, crate::blacklist::MAX_LINES))?;
+            if dry {
+                let would = s.store.blacklist_preview(&wanted).await.map_err(db)?;
+                return Ok(json!({ "dry_run": true, "words": wanted, "would_mark": would.len(), "media": would }));
+            }
+            let report = s.store.save_blacklist_words(&wanted).await.map_err(db)?;
+            tracing::info!(token = %token.name, words = ?wanted, marked = report.marked, "the blacklist changed");
+            Ok(json!({ "dry_run": false, "words": wanted, "marked": report.marked, "added": report.added, "removed": report.removed }))
         }
         "edit_stations" => {
             if !token.can_write {

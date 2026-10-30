@@ -28,6 +28,7 @@
       </span>
     </label>
     {% endfor %}
+    {% if group == "library" %}<p class="unit"><a href="/admin/blacklist">{{ t("blacklist.settings_link") }}</a></p>{% endif %}
     {% if group == "tls" %}<p class="unit">{{ t("settings.tls_hint") }}</p>{% if tls_problem is defined and tls_problem %}<p class="form-error" role="note">{{ tls_problem }}</p>{% endif %}{% endif %}
   </fieldset>
   {% endfor %}

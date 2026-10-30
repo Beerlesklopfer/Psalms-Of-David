@@ -22,13 +22,14 @@
       {% if me.role == "admin" %}
       <nav class="menu" aria-label="Menu">
         <a href="/admin/users"{% if page == "users" %} aria-current="page"{% endif %}>{{ icon("users") }}<span>{{ t("nav.users") }}</span></a>
-        {% call popup("media", "media", t("nav.media"), page == "books" or page == "music" or page == "podcasts" or page == "radio" or page == "genres" or page == "releases", "up") %}
+        {% call popup("media", "media", t("nav.media"), page == "books" or page == "music" or page == "podcasts" or page == "radio" or page == "genres" or page == "releases" or page == "blacklist", "up") %}
           <a role="menuitem" href="/admin/books"{% if page == "books" %} aria-current="page"{% endif %}>{{ icon("books") }}<span>{{ t("nav.books") }}</span></a>
           <a role="menuitem" href="/admin/music"{% if page == "music" %} aria-current="page"{% endif %}>{{ icon("music") }}<span>{{ t("nav.music") }}</span></a>
           <a role="menuitem" href="/admin/podcasts"{% if page == "podcasts" %} aria-current="page"{% endif %}>{{ icon("podcast") }}<span>{{ t("nav.podcasts") }}</span></a>
           <a role="menuitem" href="/admin/radio"{% if page == "radio" %} aria-current="page"{% endif %}>{{ icon("radio") }}<span>{{ t("nav.radio") }}</span></a>
           <a role="menuitem" href="/admin/releases"{% if page == "releases" %} aria-current="page"{% endif %}>{{ icon("check") }}<span>{{ t("nav.releases") }}</span></a>
           <a role="menuitem" href="/admin/genres"{% if page == "genres" %} aria-current="page"{% endif %}>{{ icon("tag") }}<span>{{ t("nav.genres") }}</span></a>
+          <a role="menuitem" href="/admin/blacklist"{% if page == "blacklist" %} aria-current="page"{% endif %}>{{ icon("lock") }}<span>{{ t("nav.blacklist") }}</span></a>
           <span role="menuitem" class="menu-item disabled" aria-disabled="true">{{ icon("video") }}<span>{{ t("nav.videos") }}</span><small class="badge">{{ t("nav.soon") }}</small></span>
         {% endcall %}
         <a href="/admin/pairing"{% if page == "pairing" %} aria-current="page"{% endif %}>{{ icon("pairing") }}<span>{{ t("nav.pairing") }}</span></a>
