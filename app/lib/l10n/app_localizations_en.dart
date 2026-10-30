@@ -175,6 +175,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'The server shows a different certificate than the one in the code.';
 
   @override
+  String get connectErrorSignedOut =>
+      'The server no longer knows this device. Pair it again with a new code; the old pairing stays until then.';
+
+  @override
+  String get connectSearching => 'Looking for the server again ...';
+
+  @override
   String get connectErrorOther => 'Connecting failed.';
 
   @override

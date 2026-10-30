@@ -646,6 +646,28 @@ impl Store {
         Ok(())
     }
 
+    /// Deletes a device that was revoked (its record, with what hangs on it). An active device is refused with `DeviceStillActive`: it is revoked first.
+    /// `false` if there is no such device.
+    pub async fn delete_device(&self, id: i64) -> Result<bool> {
+        let row = self
+            .db
+            .reader
+            .query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT revoked_at FROM device WHERE id = ?", [Value::from(id)]))
+            .await?;
+        let Some(row) = row else { return Ok(false) };
+        let revoked: Option<i64> = row.try_get_by_index(0)?;
+        if revoked.is_none() {
+            return Err(Error::DeviceStillActive);
+        }
+        // The check is in the statement as well: a device that was not revoked is never deleted, whatever happened since the read.
+        let done = self
+            .db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "DELETE FROM device WHERE id = ? AND revoked_at IS NOT NULL", [Value::from(id)]))
+            .await?;
+        Ok(done.rows_affected() > 0)
+    }
+
     pub async fn devices_of(&self, user_id: i64) -> Result<Vec<device::Model>> {
         Ok(device::Entity::find()
             .filter(device::Column::UserId.eq(user_id))

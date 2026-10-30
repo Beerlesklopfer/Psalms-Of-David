@@ -11,6 +11,8 @@ pub enum Error {
     LastAdmin,
     #[error("the user has reached the limit of devices")]
     DeviceLimitReached,
+    #[error("an active device must be revoked before it is deleted")]
+    DeviceStillActive,
     #[error("a child needs an age limit and a weekly planner")]
     ChildRequiresAgeAndSchedule,
     #[error("a book can only be released with an age rating")]

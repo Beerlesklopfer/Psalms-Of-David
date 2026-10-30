@@ -51,6 +51,7 @@ impl From<Error> for Failure {
         match e {
             Error::LastAdmin => Failure::new(StatusCode::CONFLICT, "err.last_admin"),
             Error::DeviceLimitReached => Failure::new(StatusCode::CONFLICT, "err.device_limit"),
+            Error::DeviceStillActive => Failure::new(StatusCode::CONFLICT, "err.device_active"),
             Error::ProfileLimitReached => Failure::new(StatusCode::CONFLICT, "err.profile_limit"),
             Error::ChildRequiresAgeAndSchedule => Failure::new(StatusCode::UNPROCESSABLE_ENTITY, "err.child_requires"),
             Error::ReleaseRequiresAge => Failure::new(StatusCode::UNPROCESSABLE_ENTITY, "err.release_requires_age"),
@@ -2402,6 +2403,19 @@ pub async fn device_revoke(State(state): State<AppState>, s: AdminSession, Form(
     let outcome = async {
         state.store.revoke_device(f.id).await?;
         state.ui.device_row_fragment(&state.store, view(&s), f.id).await?.ok_or_else(Failure::not_found)
+    }
+    .await;
+    finish(&s, "/admin/pairing", outcome)
+}
+
+/// A revoked device is deleted from the list; an active one has to be revoked first (409).
+pub async fn device_delete(State(state): State<AppState>, s: AdminSession, Form(f): Form<IdForm>) -> Response {
+    let outcome = async {
+        if !state.store.delete_device(f.id).await? {
+            return Err(Failure::not_found());
+        }
+        // The row is gone: an empty answer replaces it with nothing.
+        Ok(String::new())
     }
     .await;
     finish(&s, "/admin/pairing", outcome)

@@ -948,9 +948,37 @@ async fn revoking_a_device_frees_its_place_and_shows_in_the_row() {
 
     let r = send(&a, post("/admin/rpc/device.revoke", &form(&[("id", &device.to_string())]), &o)).await;
     assert_eq!(r.status, StatusCode::OK);
-    assert!(r.body.starts_with(&format!("<tr id=\"device-{device}\">")) && r.body.contains("Revoked") && !r.body.contains("<button"));
+    assert!(r.body.starts_with(&format!("<tr id=\"device-{device}\">")) && r.body.contains("Revoked") && !r.body.contains("device.revoke"), "a revoked row offers delete, not revoke");
     assert_eq!(send(&a, post("/admin/rpc/pairing.create", &make, &o)).await.status, StatusCode::OK, "the place is free again");
     assert_eq!(send(&a, post("/admin/rpc/device.revoke", &form(&[("id", "9999")]), &o)).await.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_pairing_is_deleted_only_after_it_was_revoked() {
+    let a = app().await;
+    let guest = a.store.create_user(NewProfile::new("Guest", Role::Guest)).await.unwrap();
+    let e = a.store.create_enrollment(guest, false, guest).await.unwrap();
+    let key = format!("{}I=", "C".repeat(42));
+    let device = a.store.redeem_enrollment(&e.code, &key, "Phone").await.unwrap().device_id;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let id = device.to_string();
+
+    // An active pairing offers "revoke" and no "delete", and the server refuses to delete it.
+    let page = send(&a, get("/admin/pairing", &o)).await;
+    assert!(page.body.contains("device.revoke") && !page.body.contains("device.delete"), "{}", page.body);
+    let refused = send(&a, post("/admin/rpc/device.delete", &form(&[("id", &id)]), &o)).await;
+    assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.body);
+    assert!(a.store.device_row(device).await.unwrap().is_some(), "the active pairing is still there");
+
+    // Revoked: the row offers "delete", and deleting takes it away.
+    assert_eq!(send(&a, post("/admin/rpc/device.revoke", &form(&[("id", &id)]), &o)).await.status, StatusCode::OK);
+    let page = send(&a, get("/admin/pairing", &o)).await;
+    assert!(page.body.contains("device.delete") && !page.body.contains("device.revoke"), "{}", page.body);
+    let gone = send(&a, post("/admin/rpc/device.delete", &form(&[("id", &id)]), &o)).await;
+    assert_eq!((gone.status, gone.body.as_str()), (StatusCode::OK, ""));
+    assert!(a.store.device_row(device).await.unwrap().is_none());
+    assert_eq!(send(&a, post("/admin/rpc/device.delete", &form(&[("id", &id)]), &o)).await.status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

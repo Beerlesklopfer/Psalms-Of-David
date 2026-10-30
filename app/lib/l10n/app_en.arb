@@ -100,6 +100,8 @@
   "connectErrorLimit": "This user has reached the limit of devices.",
   "connectErrorNetwork": "The server cannot be reached.",
   "connectErrorCertificate": "The server shows a different certificate than the one in the code.",
+  "connectErrorSignedOut": "The server no longer knows this device. Pair it again with a new code; the old pairing stays until then.",
+  "connectSearching": "Looking for the server again ...",
   "connectErrorOther": "Connecting failed.",
   "openPassage": "Open passage “{text}”",
   "@openPassage": {

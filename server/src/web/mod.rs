@@ -128,6 +128,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/rpc/user.remove_avatar", post(handlers::user_remove_avatar))
         .route("/admin/rpc/pairing.create", post(handlers::pairing_create))
         .route("/admin/rpc/device.revoke", post(handlers::device_revoke))
+        .route("/admin/rpc/device.delete", post(handlers::device_delete))
         .route("/admin/rpc/schedule.save", post(handlers::schedule_save))
         .route("/admin/rpc/schedule.preset", post(handlers::schedule_preset))
         .route("/admin/rpc/schedule.remove", post(handlers::schedule_remove))

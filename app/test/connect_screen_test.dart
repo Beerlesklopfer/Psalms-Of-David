@@ -58,4 +58,30 @@ void main() {
     await tester.pumpAndSettle();
     expect(_field(tester), _address);
   });
+
+  testWidgets('while the app looks for the server again the screen says so, and a new reason replaces the old one', (tester) async {
+    Widget screen(ConnectError? error, {bool searching = false}) => MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: const Locale('en'),
+      home: ConnectScreen(
+        deviceName: 'Laptop',
+        error: error,
+        searching: searching,
+        onPair: (address, name) async => null,
+        onDemo: () {},
+        onRetry: () async {},
+      ),
+    );
+    _clipboard(tester, null);
+    await tester.pumpWidget(screen(ConnectError.network, searching: true));
+    await tester.pump();
+    expect(find.text('The server cannot be reached.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('searching-server')), findsOneWidget);
+    // The server answers, but does not know the device any more: the pairing is kept, the person is asked to pair again.
+    await tester.pumpWidget(screen(ConnectError.signedOut));
+    await tester.pump();
+    expect(find.textContaining('no longer knows this device'), findsOneWidget);
+    expect(find.byKey(const ValueKey('searching-server')), findsNothing);
+  });
 }

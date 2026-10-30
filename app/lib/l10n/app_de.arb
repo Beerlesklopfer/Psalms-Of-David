@@ -39,6 +39,8 @@
   "pairingAddressLabel": "Kopplungsadresse",
   "deviceNameLabel": "Name dieses Geräts",
   "connectButton": "Verbinden",
+  "connectErrorSignedOut": "Der Server kennt dieses Gerät nicht mehr. Koppele es mit einem neuen Code erneut; die alte Kopplung bleibt bis dahin erhalten.",
+  "connectSearching": "Suche den Server erneut ...",
   "retryButton": "Erneut versuchen",
   "useDemoButton": "Mit Demodaten ausprobieren",
   "connectErrorAddress": "Das ist keine Kopplungsadresse.",

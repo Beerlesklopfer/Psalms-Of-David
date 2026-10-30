@@ -1,5 +1,5 @@
 {# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
-   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% if pager.total > 0 and (pager.pages > 1 or not (pager.q or pager.problems or pager.label)) %}
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{#- No pager for a list that fits on one page; one stays only if the page size was changed (the way back to the default must remain). -#}{% if pager.total > 0 and (pager.pages > 1 or pager.per != pager.default_per) %}
 <nav class="pager" aria-label="{{ t('pager.label') }}">
   <span class="pager-count">{{ pager.from }}&ndash;{{ pager.to }} {{ t("pager.of") }} {{ pager.total }}</span>
   {#- The page the links lead to: the media lists name theirs by `kind`, the other lists give it as `pager.path`. -#}

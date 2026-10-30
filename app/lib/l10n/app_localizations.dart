@@ -374,6 +374,18 @@ abstract class AppLocalizations {
   /// **'The server shows a different certificate than the one in the code.'**
   String get connectErrorCertificate;
 
+  /// No description provided for @connectErrorSignedOut.
+  ///
+  /// In en, this message translates to:
+  /// **'The server no longer knows this device. Pair it again with a new code; the old pairing stays until then.'**
+  String get connectErrorSignedOut;
+
+  /// No description provided for @connectSearching.
+  ///
+  /// In en, this message translates to:
+  /// **'Looking for the server again ...'**
+  String get connectSearching;
+
   /// No description provided for @connectErrorOther.
   ///
   /// In en, this message translates to:

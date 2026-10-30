@@ -219,6 +219,9 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed) _player.flush();
   }
 
+  Timer? _retryTimer;
+  int _retries = 0;
+
   Future<void> _start() async {
     final demo = Platform.environment['PSALM_DEMO_FILE'];
     if (widget.demo || (demo != null && demo.isNotEmpty)) {
@@ -230,8 +233,19 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
       setState(() => _phase = _Phase.connect);
       return;
     }
+    _retryTimer?.cancel();
     final error = await _signIn(stored);
     if (!mounted) return;
+    // The server was not reachable: look again by itself, after 5 s, 10 s, 20 s ... at most a minute.
+    if (error == ConnectError.network) {
+      _retries++;
+      final wait = Duration(seconds: (5 * (1 << (_retries - 1).clamp(0, 4))).clamp(5, 60));
+      _retryTimer = Timer(wait, () {
+        if (mounted && _phase == _Phase.connect) unawaited(_start());
+      });
+    } else {
+      _retries = 0;
+    }
     setState(() {
       _connectError = error;
       _canRetry = error == ConnectError.network || error == ConnectError.certificate;
@@ -264,10 +278,8 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
         return null;
       } on ApiException catch (e) {
         api.close();
-        if (e.status == 401) {
-          _credentials.clear();
-          return ConnectError.code;
-        }
+        // The server does not know the token: the pairing stays until a new one succeeds (a short fault of the server must not unpair the device).
+        if (e.status == 401) return ConnectError.signedOut;
         if (e.code == 'certificate') return ConnectError.certificate;
         // The name of a server with a certificate from a certificate authority has to stay: another
         // address found by mDNS would not match the certificate.
@@ -409,6 +421,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _libraryTimer?.cancel();
+    _retryTimer?.cancel();
     _offline.removeListener(_onOfflineChanged);
     _offline.dispose();
     unawaited(_mpris?.stop());
@@ -460,6 +473,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
               _Phase.connect => ConnectScreen(
                 deviceName: Platform.localHostname,
                 error: _connectError,
+                searching: _canRetry && _connectError == ConnectError.network,
                 initialAddress: widget.pairing,
                 onPair: _pair,
                 onDemo: () => setState(() => _phase = _Phase.ready),

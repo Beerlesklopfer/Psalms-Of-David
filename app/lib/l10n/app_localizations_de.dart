@@ -177,6 +177,13 @@ class AppLocalizationsDe extends AppLocalizations {
       'Der Server zeigt ein anderes Zertifikat als im Code.';
 
   @override
+  String get connectErrorSignedOut =>
+      'Der Server kennt dieses Gerät nicht mehr. Koppele es mit einem neuen Code erneut; die alte Kopplung bleibt bis dahin erhalten.';
+
+  @override
+  String get connectSearching => 'Suche den Server erneut ...';
+
+  @override
   String get connectErrorOther => 'Das Verbinden ist fehlgeschlagen.';
 
   @override

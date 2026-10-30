@@ -14,7 +14,7 @@ Future<Uint8List?> _pickPicture(String title) async {
 }
 
 /// Why connecting failed; the screen words it in the language of the app.
-enum ConnectError { address, code, limit, network, certificate, qr, other }
+enum ConnectError { address, code, limit, network, certificate, qr, signedOut, other }
 
 /// First start: pair this device with the server. The address comes from the
 /// administration page (the text under the QR code); scanning the code with the
@@ -27,6 +27,7 @@ class ConnectScreen extends StatefulWidget {
     required this.onDemo,
     this.onRetry,
     this.error,
+    this.searching = false,
     this.initialAddress,
     this.pickPicture = _pickPicture,
   });
@@ -40,6 +41,9 @@ class ConnectScreen extends StatefulWidget {
   /// Given when a pairing is already stored and the server was just not reachable.
   final Future<void> Function()? onRetry;
   final ConnectError? error;
+
+  /// The app looks for the server again by itself (the pairing is stored, the server was not reachable).
+  final bool searching;
 
   /// A pairing address that came with the start of the program (`psalm david://pair?...`).
   final String? initialAddress;
@@ -57,6 +61,13 @@ class _ConnectScreenState extends State<ConnectScreen> {
   late final TextEditingController _name = TextEditingController(text: widget.deviceName);
   ConnectError? _error;
   bool _busy = false;
+
+  @override
+  void didUpdateWidget(ConnectScreen old) {
+    super.didUpdateWidget(old);
+    // The app tried again by itself and found another reason.
+    if (old.error != widget.error && !_busy) _error = widget.error;
+  }
 
   @override
   void initState() {
@@ -127,6 +138,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
         ConnectError.network => l.connectErrorNetwork,
         ConnectError.certificate => l.connectErrorCertificate,
         ConnectError.qr => l.qrNotFound,
+        ConnectError.signedOut => l.connectErrorSignedOut,
         ConnectError.other => l.connectErrorOther,
       };
 
@@ -196,6 +208,16 @@ class _ConnectScreenState extends State<ConnectScreen> {
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 Text(_message(l, _error!), style: TextStyle(color: theme.colorScheme.error)),
+              ],
+              if (widget.searching && !_busy) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                    const SizedBox(width: 8),
+                    Expanded(key: const ValueKey('searching-server'), child: Text(l.connectSearching)),
+                  ],
+                ),
               ],
               const SizedBox(height: 20),
               FilledButton(
