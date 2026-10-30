@@ -47,8 +47,11 @@ class PsalmAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Follows [player]; the previous controller, if any, is let go.
   void attach(PlayerController player) {
     _player?.removeListener(_publish);
+    _player?.positionListenable.removeListener(_publish);
     _player = player;
     player.addListener(_publish);
+    // The ticks no longer notify the controller; the position listenable keeps the check for a jump at the old rate.
+    player.positionListenable.addListener(_publish);
     _publish();
   }
 
@@ -56,6 +59,7 @@ class PsalmAudioHandler extends BaseAudioHandler with SeekHandler {
   void detach(PlayerController player) {
     if (_player != player) return;
     player.removeListener(_publish);
+    player.positionListenable.removeListener(_publish);
     _player = null;
     _shown = null;
     playbackState.add(PlaybackState());
@@ -76,7 +80,7 @@ class PsalmAudioHandler extends BaseAudioHandler with SeekHandler {
     }
     final live = track.live || (p.book?.isStream ?? false);
     final shown = _Shown(
-      key: '${book.id}:${p.trackIndex}:${track.partId}',
+      key: '${book.id}:${p.trackIndex}:${track.partId}:${p.nowPlaying ?? ''}',
       playing: p.playing,
       loading: p.loading,
       failed: p.error != null,
@@ -125,7 +129,8 @@ class PsalmAudioHandler extends BaseAudioHandler with SeekHandler {
     final stream = track.live || book.isStream;
     return MediaItem(
       id: '${p.book?.id ?? book.id}:${p.trackIndex}',
-      title: track.title,
+      // A station shows what it plays now ("Artist - Song") when it says so; the station is then the artist.
+      title: p.nowPlaying ?? track.title,
       album: stream ? null : book.title,
       artist: stream ? book.title : book.author,
       duration: stream ? null : track.length,

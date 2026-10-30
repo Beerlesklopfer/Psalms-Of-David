@@ -25,5 +25,23 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    registerVoiceChannel(engineBridge)
+  }
+
+  /// Siri / Shortcuts (PsalmsIntents.swift) leave a JSON command in UserDefaults; Flutter takes it once with `takePending`.
+  private func registerVoiceChannel(_ engineBridge: FlutterImplicitEngineBridge) {
+    guard let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "PsalmsVoice") else { return }
+    let channel = FlutterMethodChannel(
+      name: "com.the-abraham-box.psalm/voice", binaryMessenger: registrar.messenger())
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "takePending" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      let defaults = UserDefaults.standard
+      let pending = defaults.string(forKey: PsalmsVoice.pendingKey)
+      defaults.removeObject(forKey: PsalmsVoice.pendingKey)
+      result(pending)
+    }
   }
 }

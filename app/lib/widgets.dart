@@ -340,19 +340,11 @@ class _SeekBarState extends State<SeekBar> {
     if (track == null || track.live) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
     final length = widget.wholeBook ? p.bookTotal : track.length;
-    final now = widget.wholeBook ? p.bookPosition : p.position;
     final max = length.inMilliseconds.toDouble().clamp(1.0, double.infinity);
-    final value = (_held ?? now.inMilliseconds.toDouble()).clamp(0.0, max);
-    final slider = Slider(
-      value: value,
-      max: max,
-      onChangeStart: (v) => setState(() => _held = v),
-      onChanged: (v) => setState(() => _held = v),
-      onChangeEnd: (v) {
-        setState(() => _held = null);
-        final to = Duration(milliseconds: v.round());
-        widget.wholeBook ? p.seekBook(to) : p.seek(to);
-      },
+    // Only the slider follows the position; the rest of the bar depends on the coarse state.
+    final slider = ValueListenableBuilder<Duration>(
+      valueListenable: p.positionListenable,
+      builder: (context, _, _) => _slider(p, max),
     );
     if (!widget.compact) return slider;
     return SizedBox(
@@ -368,6 +360,22 @@ class _SeekBarState extends State<SeekBar> {
         ),
         child: slider,
       ),
+    );
+  }
+
+  Widget _slider(PlayerController p, double max) {
+    final now = widget.wholeBook ? p.bookPosition : p.position;
+    final value = (_held ?? now.inMilliseconds.toDouble()).clamp(0.0, max);
+    return Slider(
+      value: value,
+      max: max,
+      onChangeStart: (v) => setState(() => _held = v),
+      onChanged: (v) => setState(() => _held = v),
+      onChangeEnd: (v) {
+        setState(() => _held = null);
+        final to = Duration(milliseconds: v.round());
+        widget.wholeBook ? p.seekBook(to) : p.seek(to);
+      },
     );
   }
 }
@@ -438,13 +446,16 @@ class MiniPlayer extends StatelessWidget {
                       onTap: p.toggleTimeScope,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-                        child: Text(
-                          p.track?.live == true
-                              ? l.radioLive
-                              : p.showBookTime
-                                  ? '${formatDuration(p.bookPosition)} / ${formatDuration(p.bookTotal)}'
-                                  : '${formatDuration(p.position)} / ${formatDuration(p.track!.length)}',
-                          style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()]),
+                        child: ValueListenableBuilder<Duration>(
+                          valueListenable: p.positionListenable,
+                          builder: (context, _, _) => Text(
+                            p.track?.live == true
+                                ? l.radioLive
+                                : p.showBookTime
+                                    ? '${formatDuration(p.bookPosition)} / ${formatDuration(p.bookTotal)}'
+                                    : '${formatDuration(p.position)} / ${formatDuration(p.track!.length)}',
+                            style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()]),
+                          ),
                         ),
                       ),
                     ),

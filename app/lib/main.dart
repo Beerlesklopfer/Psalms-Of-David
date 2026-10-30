@@ -51,6 +51,7 @@ import 'screens/radio_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/settings_screen.dart';
 import 'theme.dart';
+import 'voice/voice_commands.dart';
 import 'widgets.dart';
 
 Future<void> main(List<String> args) async {
@@ -226,7 +227,40 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   /// When the app leaves the screen or is closed, where the listening is gets written down first.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) _player.flush();
+    if (state != AppLifecycleState.resumed) {
+      _player.flush();
+    } else {
+      // Back in the foreground: what the other devices did meanwhile.
+      // The voice command waits for the sync, so "continue" starts from the newest listening of the account.
+      unawaited(_checkLibrary().then((_) => _runVoice(retry: true)));
+    }
+  }
+
+  final VoiceChannel _voice = VoiceChannel();
+
+  /// Runs the command that Siri left for the app (iOS); nothing happens without one or while the library is not loaded.
+  /// If nothing matches, the app stays silent: Siri has already answered.
+  /// [retry]: the intent may write its command just after the app came to the front, so it looks once more a moment later.
+  Future<void> _runVoice({bool retry = false}) async {
+    if (widget.demo || _phase != _Phase.ready) return;
+    var command = await _voice.takePending();
+    if (command == null && retry) {
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      command = await _voice.takePending();
+    }
+    if (command == null || !mounted) return;
+    switch (command.action) {
+      case VoiceAction.continueListening:
+        _player.resumeListening();
+      case VoiceAction.play:
+        _player.playByVoice(command.query);
+      case VoiceAction.next:
+        _player.next();
+      case VoiceAction.previous:
+        _player.previous();
+      case VoiceAction.showNew:
+        showStartRequests.value++;
+    }
   }
 
   Timer? _retryTimer;
@@ -264,6 +298,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
       _canRetry = error == ConnectError.network || error == ConnectError.certificate;
       _phase = error == null ? _Phase.ready : _Phase.connect;
     });
+    if (error == null) unawaited(_followListening().then((_) => _runVoice()));
   }
 
   /// Loads the library with stored credentials. If the server does not answer
@@ -370,7 +405,22 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _player.refresher = () => _reloadLibrary(force: true);
   }
 
-  Future<void> _checkLibrary() => _reloadLibrary(force: false);
+  Future<void> _checkLibrary() async {
+    await _reloadLibrary(force: false);
+    await _followListening();
+  }
+
+  /// What another device of the account listened to: the player shows it when it is newer than what this device did (the listening is not part
+  /// of the fingerprint of the library, so it has to be asked for).
+  Future<void> _followListening() async {
+    final api = _api;
+    if (api == null || !mounted || _offline.manual || _offline.unreachable) return;
+    try {
+      _player.followServerListening(await api.continueListening().timeout(const Duration(seconds: 4)));
+    } on Object {
+      // The next look tries again.
+    }
+  }
 
   Future<void> _reloadLibrary({required bool force}) async {
     final api = _api;
@@ -548,6 +598,12 @@ class _ShellState extends State<Shell> {
   void initState() {
     super.initState();
     widget.offline?.addListener(_tellRejected);
+    showStartRequests.addListener(_showStart);
+  }
+
+  /// A voice command ("what is new") asks for the start page.
+  void _showStart() {
+    if (mounted) setState(() => _index = 0);
   }
 
   /// A change that the server did not take is told once, in a bar; the settings keep the list until the person has seen it.
@@ -563,6 +619,7 @@ class _ShellState extends State<Shell> {
   @override
   void dispose() {
     widget.offline?.removeListener(_tellRejected);
+    showStartRequests.removeListener(_showStart);
     _cd?.dispose();
     super.dispose();
   }

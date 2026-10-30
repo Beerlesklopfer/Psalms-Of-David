@@ -408,13 +408,14 @@ class _CdImportDialogState extends State<CdImportDialog> {
   /// for "read, waits for the check", blue while converting, green when done, red for an error.
   Color _stateColor(BuildContext context, String state) {
     final cs = Theme.of(context).colorScheme;
+    // Dark enough on the light page and light enough on the dark one (the same amber, blue and green as the web page: yellow on ochre was hard to read).
+    final dark = Theme.of(context).brightness == Brightness.dark;
     return switch (state) {
       'reading' || 'verifying' => cs.primary,
-      'read' => Colors.amber.shade600,
-      'rereading' => Colors.deepOrange.shade400,
-      'unverified' => Colors.amber.shade700,
-      'encoding' => Colors.lightBlue.shade300,
-      'done' => Colors.green,
+      'read' || 'unverified' => dark ? const Color(0xFFE0B25A) : const Color(0xFF7A4D00),
+      'rereading' => dark ? Colors.deepOrange.shade300 : Colors.deepOrange.shade900,
+      'encoding' => dark ? const Color(0xFF8DB8E3) : const Color(0xFF1F4E79),
+      'done' => dark ? const Color(0xFF8FC4A8) : const Color(0xFF2C4A3E),
       'failed' => cs.error,
       _ => cs.onSurfaceVariant,
     };
@@ -675,6 +676,8 @@ class _CdImportDialogState extends State<CdImportDialog> {
         if (c.candidates.length > 1)
           DropdownButtonFormField<int>(
             key: const Key('cd-candidate'),
+            // Expanded: a long title is cut with "..." inside the field (without it the row overflowed, and a debug build draws the striped warning).
+            isExpanded: true,
             initialValue: c.candidateIndex,
             decoration: InputDecoration(labelText: l.cdCandidate),
             items: [

@@ -154,3 +154,9 @@ Found while checking the volume: WirePlumber stores the volume of a stream under
 - Pause tears down the PipeWire stream but keeps the connection; the queue discards its oldest bytes. Play opens at the live edge. Seek does nothing, `duration` is unknown, speed stays 1.0.
 - Not supported: AAC, Ogg, HLS, playlists (`stream type not supported`), and the old Shoutcast v1 status line `ICY 200 OK` (`dart:io` cannot parse it).
 - Checks: `audio/scripts/verify-stream.sh [station url]` (null sink, silent).
+
+## Radio network side runs in a background isolate
+
+Since the split of GUI and player, the network side of internet radio on Linux (HTTP connection, reconnects, ICY metadata filter, `RadioStreamSession`) no longer runs in the UI isolate. `IsolatedRadioSession` (`app/lib/audio/radio_isolate.dart`) spawns a background isolate that runs the unchanged `RadioStreamSession` and sends the MP3 bytes (as `TransferableTypedData`), titles, station details and failures to the UI isolate. A janky UI can therefore no longer starve the network read.
+
+The native engine handle stays in the UI isolate on purpose. It is freed on dispose, and `psalm_engine_stream_open` replaces the queue on every new load, so a second isolate pushing into it directly could use freed memory or write stale data into a new stream. The UI isolate pushes the received chunks into the engine (`PipeWireBackend._push`) with the usual semantics (0: queue full, retry after `kStreamPushRetry`; -1: closed, stop) and acknowledges the bytes the engine took. The background isolate sends at most `kRadioInFlightLimit` (256 KiB) unacknowledged bytes; beyond that its sink returns 0, so the network read pauses. A failure is reported after the bytes that preceded it. `close()` kills the isolate at once, drops pending chunks, and ignores anything that still arrives. If the isolate dies unexpectedly the sink fails with "connection lost". Unverified against a real PipeWire engine in this change.

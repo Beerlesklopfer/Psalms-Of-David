@@ -1,0 +1,18 @@
+/* Titles, descriptions and spoken answers of the App Intents (PsalmsIntents.swift). English is the source. */
+"Continue listening" = "Continue listening";
+"Continues where you stopped." = "Continues where you stopped.";
+"Continuing." = "Continuing.";
+"Play" = "Play";
+"Plays an audiobook, music or a playlist by its title, author or label." = "Plays an audiobook, music or a playlist by its title, author or label.";
+"Title" = "Title";
+"What would you like to hear?" = "What would you like to hear?";
+"Looking for it." = "Looking for it.";
+"Next title" = "Next title";
+"Goes to the next title." = "Goes to the next title.";
+"Next title." = "Next title.";
+"Previous title" = "Previous title";
+"Goes back to the previous title." = "Goes back to the previous title.";
+"Previous title." = "Previous title.";
+"What is new" = "What is new";
+"Opens the start page with what is new." = "Opens the start page with what is new.";
+"Here is what is new." = "Here is what is new.";

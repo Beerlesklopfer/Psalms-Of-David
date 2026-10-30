@@ -2,19 +2,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/widgets.dart';
 
 import 'audio/audio_backend.dart';
-import 'audio/file_formats.dart';
 import 'audio/playback_settings.dart';
 import 'm3u.dart';
+import 'player/engine.dart';
+import 'player/transport.dart';
+import 'voice/voice_match.dart';
 import 'models.dart';
 import 'playlists.dart' show kPlaylistBookPrefix, kPlaylistKind;
 import 'podcast_downloads.dart';
-import 'podcasts.dart' show episodeIdOf;
 import 'offline/offline_controller.dart';
 import 'offline/offline_view.dart';
-import 'server/api_client.dart' show ApiException;
 import 'server/last_played.dart';
 import 'server/server_source.dart';
 
@@ -22,12 +23,13 @@ import 'server/server_source.dart';
 /// position is read from it. Without a backend, or for demo tracks without a file,
 /// the position just keeps advancing so the UI and controls can be judged.
 class PlayerController extends ChangeNotifier {
-  PlayerController(this.library, {this.backend, this.source, this.lastStore, this.playbackStore}) {
+  PlayerController(this.library, {this.backend, MediaSource? source, this.lastStore, this.playbackStore, PlayerTransport? transport}) {
+    // The playback state machine runs behind a transport (in this isolate for now, synchronously); this class mirrors what it says.
+    _transport = transport ?? InProcessTransport((emit) => PlayerEngine(backend: backend, source: source, emit: emit));
+    _transport.onEvent = _onEvent;
     final b = backend;
     if (b != null && b.bufferAdjustable) b.setBufferSeconds(playbackStore?.readBufferSeconds() ?? kBufferDefaultSeconds);
     showBookTime = playbackStore?.readShowBookTime() ?? false;
-    // The system may start or pause the engine (notification, headset, a call, unplugged headphones): the controller follows.
-    if (b is ExternalControl) (b as ExternalControl).onExternalChange = _followBackend;
     // Demo: the first book has already been listened to.
     if (library.isEmpty) return;
     book = library.first;
@@ -36,6 +38,11 @@ class PlayerController extends ChangeNotifier {
       position = const Duration(minutes: 1, seconds: 20);
     }
   }
+
+  late final PlayerTransport _transport;
+
+  /// The engine behind an in-process transport (null behind another one).
+  PlayerEngine? get _engine => switch (_transport) { InProcessTransport(:final engine) => engine, _ => null };
 
   /// What the lists show: the library of the server, or in the offline view the downloaded titles of it.
   List<Book> library;
@@ -47,7 +54,14 @@ class PlayerController extends ChangeNotifier {
   List<Book> get fullLibrary => _full ?? library;
 
   /// Offline mode: set by the app; the progress of the listening then waits in its outbox for the server.
-  OfflineController? offline;
+  OfflineController? get offline => _offline;
+  OfflineController? _offline;
+  set offline(OfflineController? value) {
+    _offline?.removeListener(_syncEnv);
+    _offline = value;
+    value?.addListener(_syncEnv);
+    _syncEnv();
+  }
 
   /// Shows only the downloaded titles (the offline view), or everything again. What plays is not interrupted.
   void setOfflineView(bool value) {
@@ -98,9 +112,6 @@ class PlayerController extends ChangeNotifier {
   /// Where the playback settings of this device are kept; null in tests and demos.
   final PlaybackSettingsStore? playbackStore;
 
-  /// The track that was asked for but cannot be played on this platform (its file format), or null. The mini player says so.
-  Track? unplayable;
-
   /// The time of the mini player (and its bar) is the time of the whole book (CD), not of the track that plays. The listener switches it by a tap.
   bool showBookTime = false;
 
@@ -125,21 +136,77 @@ class PlayerController extends ChangeNotifier {
     playbackStore?.writeBufferSeconds(n);
     notifyListeners();
   }
-  DateTime _lastWritten = DateTime.fromMillisecondsSinceEpoch(0);
 
-  /// The server, if there is one: fetches the files of parts and takes the position.
-  MediaSource? source;
+  /// The server, if there is one: fetches the files of parts and takes the position. It lives on the engine side.
+  MediaSource? get source => _engine?.source;
+  set source(MediaSource? value) => _engine?.source = value;
+
   final Map<String, ({int track, Duration position})> _resume = {};
 
-  Book? book;
-  int trackIndex = 0;
-  Duration position = Duration.zero;
-  bool playing = false;
-  double speed = 1.0;
-  Timer? _timer;
+  // ---- The mirror of the engine: set by its snapshots, changed by the commands below -------------------
+
+  Book? _book;
+  int _trackIndex = 0;
+  bool _playing = false;
+  double _speed = 1.0;
+  bool _loading = false;
+  String? _error;
+  AudioErrorKind? _errorKind;
+  Track? _unplayable;
+  int _seq = 0;
+  int _depth = 0;
+  bool _gone = false;
+  bool _sentOffline = false;
+  bool _sentWrites = false;
+
+  /// The books handed to the engine, by id, so that an event about a book that is no longer open finds it.
+  final Map<String, Book> _known = {};
+
+  Book? get book => _book;
+
+  /// Setting the book (tests, library changes) moves the place of the engine without touching the sound.
+  set book(Book? value) {
+    _book = value;
+    if (value == null) {
+      _send(const SetPlaceCommand(clearBook: true));
+    } else {
+      _known[value.id] = value;
+      _send(SetPlaceCommand(book: BookData.of(value)));
+    }
+  }
+
+  int get trackIndex => _trackIndex;
+  set trackIndex(int value) {
+    _trackIndex = value;
+    _send(SetPlaceCommand(trackIndex: value));
+  }
+
+  final ValueNotifier<Duration> _position = ValueNotifier<Duration>(Duration.zero);
+
+  /// The position in the current track, updated on every tick without a `notifyListeners` of the controller (which only notifies on
+  /// coarse changes: state, track, book, speed, ...). Widgets that show the place listen to this.
+  ValueListenable<Duration> get positionListenable => _position;
+
+  Duration get position => _position.value;
+  set position(Duration value) {
+    _position.value = value;
+    _send(SetPlaceCommand(positionMs: value.inMilliseconds));
+  }
+
+  bool get playing => _playing;
+  double get speed => _speed;
+
+  /// True while the file of the current track is being fetched.
+  bool get loading => _loading;
 
   /// The last failure of the sound engine, or null. Playback is paused after it.
-  String? error;
+  String? get error => _error;
+
+  /// For a radio stream: why it failed (unsupported format, connection, server, certificate).
+  AudioErrorKind? get errorKind => _errorKind;
+
+  /// The track that was asked for but cannot be played on this platform (its file format), or null. The mini player says so.
+  Track? get unplayable => _unplayable;
 
   /// What a radio station announces now ("Artist - Song"), or null. Only set for live
   /// streams on a backend that knows titles (`StreamInfo`).
@@ -154,12 +221,6 @@ class PlayerController extends ChangeNotifier {
     return track?.live == true && t != null && t.isNotEmpty ? t : null;
   }
 
-  /// Which track the backend has loaded, as `bookId:trackIndex`.
-  String? _loadedKey;
-
-  /// True while the file of the current track is being fetched.
-  bool loading = false;
-  DateTime _lastReport = DateTime.fromMillisecondsSinceEpoch(0);
   bool _disposed = false;
 
   /// The podcast episodes that are on this device (null in the demo); set by the app. The player reports the state of an episode to it.
@@ -167,8 +228,14 @@ class PlayerController extends ChangeNotifier {
 
   Track? get track => book?.tracks[trackIndex];
 
+  void Function(Book book, Track track, Duration position)? _onPlaylistPosition;
+
   /// Called when the place in a playlist is written down (for the playlists to remember it); null elsewhere.
-  void Function(Book book, Track track, Duration position)? onPlaylistPosition;
+  void Function(Book book, Track track, Duration position)? get onPlaylistPosition => _onPlaylistPosition;
+  set onPlaylistPosition(void Function(Book book, Track track, Duration position)? value) {
+    _onPlaylistPosition = value;
+    _syncEnv();
+  }
 
   /// The book to show for what plays: for a playlist the book of the track that plays now (its cover, its
   /// author), so a change across the border of two books shows the right one; else [book].
@@ -208,10 +275,7 @@ class PlayerController extends ChangeNotifier {
       seek(rest);
       return;
     }
-    _report();
-    trackIndex = index;
-    position = rest;
-    _syncBackend();
+    _send(SelectTrackCommand(index, rest.inMilliseconds));
     notifyListeners();
   }
 
@@ -240,10 +304,6 @@ class PlayerController extends ChangeNotifier {
     }
     return done.inMilliseconds / b.total.inMilliseconds;
   }
-
-  /// The engine plays a file on the device, a part of the server, an episode or a radio station (the last two have an address and
-  /// are fetched through the source). Without it the clock only runs on: a station of length zero would be over at once.
-  bool get _useBackend => backend != null && (track?.path != null || ((track?.partId != null || track?.url != null) && source != null));
 
   // ---- Downloads: keeping a book on the device ---------------------------------------
 
@@ -393,13 +453,6 @@ class PlayerController extends ChangeNotifier {
     return [for (var i = 0; i < b.tracks.length; i++) i].every((i) => isTrackPlayed(b, i)) ? 1 : 0;
   }
 
-  /// Remembers the current track as heard once the position is within [heardTail] of its end.
-  void _markHeard({bool ended = false}) {
-    final b = book, t = track;
-    if (b == null || t == null || t.live || b.isStream) return;
-    if (ended || (t.length > Duration.zero && position >= t.length - heardTail)) _heard.add('${b.id}:$trackIndex');
-  }
-
   /// The ids of the books listened to, the latest first. Comes from the server and is kept up to
   /// date here, so the home page shows a book at once when it is opened.
   final List<String> recentIds = [];
@@ -448,6 +501,7 @@ class PlayerController extends ChangeNotifier {
     shareListening = loaded.shareListening;
     mayHideListening = loaded.mayHideListening;
     _heard.clear();
+    _send(const ClearHeardCommand());
     if (loaded.recent.isNotEmpty) {
       recentIds
         ..clear()
@@ -466,10 +520,7 @@ class PlayerController extends ChangeNotifier {
         book = same;
         if (trackIndex >= same.tracks.length) trackIndex = same.tracks.length - 1;
       } else {
-        _timer?.cancel();
-        playing = false;
-        backend?.stop();
-        _loadedKey = null;
+        _send(const HaltCommand());
         book = library.isEmpty ? null : library.first;
         trackIndex = 0;
         position = Duration.zero;
@@ -483,10 +534,7 @@ class PlayerController extends ChangeNotifier {
   /// Replaces the demo data with the library of the server.
   void attachServer(MediaSource source, LoadedLibrary loaded) {
     this.source = source;
-    _timer?.cancel();
-    playing = false;
-    backend?.stop();
-    _loadedKey = null;
+    _send(const HaltCommand());
     _full = loaded.books;
     library = _visible(_full!);
     genres = loaded.genres;
@@ -500,6 +548,7 @@ class PlayerController extends ChangeNotifier {
     shareListening = loaded.shareListening;
     mayHideListening = loaded.mayHideListening;
     _heard.clear();
+    _send(const ClearHeardCommand());
     recentIds
       ..clear()
       ..addAll(loaded.recent);
@@ -527,23 +576,60 @@ class PlayerController extends ChangeNotifier {
     position = r?.position ?? Duration.zero;
   }
 
-  /// Writes down where the listening is, now. For the moments when the app may be closed
-  /// without further notice (it goes to the background, the window closes).
-  void flush() {
-    _report();
-    _writeLast(force: true);
+  /// When this device last listened or opened something (ms since 1970), to tell whether another device went on after it.
+  int _localAt = 0;
+
+  /// The listening of the account as the server has it now (`continueListening`: the latest first). Another device (the iPad, the phone) may have gone on
+  /// with another book or another track: when it did so after this device and nothing plays here, the player shows that place (book, track, position)
+  /// instead of the old one. While something plays here only the places of the other books are taken over.
+  void followServerListening(List<Map<String, dynamic>> entries) {
+    if (entries.isEmpty || library.isEmpty) return;
+    var changed = false;
+    for (final e in entries) {
+      final b = library.where((b) => b.id == '${e['item_id']}').firstOrNull;
+      if (b == null || b.id == book?.id && (playing || loading)) continue;
+      final at = e['updated_at'];
+      final index = b.tracks.indexWhere((t) => t.partId == e['part_id']);
+      if (index < 0 || at is! int) continue;
+      final r = (
+        track: index,
+        position: Duration(milliseconds: (e['position_ms'] as int?) ?? 0),
+      );
+      final old = _resume[b.id];
+      if (old == null || old.track != r.track || old.position != r.position) {
+        _resume[b.id] = r;
+        changed = true;
+      }
+    }
+    final first = entries.first;
+    final newest = library
+        .where((b) => b.id == '${first['item_id']}')
+        .firstOrNull;
+    final at = first['updated_at'];
+    if (newest != null &&
+        at is int &&
+        at > _localAt + 1000 &&
+        !playing &&
+        !loading) {
+      final r = _resume[newest.id];
+      if (r != null &&
+          (book?.id != newest.id ||
+              trackIndex != r.track ||
+              (position - r.position).abs() > const Duration(seconds: 2))) {
+        book = newest;
+        trackIndex = r.track.clamp(0, newest.tracks.length - 1);
+        position = r.position;
+        _touchRecent(newest);
+        _localAt = at;
+        changed = true;
+      }
+    }
+    if (changed) notifyListeners();
   }
 
-  void _writeLast({bool force = false}) {
-    final store = lastStore;
-    final b = book;
-    if ((store == null && onPlaylistPosition == null) || b == null || b.tracks.isEmpty) return;
-    final now = DateTime.now();
-    if (!force && now.difference(_lastWritten) < const Duration(seconds: 5)) return;
-    _lastWritten = now;
-    if (b.kind == kPlaylistKind) onPlaylistPosition?.call(b, b.tracks[trackIndex], position);
-    store?.write(LastPlayed(bookId: b.id, track: trackIndex, position: position, at: now.millisecondsSinceEpoch));
-  }
+  /// Writes down where the listening is, now. For the moments when the app may be closed
+  /// without further notice (it goes to the background, the window closes).
+  void flush() => _send(const FlushCommand());
 
   /// Opens a passage of an audio Bible by its text ("Johannes 3,16"). False if
   /// there is no server, nothing matches, or the planner forbids listening now.
@@ -555,318 +641,190 @@ class PlayerController extends ChangeNotifier {
     final b = library.where((b) => b.id == hit.itemId).firstOrNull;
     final index = b?.tracks.indexWhere((t) => t.partId == hit.partId) ?? -1;
     if (b == null || index < 0) return false;
-    _report();
     _saveResume();
-    book = b;
-    trackIndex = index;
-    position = hit.position;
-    _loadedKey = null;
-    _setPlaying(true);
+    _openBook(b, index, hit.position, forceReload: true);
     return true;
   }
 
-  /// The engine started, paused or moved by itself (see [ExternalControl]): the state of the controller, and with it the screen and the
-  /// notification, follows it, so they never disagree.
-  void _followBackend() {
-    final b = backend;
-    if (b == null || _disposed || book == null || _loadedKey != '${book!.id}:$trackIndex') return;
-    position = b.position;
-    final state = b.state;
-    if (state == BackendState.paused && playing) {
-      playing = false;
-      _timer?.cancel();
-      _report();
-    } else if (state == BackendState.playing && !playing) {
-      playing = true;
-      _timer?.cancel();
-      _timer = Timer.periodic(const Duration(milliseconds: 500), _onTick);
-    }
+  /// Hands a book to the engine and plays it from [index] at [start].
+  void _openBook(Book b, int index, Duration start, {bool forceReload = false}) {
+    _book = b;
+    _known[b.id] = b;
+    _send(OpenCommand(BookData.of(b), trackIndex: index, startMs: start.inMilliseconds, forceReload: forceReload));
     notifyListeners();
-  }
-
-  /// The track after this one is fetched before this one ends, so that the next one starts at once: with the screen locked the app must
-  /// not wait for the network between two tracks (the system may stop a service that plays nothing).
-  String? _prefetched;
-  void _prefetchNext() {
-    final b = book, t = track, s = source;
-    if (b == null || t == null || s == null || b.isStream || t.live) return;
-    if (trackIndex >= b.tracks.length - 1 || t.length - position > const Duration(seconds: 45)) return;
-    final next = b.tracks[trackIndex + 1];
-    final key = '${b.id}:${trackIndex + 1}';
-    if (next.path != null || _prefetched == key) return;
-    _prefetched = key;
-    s.fetchPart(next).then<void>((_) {}, onError: (Object _) => _prefetched = null);
-  }
-
-  /// Tells the server where the listening is, at most every few seconds unless
-  /// [force]d (on pause, on leaving a track).
-  void _report({bool finished = false, bool force = true}) {
-    _writeLast(force: force);
-    final b = book;
-    final t = track;
-    final s = source;
-    // A title of the library reports with its part; an episode of a podcast has no part, its id says which one it is.
-    final episode = b == null ? null : episodeIdOf(b);
-    if (b == null || t == null || s == null || (t.partId == null && episode == null)) return;
-    final now = DateTime.now();
-    if (!force && now.difference(_lastReport) < const Duration(seconds: 10)) return;
-    _lastReport = now;
-    // The offline list of the downloaded episodes shows where this device is (and a heard one may go, if the person asked for it).
-    if (episode != null) podcastDownloads?.noteState(episode, position, finished);
-    // Offline the position waits for the server; a report that fails for want of a connection waits as well.
-    if (offline?.active == true) {
-      _queueProgress(b, t, finished);
-      return;
-    }
-    s.saveProgress(b, t, position, finished: finished).catchError((Object e) {
-      if (e is ApiException && e.code == 'network') _queueProgress(b, t, finished);
-    });
-  }
-
-  /// Keeps where the listening is for the server (a book of the library or a podcast episode; a station has no position).
-  void _queueProgress(Book b, Track t, bool finished) {
-    final off = offline;
-    if (off == null || b.isStream) return;
-    final episode = episodeIdOf(b);
-    if (episode != null) {
-      off.outbox.addEpisode(id: episode, positionMs: position.inMilliseconds, finished: finished, title: b.title);
-      off.touch();
-      return;
-    }
-    final part = t.partId;
-    final item = int.tryParse(t.itemId ?? b.id);
-    if (part == null || item == null || b.kind == 'podcast') return;
-    off.outbox.addProgress(item: item, part: part, positionMs: position.inMilliseconds, finished: finished);
-    off.touch();
-  }
-
-  /// Makes the backend follow the controller: loads the current track if it is
-  /// not the loaded one, then plays or pauses.
-  void _syncBackend() {
-    if (!_useBackend) {
-      if (_loadedKey != null) {
-        backend!.stop();
-        _loadedKey = null;
-      }
-      return;
-    }
-    final b = backend!;
-    final key = '${book!.id}:$trackIndex';
-    // A file this platform cannot decode (Ogg on an iPhone) is not tried: the person is told, and nothing plays.
-    if (key != _loadedKey && !trackPlayableHere(track?.format, track?.transcode)) {
-      unplayable = track;
-      if (_loadedKey != null) b.stop();
-      _loadedKey = null;
-      playing = false;
-      return;
-    }
-    unplayable = null;
-    try {
-      if (b.speed != speed) b.setSpeed(speed);
-      if (key != _loadedKey) {
-        final path = track!.path;
-        if (path == null) {
-          _loadRemote(key);
-          return;
-        }
-        b.load(path, start: position, play: playing, title: track!.title);
-        _loadedKey = key;
-      } else if (playing) {
-        b.play();
-      } else {
-        b.pause();
-      }
-      error = null;
-    } on AudioException catch (e) {
-      error = e.message;
-      _loadedKey = null;
-      playing = false;
-    }
-  }
-
-  /// Fetches the file of the current track, then loads it, if the player is still
-  /// on that track by then.
-  Future<void> _loadRemote(String key) async {
-    final t = track!;
-    loading = true;
-    notifyListeners();
-    try {
-      final path = await source!.fetchPart(t);
-      if (_disposed || key != '${book?.id}:$trackIndex') return;
-      backend!.load(path, start: position, play: playing, title: t.title);
-      _loadedKey = key;
-      error = null;
-    } on Object catch (e) {
-      if (_disposed || key != '${book?.id}:$trackIndex') return;
-      // The server could not make an MP3 of the file: the person is told that the format cannot be played here, as without transcoding.
-      if (e is ApiException && e.code == 'transcode_failed') {
-        unplayable = t;
-        playing = false;
-        _timer?.cancel();
-        return;
-      }
-      error = e is AudioException ? e.message : '$e';
-      playing = false;
-      _timer?.cancel();
-    } finally {
-      if (!_disposed && key == '${book?.id}:$trackIndex') {
-        loading = false;
-        notifyListeners();
-      }
-    }
   }
 
   /// Opens a book and plays it; [start] is where in the track it begins (an episode goes on where the account stopped).
   void open(Book b, {int? track, Duration? start}) {
-    _report();
+    _localAt = DateTime.now().millisecondsSinceEpoch;
     _saveResume();
-    book = b;
     _touchRecent(b);
+    final int index;
+    Duration at;
     if (track != null) {
-      trackIndex = track;
-      position = Duration.zero;
+      index = track;
+      at = Duration.zero;
     } else {
       final r = _resume[b.id];
-      trackIndex = r?.track ?? 0;
-      position = r?.position ?? Duration.zero;
+      index = r?.track ?? 0;
+      at = r?.position ?? Duration.zero;
     }
-    if (start != null) position = start;
-    _setPlaying(true);
+    if (start != null) at = start;
+    _openBook(b, index, at);
   }
 
   void toggle() {
     if (book == null) return;
-    _setPlaying(!playing);
+    _send(const ToggleCommand());
+    notifyListeners();
+  }
+
+  /// Voice: go on where the listening stopped. Plays the open book if it is paused, else the book listened to last.
+  void resumeListening() {
+    if (playing) return;
+    if (book != null) {
+      _send(const PlayCommand());
+      notifyListeners();
+      return;
+    }
+    final last = recentBooks(1).firstOrNull;
+    if (last != null) open(last);
+  }
+
+  /// Voice: opens the book that fits [query] best (title, author, labels) and plays it. False if nothing fits.
+  bool playByVoice(String query) {
+    final found = bestMatch(library, query);
+    if (found == null) return false;
+    open(found);
+    return true;
   }
 
   void seek(Duration to) {
-    final t = track;
-    if (t == null) return;
-    position = to < Duration.zero
-        ? Duration.zero
-        : (to > t.length ? t.length : to);
-    if (_useBackend && _loadedKey == '${book!.id}:$trackIndex') {
-      try {
-        backend!.seek(position);
-      } on AudioException catch (e) {
-        error = e.message;
-      }
-    }
+    if (track == null) return;
+    _send(SeekCommand(to.inMilliseconds));
     notifyListeners();
   }
 
   /// Jumps relative to the current position, also across track boundaries.
   void skip(Duration delta) {
     if (book == null) return;
-    final last = book!.tracks.length - 1;
-    var p = position + delta;
-    while (p >= track!.length && trackIndex < last) {
-      p -= track!.length;
-      trackIndex++;
-    }
-    while (p < Duration.zero && trackIndex > 0) {
-      trackIndex--;
-      p += track!.length;
-    }
-    position = p;
-    _syncBackend();
-    seek(p);
+    _send(SkipCommand(delta.inMilliseconds));
+    notifyListeners();
   }
 
   void next() {
     if (book == null || trackIndex >= book!.tracks.length - 1) return;
-    _report();
-    trackIndex++;
-    position = Duration.zero;
-    _syncBackend();
+    _send(const NextCommand());
     notifyListeners();
   }
 
   /// Like Spotify: after the first seconds go to the start, otherwise go back.
   void previous() {
     if (book == null) return;
-    _report();
-    if (position > const Duration(seconds: 3) || trackIndex == 0) {
-      position = Duration.zero;
-    } else {
-      trackIndex--;
-      position = Duration.zero;
-    }
-    _syncBackend();
+    _send(const PreviousCommand());
     notifyListeners();
   }
 
   /// The speed applies to everything that is played, until it is changed again.
   void setSpeed(double value) {
-    speed = value;
-    if (_useBackend) {
-      try {
-        backend!.setSpeed(value);
-      } on AudioException catch (e) {
-        error = e.message;
-      }
-    }
+    _send(SetSpeedCommand(value));
     notifyListeners();
   }
 
-  void _setPlaying(bool value) {
-    playing = value;
-    _timer?.cancel();
-    if (!value) _report();
-    _syncBackend();
-    if (playing) {
-      _timer = Timer.periodic(const Duration(milliseconds: 500), _onTick);
-    }
-    notifyListeners();
+  // ---- The wire to the engine -------------------------------------------------------------------------
+
+  /// Tells the engine what it needs of this side: whether the progress waits for the server and whether the place is wanted.
+  void _syncEnv() {
+    final offline = _offline?.active == true;
+    final writes = lastStore != null || _onPlaylistPosition != null;
+    if (offline == _sentOffline && writes == _sentWrites) return;
+    _sentOffline = offline;
+    _sentWrites = writes;
+    _transport.send(SetEnvCommand(offlineActive: offline, writesLast: writes));
   }
 
-  void _onTick(Timer _) {
-    final t = track;
-    if (t == null) return;
-    if (_useBackend && _loadedKey != '${book!.id}:$trackIndex') return; // still fetching
-    if (_useBackend) {
-      position = backend!.position;
-      final info = backend;
-      streamTitle = info is StreamInfo ? (info as StreamInfo).streamTitle.value : null;
-      streamDetails = info is StreamInfo ? (info as StreamInfo).streamDetails.value : null;
-      _markHeard(ended: backend!.state == BackendState.ended);
-      _report(force: false);
-      _prefetchNext();
-      if (backend!.state == BackendState.ended) {
-        if (trackIndex < book!.tracks.length - 1) {
-          // The end of every track is reported, not only the last one of the list: the server counts a play from it.
-          position = t.length;
-          _report(finished: true);
-          trackIndex++;
-          position = Duration.zero;
-          _syncBackend();
-        } else {
-          position = t.length;
-          playing = false;
-          _report(finished: true);
-          _timer?.cancel();
+  void _send(PlayerCommand c) {
+    if (_gone) return;
+    _syncEnv();
+    _depth++;
+    try {
+      _transport.send(c);
+    } finally {
+      _depth--;
+    }
+  }
+
+  List<Object?> _coarse() => [_book, _trackIndex, _playing, _loading, _error, _speed, streamTitle, streamDetails, _unplayable, _heard.length];
+
+  /// What the engine says. A snapshot that changes something coarse notifies, unless a command of this class is on its way (it notifies itself).
+  void _onEvent(PlayerEvent e) {
+    if (_gone) return;
+    switch (e) {
+      case PlayerSnapshot():
+        if (e.seq <= _seq) return; // stale
+        _seq = e.seq;
+        final before = _coarse();
+        _trackIndex = e.trackIndex;
+        _position.value = Duration(milliseconds: e.positionMs);
+        _playing = e.playing;
+        _speed = e.speed;
+        _loading = e.loading;
+        _error = e.error;
+        _errorKind = e.errorKind;
+        final i = e.unplayableIndex;
+        _unplayable = i != null && _book != null && i >= 0 && i < _book!.tracks.length ? _book!.tracks[i] : null;
+        streamTitle = e.streamTitle;
+        streamDetails = e.streamDetails;
+        _notifyIfCoarse(before);
+      case PositionTick():
+        if (e.seq <= _seq) return;
+        _seq = e.seq;
+        _trackIndex = e.trackIndex;
+        _position.value = Duration(milliseconds: e.positionMs);
+      case TrackHeard():
+        final before = _coarse();
+        _heard.add('${e.bookId}:${e.trackIndex}');
+        _notifyIfCoarse(before);
+      case TrackFinished():
+        break;
+      case ProgressQueued():
+        _queueProgress(e);
+      case LastWritten():
+        _localAt = e.atMs;
+        lastStore?.write(LastPlayed(bookId: e.bookId, track: e.trackIndex, position: Duration(milliseconds: e.positionMs), at: e.atMs));
+      case PlaylistPosition():
+        final b = _known[e.bookId];
+        if (b != null && e.trackIndex < b.tracks.length) {
+          _onPlaylistPosition?.call(b, b.tracks[e.trackIndex], Duration(milliseconds: e.positionMs));
         }
-      } else if (backend!.state == BackendState.failed) {
-        error = (backend is StreamInfo ? (backend as StreamInfo).errorMessage : null) ?? 'playback failed';
-        playing = false;
-        _timer?.cancel();
+      case PodcastState():
+        podcastDownloads?.noteState(e.episodeId, Duration(milliseconds: e.positionMs), e.finished);
+    }
+  }
+
+  void _notifyIfCoarse(List<Object?> before) {
+    if (_depth > 0 || _disposed) return;
+    final after = _coarse();
+    for (var i = 0; i < before.length; i++) {
+      if (!identical(before[i], after[i]) && before[i] != after[i]) {
+        notifyListeners();
+        return;
       }
-      notifyListeners();
+    }
+  }
+
+  /// Keeps where the listening is for the server (a book of the library or a podcast episode; a station has no position).
+  void _queueProgress(ProgressQueued e) {
+    final off = _offline;
+    if (off == null) return;
+    final episode = e.episodeId;
+    if (episode != null) {
+      off.outbox.addEpisode(id: episode, positionMs: e.positionMs, finished: e.finished, title: e.title);
+      off.touch();
       return;
     }
-    position += Duration(milliseconds: (500 * speed).round());
-    _markHeard();
-    if (position >= t.length) {
-      if (trackIndex < book!.tracks.length - 1) {
-        trackIndex++;
-        position = Duration.zero;
-      } else {
-        position = t.length;
-        playing = false;
-        _timer?.cancel();
-      }
-    }
-    notifyListeners();
+    off.outbox.addProgress(item: e.item!, part: e.part!, positionMs: e.positionMs, finished: e.finished);
+    off.touch();
   }
 
   void _saveResume() {
@@ -877,10 +835,12 @@ class PlayerController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _report();
-    _timer?.cancel();
-    backend?.dispose();
+    _send(const DisposeCommand()); // reports, stops the clock, disposes the backend
+    _gone = true;
+    _transport.dispose();
+    _offline?.removeListener(_syncEnv);
     podcastDownloads?.dispose();
+    _position.dispose();
     super.dispose();
   }
 }

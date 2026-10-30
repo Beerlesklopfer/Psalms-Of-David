@@ -1422,3 +1422,37 @@ async fn the_blacklist_is_kept_with_a_look_first_marks_albums_and_the_mark_is_ta
     assert!(!err && gone["words"] == json!([]) && gone["marked"] == 0, "{gone}");
     assert!(m.store.blacklist_rows().await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn albums_are_hidden_for_a_profile_by_label_and_shown_again() {
+    let m = mcp().await;
+    let anna = m.store.create_user(NewProfile::new("Anni", Role::Member)).await.unwrap();
+    for title in ["Eins", "Zwei", "Drei"] {
+        m.store.import_books(vec![book("Band", title, &[1])]).await.unwrap();
+    }
+    let all = m.store.admin_book_rows().await.unwrap();
+    let id = |t: &str| all.iter().find(|r| r.title == t).unwrap().id;
+    let write = m.store.create_mcp_token("w", true, m.admin).await.unwrap();
+    let read = m.store.create_mcp_token("r", false, m.admin).await.unwrap();
+    m.store.set_book_labels(id("Eins"), &["Schule".to_owned()]).await.unwrap();
+    m.store.set_book_labels(id("Zwei"), &["schule".to_owned(), "Gebet".to_owned()]).await.unwrap();
+
+    // A reading token may not; without dry_run=false it only reports.
+    assert!(tool(&m, &read, "hide_albums", json!({ "profile": "Anni", "label": "Schule", "dry_run": false })).await.0);
+    let (err, out) = tool(&m, &write, "hide_albums", json!({ "profile": "anni", "label": "SCHULE" })).await;
+    assert!(!err, "{out}");
+    assert_eq!((out["dry_run"].as_bool(), out["albums"].as_u64()), (Some(true), Some(2)), "{out}");
+    let hidden = |m: &Mcp| { let s = m.store.clone(); async move { s.hidden_of(anna).await.unwrap().books.len() } };
+    assert_eq!(hidden(&m).await, 0, "nothing changed");
+
+    // Really: the two with the label (case does not matter), not the third.
+    let (_, out) = tool(&m, &write, "hide_albums", json!({ "profile": "Anni", "label": "Schule", "dry_run": false })).await;
+    assert_eq!(out["albums"], 2, "{out}");
+    assert_eq!(hidden(&m).await, 2);
+    // Shown again; a label nobody carries and an unknown profile are refused.
+    let (_, out) = tool(&m, &write, "hide_albums", json!({ "profile": "Anni", "ids": [id("Eins")], "hide": false, "dry_run": false })).await;
+    assert_eq!(out["albums"], 1, "{out}");
+    assert_eq!(hidden(&m).await, 1);
+    assert!(tool(&m, &write, "hide_albums", json!({ "profile": "Anni", "label": "Nirgends" })).await.0);
+    assert!(tool(&m, &write, "hide_albums", json!({ "profile": "Niemand", "label": "Schule" })).await.0);
+}

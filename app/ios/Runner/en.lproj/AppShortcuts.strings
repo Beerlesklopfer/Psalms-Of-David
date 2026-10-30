@@ -1,0 +1,8 @@
+/* Spoken phrases of the App Shortcuts: the key is the phrase in PsalmsIntents.swift with ${applicationName}. */
+"Continue listening in ${applicationName}" = "Continue listening in ${applicationName}";
+"Resume ${applicationName}" = "Resume ${applicationName}";
+"Play in ${applicationName}" = "Play in ${applicationName}";
+"Play something in ${applicationName}" = "Play something in ${applicationName}";
+"Next title in ${applicationName}" = "Next title in ${applicationName}";
+"Previous title in ${applicationName}" = "Previous title in ${applicationName}";
+"What is new in ${applicationName}" = "What is new in ${applicationName}";

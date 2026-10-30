@@ -1,0 +1,8 @@
+/* Gesprochene Sätze der App Shortcuts: Schlüssel ist der englische Satz aus PsalmsIntents.swift mit ${applicationName}. */
+"Continue listening in ${applicationName}" = "Weiterhören in ${applicationName}";
+"Resume ${applicationName}" = "${applicationName} fortsetzen";
+"Play in ${applicationName}" = "Abspielen in ${applicationName}";
+"Play something in ${applicationName}" = "Spiele etwas in ${applicationName}";
+"Next title in ${applicationName}" = "Nächster Titel in ${applicationName}";
+"Previous title in ${applicationName}" = "Vorheriger Titel in ${applicationName}";
+"What is new in ${applicationName}" = "Was gibt es Neues in ${applicationName}";

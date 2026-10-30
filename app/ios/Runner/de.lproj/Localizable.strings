@@ -1,0 +1,18 @@
+/* Titel, Beschreibungen und gesprochene Antworten der App Intents (PsalmsIntents.swift). */
+"Continue listening" = "Weiterhören";
+"Continues where you stopped." = "Hört dort weiter, wo du aufgehört hast.";
+"Continuing." = "Ich höre weiter.";
+"Play" = "Abspielen";
+"Plays an audiobook, music or a playlist by its title, author or label." = "Spielt ein Hörbuch, Musik oder eine Playlist nach Titel, Autor oder Label.";
+"Title" = "Titel";
+"What would you like to hear?" = "Was möchtest du hören?";
+"Looking for it." = "Ich suche es.";
+"Next title" = "Nächster Titel";
+"Goes to the next title." = "Springt zum nächsten Titel.";
+"Next title." = "Nächster Titel.";
+"Previous title" = "Vorheriger Titel";
+"Goes back to the previous title." = "Springt zum vorherigen Titel.";
+"Previous title." = "Vorheriger Titel.";
+"What is new" = "Was gibt es Neues";
+"Opens the start page with what is new." = "Öffnet die Startseite mit den Neuigkeiten.";
+"Here is what is new." = "Das gibt es Neues.";

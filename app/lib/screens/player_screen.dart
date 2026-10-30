@@ -70,15 +70,18 @@ class PlayerScreen extends StatelessWidget {
               const SeekBar(),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(formatDuration(p.position), style: text.bodySmall),
-                    Text(
-                      '−${formatDuration(track.length - p.position)}',
-                      style: text.bodySmall,
-                    ),
-                  ],
+                child: ValueListenableBuilder<Duration>(
+                  valueListenable: p.positionListenable,
+                  builder: (context, pos, _) => Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(formatDuration(pos), style: text.bodySmall),
+                      Text(
+                        '−${formatDuration(track.length - pos)}',
+                        style: text.bodySmall,
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 4),
@@ -87,7 +90,10 @@ class PlayerScreen extends StatelessWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(l.bookPlayed(formatDuration(p.bookPosition)), style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                    ValueListenableBuilder<Duration>(
+                      valueListenable: p.positionListenable,
+                      builder: (context, _, _) => Text(l.bookPlayed(formatDuration(p.bookPosition)), style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                    ),
                     Text(l.bookTotal(formatDuration(p.bookTotal)), style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                   ],
                 ),

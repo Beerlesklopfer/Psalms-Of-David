@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -16,7 +17,7 @@ import 'audio_backend.dart';
 /// after the other through a chain of futures, so their order is kept, and what the getters
 /// return is what the player last said. A file that cannot be opened is reported by the state
 /// `failed` a moment later, not by an exception from [load].
-class JustAudioBackend implements AudioBackend, ExternalControl {
+class JustAudioBackend implements AudioBackend, ExternalControl, StreamInfo {
   static const _notifications = MethodChannel('com.the-abraham-box.psalm/notifications');
 
   /// Asks once, at the first playback, for the permission to show the notification with the controls (Android 13 and later). Playback
@@ -36,6 +37,15 @@ class JustAudioBackend implements AudioBackend, ExternalControl {
       }),
     );
     _subs.add(_player.durationStream.listen((d) => _duration = d));
+    // What a radio station announces ("Artist - Song") and says about itself: the ICY data of the stream (ExoPlayer and AVPlayer read them).
+    _subs.add(
+      _player.icyMetadataStream.listen((m) {
+        final t = m?.info?.title?.trim();
+        _title.value = t == null || t.isEmpty ? null : t;
+        final h = m?.headers;
+        if (h != null) _details.value = StreamDetails(name: h.name, genre: h.genre, website: h.url, bitrateKbps: h.bitrate);
+      }),
+    );
     _subs.add(_player.positionDiscontinuityStream.listen((d) {
       // A jump that the app did not ask for (the seek bar of the lock screen, a headset button).
       if (d.reason == PositionDiscontinuityReason.seek && _pending == 0 && _loaded) _onExternalChange?.call();
@@ -43,6 +53,21 @@ class JustAudioBackend implements AudioBackend, ExternalControl {
   }
 
   void Function()? _onExternalChange;
+
+  final ValueNotifier<String?> _title = ValueNotifier<String?>(null);
+  final ValueNotifier<StreamDetails?> _details = ValueNotifier<StreamDetails?>(null);
+
+  @override
+  ValueListenable<String?> get streamTitle => _title;
+
+  @override
+  ValueListenable<StreamDetails?> get streamDetails => _details;
+
+  @override
+  String? get errorMessage => _failed ? 'playback failed' : null;
+
+  @override
+  AudioErrorKind get errorKind => AudioErrorKind.generic;
 
   @override
   set onExternalChange(void Function()? callback) => _onExternalChange = callback;
@@ -101,6 +126,8 @@ class JustAudioBackend implements AudioBackend, ExternalControl {
     _failed = false;
     _wantPlaying = play;
     _duration = null;
+    _title.value = null;
+    _details.value = null;
     _then(() async {
       // A radio stream comes as an address, everything else as a file.
       final stream = path.startsWith('http://') || path.startsWith('https://');
@@ -197,5 +224,7 @@ class JustAudioBackend implements AudioBackend, ExternalControl {
       s.cancel();
     }
     _player.dispose();
+    _title.dispose();
+    _details.dispose();
   }
 }

@@ -8,6 +8,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 
 import 'audio_backend.dart';
+import 'radio_isolate.dart';
 import 'radio_stream.dart';
 
 // The C interface of libpsalm_audio.so (audio/include/psalm_audio.h).
@@ -58,7 +59,7 @@ bool isStreamUrl(String path) {
 /// can take a moment; everything else returns at once.
 ///
 /// Paths that start with `http://` or `https://` are internet radio: the network
-/// part is Dart ([RadioStreamSession]) and the engine decodes the pushed MP3 bytes.
+/// part is Dart ([IsolatedRadioSession], which runs a [RadioStreamSession] in a background isolate) and the engine decodes the pushed MP3 bytes.
 /// Such a stream has no length, cannot seek, and reports titles through [streamTitle].
 class PipeWireBackend implements AudioBackend, StreamInfo {
   PipeWireBackend._(this._engine, DynamicLibrary lib)
@@ -136,7 +137,7 @@ class PipeWireBackend implements AudioBackend, StreamInfo {
   bool _disposed = false;
 
   // The live stream in use, if any.
-  RadioStreamSession? _session;
+  IsolatedRadioSession? _session;
   Pointer<Uint8>? _pushBuffer;
   String? _failure;
   AudioErrorKind _failureKind = AudioErrorKind.generic;
@@ -183,7 +184,7 @@ class PipeWireBackend implements AudioBackend, StreamInfo {
       calloc.free(nativeTitle);
     }
     _pushBuffer = calloc<Uint8>(kStreamPushBytes);
-    _session = RadioStreamSession(url: uri, sink: _EngineSink(this), onTitle: (t) => _title.value = t, onDetails: (d) => _details.value = d)..start();
+    _session = IsolatedRadioSession(url: uri, sink: _EngineSink(this), onTitle: (t) => _title.value = t, onDetails: (d) => _details.value = d)..start();
   }
 
   /// Ends the network side of a live stream; the engine drops its queue itself on
@@ -331,7 +332,7 @@ class PipeWireBackend implements AudioBackend, StreamInfo {
   }
 }
 
-/// Hands the bytes of a [RadioStreamSession] to the engine.
+/// Hands the bytes of a radio session to the engine (always on the UI isolate).
 class _EngineSink implements StreamSink {
   _EngineSink(this._backend);
 

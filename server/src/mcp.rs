@@ -230,6 +230,17 @@ fn tool_list() -> Value {
             "inputSchema": { "type": "object", "properties": { "id": id, "owner": { "type": ["string", "null"], "description": "The nickname of a profile (see check_access or the pages), or null" } }, "required": ["id", "owner"] }
         },
         {
+            "name": "hide_albums",
+            "description": "Hides albums from the own lists of a profile (like \"Hide\" in the apps), or shows them again. It is no access rule: the profile can show them again under \"Hidden\" in the apps, and nothing else changes. Name the albums by `ids`, or by `label` (every album that carries the label). `profile` is a nickname; `hide` is true by default, false shows them again. Without dry_run=false it only reports what would change (the default). Needs a token that may write.",
+            "inputSchema": { "type": "object", "properties": {
+                "profile": { "type": "string", "description": "The nickname of the profile" },
+                "ids": { "type": "array", "items": { "type": "integer" }, "description": "Album ids" },
+                "label": { "type": "string", "description": "Every album with this label (case does not matter)" },
+                "hide": { "type": "boolean", "description": "true by default; false shows the albums again" },
+                "dry_run": { "type": "boolean", "description": "true by default; false writes" }
+            }, "required": ["profile"] }
+        },
+        {
             "name": "assign_owners",
             "description": "Gives the albums that have no owner the owner their folder names: the first folder of the place below the import folder is the complete name of a family member (First Last, Last First or Last, First) or a nickname. Other folders (a collection, a genre) stay without owner. Without dry_run=false it only reports (the default). Pass kind (audiobook or music) or ids to look at some albums only. Needs a token that may write.",
             "inputSchema": { "type": "object", "properties": {
@@ -408,7 +419,7 @@ async fn prompt_of(s: &McpState) -> String {
 }
 
 /// The tools that change files; a token that may only read cannot use them.
-const WRITING_TOOLS: [&str; 27] = ["edit_blacklist", "merge_albums", "set_discs_total", "set_labels", "set_track_labels", "set_feed_labels", "move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
+const WRITING_TOOLS: [&str; 28] = ["hide_albums", "edit_blacklist", "merge_albums", "set_discs_total", "set_labels", "set_track_labels", "set_feed_labels", "move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
 
 /// A sample call of a tool, for `help_for`.
 fn example_of(tool: &str) -> Value {
@@ -428,6 +439,7 @@ fn example_of(tool: &str) -> Value {
         "set_recommended_age" => json!({ "id": 12, "age": 8 }),
         "release_albums" => json!({ "kind": "audiobook", "dry_run": true }),
         "set_owner" => json!({ "id": 12, "owner": "Anna" }),
+        "hide_albums" => json!({ "profile": "Anna", "label": "Schule", "dry_run": true }),
         "list_labels" => json!({}),
         "merge_albums" => json!({ "ids": [143, 144, 145], "discs_total": 4, "dry_run": true }),
         "set_discs_total" => json!({ "id": 143, "total": 4 }),
@@ -1193,6 +1205,44 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             s.store.log_tag_change(&token.name, id, "", "Owner", row.owner.as_deref().unwrap_or(""), now.as_deref().unwrap_or("")).await.map_err(db)?;
             tracing::info!(token = %token.name, album = id, old = ?row.owner, new = ?now, "owner set");
             Ok(json!({ "id": id, "owner": now, "was": row.owner }))
+        }
+        "hide_albums" => {
+            if !token.can_write {
+                return Err("this token may only read".into());
+            }
+            let dry = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
+            let hide = args.get("hide").and_then(Value::as_bool).unwrap_or(true);
+            let people = s.store.user_rows().await.map_err(db)?;
+            let (profile, nick) = profile_named(&people, args.get("profile").and_then(Value::as_str).ok_or("profile is required")?)?;
+            let mut ids: Vec<i64> = args.get("ids").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
+            if let Some(label) = args.get("label").and_then(Value::as_str).map(str::trim).filter(|l| !l.is_empty()) {
+                let wanted = label.to_lowercase();
+                for (book, labels) in s.store.book_labels().await.map_err(db)? {
+                    if labels.iter().any(|l| l.to_lowercase() == wanted) && !ids.contains(&book) {
+                        ids.push(book);
+                    }
+                }
+            }
+            if ids.is_empty() {
+                return Err("give ids, or a label that some album carries".into());
+            }
+            ids.sort_unstable();
+            let mut done = Vec::new();
+            let mut missing = Vec::new();
+            for id in ids {
+                let Some(row) = s.store.admin_book_row(id).await.map_err(db)? else {
+                    missing.push(id);
+                    continue;
+                };
+                if !dry {
+                    s.store.set_book_hidden(profile, id, hide).await.map_err(db)?;
+                }
+                done.push(json!({ "id": id, "title": row.title, "author": row.author }));
+            }
+            if !dry {
+                tracing::info!(token = %token.name, profile = %nick, albums = done.len(), hide, "albums hidden or shown for a profile");
+            }
+            Ok(json!({ "dry_run": dry, "profile": nick, "hide": hide, "albums": done.len(), "list": done, "no_such_album": missing }))
         }
         "assign_owners" => {
             if !token.can_write {
