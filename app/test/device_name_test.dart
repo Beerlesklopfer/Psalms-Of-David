@@ -32,4 +32,12 @@ void main() {
     expect(episodeFileEnding('https://x.example/a/b.mp4'), 'm4a');
     expect(episodeFileEnding('https://x.example/stream?id=7'), 'mp3');
   });
+
+  test('the names iOS gives without the entitlement are generic, a name the person gave is not', () {
+    expect(isGenericDeviceName('iPhone'), isTrue);
+    expect(isGenericDeviceName(' iPad '), isTrue);
+    expect(isGenericDeviceName('iPod touch'), isTrue);
+    expect(isGenericDeviceName('Jörgs iPhone'), isFalse);
+    expect(isGenericDeviceName('Google Pixel 8'), isFalse);
+  });
 }

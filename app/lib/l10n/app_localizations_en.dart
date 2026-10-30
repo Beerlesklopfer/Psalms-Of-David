@@ -149,6 +149,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceNameLabel => 'Name of this device';
 
   @override
+  String get deviceNameGenericHint =>
+      'iOS tells the app only the model. Give this device a name you will recognise, for example \"Anna\'s iPad\".';
+
+  @override
   String get connectButton => 'Connect';
 
   @override

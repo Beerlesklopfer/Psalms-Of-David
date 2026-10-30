@@ -5,6 +5,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
+import '../server/device_name.dart';
 import '../server/qr_reader.dart';
 import 'qr_scan_screen.dart';
 
@@ -228,7 +229,11 @@ class _ConnectScreenState extends State<ConnectScreen> {
               TextField(
                 controller: _name,
                 enabled: !_busy,
-                decoration: InputDecoration(labelText: l.deviceNameLabel),
+                decoration: InputDecoration(
+                  labelText: l.deviceNameLabel,
+                  helperText: isGenericDeviceName(widget.deviceName) ? l.deviceNameGenericHint : null,
+                  helperMaxLines: 3,
+                ),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),

@@ -58,4 +58,11 @@ String nameOfIos(String name, String model) {
   return m.isEmpty ? 'iPhone' : m;
 }
 
+/// True for the names iOS gives an app without the entitlement ("iPhone", "iPad", "iPod touch"): they say nothing about whose device it is, so the
+/// pairing screen asks the person for a name.
+bool isGenericDeviceName(String name) {
+  final n = name.trim().toLowerCase();
+  return n == 'iphone' || n == 'ipad' || n == 'ipod touch';
+}
+
 String _capital(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);

@@ -92,6 +92,7 @@
   "connectIntro": "Open the administration page of your server, create a pairing code and paste the address below it here.",
   "pairingAddressLabel": "Pairing address",
   "deviceNameLabel": "Name of this device",
+  "deviceNameGenericHint": "iOS tells the app only the model. Give this device a name you will recognise, for example \"Anna's iPad\".",
   "connectButton": "Connect",
   "retryButton": "Try again",
   "useDemoButton": "Try with demo data",

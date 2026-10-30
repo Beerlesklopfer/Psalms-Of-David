@@ -326,6 +326,12 @@ abstract class AppLocalizations {
   /// **'Name of this device'**
   String get deviceNameLabel;
 
+  /// No description provided for @deviceNameGenericHint.
+  ///
+  /// In en, this message translates to:
+  /// **'iOS tells the app only the model. Give this device a name you will recognise, for example \"Anna\'s iPad\".'**
+  String get deviceNameGenericHint;
+
   /// No description provided for @connectButton.
   ///
   /// In en, this message translates to:

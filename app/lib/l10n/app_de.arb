@@ -38,6 +38,7 @@
   "connectIntro": "Öffne die Verwaltungsseite deines Servers, erzeuge einen Kopplungscode und füge die Adresse darunter hier ein.",
   "pairingAddressLabel": "Kopplungsadresse",
   "deviceNameLabel": "Name dieses Geräts",
+  "deviceNameGenericHint": "iOS verrät der App nur das Modell. Gib diesem Gerät einen Namen, an dem du es erkennst, zum Beispiel \"Annas iPad\".",
   "connectButton": "Verbinden",
   "connectErrorSignedOut": "Der Server kennt dieses Gerät nicht mehr. Koppele es mit einem neuen Code erneut; die alte Kopplung bleibt bis dahin erhalten.",
   "tooltipTimeBook": "Zeit der ganzen CD. Tippen für die Zeit dieses Titels.",

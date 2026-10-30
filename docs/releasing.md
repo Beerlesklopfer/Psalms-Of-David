@@ -243,6 +243,11 @@ the repository variable `IOS_DEVICE_NAME_ENTITLEMENT` set to `true` (Settings, S
 `ios/Runner/Runner.entitlements` (which has Siri always) for that build. Do not set the variable before the profiles contain the entitlement: signing fails.
 The person can always change the name in the field.
 
+**Status 2026-10-30: Apple declined the request** ("unable to approve your request at this time"; the entitlement is meant for multi-device features that show
+the device name in the app's UI as core functionality). So iOS and iPadOS give the app only the model. The pairing screen therefore shows a hint under the
+field when the proposed name is generic (`isGenericDeviceName`: "iPhone", "iPad", "iPod touch") and asks the person for a name ("Anna's iPad"). Leave the
+variable `IOS_DEVICE_NAME_ENTITLEMENT` unset. A new request could go through Feedback Assistant (enhancement request), as Apple's answer suggests.
+
 ## Windows
 
 - **David:** unzip `david-server-VERSION-windows-x64.zip`, open PowerShell **as administrator** in the folder and run `.\install-service.ps1 -MediaFolder D:\Audiobooks, D:\Music` (the folders are only given read access for the service; they are chosen per user afterwards in the administration). The service `DavidServer` runs as `NT AUTHORITY\LocalService`, stores its data in `C:\ProgramData\David` (`-DataDir` changes it) and starts with the computer. Without a certificate the administration listens on `127.0.0.1:8484` over plain HTTP, as on the other systems; remove the service with `david.exe uninstall`. Tried on Windows 11: the build, the start and the service (install, start, remove).
