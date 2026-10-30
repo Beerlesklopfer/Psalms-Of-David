@@ -607,16 +607,16 @@ mod tests {
 
     #[test]
     fn the_error_text_is_cut_to_the_buffer_and_always_terminated() {
+        // `copy_out` is what every error getter uses; the global error itself is shared by all tests that run in parallel, so it is not used here.
         let message = "a rather long reason for a failure";
-        set_error(message);
         let mut small = [0x7f as c_char; 8];
-        let full = unsafe { psalm_last_error(small.as_mut_ptr(), small.len()) };
+        let full = unsafe { copy_out(message, small.as_mut_ptr(), small.len()) };
         assert_eq!(full, message.len(), "the full length is reported");
         assert_eq!(small[7], 0, "terminated");
         let text: Vec<u8> = small.iter().take_while(|&&c| c != 0).map(|&c| c as u8).collect();
         assert_eq!(text, b"a rathe");
         // Asking only for the length works with no buffer.
-        assert_eq!(unsafe { psalm_last_error(std::ptr::null_mut(), 0) }, message.len());
+        assert_eq!(unsafe { copy_out(message, std::ptr::null_mut(), 0) }, message.len());
     }
 
     #[test]
