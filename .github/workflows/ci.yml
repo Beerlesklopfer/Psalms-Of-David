@@ -27,6 +27,12 @@ on:
         type: boolean
         default: true
 
+# A newer run of the same kind on the same branch replaces the older one that is still running (a push replaces a push, a run started by hand
+# replaces a run started by hand, they do not cancel each other). Runs of tags are never cancelled: they make the release.
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 env:
   CARGO_TERM_COLOR: always
   PIPEWIRE_DEPS: libpipewire-0.3-dev libspa-0.2-dev clang pkg-config

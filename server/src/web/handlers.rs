@@ -52,6 +52,8 @@ impl From<Error> for Failure {
             Error::LastAdmin => Failure::new(StatusCode::CONFLICT, "err.last_admin"),
             Error::DeviceLimitReached => Failure::new(StatusCode::CONFLICT, "err.device_limit"),
             Error::DeviceStillActive => Failure::new(StatusCode::CONFLICT, "err.device_active"),
+            Error::CodeStillOpen => Failure::new(StatusCode::CONFLICT, "err.code_open"),
+            Error::CodeNotOpen => Failure::new(StatusCode::CONFLICT, "err.code_not_open"),
             Error::ProfileLimitReached => Failure::new(StatusCode::CONFLICT, "err.profile_limit"),
             Error::ChildRequiresAgeAndSchedule => Failure::new(StatusCode::UNPROCESSABLE_ENTITY, "err.child_requires"),
             Error::ReleaseRequiresAge => Failure::new(StatusCode::UNPROCESSABLE_ENTITY, "err.release_requires_age"),
@@ -2398,8 +2400,49 @@ pub async fn pairing_create(State(state): State<AppState>, s: AdminSession, Form
         Ok(fragment) if !s.htmx => {
             render(state.ui.pairing(&state.store, view(&s), &public_address(&state), Some(fragment), state.https()).await)
         }
-        other => finish(&s, "/admin/pairing", other),
+        other => {
+            let mut res = finish(&s, "/admin/pairing", other);
+            // The list of the codes and the number at the menu refresh at once (the code that was just made is open).
+            if s.htmx && res.status().is_success() {
+                res.headers_mut().insert("hx-trigger", HeaderValue::from_static("pairing-created"));
+            }
+            res
+        }
     }
+}
+
+/// The section "Pairing codes" (what the page polls).
+pub async fn pairing_codes_fragment(State(state): State<AppState>, s: AdminSession) -> Response {
+    render(state.ui.pairing_codes_fragment(&state.store, view(&s)).await)
+}
+
+/// The number of open codes at the menu item.
+pub async fn pairing_badge_fragment(State(state): State<AppState>, s: AdminSession) -> Response {
+    render(state.ui.pairing_badge_fragment(&state.store, view(&s)).await)
+}
+
+/// An administrator withdraws a code that is still open; the answer is the refreshed section.
+pub async fn pairing_code_revoke(State(state): State<AppState>, s: AdminSession, Form(f): Form<IdForm>) -> Response {
+    let outcome = async {
+        if !state.store.revoke_enrollment(f.id).await? {
+            return Err(Failure::not_found());
+        }
+        Ok(state.ui.pairing_codes_fragment(&state.store, view(&s)).await?)
+    }
+    .await;
+    finish(&s, "/admin/pairing", outcome)
+}
+
+/// A code that is not open any more is deleted from the list; an open one has to be revoked first (409).
+pub async fn pairing_code_delete(State(state): State<AppState>, s: AdminSession, Form(f): Form<IdForm>) -> Response {
+    let outcome = async {
+        if !state.store.delete_enrollment(f.id).await? {
+            return Err(Failure::not_found());
+        }
+        Ok(state.ui.pairing_codes_fragment(&state.store, view(&s)).await?)
+    }
+    .await;
+    finish(&s, "/admin/pairing", outcome)
 }
 
 pub async fn device_revoke(State(state): State<AppState>, s: AdminSession, Form(f): Form<IdForm>) -> Response {

@@ -1,0 +1,2 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}<span id="pairing-badge" class="nav-badge"{% if count == 0 %} hidden{% endif %} hx-get="/admin/fragments/pairing-badge" hx-trigger="every 30s, pairing-created from:body" hx-swap="outerHTML" title="{{ t('pairing.open_codes') }}">{% if count > 0 %}{{ count }}{% endif %}</span>

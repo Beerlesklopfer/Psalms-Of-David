@@ -5,6 +5,7 @@
 
 {% block content %}
 <h1>{{ t("overview.title") }}</h1>
+{% if open_codes > 0 %}<p class="message" role="status"><a href="/admin/pairing">{{ open_codes }} {{ t("pairing.open_codes") }}, {{ t("pairing.valid_until") }} {{ open_until }}</a></p>{% endif %}
 <dl class="stats">
   <div class="stat"><dt>{{ t("overview.unreleased") }}</dt><dd>{{ data.unreleased_books }}</dd></div>
 

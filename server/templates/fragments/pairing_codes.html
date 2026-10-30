@@ -1,0 +1,55 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}<section id="pairing-codes" class="pairing-codes" hx-get="/admin/fragments/pairing-codes" hx-trigger="every 30s, pairing-created from:body" hx-target="this" hx-swap="outerHTML">
+  <h2>{{ t("pairing.codes") }}{% if open_codes > 0 %} <span class="badge ok">{{ open_codes }} {{ t("pairing.state_open") }}</span>{% endif %}</h2>
+  {% for e in events %}
+  <p class="message{% if e.kind == 'expired' %} warn{% endif %}" role="status">
+    {% if e.kind == "paired" %}{{ t("pairing.event_paired") }}: <strong>{{ e.device }}</strong> {{ t("pairing.of_user") }} <strong>{{ e.user_name }}</strong>, {{ t("pairing.ago_before") }} {{ e.minutes }} {{ t("pairing.ago_after") }}
+    {% else %}{{ t("pairing.event_expired") }}: <strong>{{ e.user_name }}</strong>, {{ t("pairing.ago_before") }} {{ e.minutes }} {{ t("pairing.ago_after") }}{% endif %}
+  </p>
+  {% endfor %}
+  {% if codes %}
+  <table id="code-list" class="stack codes">
+    <thead>
+      <tr>
+        <th>{{ t("pairing.codes_user") }}</th>
+        <th>{{ t("pairing.codes_by") }}</th>
+        <th>{{ t("pairing.codes_created") }}</th>
+        <th>{{ t("pairing.codes_until") }}</th>
+        <th>{{ t("devices.state") }}</th>
+        <th><span class="sr-only">{{ t("users.actions") }}</span></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for c in codes %}
+      <tr id="code-{{ c.id }}">
+        <td><strong>{{ c.user_name }}</strong>{% if c.shared %} <span class="badge">{{ t("devices.shared") }}</span>{% endif %}</td>
+        <td data-label="{{ t('pairing.codes_by') }}">{{ c.created_by }}</td>
+        <td data-label="{{ t('pairing.codes_created') }}">{{ c.created }}</td>
+        <td data-label="{{ t('pairing.codes_until') }}">{{ c.until }}</td>
+        <td data-label="{{ t('devices.state') }}">
+          {% if c.state == "open" %}<span class="badge ok">{{ t("pairing.state_open") }}</span>
+          {% elif c.state == "used" %}<span class="badge">{{ t("pairing.state_used") }}</span>{% if c.device %} {{ c.device }}{% endif %}{% if c.used %} <small>{{ c.used }}</small>{% endif %}
+          {% elif c.state == "revoked" %}<span class="badge muted">{{ t("pairing.state_revoked") }}</span>
+          {% else %}<span class="badge muted">{{ t("pairing.state_expired") }}</span>{% endif %}
+        </td>
+        <td class="actions">
+          {% if c.state == "open" %}
+          <form method="post" action="/admin/rpc/pairing.revoke" hx-post="/admin/rpc/pairing.revoke" hx-target="#pairing-codes" hx-swap="outerHTML" hx-disabled-elt="find button" hx-confirm="{{ t('pairing.confirm_revoke_code') }}">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ c.id }}">
+            <button type="submit" class="btn outline danger-outline">{{ t("devices.revoke") }}</button>
+          </form>
+          {% else %}
+          <form method="post" action="/admin/rpc/pairing.delete_code" hx-post="/admin/rpc/pairing.delete_code" hx-target="#pairing-codes" hx-swap="outerHTML" hx-disabled-elt="find button" hx-confirm="{{ t('pairing.confirm_delete_code') }}">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ c.id }}">
+            <button type="submit" class="btn outline danger-outline">{{ t("devices.delete") }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p id="code-list">{{ t("pairing.codes_none") }}</p>
+  {% endif %}
+</section>

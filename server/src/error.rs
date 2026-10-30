@@ -13,6 +13,10 @@ pub enum Error {
     DeviceLimitReached,
     #[error("an active device must be revoked before it is deleted")]
     DeviceStillActive,
+    #[error("a pairing code that is still open must be revoked before it is deleted")]
+    CodeStillOpen,
+    #[error("the pairing code is not open any more")]
+    CodeNotOpen,
     #[error("a child needs an age limit and a weekly planner")]
     ChildRequiresAgeAndSchedule,
     #[error("a book can only be released with an age rating")]

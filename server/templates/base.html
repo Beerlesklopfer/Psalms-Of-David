@@ -32,7 +32,7 @@
           <a role="menuitem" href="/admin/blacklist"{% if page == "blacklist" %} aria-current="page"{% endif %}>{{ icon("lock") }}<span>{{ t("nav.blacklist") }}</span></a>
           <span role="menuitem" class="menu-item disabled" aria-disabled="true">{{ icon("video") }}<span>{{ t("nav.videos") }}</span><small class="badge">{{ t("nav.soon") }}</small></span>
         {% endcall %}
-        <a href="/admin/pairing"{% if page == "pairing" %} aria-current="page"{% endif %}>{{ icon("pairing") }}<span>{{ t("nav.pairing") }}</span></a>
+        <a href="/admin/pairing"{% if page == "pairing" %} aria-current="page"{% endif %}>{{ icon("pairing") }}<span>{{ t("nav.pairing") }}</span><span id="pairing-badge" class="nav-badge" hidden hx-get="/admin/fragments/pairing-badge" hx-trigger="load, every 30s, pairing-created from:body" hx-swap="outerHTML"></span></a>
         <a href="/admin/import"{% if page == "import" %} aria-current="page"{% endif %}>{{ icon("import") }}<span>{{ t("nav.import") }}</span></a>
         <a href="/admin/cd"{% if page == "cd" %} aria-current="page"{% endif %}>{{ icon("disc") }}<span>{{ t("nav.cd") }}</span></a>
         <a href="/admin/settings"{% if page == "settings" %} aria-current="page"{% endif %}>{{ icon("settings") }}<span>{{ t("nav.settings") }}</span></a>

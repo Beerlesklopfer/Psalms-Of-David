@@ -106,6 +106,8 @@ impl From<Error> for ApiError {
             Error::InvalidDeviceName => ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_device_name"),
             Error::DeviceLimitReached => ApiError(StatusCode::CONFLICT, "device_limit_reached"),
             Error::DeviceStillActive => ApiError(StatusCode::CONFLICT, "device_active"),
+            Error::CodeStillOpen => ApiError(StatusCode::CONFLICT, "code_open"),
+            Error::CodeNotOpen => ApiError(StatusCode::CONFLICT, "code_not_open"),
             e => {
                 tracing::error!(error = %e, "api request failed");
                 ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal")

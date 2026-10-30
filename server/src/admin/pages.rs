@@ -46,6 +46,8 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("fragments/book_list.html", include_str!("../../templates/fragments/book_list.html")),
     ("fragments/book_row.html", include_str!("../../templates/fragments/book_row.html")),
     ("fragments/pairing_result.html", include_str!("../../templates/fragments/pairing_result.html")),
+    ("fragments/pairing_codes.html", include_str!("../../templates/fragments/pairing_codes.html")),
+    ("fragments/pairing_badge.html", include_str!("../../templates/fragments/pairing_badge.html")),
     ("fragments/device_list.html", include_str!("../../templates/fragments/device_list.html")),
     ("fragments/device_row.html", include_str!("../../templates/fragments/device_row.html")),
     ("fragments/schedule_panel.html", include_str!("../../templates/fragments/schedule_panel.html")),
@@ -602,6 +604,34 @@ fn device_view(d: crate::pairing::DeviceRow, zone: Option<&str>) -> DeviceView {
     }
 }
 
+/// One pairing code as the pairing page lists it. Never the code itself.
+#[derive(Serialize)]
+struct CodeView {
+    id: i64,
+    user_name: String,
+    created_by: String,
+    shared: bool,
+    created: String,
+    until: String,
+    /// `open`, `used`, `revoked` or `expired`.
+    state: &'static str,
+    device: String,
+    used: String,
+}
+
+/// Something that happened with a code in the last minutes: a device paired with it, or it ran out unused.
+#[derive(Serialize)]
+struct CodeEvent {
+    /// `paired` or `expired`.
+    kind: &'static str,
+    device: String,
+    user_name: String,
+    minutes: i64,
+}
+
+/// How far back the messages of the pairing page go.
+const EVENT_WINDOW_MS: i64 = 15 * 60_000;
+
 /// Parses the templates once and renders pages.
 pub struct AdminUi {
     env: Environment<'static>,
@@ -720,7 +750,10 @@ impl AdminUi {
 
     pub async fn overview<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
         let data = store.overview().await?;
-        self.render("overview.html", context! { data => Serde(data), access => crate::access::current(store).await.map(Serde), ..view.into().context() })
+        let (open_codes, open_until) = store.open_enrollments().await?;
+        let zone = store.setting("time_zone").await?;
+        let open_until = open_until.map(|ms| stamp(ms, zone.as_deref())).unwrap_or_default();
+        self.render("overview.html", context! { data => Serde(data), open_codes => open_codes, open_until => open_until, access => crate::access::current(store).await.map(Serde), ..view.into().context() })
     }
 
     pub async fn users<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
@@ -1053,6 +1086,62 @@ impl AdminUi {
     ///
     /// `result` is the fragment of a code that was just made. A browser without
     /// JavaScript gets it inside the page, because the code is shown only once.
+    /// The codes of the last days, what happened with them in the last quarter of an hour, and how many are open.
+    async fn pairing_codes_data(&self, store: &Store) -> Result<(Vec<CodeView>, Vec<CodeEvent>, usize)> {
+        let zone = store.setting("time_zone").await?;
+        let now = crate::store::now_ms();
+        let rows = store.enrollment_rows().await?;
+        let mut events = Vec::new();
+        let mut open = 0;
+        let mut codes = Vec::new();
+        for r in rows {
+            let state = r.state(now);
+            if state == crate::pairing::CodeState::Open {
+                open += 1;
+            }
+            match (state, r.used_at) {
+                (crate::pairing::CodeState::Used, Some(at)) if now - at <= EVENT_WINDOW_MS => {
+                    events.push(CodeEvent { kind: "paired", device: r.device_name.clone().unwrap_or_default(), user_name: r.user_name.clone(), minutes: ((now - at) / 60_000).max(0) });
+                }
+                (crate::pairing::CodeState::Expired, _) if now - r.expires_at <= EVENT_WINDOW_MS => {
+                    events.push(CodeEvent { kind: "expired", device: String::new(), user_name: r.user_name.clone(), minutes: ((now - r.expires_at) / 60_000).max(0) });
+                }
+                _ => {}
+            }
+            codes.push(CodeView {
+                id: r.id,
+                user_name: r.user_name,
+                created_by: r.created_by_name.unwrap_or_default(),
+                shared: r.shared,
+                created: stamp(r.created_at, zone.as_deref()),
+                until: stamp(r.expires_at, zone.as_deref()),
+                state: match state {
+                    crate::pairing::CodeState::Open => "open",
+                    crate::pairing::CodeState::Used => "used",
+                    crate::pairing::CodeState::Revoked => "revoked",
+                    crate::pairing::CodeState::Expired => "expired",
+                },
+                device: r.device_name.unwrap_or_default(),
+                used: r.used_at.map(|ms| stamp(ms, zone.as_deref())).unwrap_or_default(),
+            });
+        }
+        events.sort_by_key(|e| e.minutes);
+        events.truncate(5);
+        Ok((codes, events, open))
+    }
+
+    /// The section "Pairing codes" without the page around it: what the page polls and what the buttons answer.
+    pub async fn pairing_codes_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
+        let (codes, events, open) = self.pairing_codes_data(store).await?;
+        self.render("fragments/pairing_codes.html", context! { codes => Serde(codes), events => Serde(events), open_codes => open, ..view.into().context() })
+    }
+
+    /// The small number at the menu item "Pair a device": the open codes; nothing (hidden) when there are none.
+    pub async fn pairing_badge_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
+        let (count, _) = store.open_enrollments().await?;
+        self.render("fragments/pairing_badge.html", context! { count => count, ..view.into().context() })
+    }
+
     pub async fn pairing<'a>(
         &self,
         store: &Store,
@@ -1064,11 +1153,15 @@ impl AdminUi {
         let users = store.user_rows().await?;
         let zone = store.setting("time_zone").await?;
         let devices: Vec<DeviceView> = store.device_rows().await?.into_iter().map(|d| device_view(d, zone.as_deref())).collect();
+        let (codes, events, open_codes) = self.pairing_codes_data(store).await?;
         self.render(
             "pairing.html",
             context! {
                 users => Serde(users),
                 devices => Serde(devices),
+                codes => Serde(codes),
+                events => Serde(events),
+                open_codes => open_codes,
                 address => default_address,
                 // Only an address a device cannot reach (127.0.0.1) needs the warning.
                 loopback => default_address.parse::<std::net::SocketAddr>().is_ok_and(|a| a.ip().is_loopback()),

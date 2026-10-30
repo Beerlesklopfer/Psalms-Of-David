@@ -31,6 +31,48 @@ pub struct PairedDevice {
     pub shared: bool,
 }
 
+/// How many days back the list of the pairing codes goes (open codes are always shown).
+const ENROLLMENT_DAYS: i64 = 14;
+
+/// One pairing code as the administration lists it. The code and its hash stay in the database.
+#[derive(Debug, Clone, Serialize, FromQueryResult)]
+pub struct EnrollmentRow {
+    pub id: i64,
+    pub user_name: String,
+    pub created_by_name: Option<String>,
+    pub shared: bool,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub used_at: Option<i64>,
+    pub revoked_at: Option<i64>,
+    /// The device that redeemed it (empty if it is deleted since).
+    pub device_name: Option<String>,
+}
+
+/// The state of a code at `now`.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CodeState {
+    Open,
+    Used,
+    Revoked,
+    Expired,
+}
+
+impl EnrollmentRow {
+    pub fn state(&self, now: i64) -> CodeState {
+        if self.used_at.is_some() {
+            CodeState::Used
+        } else if self.revoked_at.is_some() {
+            CodeState::Revoked
+        } else if self.expires_at <= now {
+            CodeState::Expired
+        } else {
+            CodeState::Open
+        }
+    }
+}
+
 /// One line of the device list.
 #[derive(Debug, Clone, Serialize, FromQueryResult)]
 pub struct DeviceRow {
@@ -153,6 +195,9 @@ impl Store {
                 values,
             ))
             .await?;
+        // Nothing secret goes into the log: not the code, not its hash.
+        let by = self.profile_by_id(created_by).await?.map(|u| u.name).unwrap_or_default();
+        tracing::info!(user = %user_name, created_by = %by, shared, expires_in_s = ttl_s, "pairing code made");
         Ok(Enrollment { code, expires_at, user_name })
     }
 
@@ -161,6 +206,53 @@ impl Store {
     /// If the device cannot be added (limit reached, key already in use), the code
     /// stays usable.
     pub async fn redeem_enrollment(&self, code: &str, wg_pubkey: &str, device_name: &str) -> Result<PairedDevice> {
+        match self.redeem_inner(code, wg_pubkey, device_name).await {
+            Ok(paired) => {
+                let user = self.profile_by_id(paired.user_id).await?.map(|u| u.name).unwrap_or_default();
+                tracing::info!(device = %device_name.trim(), user = %user, device_id = paired.device_id, shared = paired.shared, "device paired");
+                Ok(paired)
+            }
+            Err(e) => {
+                // The device is told only "invalid"; the log says why (unknown, used, expired or revoked code, limit, key).
+                let reason = match &e {
+                    Error::EnrollmentInvalid => self.why_refused(code).await,
+                    Error::DeviceLimitReached => "device_limit_reached",
+                    Error::InvalidPublicKey => "invalid_public_key",
+                    Error::InvalidDeviceName => "invalid_device_name",
+                    _ => "failed",
+                };
+                tracing::warn!(device = %device_name.trim(), reason, "pairing refused");
+                Err(e)
+            }
+        }
+    }
+
+    /// Why a code did not work, for the log: `unknown_code`, `code_used`, `code_revoked` or `code_expired`.
+    async fn why_refused(&self, code: &str) -> &'static str {
+        let row = self
+            .db
+            .reader
+            .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT used_at, revoked_at, expires_at FROM enrollment WHERE code_hash = ?",
+                [Value::from(sha256_hex(code))],
+            ))
+            .await
+            .ok()
+            .flatten();
+        let Some(row) = row else { return "unknown_code" };
+        let used: Option<i64> = row.try_get_by_index(0).ok().flatten();
+        let revoked: Option<i64> = row.try_get_by_index(1).ok().flatten();
+        if used.is_some() {
+            "code_used"
+        } else if revoked.is_some() {
+            "code_revoked"
+        } else {
+            "code_expired"
+        }
+    }
+
+    async fn redeem_inner(&self, code: &str, wg_pubkey: &str, device_name: &str) -> Result<PairedDevice> {
         if !valid_public_key(wg_pubkey) {
             return Err(Error::InvalidPublicKey);
         }
@@ -176,7 +268,7 @@ impl Store {
         let used = txn
             .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
-                "UPDATE enrollment SET used_at = ? WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?",
+                "UPDATE enrollment SET used_at = ? WHERE code_hash = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?",
                 [Value::from(now), Value::from(sha256_hex(code)), Value::from(now)],
             ))
             .await?;
@@ -227,8 +319,82 @@ impl Store {
             // Dropping the transaction rolls it back, which also un-uses the code.
             Err(e) => return Err(e),
         };
+        // The code remembers the device that used it (the administration shows it).
+        txn.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE enrollment SET device_id = ? WHERE code_hash = ?", [Value::from(device_id), Value::from(sha256_hex(code))])).await?;
         txn.commit().await?;
         Ok(PairedDevice { device_id, user_id, tunnel_ip, shared })
+    }
+
+    /// The pairing codes of the last days (and every code that is still open), newest first, at most 100. Never the code or its hash.
+    pub async fn enrollment_rows(&self) -> Result<Vec<EnrollmentRow>> {
+        let now = now_ms();
+        let stmt = Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT e.rowid AS id, p.name AS user_name, c.name AS created_by_name, e.shared, e.created_at, e.expires_at, e.used_at, e.revoked_at, \
+                    d.name AS device_name \
+             FROM enrollment e JOIN profile p ON p.id = e.user_id LEFT JOIN profile c ON c.id = e.created_by LEFT JOIN device d ON d.id = e.device_id \
+             WHERE e.created_at >= ?1 OR (e.used_at IS NULL AND e.revoked_at IS NULL AND e.expires_at > ?2) \
+             ORDER BY e.created_at DESC, e.rowid DESC LIMIT 100",
+            [Value::from(now - ENROLLMENT_DAYS * 86_400_000), Value::from(now)],
+        );
+        Ok(EnrollmentRow::find_by_statement(stmt).all(&self.db.reader).await?)
+    }
+
+    /// How many codes are open now (not used, not revoked, not expired) and until when the last of them is valid: the badge of the menu and the line of the overview.
+    pub async fn open_enrollments(&self) -> Result<(i64, Option<i64>)> {
+        let row = self
+            .db
+            .reader
+            .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT count(*), max(expires_at) FROM enrollment WHERE used_at IS NULL AND revoked_at IS NULL AND expires_at > ?",
+                [Value::from(now_ms())],
+            ))
+            .await?;
+        Ok(match row {
+            Some(r) => (r.try_get_by_index(0)?, r.try_get_by_index(1)?),
+            None => (0, None),
+        })
+    }
+
+    /// An administrator withdraws a code that is still open: it cannot be redeemed any more. `Ok(false)` if there is no such code,
+    /// `Err(CodeNotOpen)` if it was used, expired or revoked already.
+    pub async fn revoke_enrollment(&self, id: i64) -> Result<bool> {
+        let now = now_ms();
+        let done = self
+            .db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE enrollment SET revoked_at = ?1, expires_at = min(expires_at, ?1) WHERE rowid = ?2 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?1",
+                [Value::from(now), Value::from(id)],
+            ))
+            .await?;
+        if done.rows_affected() > 0 {
+            tracing::info!("pairing code revoked");
+            return Ok(true);
+        }
+        let exists = self.db.reader.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT 1 FROM enrollment WHERE rowid = ?", [Value::from(id)])).await?.is_some();
+        if exists { Err(Error::CodeNotOpen) } else { Ok(false) }
+    }
+
+    /// Deletes a code from the list. One that is still open is refused with `CodeStillOpen`: it is revoked first (the same rule as for a device).
+    /// `Ok(false)` if there is no such code.
+    pub async fn delete_enrollment(&self, id: i64) -> Result<bool> {
+        let done = self
+            .db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "DELETE FROM enrollment WHERE rowid = ?1 AND NOT (used_at IS NULL AND revoked_at IS NULL AND expires_at > ?2)",
+                [Value::from(id), Value::from(now_ms())],
+            ))
+            .await?;
+        if done.rows_affected() > 0 {
+            return Ok(true);
+        }
+        let exists = self.db.reader.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT 1 FROM enrollment WHERE rowid = ?", [Value::from(id)])).await?.is_some();
+        if exists { Err(Error::CodeStillOpen) } else { Ok(false) }
     }
 
     pub async fn device_rows(&self) -> Result<Vec<DeviceRow>> {

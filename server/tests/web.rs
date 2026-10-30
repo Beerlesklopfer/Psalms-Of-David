@@ -4506,3 +4506,109 @@ async fn only_an_administrator_removes_the_picture_of_another_user() {
     assert_eq!(r.status, StatusCode::FORBIDDEN);
     assert!(a.store.has_avatar(ben).await.unwrap());
 }
+
+#[tokio::test]
+async fn the_pairing_page_lists_the_codes_with_their_state_and_never_the_code() {
+    let a = app().await;
+    let anna = a.store.create_profile("Anna", false).await.unwrap();
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+
+    // No code yet: the section says so and the menu has no number.
+    let page = send(&a, get("/admin/pairing", &o)).await;
+    assert!(page.body.contains("id=\"pairing-codes\"") && page.body.contains("No pairing codes in the last days."), "{}", page.body);
+    assert!(page.body.contains("id=\"pairing-badge\"") && page.body.contains("hidden"), "the badge is there, hidden");
+    let badge = send(&a, get("/admin/fragments/pairing-badge", &o)).await;
+    assert!(badge.body.contains("hidden") && !badge.body.contains(">1<"), "0 open codes: hidden: {}", badge.body);
+
+    // An open code: listed as open with a "Revoke" button, the badge shows 1, the overview says so. The code itself is nowhere.
+    let open = a.store.create_enrollment(anna, false, anna).await.unwrap();
+    let page = send(&a, get("/admin/pairing", &o)).await;
+    assert!(page.body.contains("Anna") && page.body.contains("pairing.revoke") && !page.body.contains("pairing.delete_code"), "{}", page.body);
+    assert!(!page.body.contains(&open.code), "the code is never listed");
+    let badge = send(&a, get("/admin/fragments/pairing-badge", &o)).await;
+    assert!(!badge.body.contains("hidden") && badge.body.contains(">1<"), "1 open code: shown: {}", badge.body);
+    let overview = send(&a, get("/admin/", &o)).await;
+    assert!(overview.body.contains("1 open pairing codes") && overview.body.contains("/admin/pairing"), "{}", overview.body);
+
+    // Redeemed: used by the device, and the page says "Device paired" for the last minutes.
+    let key = format!("{}A=", "D".repeat(42));
+    a.store.redeem_enrollment(&open.code, &key, "Phone of Anna").await.unwrap();
+    let page = send(&a, get("/admin/fragments/pairing-codes", &o)).await;
+    assert!(page.body.contains("used by") && page.body.contains("Phone of Anna"), "{}", page.body);
+    assert!(page.body.contains("Device paired") && page.body.contains("0 min ago"), "{}", page.body);
+    assert!(page.body.contains("pairing.delete_code") && !page.body.contains("pairing.revoke"), "a used code can be deleted, not revoked");
+    let badge = send(&a, get("/admin/fragments/pairing-badge", &o)).await;
+    assert!(badge.body.contains("hidden"), "the code is used: no open code: {}", badge.body);
+}
+
+#[tokio::test]
+async fn an_open_code_is_revoked_before_it_is_deleted_and_a_revoked_one_cannot_be_redeemed() {
+    let a = app().await;
+    let anna = a.store.create_profile("Anna", false).await.unwrap();
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let e = a.store.create_enrollment(anna, false, anna).await.unwrap();
+    let id = a.store.enrollment_rows().await.unwrap()[0].id.to_string();
+
+    // Deleting an open code is refused.
+    let r = send(&a, post("/admin/rpc/pairing.delete_code", &form(&[("id", &id)]), &o)).await;
+    assert_eq!(r.status, StatusCode::CONFLICT, "{}", r.body);
+    assert!(r.body.contains("Revoke it first"), "{}", r.body);
+
+    // Revoking works once, and then the code is not open any more.
+    let r = send(&a, post("/admin/rpc/pairing.revoke", &form(&[("id", &id)]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(r.body.contains("id=\"pairing-codes\"") && r.body.contains("revoked"), "the answer is the refreshed section: {}", r.body);
+    assert_eq!(send(&a, post("/admin/rpc/pairing.revoke", &form(&[("id", &id)]), &o)).await.status, StatusCode::CONFLICT);
+    let key = format!("{}B=", "D".repeat(42));
+    assert!(a.store.redeem_enrollment(&e.code, &key, "Phone").await.is_err(), "a revoked code cannot be redeemed");
+    assert!(a.store.device_rows().await.unwrap().is_empty());
+
+    // Now it can be deleted; a second time there is nothing.
+    let r = send(&a, post("/admin/rpc/pairing.delete_code", &form(&[("id", &id)]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(a.store.enrollment_rows().await.unwrap().is_empty());
+    assert_eq!(send(&a, post("/admin/rpc/pairing.delete_code", &form(&[("id", &id)]), &o)).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(send(&a, post("/admin/rpc/pairing.revoke", &form(&[("id", "9999")]), &o)).await.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_code_that_ran_out_is_shown_as_expired_and_a_member_sees_none_of_it() {
+    let a = app().await;
+    let anna = a.store.create_profile("Anna", false).await.unwrap();
+    a.store.save_settings(&[("enrollment_code_ttl_s".to_owned(), "1".to_owned())]).await.unwrap();
+    a.store.create_enrollment(anna, false, anna).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(1300)).await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let page = send(&a, get("/admin/fragments/pairing-codes", &o)).await;
+    assert!(page.body.contains("expired") && page.body.contains("ran out unused"), "{}", page.body);
+    assert!(page.body.contains("pairing.delete_code"), "an expired code can be deleted");
+
+    // Not an administrator: the fragments and the buttons are closed.
+    let token = a.store.create_session(anna, Role::Member, None).await.unwrap();
+    let cookie = format!("david_session={token}");
+    let csrf = csrf_token(&token);
+    let m = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    for uri in ["/admin/fragments/pairing-codes", "/admin/fragments/pairing-badge"] {
+        assert_eq!(send(&a, get(uri, &m)).await.status, StatusCode::FORBIDDEN, "{uri}");
+    }
+    assert_eq!(send(&a, post("/admin/rpc/pairing.revoke", &form(&[("id", "1")]), &m)).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(send(&a, post("/admin/rpc/pairing.delete_code", &form(&[("id", "1")]), &m)).await.status, StatusCode::FORBIDDEN);
+    // Without the token of the page nothing is changed either.
+    let no_csrf = Opts { cookie: Some(&cookie), htmx: true, csrf_header: None, ..Default::default() };
+    let r = send(&a, post("/admin/rpc/pairing.revoke", &form(&[("id", "1")]), &no_csrf)).await;
+    assert!(r.status == StatusCode::FORBIDDEN || r.status == StatusCode::BAD_REQUEST, "{:?}", r.status);
+}
+
+#[tokio::test]
+async fn making_a_code_in_the_window_tells_the_page_to_refresh_the_list() {
+    let a = app().await;
+    let anna = a.store.create_profile("Anna", false).await.unwrap();
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let r = send(&a, post("/admin/rpc/pairing.create", &form(&[("id", &anna.to_string()), ("address", "david.local:8484")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(r.header("hx-trigger"), Some("pairing-created"));
+}
