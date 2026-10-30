@@ -59,7 +59,7 @@ public repository has them free.
 | `IOS_CERTIFICATE_P12_BASE64`, `IOS_CERTIFICATE_PASSWORD` | the "Apple Distribution" certificate with its private key as .p12 (`base64 -w0`) |
 | `IOS_TEAM_ID` | the ten characters of the team (developer account, membership) |
 | `IOS_PROFILE_IPHONE_BASE64`, `IOS_PROFILE_IPAD_BASE64` | the App Store provisioning profile of each app (`base64 -w0 x.mobileprovision`); **with the capability Siri** |
-| `IOS_PROFILE_IPHONE_INTENTS_BASE64`, `IOS_PROFILE_IPAD_INTENTS_BASE64` | the App Store profile of the Siri Intents extension of each app (App IDs `...psalm.intents` and `...psalm.ipad.intents`), also with Siri |
+| `IOS_PROFILE_IPHONE_INTENTS_BASE64`, `IOS_PROFILE_IPAD_INTENTS_BASE64` | the App Store profile of the Siri Intents extension of each app (App IDs `...psalm.intents` and `...psalm.ipad.intents`); Siri is needed only on the apps, not on the extensions |
 | `APPSTORE_API_KEY_ID`, `APPSTORE_API_ISSUER_ID`, `APPSTORE_API_KEY_P8_BASE64` | the App Store Connect API key (role App Manager) for the upload; without it the .ipa stays an artifact |
 
 One-time setup (everything works from Linux, a Mac is not needed):

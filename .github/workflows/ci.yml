@@ -503,9 +503,9 @@ jobs:
           security list-keychains -d user -s "$keychain" login.keychain-db
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           case "${{ matrix.product }}" in iphone) bundle=com.the-abraham-box.psalm ;; ipad) bundle=com.the-abraham-box.psalm.ipad ;; esac
-          # Decodes a profile, checks that it belongs to the bundle id and has the Siri capability, installs it. Sets $name (the profile name).
+          # Decodes a profile, checks that it belongs to the bundle id (and, for the app, has the Siri capability), installs it. Sets $name (the profile name).
           install_profile() {
-            local b64="$1" want="$2" file="$RUNNER_TEMP/$3" uuid appid
+            local b64="$1" want="$2" file="$RUNNER_TEMP/$3" need_siri="$4" uuid appid
             echo "$b64" | base64 -d > "$file.mobileprovision"
             security cms -D -i "$file.mobileprovision" > "$file.plist"
             uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$file.plist")
@@ -515,14 +515,15 @@ jobs:
             if [ "$appid" != "$TEAM_ID.$want" ]; then
               echo "::error::The profile '$name' is for $appid, but $TEAM_ID.$want is expected (wrong secret?)."; exit 1
             fi
-            if ! /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.siri' "$file.plist" > /dev/null 2>&1; then
+            if [ "$need_siri" = yes ] && ! /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.siri' "$file.plist" > /dev/null 2>&1; then
               echo "::error::The profile '$name' does not contain the capability Siri: enable Siri on the App ID $want and make the profile again."; exit 1
             fi
             cp "$file.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
           }
-          install_profile "$PROFILE_BASE64" "$bundle" app
+          install_profile "$PROFILE_BASE64" "$bundle" app yes
           app_name="$name"
-          install_profile "$PROFILE_INTENTS_BASE64" "$bundle.intents" intents
+          # The extension needs no Siri entitlement of its own (the Siri capability belongs to the app), only its own App ID and profile.
+          install_profile "$PROFILE_INTENTS_BASE64" "$bundle.intents" intents no
           intents_name="$name"
           name="$app_name"
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF

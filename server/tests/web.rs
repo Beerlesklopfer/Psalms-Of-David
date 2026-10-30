@@ -3478,7 +3478,7 @@ async fn the_panel_shows_the_progress_and_the_state_of_each_chosen_track_while_a
     *a.drive.hold_in.lock().unwrap() = Some(3);
     let mut second = send(&a, get(&format!("/admin/rpc/cd.drive?sig={sig}"), &htmx)).await;
     for _ in 0..200 {
-        if second.status == StatusCode::OK && second.body.contains("Track 3 of 3") {
+        if second.status == StatusCode::OK && second.body.contains("Track 3 of 3") && second.body.contains("data-state=\"reading\"") {
             break;
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
