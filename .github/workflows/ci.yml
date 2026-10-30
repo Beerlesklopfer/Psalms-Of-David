@@ -348,8 +348,8 @@ jobs:
   # Signed apps for iPhone and iPad; the upload to TestFlight when the App Store Connect key is set.
   package-ios:
     needs: [app, version, ios-build]
-    # Not on every push of development: a build in TestFlight is made for tags, for main and when somebody starts it by hand.
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'))
+    # Every push and every run by hand signs the iOS apps (the .ipa is an artifact); what goes to TestFlight is decided in the step "Should this build go to TestFlight?".
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -367,6 +367,31 @@ jobs:
     defaults: { run: { working-directory: app } }
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Should this build go to TestFlight?
+        id: up
+        env:
+          BEFORE: ${{ github.event.before }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          UPLOAD_INPUT: ${{ github.event.inputs.upload }}
+        run: |
+          upload=false
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch)
+              [ "$UPLOAD_INPUT" != "false" ] && upload=true ;;
+            push)
+              if [[ "$GITHUB_REF" == refs/tags/v* || "$GITHUB_REF" == refs/heads/main ]]; then
+                upload=true
+              elif [[ "$BEFORE" =~ ^0+$ ]] || ! git -C "$GITHUB_WORKSPACE" cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+                upload=true   # new branch or history rewritten: no way to tell what changed
+              elif git -C "$GITHUB_WORKSPACE" diff --name-only "$BEFORE" "$GITHUB_SHA" -- app/lib app/ios app/assets app/pubspec.yaml app/pubspec.lock app/l10n.yaml | grep -q .; then
+                upload=true   # the files of the app changed
+              fi
+              # "[skip testflight]" in the commit message keeps a push out of TestFlight.
+              if printf '%s' "$COMMIT_MESSAGE" | grep -qi '\[skip testflight\]'; then upload=false; fi ;;
+          esac
+          echo "TestFlight upload: $upload"
+          echo "upload=$upload" >> "$GITHUB_OUTPUT"
       - name: Signing material (only if the secrets exist)
         id: sign
         run: |
@@ -420,7 +445,7 @@ jobs:
           mkdir -p ../dist
           cp build/ios/ipa/*.ipa "../dist/psalm-$VERSION-ios-${{ matrix.product }}.ipa"
       - name: Upload to TestFlight (only with the App Store Connect key)
-        if: steps.sign.outputs.ready == 'true' && env.ASC_KEY_ID != '' && github.event.inputs.upload != 'false'
+        if: steps.sign.outputs.ready == 'true' && env.ASC_KEY_ID != '' && steps.up.outputs.upload == 'true'
         run: |
           mkdir -p "$HOME/.appstoreconnect/private_keys"
           echo "$ASC_KEY_BASE64" | base64 -d > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"

@@ -50,7 +50,7 @@ iPhone and iPad), for a quick try with Xcode.
 CI (`ios-build`, macOS runner, matrix iphone/ipad): `flutter build ios --release --no-codesign` on every push and pull request, and a check of the
 bundle id and the device family. It needs no Apple account. On a private repository macOS minutes cost ten times as much as Linux minutes; a
 public repository has them free.
-`package-ios` (pushes to main and tags) builds the signed `.ipa` of both products and uploads them to TestFlight, **only if the secrets exist**:
+`package-ios` (every push and every run by hand) builds the signed `.ipa` of both products, **only if the secrets exist**, and uploads them to TestFlight when it makes sense: for tags and `main`, for a run by hand (input `upload`), and for a push whose commits change the files of the app (`app/lib`, `app/ios`, `app/assets`, `pubspec.yaml`, `pubspec.lock`, `l10n.yaml`); a push that changes only the server or the documentation uploads nothing, and `[skip testflight]` in the commit message keeps a push out of TestFlight:
 
 | Secret | What |
 |---|---|
@@ -78,7 +78,7 @@ CarPlay needs more: the entitlement `com.apple.developer.carplay-audio` has to b
 weeks), then an entitlements file in the project and a profile that contains it. See `docs/spec-car.md`.
 
 Not verified here: the workflow has not run on GitHub (no Mac runner available), and the Xcode project was edited by hand on Linux. The first CI run
-will show if `flutter build ios` accepts the product settings. The CI runs on pushes to `main` and `development`, on tags and on pull requests; the signed iOS builds and the upload to TestFlight only for tags and `main` (the repository has no `main` yet: its default branch is `development`); the workflow can also be started by hand (Actions, ci, Run workflow), which signs and uploads the iOS builds too.
+will show if `flutter build ios` accepts the product settings. The CI runs on pushes to `main` and `development`, on tags and on pull requests; the iOS apps are signed in every run; the upload to TestFlight follows the rules above (the repository has no `main` yet: its default branch is `development`); a run can also be started by hand (Actions, ci, Run workflow).
 
 ## Psalm for macOS
 
