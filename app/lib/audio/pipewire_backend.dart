@@ -62,6 +62,18 @@ bool isStreamUrl(String path) {
 /// part is Dart ([IsolatedRadioSession], which runs a [RadioStreamSession] in a background isolate) and the engine decodes the pushed MP3 bytes.
 /// Such a stream has no length, cannot seek, and reports titles through [streamTitle].
 class PipeWireBackend implements AudioBackend, StreamInfo {
+  // TODO(gapless, P3): supportsGapless stays false (the AudioBackend default) until the Rust engine has `psalm_engine_enqueue_next`
+  // (pre-opens the next source and splices it in at the exact sample, trims the MP3 encoder delay). Then override supportsGapless,
+  // enqueueNext and clearNext here and report the switch through ExternalControl.onAdvanced. See docs/spec-engine-rebuild.md, phase P3.
+  @override
+  bool get supportsGapless => false;
+
+  @override
+  void enqueueNext(String path) {}
+
+  @override
+  void clearNext() {}
+
   PipeWireBackend._(this._engine, DynamicLibrary lib)
     : _free = lib.lookupFunction<_Free, _FreeD>('psalm_engine_free'),
       _load = lib.lookupFunction<_Load, _LoadD>('psalm_engine_load'),

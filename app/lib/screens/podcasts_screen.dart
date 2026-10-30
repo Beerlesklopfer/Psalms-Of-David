@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../lists/list_controller.dart';
+import '../lists/list_machine.dart';
 import 'confirm_dialog.dart';
 import '../labels.dart';
 import '../offline/offline_controller.dart';
@@ -16,16 +18,13 @@ import 'podcast_downloads_ui.dart';
 
 /// The state of the podcast list: loading, adding. Owned by the page or the library, shown by
 /// [PodcastsBody], operated by [PodcastsActions].
-class PodcastsController extends ChangeNotifier {
-  PodcastsController(this.api) {
+class PodcastsController extends ListController<Podcast> {
+  PodcastsController(this.api) : super(hasServer: api != null) {
     load();
   }
 
   /// Null without a server: podcasts live on the server, so there is nothing to show.
   final FeedApi? api;
-  List<Podcast>? podcasts;
-  String? error;
-  bool _disposed = false;
 
   /// The labels the list is narrowed to (a podcast must carry all of them).
   Set<String> chosen = {};
@@ -35,20 +34,14 @@ class PodcastsController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> load() async {
-    final api = this.api;
-    if (api == null) return;
-    try {
-      final rows = await api.podcasts();
-      podcasts = rows.map(Podcast.fromJson).toList();
-      // A chosen label that no podcast carries any more is dropped.
-      final rest = labelCountsOf([for (final p in podcasts!) p.labels]);
-      chosen.removeWhere((c) => !rest.any((r) => r.$1.toLowerCase() == c.toLowerCase()));
-      error = null;
-    } on ApiException catch (e) {
-      error = e.code;
-    }
-    if (!_disposed) notifyListeners();
+  @override
+  Future<List<Podcast>> fetchItems() async => (await api!.podcasts()).map(Podcast.fromJson).toList();
+
+  @override
+  void itemsArrived(List<Podcast> items) {
+    // A chosen label that no podcast carries any more is dropped.
+    final rest = labelCountsOf([for (final p in items) p.labels]);
+    chosen.removeWhere((c) => !rest.any((r) => r.$1.toLowerCase() == c.toLowerCase()));
   }
 
   Future<void> add(BuildContext context) async {
@@ -63,12 +56,6 @@ class PodcastsController extends ChangeNotifier {
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.code == 'invalid_feed' ? l.podcastInvalid : e.code == 'forbidden' ? l.notAllowed : l.serverUnreachableShort)));
     }
-  }
-
-  @override
-  void dispose() {
-    _disposed = true;
-    super.dispose();
   }
 }
 
@@ -85,7 +72,9 @@ class PodcastsActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     // Adding needs the server.
-    if (controller.api == null || OfflineScope.maybeOf(context)?.active == true) return const SizedBox.shrink();
+    controller.noteOffline(active: OfflineScope.maybeOf(context)?.active == true);
+    final state = controller.state;
+    if (state is ListNeedsServer<Podcast> || state is ListOfflineView<Podcast>) return const SizedBox.shrink();
     return Row(mainAxisSize: MainAxisSize.min, children: [
       IconButton(tooltip: l.podcastAdd, icon: const Icon(Icons.add), onPressed: () => controller.add(context)),
       if (withRefresh) IconButton(tooltip: l.tooltipRefresh, icon: const Icon(Icons.refresh), onPressed: controller.load),
@@ -105,13 +94,20 @@ class PodcastsBody extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        // The offline view: the podcasts have episodes on the device, nothing is asked of the server.
-        if (OfflineScope.maybeOf(context)?.active == true) return OfflinePodcastsSliver(downloads: PlayerScope.maybeOf(context)?.podcastDownloads);
-        final list = controller.podcasts;
-        if (controller.api == null) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.needsServer)));
-        if (controller.error != null) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.serverUnreachableShort)));
-        if (list == null) return const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator()));
-        if (list.isEmpty) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.noPodcastsYet)));
+        controller.noteOffline(active: OfflineScope.maybeOf(context)?.active == true);
+        final state = controller.state;
+        if (state is! ListLoaded<Podcast>) {
+          return switch (state) {
+            // The offline view: the podcasts have episodes on the device, nothing is asked of the server.
+            ListOfflineView() => OfflinePodcastsSliver(downloads: PlayerScope.maybeOf(context)?.podcastDownloads),
+            ListNeedsServer() => SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.needsServer))),
+            ListFailed() => SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.serverUnreachableShort))),
+            ListIdle() || ListLoading() => const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator())),
+            ListEmpty() => SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.noPodcastsYet))),
+            ListLoaded() => throw StateError('unreachable'),
+          };
+        }
+        final list = state.items;
         final labels = LabelsScope.maybeOf(context);
         final shown = [for (final p in list) if (carriesAll(p.labels, controller.chosen)) p];
         return SliverMainAxisGroup(slivers: [

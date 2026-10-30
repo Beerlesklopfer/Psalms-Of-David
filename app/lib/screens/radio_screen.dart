@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../lists/list_controller.dart';
+import '../lists/list_machine.dart';
 import 'confirm_dialog.dart';
 import '../labels.dart';
 import '../player_controller.dart';
@@ -15,15 +17,12 @@ import '../widgets.dart';
 import 'labels_ui.dart';
 
 /// The state of the station list; same roles as [PodcastsController].
-class RadioController extends ChangeNotifier {
-  RadioController(this.api) {
+class RadioController extends ListController<Station> {
+  RadioController(this.api) : super(hasServer: api != null) {
     load();
   }
 
   final FeedApi? api;
-  List<Station>? stations;
-  String? error;
-  bool _disposed = false;
 
   /// The labels the list is narrowed to (a station must carry all of them).
   Set<String> chosen = {};
@@ -33,20 +32,14 @@ class RadioController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> load() async {
-    final api = this.api;
-    if (api == null) return;
-    try {
-      final rows = await api.stations();
-      stations = rows.map(Station.fromJson).toList();
-      // A chosen label that no station carries any more is dropped.
-      final rest = labelCountsOf([for (final s in stations!) s.labels]);
-      chosen.removeWhere((c) => !rest.any((r) => r.$1.toLowerCase() == c.toLowerCase()));
-      error = null;
-    } on ApiException catch (e) {
-      error = e.code;
-    }
-    if (!_disposed) notifyListeners();
+  @override
+  Future<List<Station>> fetchItems() async => (await api!.stations()).map(Station.fromJson).toList();
+
+  @override
+  void itemsArrived(List<Station> items) {
+    // A chosen label that no station carries any more is dropped.
+    final rest = labelCountsOf([for (final s in items) s.labels]);
+    chosen.removeWhere((c) => !rest.any((r) => r.$1.toLowerCase() == c.toLowerCase()));
   }
 
   Future<void> add(BuildContext context) async {
@@ -63,12 +56,6 @@ class RadioController extends ChangeNotifier {
       messenger.showSnackBar(SnackBar(content: Text(e.code == 'invalid_station' ? l.stationInvalid : e.code == 'forbidden' ? l.notAllowed : l.serverUnreachableShort)));
     }
   }
-
-  @override
-  void dispose() {
-    _disposed = true;
-    super.dispose();
-  }
 }
 
 /// The add and refresh buttons of the station list (for an app bar).
@@ -83,7 +70,7 @@ class RadioActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    if (controller.api == null) return const SizedBox.shrink();
+    if (controller.state is ListNeedsServer<Station>) return const SizedBox.shrink();
     return Row(mainAxisSize: MainAxisSize.min, children: [
       IconButton(tooltip: l.stationAdd, icon: const Icon(Icons.add), onPressed: () => controller.add(context)),
       if (withRefresh) IconButton(tooltip: l.tooltipRefresh, icon: const Icon(Icons.refresh), onPressed: controller.load),
@@ -104,11 +91,19 @@ class RadioBody extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        final list = controller.stations;
-        if (controller.api == null) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.needsServer)));
-        if (controller.error != null) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.serverUnreachableShort)));
-        if (list == null) return const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator()));
-        if (list.isEmpty) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.noStationsYet)));
+        final state = controller.state;
+        if (state is! ListLoaded<Station>) {
+          return switch (state) {
+            ListNeedsServer() => SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.needsServer))),
+            // The station list has no offline view; nothing sends the event.
+            ListOfflineView() => const SliverToBoxAdapter(child: SizedBox.shrink()),
+            ListFailed() => SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.serverUnreachableShort))),
+            ListIdle() || ListLoading() => const SliverFillRemaining(hasScrollBody: false, child: Center(child: CircularProgressIndicator())),
+            ListEmpty() => SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.noStationsYet))),
+            ListLoaded() => throw StateError('unreachable'),
+          };
+        }
+        final list = state.items;
         final labels = LabelsScope.maybeOf(context);
         final shown = [for (final s in list) if (carriesAll(s.labels, controller.chosen)) s];
         return SliverMainAxisGroup(slivers: [

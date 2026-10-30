@@ -75,6 +75,7 @@ stateDiagram-v2
     Playing --> Buffering: Tick(backend buffering)
     Buffering --> Playing: Tick(backend playing)
     Playing --> Ended: Tick(ended, last track)
+    Playing --> Playing: BackendAdvanced (gapless switch, no Loading)
     Playing --> Failed: Tick(failed), BackendFailed
     Paused --> Unplayable: UserToggle (format)
     Failed --> Playing: UserToggle (retry)
@@ -104,6 +105,8 @@ Episode: like a track with one track; `Playing -> Ended` on the end, with `NoteE
 | SetSpeed | speed | speed + `SetBackendSpeed` | same | same | same | same | same | ignored |
 | Tick | ignored | ignored | ignored | position, heard, report, prefetch, end/failed/buffering | ignored | ignored | ignored | ignored |
 | ExternalChange | ignored | paused/playing by the system | ignored | same | | | | ignored |
+| BackendAdvanced(index) | ignored | same, stays Paused (a pause on its way) | ignored | reports the finished track (`MarkHeard`, `SaveProgress(finished)`, `TrackEnded`), `trackIndex+1`, position 0, stays Playing, no load; ignored if `index` is not the queued successor | same, stays Buffering | ignored | ignored | ignored |
+| PrefetchReady(key, path) | ignored | queues the file (`EnqueueNext`) if `key` is the successor of the loaded track and the backend is gapless | ignored | same | ignored | ignored | ignored | ignored |
 | BackendLoaded(key) | ignored | ignored | -> Playing/Paused (key must match) | ignored | ignored | ignored | ignored | ignored |
 | LoadFailed(key) | ignored | ignored | -> Failed / Unplayable (key must match) | ignored | ignored | ignored | ignored | ignored |
 | BackendFailed | ignored | Failed | Failed | Failed | Failed | Failed | Failed | ignored |
@@ -117,16 +120,15 @@ Episode: like a track with one track; `Playing -> Ended` on the end, with `NoteE
 ## Effects
 
 `LoadTrack`, `FetchAndLoad`, `StartPlayback`, `PausePlayback`, `SeekBackend`, `StopBackend`, `DisposeBackend`, `EnsureSpeed`, `SetBackendSpeed`, `StartTick`, `StopTick`,
-`WriteLast`, `SaveProgress`, `QueueProgress`, `NoteEpisodeState`, `MarkHeard`, `TrackEnded`, `PrefetchNext`, `EmitSnapshot`, `EmitPosition`.
+`WriteLast`, `SaveProgress`, `QueueProgress`, `NoteEpisodeState`, `MarkHeard`, `TrackEnded`, `PrefetchNext`, `EnqueueNext`, `ClearQueuedNext`, `EmitSnapshot`, `EmitPosition`.
+
+**Gapless queue (P2b).** `Core.queuedKey` is the track (`bookId:index`) queued in the backend as the successor of the loaded one (`Env.gapless` = `AudioBackend.supportsGapless`).
+The machine queues it with `EnqueueNext(index, path)` when the next file is on the device (a tick in the 45 s window) or when the prefetch is done (`PrefetchReady`).
+The invariant is enforced centrally in `transition`: whenever the result has a `queuedKey` that is not the successor of the loaded track (user next/previous/select/skip
+across a track, a new book, halt, failure), the effect `ClearQueuedNext` is put in front of the other effects and `queuedKey` (and a matching `prefetchedKey`) is reset.
+`BackendAdvanced` consumes the queue: it does what the old "backend ended, go to the next track" path does, minus the load, the stop and the `Loading` state.
 A tick that changes nothing coarse ends in `EmitPosition` (a `PositionTick`), else in `EmitSnapshot`.
 
-## Next machines (STAGE C, not done)
+## Next machines (STAGE C, done)
 
-1. **The radio connection** `RadioStreamSession` (`app/lib/audio/radio_stream.dart`, the isolate wrapper `radio_isolate.dart`): Connecting, Streaming, Backoff
-   (reconnect delay), Fatal, Closed; events: connected, bytes, closed by the peer, timeout, `close()`. Implicit state today: `_closed` (radio_stream.dart),
-   the `failures` counter against `reconnectAttempts`/`reconnectDelay`, and `_started`, `_closed`, `_exited`, `_failReceived` in radio_isolate.dart.
-2. **The podcast download and episode lifecycle** and the list controllers. `app/lib/podcast_downloads.dart`: NotDownloaded -> Downloading(progress) -> Downloaded | Failed;
-   implicit in the maps `_entries` (downloaded), `_progress` (downloading, `isDownloading`), `_tokens`/`CancelToken._cancelled` (cancel), `EpisodeDownloadException`.
-   `PodcastsController` (`app/lib/screens/podcasts_screen.dart`: `podcasts` null = loading, `error` string, `api == null` = no server, `_disposed`), the
-   episode list in the same file (`_episodes`, `_failed`), and `RadioController` (`app/lib/screens/radio_screen.dart`: same pattern, `error`, `_disposed`):
-   Loading, Loaded, Empty, Error, Offline.
+The radio connection, the podcast download life cycle and the list loading (podcasts, radio) are explicit machines now: see `docs/spec-state-machines.md`.

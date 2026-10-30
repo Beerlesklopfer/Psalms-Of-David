@@ -80,6 +80,18 @@ abstract class AudioBackend {
 
   double get speed;
 
+  /// Whether this engine can play a queued next track without a gap (see [enqueueNext]). Gapless playback is mandatory on every system; an
+  /// engine that returns false here is a known gap in the plan (see docs/spec-engine-rebuild.md).
+  bool get supportsGapless => false;
+
+  /// The track that follows the loaded one, a file on the disk. A backend that [supportsGapless] plays it without a gap when the loaded one
+  /// ends and then reports the switch through [ExternalControl.onAdvanced]; it never reports [BackendState.ended] in between. Replaces an
+  /// earlier queued track. Ignored for a stream address, and by a backend that does not support it (the default).
+  void enqueueNext(String path) {}
+
+  /// Drops the queued track of [enqueueNext], if there is one.
+  void clearNext() {}
+
   /// Releases the engine. Using the backend afterwards is an error; calling this
   /// twice is fine.
   void dispose();
@@ -91,6 +103,10 @@ abstract class ExternalControl {
   /// Called when the engine started or paused by itself, or the position was moved from outside, so that the player can follow.
   /// [state] and [position] of the backend are already up to date then.
   set onExternalChange(void Function()? callback);
+
+  /// Called when the engine moved on to the track queued with [AudioBackend.enqueueNext] by itself (gapless). [AudioBackend.position]
+  /// and [AudioBackend.duration] then belong to the new track and [AudioBackend.state] is still playing. Not an [onExternalChange].
+  set onAdvanced(void Function()? callback);
 }
 
 /// Optional extension of a backend that plays internet radio. The player checks

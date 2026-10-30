@@ -120,7 +120,7 @@ transition; iOS and CarPlay can only be tried by hand; Windows has never run on 
 
 ## Status (2026-10-30, Dart side P2)
 
-Done, all in-process, no isolate yet, playback behaviour unchanged (analyze clean; 529 tests pass, 12 skip):
+Done, all in-process, no isolate yet, playback behaviour unchanged (analyze clean; 529 tests passed, 12 skip, before P2b; 605 pass with P2b and the parallel work):
 
 - **Stage A, position apart from the coarse state.** `PlayerController.positionListenable` (a `ValueNotifier` behind `position`); the 500 ms tick no longer calls
   `notifyListeners`, only a coarse change does (book, track, playing, loading, error, speed, stream title/details, unplayable, heard marks). Seek bar, the time of the
@@ -131,8 +131,31 @@ Done, all in-process, no isolate yet, playback behaviour unchanged (analyze clea
   with a `roundTrip` mode). `PlayerController` is the facade with the same API; it mirrors the snapshots and keeps the library, downloads, outbox, playlists.
   The whole suite also passes with `roundTrip: true` as the default (tried once). Documented in `docs/spec-player-state-machine.md`.
 
+**P2b, gapless on just_audio (2026-10-30, built, only partly verified).**
+- `AudioBackend.supportsGapless` (default false), `enqueueNext(path)`, `clearNext()`, and `ExternalControl.onAdvanced` (the backend switched by itself; `onExternalChange` is unchanged).
+- `JustAudioBackend`: `AudioPlayer(useLazyPreparation: false)`; the playlist is `[current]` or `[current, next]` (`addAudioSource`/`removeAudioSourceRange`; the deprecated
+  `ConcatenatingAudioSource` is not used). `currentIndexStream` 0 -> 1 is the switch: duration/ended bookkeeping is updated, the finished item is removed, the controller is told. A stream
+  address is never queued; a failed enqueue is swallowed and the old path (load at the end) takes over, so no regression.
+- Machine: `Core.queuedKey`, events `BackendAdvanced` and `PrefetchReady`, effects `EnqueueNext` and `ClearQueuedNext` (see `docs/spec-player-state-machine.md`). Files already on the device are queued
+  at the first tick in the 45 s window; parts of the server after the prefetch.
+- `FakeBackend(gapless: true)` implements the contract; `test/gapless_test.dart` (controller + fake: queued before the end, no `ended`/loading at any pump, progress once, seek back, skip/next/book change
+  clear the queue) and the `gapless` group of `test/player_state_machine_test.dart`.
+- `PipeWireBackend.supportsGapless` stays false; TODO in the code points to P3 (`psalm_engine_enqueue_next`).
+- **Must be checked by hand (nothing of this is proven on a device):** a gapless album on the Android emulator and on an iPhone via TestFlight; MP3 encoder delay on Android (ExoPlayer trims with a LAME/Xing
+  header, to be heard) and iOS (AVPlayer, iTunSMPB); Windows and macOS (just_audio_windows / darwin may not be gapless at all); that adding an item to a playing list does not hiccup; that the
+  `positionDiscontinuity`/`currentIndex` events arrive in the order assumed.
+
+### How to check gapless by hand
+
+1. Use an album that is one continuous recording cut into tracks: a live concert, a DJ mix, classical movements with attacca, or a generated sine-wave album (10 files of one unbroken 440 Hz tone, cut at arbitrary points; MP3 and FLAC variants).
+2. Open track 1, seek to about 60 s before its end (the next file is queued within 45 s of the end), listen on headphones at a decent volume.
+3. At the join there must be no silence, no click or tick, no repeated or lost bit of sound. With the sine album a gap is a short dropout or a click; a pitch glitch means a lost sample. An audio editor on the recorded output (loopback) shows a flat waveform.
+4. Check the log/UI: the track number moves on, the notification and lock screen change the title, the seek bar starts at 0, and no spinner flashes.
+5. Repeat with: speed 1.5; the screen off; Bluetooth headphones; a pause just before the end (then play: still gapless); skip to the next track during the last seconds (a normal load is fine there); the last track of the album (ends cleanly).
+6. Compare MP3 and FLAC/M4A of the same album: MP3 without a LAME/Xing header may keep a gap of some tens of ms that the player cannot remove.
+7. Server albums with parts not downloaded yet: switch the network off after the prefetch; the join must still be gapless; with a slow network a gap is expected (the exception noted above).
+
 Next: `IsolateTransport` (the engine builds backend and source inside the isolate: today they are passed in as objects, `BookData.live` is the only non-sendable
-field and is dropped by the isolate transport); `EngineState` supervision and restart from the last snapshot; `AudioBackend.enqueueNext` for gapless (P2b,
-a new effect `EnqueueNext` and event `BackendAdvanced` in the machine); STAGE C machines (radio connection, podcast download lifecycle and list controllers).
+field and is dropped by the isolate transport); `EngineState` supervision and restart from the last snapshot; STAGE C machines (radio connection, podcast download lifecycle and list controllers).
 Known gaps: `Core.book` holds the whole track list as `BookData` (cheap, but rebuilt on every `open`); the engine rebuilds a `Book` without author/cover when no live
 book is given (enough for the source, not for the UI).

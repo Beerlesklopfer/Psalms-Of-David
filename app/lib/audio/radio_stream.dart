@@ -6,6 +6,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'audio_backend.dart';
+import 'radio_connection_machine.dart';
 
 /// Network part of internet radio on Linux. `dart:io` makes the connection (TLS,
 /// proxies, certificates), [IcyFilter] strips the Shoutcast/Icecast metadata, and
@@ -180,10 +181,14 @@ class RadioStreamSession {
   final Duration idleTimeout;
   final HttpClient Function() _clientFactory;
 
-  bool _closed = false;
-  int _delivered = 0;
+  RadioState _state = const RadioIdle();
   HttpClient? _client;
   Future<void>? _running;
+  StreamDetails? _details;
+
+  bool get _closed => _state is RadioClosed;
+
+  RadioPolicy get _policy => RadioPolicy(reconnectDelay: reconnectDelay, reconnectAttempts: reconnectAttempts, healthyBytes: kStreamHealthyBytes);
 
   /// Completes when the session is over (closed, failed, or ended).
   Future<void> get done => _running ?? Future<void>.value();
@@ -197,45 +202,66 @@ class RadioStreamSession {
 
   /// Stops at once. Nothing is pushed to the sink afterwards.
   Future<void> close() {
-    _closed = true;
-    _client?.close(force: true);
+    _dispatch(const RadioClose());
     return done;
   }
 
-  Future<void> _run() async {
-    var failures = 0;
-    try {
-      while (!_closed) {
-        _delivered = 0;
-        String reason;
-        try {
-          await _connectAndPump();
-          reason = 'the station closed the connection';
-        } on _Closed {
-          return;
-        } on _Fatal {
-          rethrow;
-        } on HandshakeException catch (e) {
-          throw _Fatal('certificate error: ${e.message}', AudioErrorKind.streamCertificate);
-        } on TlsException catch (e) {
-          throw _Fatal('certificate error: ${e.message}', AudioErrorKind.streamCertificate);
-        } on Object catch (e) {
-          if (_closed) return;
-          reason = _describe(e);
-        }
-        if (_closed) return;
-        if (_delivered >= kStreamHealthyBytes) failures = 0;
-        failures++;
-        if (failures > reconnectAttempts) {
-          throw _Fatal('connection lost: $reason', AudioErrorKind.streamConnection);
-        }
-        await Future<void>.delayed(reconnectDelay);
+  /// Feeds [event] to the pure machine and carries out the effects that finish at once; returns the ones that take time.
+  List<RadioEffect> _dispatch(RadioEvent event) {
+    final (next, effects) = transition(_policy, _state, event);
+    _state = next;
+    final slow = <RadioEffect>[];
+    for (final e in effects) {
+      switch (e) {
+        case OpenConnection() || Sleep():
+          slow.add(e);
+        case ReportDetails():
+          final d = _details;
+          if (d != null) onDetails?.call(d);
+        case ReportFail(:final message, :final kind):
+          sink.fail(message, kind);
+        case CloseConnection():
+          _client?.close(force: true);
       }
-    } on _Fatal catch (e) {
-      if (!_closed) sink.fail(e.message, e.kind);
+    }
+    return slow;
+  }
+
+  Future<void> _run() async {
+    try {
+      var pending = _dispatch(const RadioStart());
+      while (pending.isNotEmpty) {
+        final effect = pending.first;
+        final RadioEvent event;
+        if (effect is Sleep) {
+          await Future<void>.delayed(effect.delay);
+          event = const RadioBackoffElapsed();
+        } else {
+          event = await _open();
+        }
+        pending = _dispatch(event);
+      }
     } finally {
       _client?.close(force: true);
       _client = null;
+    }
+  }
+
+  /// One connection, from the request to its end, as the event that tells the machine how it ended.
+  Future<RadioEvent> _open() async {
+    try {
+      await _connectAndPump();
+      return const RadioPeerClosed();
+    } on _Closed {
+      return const RadioClose();
+    } on _Fatal catch (e) {
+      return RadioError(e.message, kind: e.kind);
+    } on HandshakeException catch (e) {
+      return RadioError('certificate error: ${e.message}', kind: AudioErrorKind.streamCertificate);
+    } on TlsException catch (e) {
+      return RadioError('certificate error: ${e.message}', kind: AudioErrorKind.streamCertificate);
+    } on Object catch (e) {
+      return RadioError(_describe(e));
     }
   }
 
@@ -273,7 +299,8 @@ class RadioStreamSession {
       await response.drain<void>().catchError((Object _) {});
       throw _Fatal(kStreamUnsupportedMessage, AudioErrorKind.streamUnsupported);
     }
-    onDetails?.call(_detailsOf(response.headers, type));
+    _details = _detailsOf(response.headers, type);
+    _dispatch(const RadioConnected());
     final metaInt = int.tryParse(response.headers.value('icy-metaint') ?? '') ?? 0;
     final filter = IcyFilter(metaInt, onTitle: onTitle);
     await for (final chunk in response.timeout(idleTimeout)) {
@@ -295,7 +322,7 @@ class RadioStreamSession {
         await Future<void>.delayed(kStreamPushRetry);
         continue;
       }
-      _delivered += n;
+      _dispatch(RadioBytes(n));
       offset += n;
     }
   }

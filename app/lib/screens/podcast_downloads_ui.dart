@@ -7,6 +7,7 @@ import '../l10n/app_localizations.dart';
 import '../player_controller.dart';
 import '../podcast_downloads.dart';
 import '../podcasts.dart';
+import '../podcasts/download_machine.dart' as machine;
 
 /// The words for why a download did not work (the codes of [EpisodeDownloadException]).
 String episodeDownloadMessage(AppLocalizations l, String code, int maxMegabytes) => switch (code) {
@@ -58,7 +59,12 @@ class EpisodeDownloadButton extends StatelessWidget {
       builder: (context, _) {
         final l = AppLocalizations.of(context);
         final cs = Theme.of(context).colorScheme;
-        final running = downloads.progressOf(episode.id);
+        // The life cycle of the episode (podcasts/download_machine.dart) decides what the button shows.
+        final running = switch (downloads.stateOf(episode.id)) {
+          machine.Queued() => (received: 0, total: null as int?),
+          machine.Downloading(:final received, :final total) || machine.Cancelling(:final received, :final total) => (received: received, total: total),
+          _ => null,
+        };
         if (running != null) {
           final total = running.total;
           return Row(

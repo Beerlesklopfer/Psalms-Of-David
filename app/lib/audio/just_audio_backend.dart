@@ -29,7 +29,8 @@ class JustAudioBackend implements AudioBackend, ExternalControl, StreamInfo {
     _notifications.invokeMethod<void>('request').catchError((Object _) {});
   }
 
-  JustAudioBackend() : _player = AudioPlayer() {
+  JustAudioBackend() : _player = AudioPlayer(useLazyPreparation: false) {
+    _subs.add(_player.currentIndexStream.listen(_onIndex));
     _subs.add(
       _player.playerStateStream.listen((s) {
         if (_loaded && s.processingState == ProcessingState.completed) _ended = true;
@@ -53,6 +54,83 @@ class JustAudioBackend implements AudioBackend, ExternalControl, StreamInfo {
   }
 
   void Function()? _onExternalChange;
+  void Function()? _onAdvanced;
+
+  @override
+  set onAdvanced(void Function()? callback) => _onAdvanced = callback;
+
+  // ---- Gapless: the playlist of the player is [current] or [current, next] ----
+
+  /// Counts the loads and stops; a queued step of an older generation must not touch the playlist of a newer one.
+  int _gen = 0;
+
+  /// The next track is in the playlist at index 1.
+  bool _nextQueued = false;
+  int _lastIndex = 0;
+  bool _isStream = false;
+
+  @override
+  bool get supportsGapless => true;
+
+  @override
+  void enqueueNext(String path) {
+    if (!_loaded || _isStream || _failed || path.startsWith('http://') || path.startsWith('https://')) return;
+    final gen = _gen;
+    _then(() async {
+      if (gen != _gen || _disposed || _ended) return;
+      try {
+        await _removeNext();
+        await _player.addAudioSource(AudioSource.file(path));
+        if (gen == _gen) _nextQueued = true;
+      } on Object {
+        // The next track could not be queued: playback goes on as without gapless, the controller loads it at the end.
+        _nextQueued = false;
+      }
+    });
+  }
+
+  @override
+  void clearNext() {
+    if (!_nextQueued) return;
+    _nextQueued = false;
+    final gen = _gen;
+    _then(() async {
+      if (gen != _gen || _disposed) return;
+      try {
+        await _removeNext();
+      } on Object {
+        // Nothing to drop.
+      }
+    });
+  }
+
+  /// Removes everything behind the playing item (only while the playing item is the first one).
+  Future<void> _removeNext() async {
+    final n = _player.audioSources.length;
+    if (n > 1 && (_player.currentIndex ?? 0) == 0) await _player.removeAudioSourceRange(1, n);
+  }
+
+  /// The player moved to another item. Going from the first to the queued second one is the gapless switch: update the bookkeeping,
+  /// drop the finished item so that the current one is index 0 again, and tell the controller.
+  void _onIndex(int? i) {
+    if (i == null || _disposed || !_loaded) return;
+    final prev = _lastIndex;
+    _lastIndex = i;
+    if (i != 1 || prev != 0 || !_nextQueued) return;
+    _nextQueued = false;
+    _ended = false;
+    _duration = _player.duration;
+    final gen = _gen;
+    _then(() async {
+      if (gen != _gen || _disposed) return;
+      try {
+        if (_player.audioSources.length > 1 && _player.currentIndex == 1) await _player.removeAudioSourceAt(0);
+      } on Object {
+        // Harmless: the finished item stays in front, the next switch is not detected until the next load.
+      }
+    });
+    _onAdvanced?.call();
+  }
 
   final ValueNotifier<String?> _title = ValueNotifier<String?>(null);
   final ValueNotifier<StreamDetails?> _details = ValueNotifier<StreamDetails?>(null);
@@ -121,6 +199,10 @@ class JustAudioBackend implements AudioBackend, ExternalControl, StreamInfo {
   @override
   void load(String path, {Duration start = Duration.zero, bool play = true, String title = ''}) {
     if (play) _askForNotifications();
+    _gen++;
+    _nextQueued = false;
+    _lastIndex = 0;
+    _isStream = path.startsWith('http://') || path.startsWith('https://');
     _loaded = true;
     _ended = false;
     _failed = false;
@@ -162,6 +244,8 @@ class JustAudioBackend implements AudioBackend, ExternalControl, StreamInfo {
 
   @override
   void stop() {
+    _gen++;
+    _nextQueued = false;
     _loaded = false;
     _wantPlaying = false;
     _ended = false;

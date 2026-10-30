@@ -16,10 +16,13 @@ import 'transport.dart';
 /// Service-side objects (the backend, the media source) are given to it directly; in a later isolate stage the service builds them itself.
 class PlayerEngine {
   PlayerEngine({this.backend, MediaSource? source, required this.emit}) : _source = source {
-    _state = Idle(Core(env: Env(hasBackend: backend != null, hasSource: source != null)));
+    _state = Idle(Core(env: Env(hasBackend: backend != null, hasSource: source != null, gapless: backend?.supportsGapless ?? false)));
     // The system may start or pause the engine (notification, headset, a call, unplugged headphones): the machine follows.
     final b = backend;
-    if (b is ExternalControl) (b as ExternalControl).onExternalChange = _followBackend;
+    if (b is ExternalControl) {
+      (b as ExternalControl).onExternalChange = _followBackend;
+      (b as ExternalControl).onAdvanced = _backendAdvanced;
+    }
   }
 
   final AudioBackend? backend;
@@ -142,6 +145,10 @@ class PlayerEngine {
         emit(TrackFinished(fx.bookId, fx.trackIndex));
       case PrefetchNext():
         _prefetch(fx);
+      case EnqueueNext():
+        b!.enqueueNext(fx.path);
+      case ClearQueuedNext():
+        b?.clearNext();
       case EmitSnapshot():
         emit(_snapshot(c));
       case EmitPosition():
@@ -192,6 +199,12 @@ class PlayerEngine {
     _dispatch(ExternalChange(_now(), o));
   }
 
+  /// The backend switched to the queued next track by itself (gapless).
+  void _backendAdvanced() {
+    if (_disposed) return;
+    _dispatch(BackendAdvanced(_now(), _state.core.trackIndex + 1));
+  }
+
   /// Fetches the file of the current track, then loads it, if the player is still on that track by then.
   Future<void> _fetchAndLoad(FetchAndLoad fx) async {
     final book = _state.core.book!.toBook();
@@ -233,6 +246,8 @@ class PlayerEngine {
     final data = _state.core.book;
     if (data == null) return;
     final key = '${data.id}:${fx.trackIndex}';
-    _source!.fetchPart(data.toBook().tracks[fx.trackIndex]).then<void>((_) {}, onError: (Object _) => _dispatch(PrefetchFailed(_now(), key)));
+    _source!.fetchPart(data.toBook().tracks[fx.trackIndex]).then<void>((path) {
+      if (!_disposed && _state.core.env.gapless) _dispatch(PrefetchReady(_now(), key, path));
+    }, onError: (Object _) => _dispatch(PrefetchFailed(_now(), key)));
   }
 }

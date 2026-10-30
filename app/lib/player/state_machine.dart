@@ -43,13 +43,17 @@ const _prefetchWithinMs = 45000;
 
 /// What the machine knows of the world around it (set by [EnvChanged]).
 class Env {
-  const Env({this.hasBackend = false, this.hasSource = false, this.offlineActive = false, this.writesLast = false});
+  const Env({this.hasBackend = false, this.hasSource = false, this.offlineActive = false, this.writesLast = false, this.gapless = false});
   final bool hasBackend;
+
+  /// The backend plays a queued next track without a gap (`AudioBackend.supportsGapless`).
+  final bool gapless;
   final bool hasSource;
   final bool offlineActive;
   final bool writesLast;
 
-  Env copyWith({bool? hasBackend, bool? hasSource, bool? offlineActive, bool? writesLast}) => Env(
+  Env copyWith({bool? hasBackend, bool? hasSource, bool? offlineActive, bool? writesLast, bool? gapless}) => Env(
+        gapless: gapless ?? this.gapless,
         hasBackend: hasBackend ?? this.hasBackend,
         hasSource: hasSource ?? this.hasSource,
         offlineActive: offlineActive ?? this.offlineActive,
@@ -70,6 +74,7 @@ class Core {
     this.streamTitle,
     this.streamDetails,
     this.prefetchedKey,
+    this.queuedKey,
     this.lastReportMs = 0,
     this.lastWrittenMs = 0,
     this.heard = const {},
@@ -86,6 +91,9 @@ class Core {
   final String? streamTitle;
   final StreamDetails? streamDetails;
   final String? prefetchedKey;
+
+  /// The track (`bookId:trackIndex`) that was queued in the backend as the gapless successor of the loaded one, or null.
+  final String? queuedKey;
   final int lastReportMs;
   final int lastWrittenMs;
   final Set<String> heard;
@@ -115,6 +123,7 @@ class Core {
     Object? streamTitle = _keep,
     Object? streamDetails = _keep,
     Object? prefetchedKey = _keep,
+    Object? queuedKey = _keep,
     int? lastReportMs,
     int? lastWrittenMs,
     Set<String>? heard,
@@ -129,6 +138,7 @@ class Core {
         streamTitle: identical(streamTitle, _keep) ? this.streamTitle : streamTitle as String?,
         streamDetails: identical(streamDetails, _keep) ? this.streamDetails : streamDetails as StreamDetails?,
         prefetchedKey: identical(prefetchedKey, _keep) ? this.prefetchedKey : prefetchedKey as String?,
+        queuedKey: identical(queuedKey, _keep) ? this.queuedKey : queuedKey as String?,
         lastReportMs: lastReportMs ?? this.lastReportMs,
         lastWrittenMs: lastWrittenMs ?? this.lastWrittenMs,
         heard: heard ?? this.heard,
@@ -382,6 +392,20 @@ class BackendFailed extends EngineEvent {
   final bool unload;
 }
 
+/// The backend moved on to the queued next track by itself, without a gap ([trackIndex] is the new track). Does what "the track ended,
+/// go to the next" does (report, heard, plays), but nothing is loaded and the state stays [Playing].
+class BackendAdvanced extends EngineEvent {
+  const BackendAdvanced(super.nowMs, this.trackIndex);
+  final int trackIndex;
+}
+
+/// The file of the next track [key] is on the disk at [path] (the prefetch is done); the machine queues it in a gapless backend.
+class PrefetchReady extends EngineEvent {
+  const PrefetchReady(super.nowMs, this.key, this.path);
+  final String key;
+  final String path;
+}
+
 class PrefetchFailed extends EngineEvent {
   const PrefetchFailed(super.nowMs, this.key);
   final String key;
@@ -555,6 +579,22 @@ class PrefetchNext extends Effect {
   List<Object?> get props => [trackIndex];
 }
 
+/// Queue the file of [trackIndex] in the backend as the gapless successor of the loaded track (`AudioBackend.enqueueNext`).
+class EnqueueNext extends Effect {
+  const EnqueueNext(this.trackIndex, this.path);
+  final int trackIndex;
+  final String path;
+  @override
+  List<Object?> get props => [trackIndex, path];
+}
+
+/// Drop the queued next track of the backend (`AudioBackend.clearNext`).
+class ClearQueuedNext extends Effect {
+  const ClearQueuedNext();
+  @override
+  List<Object?> get props => [];
+}
+
 /// Publish the coarse snapshot (the state changed, or a command was handled).
 class EmitSnapshot extends Effect {
   const EmitSnapshot();
@@ -592,9 +632,18 @@ bool _sameView(List<Object?> a, List<Object?> b) => _same(a, b);
 
 /// The machine. An event that is not allowed in the state returns the same state (identical) and no effects.
 Transition transition(EngineState state, EngineEvent event) {
-  final r = _step(state, event);
+  var r = _step(state, event);
   if (identical(r.state, state) && r.effects.isEmpty) return r;
-  if (event is PrefetchFailed) return r;
+  // A queued next track is only good while it is the successor of the loaded track; any move elsewhere drops it from the backend first.
+  final queued = r.state.core.queuedKey;
+  if (queued != null && r.state is! Closed && !_queuedValid(r.state.core)) {
+    final core = r.state.core;
+    r = (
+      state: r.state.withCore(core.copyWith(queuedKey: null, prefetchedKey: core.prefetchedKey == queued ? null : core.prefetchedKey)),
+      effects: [const ClearQueuedNext(), ...r.effects],
+    );
+  }
+  if (event is PrefetchFailed || event is PrefetchReady) return r;
   final effects = [...r.effects];
   if (event is Tick) {
     effects.add(_sameView(coarseView(state), coarseView(r.state)) ? const EmitPosition() : const EmitSnapshot());
@@ -603,6 +652,8 @@ Transition transition(EngineState state, EngineEvent event) {
   }
   return (state: r.state, effects: effects);
 }
+
+bool _queuedValid(Core c) => c.book != null && c.loadedKey != null && c.loadedKey == c.key && c.queuedKey == '${c.book!.id}:${c.trackIndex + 1}';
 
 Transition _noop(EngineState s) => (state: s, effects: const []);
 Transition _to(EngineState s, [List<Effect> e = const []]) => (state: s, effects: e);
@@ -718,6 +769,32 @@ Transition _step(EngineState s, EngineEvent e) {
     case BackendFailed():
       if (s is Idle) return _noop(s);
       return _to(Failed(e.unload ? c.copyWith(loadedKey: null) : c, e.message, kind: e.kind), const [StopTick()]);
+    case BackendAdvanced():
+      final b = c.book;
+      // Also while buffering or just paused (a pause on its way to the backend): the backend has moved on in any case and the books must follow.
+      if ((s is! Playing && s is! Buffering && s is! Paused) || b == null || !c.useBackend || c.loadedKey != c.key) return _noop(s);
+      if (e.trackIndex != c.trackIndex + 1 || e.trackIndex >= b.tracks.length || c.queuedKey != '${b.id}:${e.trackIndex}') return _noop(s);
+      final t = c.track!;
+      final eff = <Effect>[];
+      var core = c.copyWith(positionMs: t.lengthMs);
+      var r = _markHeard(core, ended: true);
+      core = r.$1;
+      eff.addAll(r.$2);
+      r = _report(core, now, finished: true);
+      core = r.$1;
+      eff.addAll(r.$2);
+      eff.add(TrackEnded(b.id, c.trackIndex));
+      core = core.copyWith(trackIndex: e.trackIndex, positionMs: 0, loadedKey: '${b.id}:${e.trackIndex}', queuedKey: null);
+      r = _prefetch(core);
+      core = r.$1;
+      eff.addAll(r.$2);
+      return _to(s.withCore(core), eff);
+    case PrefetchReady():
+      final b = c.book;
+      if (b == null || !c.env.gapless || s is Idle || s is Loading || s is Closed || c.loadedKey != c.key) return _noop(s);
+      final idx = c.trackIndex + 1;
+      if (idx >= b.tracks.length || e.key != '${b.id}:$idx' || c.queuedKey == e.key) return _noop(s);
+      return _to(s.withCore(c.copyWith(queuedKey: e.key)), [EnqueueNext(idx, e.path)]);
     case PrefetchFailed():
       return _to(s.withCore(c.copyWith(prefetchedKey: null)));
   }
@@ -837,11 +914,16 @@ Transition _tick(EngineState s, Tick e) {
 
 (Core, List<Effect>) _prefetch(Core c) {
   final b = c.book, t = c.track;
-  if (b == null || t == null || !c.env.hasSource || b.kind == 'radio' || t.live) return (c, const []);
+  if (b == null || t == null || b.kind == 'radio' || t.live) return (c, const []);
   if (c.trackIndex >= b.tracks.length - 1 || t.lengthMs - c.positionMs > _prefetchWithinMs) return (c, const []);
   final next = b.tracks[c.trackIndex + 1];
   final key = '${b.id}:${c.trackIndex + 1}';
-  if (next.path != null || c.prefetchedKey == key) return (c, const []);
+  // Gapless: a next track that is a file on the device is queued in the backend right away.
+  if (c.env.gapless && c.env.hasBackend && c.loadedKey == c.key && !next.live && trackPlayableHere(next.format, next.transcode)) {
+    if (c.queuedKey == key) return (c, const []);
+    if (next.path != null) return (c.copyWith(queuedKey: key), [EnqueueNext(c.trackIndex + 1, next.path!)]);
+  }
+  if (!c.env.hasSource || next.path != null || c.prefetchedKey == key) return (c, const []);
   return (c.copyWith(prefetchedKey: key), [PrefetchNext(c.trackIndex + 1)]);
 }
 

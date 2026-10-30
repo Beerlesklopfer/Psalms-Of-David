@@ -348,4 +348,103 @@ void main() {
       expect(r.effects, [_emit]);
     });
   });
+
+  group('gapless', () {
+    const g = Env(hasBackend: true, hasSource: true, gapless: true);
+    Core gc(BookData b, {int index = 0, int pos = 0, String? queued, Env env = g}) =>
+        _core(b, index: index, pos: pos, loaded: '${b.id}:$index', env: env).copyWith(queuedKey: queued);
+
+    test('a tick in the window queues a next file that is on the device at once', () {
+      final r = transition(Playing(gc(_files)), Tick(_now, _obs(58000)));
+      expect(r.effects, contains(const EnqueueNext(1, '/b.mp3')));
+      expect(r.state.core.queuedKey, '8:1');
+      // Once only.
+      expect(transition(r.state, Tick(_now, _obs(59000))).effects, [const EmitPosition()]);
+    });
+
+    test('a next part of the server is fetched, and queued when the file is ready', () {
+      final t = transition(Playing(gc(_server)), Tick(_now, _obs(58000)));
+      expect(t.effects, contains(const PrefetchNext(1)));
+      final r = transition(t.state, const PrefetchReady(_now, '7:1', '/cache/12.mp3'));
+      expect(r.effects, [const EnqueueNext(1, '/cache/12.mp3')]);
+      expect(r.state.core.queuedKey, '7:1');
+      // A late or repeated answer changes nothing.
+      expect(transition(r.state, const PrefetchReady(_now, '7:1', '/cache/12.mp3')).effects, isEmpty);
+      expect(transition(r.state, const PrefetchReady(_now, '7:2', '/x')).effects, isEmpty);
+      // Without a gapless backend the answer is ignored.
+      expect(transition(Playing(gc(_server, env: _env)), const PrefetchReady(_now, '7:1', '/x')).effects, isEmpty);
+    });
+
+    test('BackendAdvanced in Playing: reports the finished track, moves on, stays Playing, no load', () {
+      final r = transition(Playing(gc(_server, pos: 59000, queued: '7:1')), const BackendAdvanced(_now, 1));
+      expect(r.state, isA<Playing>());
+      expect(r.state.core.trackIndex, 1);
+      expect(r.state.core.positionMs, 0);
+      expect(r.state.core.loadedKey, '7:1');
+      expect(r.state.core.queuedKey, isNull);
+      expect(r.effects, containsAllInOrder(<Effect>[const MarkHeard('7', 0), SaveProgress(_server, 0, 60000, true), const TrackEnded('7', 0), _emit]));
+      expect(r.effects.whereType<LoadTrack>(), isEmpty);
+      expect(r.effects.whereType<FetchAndLoad>(), isEmpty);
+      expect(r.effects.whereType<StopBackend>(), isEmpty);
+      expect(r.effects.whereType<ClearQueuedNext>(), isEmpty);
+      expect(r.effects.whereType<StopTick>(), isEmpty);
+    });
+
+    test('BackendAdvanced while buffering or paused moves the books on and keeps the state', () {
+      final c = gc(_server, queued: '7:1');
+      for (final s in <EngineState>[Paused(c), Buffering(c)]) {
+        final r = transition(s, const BackendAdvanced(_now, 1));
+        expect(r.state.runtimeType, s.runtimeType);
+        expect(r.state.core.trackIndex, 1);
+        expect(r.state.core.queuedKey, isNull);
+        expect(r.effects.whereType<TrackEnded>(), isNotEmpty);
+      }
+    });
+
+    test('BackendAdvanced is ignored in every other state', () {
+      final c = gc(_server, queued: '7:1');
+      for (final s in <EngineState>[
+        Idle(_core(null)),
+        Loading(c, wantPlay: true, reason: LoadReason.next),
+        Ended(c),
+        Failed(c, 'x'),
+        Unplayable(c, 0),
+        Closed(c),
+      ]) {
+        final r = transition(s, const BackendAdvanced(_now, 1));
+        expect(r.state, same(s), reason: '$s');
+        expect(r.effects, isEmpty, reason: '$s');
+      }
+    });
+
+    test('BackendAdvanced without a queued successor, for another track, or at the last track does nothing', () {
+      final noQueue = Playing(gc(_server));
+      expect(transition(noQueue, const BackendAdvanced(_now, 1)).state, same(noQueue));
+      final queued = Playing(gc(_server, queued: '7:1'));
+      expect(transition(queued, const BackendAdvanced(_now, 2)).state, same(queued));
+      final last = Playing(gc(_server, index: 2, queued: '7:3'));
+      expect(transition(last, const BackendAdvanced(_now, 3)).state, same(last));
+    });
+
+    test('user moves drop the queued track first; a seek within the track keeps it', () {
+      final s = Playing(gc(_server, index: 1, pos: 1000, queued: '7:2'));
+      final next = transition(s, const UserNext(_now));
+      expect(next.effects.first, const ClearQueuedNext());
+      expect(next.state.core.queuedKey, isNull);
+      expect(transition(s, const UserPrevious(_now)).effects, contains(const ClearQueuedNext()));
+      expect(transition(s, const UserSelectTrack(_now, 0, 0)).effects, contains(const ClearQueuedNext()));
+      expect(transition(s, UserOpen(_now, _server)).effects, contains(const ClearQueuedNext()));
+      expect(transition(s, const Halt(_now)).effects, contains(const ClearQueuedNext()));
+      expect(transition(s, const UserSeek(_now, 5000)).effects.whereType<ClearQueuedNext>(), isEmpty);
+      expect(transition(s, const UserSkip(_now, 5000)).effects.whereType<ClearQueuedNext>(), isEmpty);
+      expect(transition(s, const UserSelectTrack(_now, 1, 0)).effects.whereType<ClearQueuedNext>(), isEmpty, reason: 'same track');
+      expect(transition(s, const UserSkip(_now, 60000)).effects, contains(const ClearQueuedNext()));
+    });
+
+    test('a cleared queue lets the next prefetch run again', () {
+      final s = Playing(Core(book: _server, trackIndex: 1, positionMs: 1000, loadedKey: '7:1', env: g, queuedKey: '7:2', prefetchedKey: '7:2'));
+      final r = transition(s, const UserPrevious(_now));
+      expect(r.state.core.prefetchedKey, isNull);
+    });
+  });
 }

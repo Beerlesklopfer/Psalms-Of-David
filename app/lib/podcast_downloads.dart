@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 
 import 'audio/file_formats.dart';
 import 'podcasts.dart';
+import 'podcasts/download_machine.dart' as machine;
 import 'server/app_paths.dart';
 
 /// The file of an episode in the folder of the downloads, named by its address: an episode that was played from the publisher is kept there
@@ -224,8 +225,14 @@ class PodcastDownloads extends ChangeNotifier {
   final EpisodeFetcher fetcher;
 
   final Map<int, DownloadedEpisode> _entries = {};
-  final Map<int, ({int received, int? total})> _progress = {};
+
+  /// The state of each episode that is not [machine.NotDownloaded] (the machine in podcasts/download_machine.dart); an episode that is not
+  /// here is not downloaded. `_entries` holds the data of the [machine.Downloaded] ones.
+  final Map<int, machine.DownloadState> _states = {};
+
+  /// The token of each running transfer (a resource of the shell, not a state).
   final Map<int, CancelToken> _tokens = {};
+  final Map<int, DownloadedEpisode> _recordFor = {};
   DateTime _lastNotified = DateTime.fromMillisecondsSinceEpoch(0);
   bool _disposed = false;
 
@@ -252,6 +259,7 @@ class PodcastDownloads extends ChangeNotifier {
         try {
           final d = DownloadedEpisode.fromJson(Map<String, dynamic>.from(e as Map));
           _entries[d.episodeId] = d;
+          _states[d.episodeId] = const machine.Downloaded();
         } on Object {
           // a damaged entry is left out
         }
@@ -303,6 +311,7 @@ class PodcastDownloads extends ChangeNotifier {
     if (gone.isEmpty) return;
     for (final id in gone) {
       _entries.remove(id);
+      _send(id, const machine.FileGone());
     }
     _save();
   }
@@ -352,8 +361,44 @@ class PodcastDownloads extends ChangeNotifier {
 
   // ---- Download -------------------------------------------------------------------------------
 
-  ({int received, int? total})? progressOf(int episodeId) => _progress[episodeId];
-  bool isDownloading(int episodeId) => _progress.containsKey(episodeId);
+  /// The state of the life cycle of an episode.
+  machine.DownloadState stateOf(int episodeId) => _states[episodeId] ?? const machine.NotDownloaded();
+
+  ({int received, int? total})? progressOf(int episodeId) => switch (stateOf(episodeId)) {
+        machine.Queued() => (received: 0, total: null),
+        machine.Downloading(:final received, :final total) || machine.Cancelling(:final received, :final total) => (received: received, total: total),
+        _ => null,
+      };
+
+  bool isDownloading(int episodeId) => machine.isActive(stateOf(episodeId));
+
+  /// Feeds [event] to the machine for [episodeId] and carries out the effects that finish at once; returns the ones that take time.
+  List<machine.DownloadEffect> _send(int episodeId, machine.DownloadEvent event) {
+    final (next, effects) = machine.transition(stateOf(episodeId), event);
+    if (next is machine.NotDownloaded) {
+      _states.remove(episodeId);
+    } else {
+      _states[episodeId] = next;
+    }
+    final slow = <machine.DownloadEffect>[];
+    for (final fx in effects) {
+      switch (fx) {
+        case machine.StartFetch():
+          slow.add(fx);
+        case machine.CancelFetch():
+          _tokens[episodeId]?.cancel();
+        case machine.Register():
+          final record = _recordFor[episodeId];
+          if (record != null) _entries[episodeId] = record;
+          _save();
+        case machine.DeleteFile():
+          slow.add(fx);
+        case machine.Notify(:final force):
+          _notify(force: force);
+      }
+    }
+    return slow;
+  }
 
   /// Fetches [e] of [podcast]. Returns null when the episode is on the device afterwards, or the code of why not (see [EpisodeDownloadException]).
   Future<String?> download(Episode e, Podcast podcast) async {
@@ -361,57 +406,60 @@ class PodcastDownloads extends ChangeNotifier {
     final url = e.audioUrl.trim();
     if (!isWebAddress(url)) return 'scheme';
     final dest = _fileOfUrl(url);
-    if (dest.existsSync()) {
-      _register(e, podcast, dest.lengthSync());
-      return null;
+    final onDisk = dest.existsSync();
+    if (!onDisk && stateOf(e.id) is machine.Downloaded) {
+      // The entry outlived its file.
+      _entries.remove(e.id);
+      _send(e.id, const machine.FileGone());
     }
+    _recordFor[e.id] = _record(e, podcast, onDisk ? dest.lengthSync() : 0);
     final token = CancelToken();
     _tokens[e.id] = token;
-    _progress[e.id] = (received: 0, total: null);
-    _notify();
+    final todo = _send(e.id, machine.Download(webAddress: true, onDisk: onDisk));
+    if (!todo.any((fx) => fx is machine.StartFetch)) {
+      _tokens.remove(e.id);
+      _recordFor.remove(e.id);
+      return null;
+    }
+    _send(e.id, const machine.FetchStarted());
     try {
       final bytes = await fetcher.fetch(
         Uri.parse(url),
         dest,
         maxBytes: maxMegabytes * 1024 * 1024,
         cancel: token,
-        onProgress: (received, total) {
-          _progress[e.id] = (received: received, total: total);
-          _notify(force: false);
-        },
+        onProgress: (received, total) => _send(e.id, machine.Progress(received, total)),
       );
-      _register(e, podcast, bytes);
+      _recordFor[e.id] = _record(e, podcast, bytes);
+      _send(e.id, machine.Done(bytes));
       return null;
     } on EpisodeDownloadException catch (err) {
+      _send(e.id, machine.IoError(err.code));
       return err.code;
     } on FileSystemException {
+      _send(e.id, const machine.IoError('io'));
       return 'io';
     } finally {
-      _progress.remove(e.id);
       _tokens.remove(e.id);
-      _notify();
+      _recordFor.remove(e.id);
     }
   }
 
-  void _register(Episode e, Podcast podcast, int bytes) {
-    _entries[e.id] = DownloadedEpisode(
-      episodeId: e.id,
-      podcastId: podcast.id,
-      podcastTitle: podcast.title,
-      title: e.title,
-      url: e.audioUrl.trim(),
-      durationS: e.duration.inSeconds,
-      bytes: bytes,
-      publishedMs: e.published?.millisecondsSinceEpoch,
-      positionMs: e.position.inMilliseconds,
-      finished: e.finished,
-    );
-    _save();
-    _notify();
-  }
+  DownloadedEpisode _record(Episode e, Podcast podcast, int bytes) => DownloadedEpisode(
+        episodeId: e.id,
+        podcastId: podcast.id,
+        podcastTitle: podcast.title,
+        title: e.title,
+        url: e.audioUrl.trim(),
+        durationS: e.duration.inSeconds,
+        bytes: bytes,
+        publishedMs: e.published?.millisecondsSinceEpoch,
+        positionMs: e.position.inMilliseconds,
+        finished: e.finished,
+      );
 
   /// Stops a running download; the half-loaded file goes.
-  void cancel(int episodeId) => _tokens[episodeId]?.cancel();
+  void cancel(int episodeId) => _send(episodeId, const machine.Cancel());
 
   /// The unheard episodes of [list] that are not on the device and not on their way, the newest first, at most [limit].
   List<Episode> newestToFetch(List<Episode> list, {int limit = kNewestEpisodes}) {
@@ -424,6 +472,13 @@ class PodcastDownloads extends ChangeNotifier {
 
   /// Deletes an episode from the device. The podcast keeps it; it can be fetched again.
   Future<void> remove(int episodeId) async {
+    _carryOut(episodeId, _send(episodeId, const machine.Delete()));
+    _notify();
+  }
+
+  /// The slow effects of [_send] that finish at once: removes the file and the entry, and answers with [machine.Deleted].
+  void _carryOut(int episodeId, List<machine.DownloadEffect> todo) {
+    if (!todo.any((fx) => fx is machine.DeleteFile)) return;
     final e = _entries.remove(episodeId);
     if (e != null) {
       final f = _fileOfUrl(e.url);
@@ -434,12 +489,15 @@ class PodcastDownloads extends ChangeNotifier {
       }
       _save();
     }
-    _notify();
+    _send(episodeId, const machine.Deleted());
   }
 
   /// Forgets which episodes these are (the pairing with the server was forgotten: the list belongs to the account that is gone). The files stay,
   /// like the other downloads; they come back into the list when the episodes are listed again, and "delete all" removes them.
   void forgetList() {
+    for (final id in _entries.keys.toList()) {
+      _send(id, const machine.FileGone());
+    }
     _entries.clear();
     _save();
     _notify();
@@ -447,8 +505,11 @@ class PodcastDownloads extends ChangeNotifier {
 
   /// Deletes every episode on the device, also those that were only kept because they were played (the files `ep-*`).
   Future<void> removeAll() async {
-    for (final t in _tokens.values) {
-      t.cancel();
+    for (final id in _tokens.keys.toList()) {
+      _send(id, const machine.Cancel());
+    }
+    for (final id in _entries.keys.toList()) {
+      _send(id, const machine.FileGone());
     }
     _entries.clear();
     try {
@@ -471,7 +532,8 @@ class PodcastDownloads extends ChangeNotifier {
     final e = _entries[episodeId];
     if (e == null) return;
     if (finished && deleteAfterListening) {
-      unawaited(remove(episodeId));
+      _carryOut(episodeId, _send(episodeId, machine.DeleteAfterListening(enabled: deleteAfterListening)));
+      _notify();
       return;
     }
     _entries[episodeId] = e.copyWith(positionMs: position.inMilliseconds, finished: finished);
@@ -503,6 +565,7 @@ class PodcastDownloads extends ChangeNotifier {
       );
       if (old == null || old.toJson().toString() != now.toJson().toString()) {
         _entries[e.id] = now;
+        _send(e.id, const machine.FileFound());
         changed = true;
       }
     }
@@ -543,8 +606,8 @@ class PodcastDownloads extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    for (final t in _tokens.values) {
-      t.cancel();
+    for (final id in _tokens.keys.toList()) {
+      _send(id, const machine.Cancel());
     }
     super.dispose();
   }
