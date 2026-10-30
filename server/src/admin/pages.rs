@@ -811,7 +811,7 @@ impl AdminUi {
         let all: Vec<_> = if only_problems { all.into_iter().filter(|b| gaps.contains_key(&b.id) || nocover.contains(&b.id)).collect() } else { all };
         let nocover: Vec<String> = nocover.iter().map(i64::to_string).collect();
         let books: Vec<_> = match needle {
-            Some(_) => all.into_iter().filter(|b| matcher.matches_book(&b.title, &b.author, b.narrator.as_deref())).collect(),
+            Some(_) => all.into_iter().filter(|b| matcher.matches_book(&b.title, &b.author, b.narrator.as_deref()) || matcher.matches_barcode(b.barcode.as_deref())).collect(),
             None => all,
         };
         // Labels: only the books with the chosen one, the names for the filter and the labels of every book for the rows.
@@ -991,6 +991,8 @@ impl AdminUi {
                 artist => tags.artist.clone().unwrap_or_default(),
                 year => tags.year.clone().unwrap_or_default(),
                 genre => tags.genre.clone().unwrap_or_default(),
+                disc => tags.disc,
+                discs => tags.discs,
                 catalog => serde_json::to_string(&crate::tags::field_catalog().iter().map(|(n, k)| serde_json::json!({ "name": n, "kind": k })).collect::<Vec<_>>()).unwrap_or_else(|_| "[]".to_owned()),
                 ..view.into().context()
             },
@@ -1753,6 +1755,7 @@ pub async fn cd_preview(store: &Store, lang: Lang, field: &str, pattern: &str) -
         disc_id: None,
         genre: None,
         job_id: None,
+        barcode: None,
         allow_gaps: false,
         tracks: vec![MetaTrack { number: 5, title: Some(sample("cd.sample.track_title")), file: String::new() }],
     };

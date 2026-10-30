@@ -3,6 +3,7 @@
   <div class="meta-wide"><dt>{{ t("filing.path") }}</dt><dd>{% if info.place %}<code>{{ info.place }}</code>{% else %}<span class="form-error">{{ t("filing.files_missing") }}</span> <code>{{ book.folder }}</code>{% endif %}</dd></div>
   <div class="meta-wide"><dt>{{ t("filing.place") }}</dt><dd><code>{{ book.folder }}</code></dd></div>
   <div><dt>ID</dt><dd>{{ book.id }}</dd></div>
+  <div><dt>EAN</dt><dd>{% if book.barcode %}{{ book.barcode }}{% else %}&ndash;{% endif %}</dd></div>
   <div><dt>{{ t("filing.kind") }}</dt><dd>{{ book.kind }}</dd></div>
   <div><dt>{{ t("books.col_owner") }}</dt><dd>{% if book.owner %}{{ book.owner }}{% else %}&ndash;{% endif %}</dd></div>
   <div><dt>{{ t("tags.genre") }}</dt><dd>{% if book.genre %}{{ book.genre }}{% else %}&ndash;{% endif %}{% if info.genre_tag %} <small>({{ info.genre_tag }})</small>{% endif %}</dd></div>

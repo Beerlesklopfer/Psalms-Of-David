@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/l10n/app_localizations.dart';
 import 'package:psalm/podcast_downloads.dart';
 import 'package:psalm/podcasts.dart';
+import 'package:psalm/podcasts/bulk_preflight.dart';
+import 'package:psalm/podcasts/download_environment.dart';
 import 'package:psalm/podcasts/download_gate.dart';
 import 'package:psalm/screens/podcast_downloads_ui.dart';
 
@@ -155,4 +157,79 @@ void main() {
       expect(answer, isNull);
     });
   });
+
+  group('the room of the device and the connection', () {
+    test('free space cuts the plan: the limit stays, 1 GB stays free', () {
+      // 3 GB are free, 1 GB stays: 2 GB may be used, although the person allows 5 GB.
+      final plan = planBulk([for (var i = 0; i < 100; i++) _episode(i)], limitMegabytes: 5000, freeBytes: 3 * 1000 * 1000 * 1000);
+      expect(plan.spaceBound, isTrue);
+      expect(plan.limitBytes, 2 * 1000 * 1000 * 1000);
+      expect(plan.fittingBytes, lessThanOrEqualTo(2 * 1000 * 1000 * 1000));
+    });
+
+    test('plenty of room changes nothing, an unknown room is not a reason to refuse', () {
+      final todo = [for (var i = 0; i < 10; i++) _episode(i)];
+      expect(planBulk(todo, limitMegabytes: 1000, freeBytes: 500 * 1000 * 1000 * 1000).spaceBound, isFalse);
+      expect(planBulk(todo, limitMegabytes: 1000).spaceBound, isFalse);
+    });
+
+    test('less than the reserve free blocks the plan', () {
+      final plan = planBulk([_episode(1)], limitMegabytes: 1000, freeBytes: 500 * 1000 * 1000);
+      expect((plan.blocked, plan.spaceBound), (true, true));
+    });
+
+    group('the preflight', () {
+      late Directory dir;
+      setUp(() => dir = Directory.systemTemp.createTempSync('psalm-pre'));
+      tearDown(() => dir.deleteSync(recursive: true));
+
+      PodcastDownloads downloads(_Env env) => PodcastDownloads(cache: Directory('${dir.path}/cache'), file: File('${dir.path}/m.json'), environment: env);
+
+      test('on mobile data nothing starts while the setting says Wi-Fi only (the default)', () async {
+        final d = downloads(_Env(onWifi: false, free: 100 * 1000 * 1000 * 1000));
+        expect(d.bulkWifiOnly, isTrue);
+        expect(await preflightBulk(d, [_episode(1)]), isA<BulkMobileData>());
+        d.dispose();
+      });
+
+      test('with the setting off, mobile data is allowed', () async {
+        final d = downloads(_Env(onWifi: false, free: 100 * 1000 * 1000 * 1000))..setBulkWifiOnly(false);
+        expect(await preflightBulk(d, [_episode(1)]), isA<BulkReady>());
+        d.dispose();
+      });
+
+      test('Wi-Fi and a connection that cannot be told both pass; the room is taken into the plan', () async {
+        for (final unmetered in [true, null]) {
+          final d = downloads(_Env(onWifi: unmetered, free: 1500 * 1000 * 1000));
+          final r = await preflightBulk(d, [for (var i = 0; i < 100; i++) _episode(i)]);
+          expect(r, isA<BulkReady>());
+          expect((r as BulkReady).plan.spaceBound, isTrue);
+          d.dispose();
+        }
+      });
+
+      test('the setting is kept', () {
+        final manifest = File('${dir.path}/m2.json');
+        final d = PodcastDownloads(cache: Directory('${dir.path}/c2'), file: manifest, environment: _Env())..setBulkWifiOnly(false);
+        final again = PodcastDownloads(cache: Directory('${dir.path}/c2'), file: manifest, environment: _Env());
+        expect(again.bulkWifiOnly, isFalse);
+        d.dispose();
+        again.dispose();
+      });
+    });
+  });
+}
+
+/// A device that says what the test wants.
+class _Env implements DownloadEnvironment {
+  _Env({this.onWifi, this.free});
+
+  final bool? onWifi;
+  final int? free;
+
+  @override
+  Future<int?> freeBytes(String path) async => free;
+
+  @override
+  Future<bool?> unmetered() async => onWifi;
 }

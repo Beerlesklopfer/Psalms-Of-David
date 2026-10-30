@@ -10,6 +10,7 @@ import '../player_controller.dart';
 import '../podcasts.dart';
 import '../offline/offline_controller.dart';
 import '../server/api_client.dart';
+import 'barcode_scan_screen.dart';
 import '../station_logo.dart';
 import '../widgets.dart';
 import 'labels_ui.dart';
@@ -105,6 +106,7 @@ class _SearchScreenState extends State<SearchScreen> {
           floating: true,
           backgroundColor: cs.surface,
           title: Text(l.navSearch, style: Theme.of(context).textTheme.headlineSmall),
+          actions: [BarcodeButton(api: widget.api)],
         ),
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 16),

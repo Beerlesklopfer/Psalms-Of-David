@@ -183,6 +183,8 @@ pub struct Candidate {
     pub credits: Vec<Credit>,
     pub date: Option<String>,
     pub year: Option<String>,
+    /// The EAN/UPC of the release as MusicBrainz has it (digits), if it has one.
+    pub barcode: Option<String>,
     /// ISO 639-3 as MusicBrainz writes it (`deu`).
     pub language: Option<String>,
     /// Which disc of the release this is; `None` if the disc was not in the answer.
@@ -273,6 +275,7 @@ pub fn parse_release_of(release: &Value, disc_id: Option<&str>, track_count: Opt
         author,
         narrators,
         credits,
+        barcode: text(release, "barcode").and_then(|b| crate::gtin::parse(&b)),
         year: date.as_ref().map(|d| d.chars().take(4).collect()),
         date,
         language: release.get("text-representation").and_then(|t| text(t, "language")),
@@ -379,6 +382,14 @@ mod tests {
     const DISCID: &str = include_str!("../tests/data/mb-discid.json");
     const TOC_LOOKUP: &str = include_str!("../tests/data/mb-toc-lookup.json");
     const RELEASE: &str = include_str!("../tests/data/mb-release.json");
+
+    #[test]
+    fn a_release_barcode_is_kept_when_valid() {
+        let release = |code: &str| serde_json::json!({ "id": "r1", "title": "T", "barcode": code, "media": [] });
+        assert_eq!(parse_release(&release("4006381333931"), None).unwrap().barcode.as_deref(), Some("4006381333931"));
+        assert_eq!(parse_release(&release("4006381333932"), None).unwrap().barcode, None);
+        assert_eq!(parse_release(&release(""), None).unwrap().barcode, None);
+    }
 
     /// "Sturz der Titanen" CD 2 of 12 (Ken Follett, gelesen von Johannes Steck), as `rd toc` read it from the disc.
     pub(crate) fn spike_toc() -> Toc {

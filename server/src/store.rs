@@ -190,6 +190,8 @@ pub struct AdminBookRow {
     pub owner: Option<String>,
     /// How many CDs the work has when it is known (the family may own fewer of them); `None`: not said.
     pub discs_total: Option<i64>,
+    /// The EAN/UPC of the album (digits), when the tags carry one.
+    pub barcode: Option<String>,
 }
 
 /// One archive in the upload queue.
@@ -282,7 +284,7 @@ struct AccessRow {
 const ADMIN_BOOKS: &str = "SELECT b.id, b.kind, b.folder, b.title, a.name AS author, b.narrator, g.name AS genre, b.genre_id, b.genre_locked, b.genre_tag, b.released, b.min_age, b.recommended_age, \
     b.quota_exempt, b.description, (SELECT count(*) FROM track t WHERE t.book_id = b.id) AS tracks, \
     (SELECT count(DISTINCT t.disc) FROM track t WHERE t.book_id = b.id) AS discs, \
-    (SELECT coalesce(sum(t.duration_ms), 0) FROM track t WHERE t.book_id = b.id) AS duration_ms, b.owner_id, o.name AS owner, b.discs_total \
+    (SELECT coalesce(sum(t.duration_ms), 0) FROM track t WHERE t.book_id = b.id) AS duration_ms, b.owner_id, o.name AS owner, b.discs_total, b.barcode \
     FROM book b JOIN author a ON a.id = b.author_id LEFT JOIN genre g ON g.id = b.genre_id LEFT JOIN profile o ON o.id = b.owner_id";
 
 /// The columns of one line of the user list; the callers add the ordering or the filter.
@@ -1089,10 +1091,55 @@ impl Store {
         Ok(out)
     }
 
+    /// Says which CD an album is: the number of the disc of every track of the book (for an album that holds one CD; the caller checks that). `false` if there is no such book.
+    pub async fn set_book_disc_number(&self, id: i64, disc: i64) -> Result<bool> {
+        let res = self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE track SET disc = ? WHERE book_id = ?", [disc.into(), id.into()])).await?;
+        Ok(res.rows_affected() > 0)
+    }
+
     /// Says how many CDs a work has (`None` takes it away). `false` if there is no such book.
     pub async fn set_book_discs_total(&self, id: i64, total: Option<i64>) -> Result<bool> {
         let res = self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE book SET discs_total = ? WHERE id = ?", [total.into(), id.into()])).await?;
         Ok(res.rows_affected() > 0)
+    }
+
+    /// Sets the barcode of an album (digits as cleaned from the tag, already checked by `gtin::parse`); `None` takes it away. `false` if there is no such book.
+    pub async fn set_book_barcode(&self, id: i64, barcode: Option<&str>) -> Result<bool> {
+        let gtin = barcode.map(crate::gtin::to_gtin14);
+        let values: [Value; 3] = [barcode.map(str::to_owned).into(), gtin.into(), id.into()];
+        let res = self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE book SET barcode = ?, gtin = ? WHERE id = ?", values)).await?;
+        Ok(res.rows_affected() > 0)
+    }
+
+    /// The barcode of an album, if it has one.
+    pub async fn book_barcode(&self, id: i64) -> Result<Option<String>> {
+        let row = self.db.reader.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT barcode FROM book WHERE id = ?", [Value::from(id)])).await?;
+        Ok(match row {
+            Some(r) => r.try_get_by_index::<Option<String>>(0)?,
+            None => None,
+        })
+    }
+
+    /// The albums that carry this barcode (GTIN-14) and that the user may see (the rule of the lists: age limit, release, blocks).
+    /// What the user hid for themselves is no concern here: it is in the library. Ordered by author and title.
+    pub async fn books_by_gtin(&self, profile_id: i64, gtin14: &str) -> Result<Vec<BookRow>> {
+        let sql = format!(
+            "SELECT b.id, b.folder, b.kind, b.title, a.name AS author, b.narrator, CASE WHEN g.visible = 1 THEN g.name END AS genre, \
+                    b.min_age, b.recommended_age, b.released, \
+                    count(t.id) AS tracks, count(DISTINCT t.disc) AS discs, \
+                    coalesce(sum(t.duration_ms), 0) AS duration_ms, o.name AS owner \
+             FROM book b \
+             JOIN author a ON a.id = b.author_id \
+             LEFT JOIN profile o ON o.id = b.owner_id \
+             LEFT JOIN genre g ON g.id = b.genre_id \
+             LEFT JOIN track t ON t.book_id = b.id \
+             JOIN profile p ON p.id = ? \
+             WHERE b.gtin = ? AND {VISIBLE} \
+             GROUP BY b.id ORDER BY a.name, b.title"
+        );
+        let values: [Value; 2] = [profile_id.into(), gtin14.to_owned().into()];
+        let stmt = Statement::from_sql_and_values(DbBackend::Sqlite, sql, values);
+        Ok(BookRow::find_by_statement(stmt).all(&self.db.reader).await?)
     }
 
     /// Tracks of a book in playing order.

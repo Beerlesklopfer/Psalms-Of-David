@@ -14,6 +14,23 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<!-- Other names that Siri accepts for the app in the phrases of the shortcuts ("Weiterhören in Psalm"): the name "Psalms" is an unusual word
+	     and can be understood as something else (a music service). The pronunciation hints are guesses to be tried on a device. -->
+	<key>INAlternativeAppNames</key>
+	<array>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Psalm</string>
+		</dict>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Psalmen</string>
+		</dict>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Davids Mediathek</string>
+		</dict>
+	</array>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>en</string>

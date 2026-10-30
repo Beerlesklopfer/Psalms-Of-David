@@ -377,3 +377,30 @@ async fn a_folder_that_cannot_be_read_keeps_its_albums_and_a_problem_of_the_scan
         assert!(!r.problems.is_empty(), "the unreadable folder is a problem of the scan");
     }
 }
+
+#[tokio::test]
+async fn the_scan_reads_the_barcode_tag_of_an_album_and_ignores_an_invalid_one() {
+    if !ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let (_dir, store) = open().await;
+    let lib = root_with_books();
+    let good = lib.path().join("A/Good/a_CD01_TR01.mp3");
+    let second = lib.path().join("A/Good/a_CD01_TR02.mp3");
+    let bad = lib.path().join("A/Bad/b_CD01_TR01.mp3");
+    for f in [&good, &second, &bad] {
+        make_mp3(f, &[]);
+    }
+    // Only the second file of the album carries the code (typed with a hyphen); the other album has a wrong check digit.
+    david_server::tags::write_fields(&second, &[("Barcode".to_owned(), vec!["4006381-333931".to_owned()])]).unwrap();
+    david_server::tags::write_fields(&bad, &[("Barcode".to_owned(), vec!["4006381333932".to_owned()])]).unwrap();
+    store.save_import_criteria(&[s(lib.path())], RatingRule::Manual).await.unwrap();
+    store.unlock_import("Boss").await.unwrap();
+    store.run_import().await.unwrap();
+
+    let good_id = store.find_book("A/Good").await.unwrap().unwrap().id;
+    let bad_id = store.find_book("A/Bad").await.unwrap().unwrap().id;
+    assert_eq!(store.book_barcode(good_id).await.unwrap().as_deref(), Some("4006381333931"));
+    assert_eq!(store.book_barcode(bad_id).await.unwrap(), None);
+}

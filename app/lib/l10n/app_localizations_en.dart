@@ -1910,6 +1910,33 @@ class AppLocalizationsEn extends AppLocalizations {
       'The most that \"Download the whole collection\" loads in one go.';
 
   @override
+  String get podcastBulkWifiOnly => 'Collection downloads only on Wi-Fi';
+
+  @override
+  String get podcastBulkWifiOnlyHint =>
+      '\"Download the whole collection\" does not load on mobile data. A cable or Wi-Fi is fine.';
+
+  @override
+  String get podcastDownloadAllMobile =>
+      'You are on mobile data. The whole collection is only loaded on Wi-Fi (you can change that under Settings > Podcast downloads).';
+
+  @override
+  String podcastDownloadAllSpace(
+    String free,
+    int count,
+    String size,
+    int fitCount,
+    String fitSize,
+  ) {
+    return 'Only $free are free on this device, and 1 GB should stay free. Of the $count episodes (about $size) the newest $fitCount (about $fitSize) will be loaded.';
+  }
+
+  @override
+  String podcastDownloadAllNoSpace(String free) {
+    return 'There is not enough room on this device: only $free are free, and 1 GB should stay free. Free some space and try again.';
+  }
+
+  @override
   String podcastMegabytes(int mb) {
     return '$mb MB';
   }
@@ -1917,4 +1944,45 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get offlinePodcastsNone =>
       'No episodes are on this device yet. Download episodes while you are online to listen to them here.';
+
+  @override
+  String get barcodeCheckTooltip => 'Check a barcode';
+
+  @override
+  String get barcodeTitle => 'Check a barcode';
+
+  @override
+  String get barcodeFieldLabel => 'Barcode';
+
+  @override
+  String get barcodeCheck => 'Check';
+
+  @override
+  String get barcodeInLibrary => 'In the library:';
+
+  @override
+  String barcodeNotInLibrary(String code) {
+    return 'Not in the library: $code';
+  }
+
+  @override
+  String get barcodeInvalid => 'This is not a valid barcode. Check the digits.';
+
+  @override
+  String get barcodeOfflineNotFound =>
+      'The library on this device does not have it. The server was not asked, because you are offline.';
+
+  @override
+  String get barcodeLookupFailed =>
+      'The server could not be asked. Try again later.';
+
+  @override
+  String get barcodeOpen => 'Open';
+
+  @override
+  String get barcodeScanHint =>
+      'Hold the barcode of the CD in front of the camera';
+
+  @override
+  String get barcodeTypeHint => 'Or type the digits below the barcode:';
 }

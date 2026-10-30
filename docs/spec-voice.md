@@ -131,3 +131,15 @@ Not possible here, to be checked with a TestFlight build (nothing of the Swift s
 3. By voice: "Hey Siri, Weiterhören in Psalms" / "Hey Siri, continue listening in Psalms"; "Hey Siri, Abspielen in Psalms" (Siri asks what, answer with a
    title, an author or a label); "Hey Siri, Nächster Titel in Psalms"; "Hey Siri, Was gibt es Neues in Psalms".
 4. Try with the app closed, in the background and with the phone locked; try a title that does not exist (Siri answers, the app stays quiet).
+
+## Siri chooses another service (project owner, 2026-10-30: "it prefers Spotify")
+
+- A request **without the name of an app** ("Spiele X") goes to the default music service of the person (Spotify, Apple Music). An app cannot take that over by its own
+  choice: the person has to say the name of the app, or set the service as default where the system offers it.
+- With the name ("... in Psalms") Siri uses the phrases of the shortcuts. "Psalms" is an unusual word and may be understood as something else. Since 2026-10-30 the
+  `Info.plist` lists **alternative names** (`INAlternativeAppNames`: "Psalm", "Psalmen", "Davids Mediathek"), which Siri accepts in the phrases of the shortcuts.
+  Not tried on a device; the pronunciation hints that the key allows are not set.
+- The person can also make a **shortcut with a phrase of their own** (Shortcuts app > the action of Psalms > "Add to Siri"), for example "Mein Hörbuch": no app name is
+  needed then and nothing is confused with Spotify. Worth telling the family.
+- To be tried on a device: what Siri says when "in Psalms" is spoken, and whether "in Psalm" works.
+

@@ -13,6 +13,7 @@
 //! | `GET /api/v1/me`, `POST /api/v1/logout` | the user; ends the session |
 //! | `GET /api/v1/items` | the items (books, ...) the user may see |
 //! | `GET /api/v1/items/{id}` | parts, the blurb (`description`), progress and whether it may be used now |
+//! | `GET /api/v1/barcode/{code}` | is this EAN/UPC in the library? `{code, gtin, found, items[]}`; `422 invalid_barcode` for a wrong length or check digit |
 //! | `GET /api/v1/items/{id}/cover` | the product picture: `cover.jpg` (or `.png`, `folder.jpg`) in the item's folder, else the picture embedded in its first file; `404` if there is none |
 //! | `GET /api/v1/continue` | unfinished items, latest first |
 //! | `GET /api/v1/parts/{id}/stream` | the file of a part, with `Range` support |
@@ -71,6 +72,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/v1/items", get(items))
         .route("/api/v1/genres", get(genres))
         .route("/api/v1/items/{id}", get(item_detail))
+        .route("/api/v1/barcode/{code}", get(barcode_lookup))
         .route("/api/v1/items/{id}/labels", get(item_labels).put(put_item_labels).patch(patch_item_labels))
         .route("/api/v1/items/{id}/parts/{part}/labels", put(put_part_labels).patch(patch_part_labels))
         .route("/api/v1/labels", get(all_labels))
@@ -573,12 +575,26 @@ async fn item_detail(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<
     let description = book::Entity::find_by_id(id).one(&s.store.db.reader).await.map_err(Error::from)?.and_then(|b| b.description);
     let mut out = item_json(&row);
     out["description"] = description.map_or(Value::Null, Value::String);
+    out["barcode"] = s.store.book_barcode(id).await?.map_or(Value::Null, Value::String);
     out["parts"] = Value::Array(tracks);
     out["plays"] = json!(book_heard.plays);
     out["last_played_at"] = json!(book_heard.last_played_at);
     out["progress"] = progress.unwrap_or(Value::Null);
     out["access"] = access_json(&access);
     Ok(Json(out))
+}
+
+/// Is the album with this barcode in the library? The app scans an EAN/UPC and asks. The match is by GTIN-14, so the UPC-A and the EAN-13 with a leading 0
+/// are one product. Only albums the user may see are told (the rule of the lists); what the user hid for themselves counts as present.
+async fn barcode_lookup(State(s): State<ApiState>, d: Device, UrlPath(code): UrlPath<String>) -> ApiResult<Json<Value>> {
+    let digits = crate::gtin::clean(&code).filter(|c| crate::gtin::valid(c)).ok_or(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_barcode"))?;
+    let gtin = crate::gtin::to_gtin14(&digits);
+    let mut items = Vec::new();
+    for b in s.store.books_by_gtin(d.user_id, &gtin).await? {
+        let has_cover = find_cover(&s.store, s.library.as_deref(), b.id).await.is_some();
+        items.push(json!({ "item_id": b.id, "kind": b.kind, "title": b.title, "creator": b.author, "has_cover": has_cover }));
+    }
+    Ok(Json(json!({ "code": digits, "gtin": gtin, "found": !items.is_empty(), "items": items })))
 }
 
 fn access_json(access: &Access) -> Value {

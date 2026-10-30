@@ -4726,3 +4726,96 @@ async fn making_a_code_in_the_window_tells_the_page_to_refresh_the_list() {
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
     assert_eq!(r.header("hx-trigger"), Some("pairing-created"));
 }
+
+#[tokio::test]
+async fn the_tags_window_edits_the_cd_number_and_the_number_of_cds() {
+    if !common::audio::ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let lib = tempfile::TempDir::new().unwrap();
+    let dir = lib.path().join("Klaus Lage Band/Amtlich");
+    common::audio::make_mp3(&dir.join("a_CD02_TR01.mp3"), &[("album", "Amtlich!"), ("artist", "Klaus Lage Band"), ("disc", "2/2")]);
+    common::audio::make_mp3(&dir.join("a_CD02_TR02.mp3"), &[("disc", "2/2")]);
+    let root = std::fs::canonicalize(lib.path()).unwrap().to_string_lossy().into_owned();
+    send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &root), ("rule", "manual")]), &o)).await;
+    send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
+    send(&a, post("/admin/rpc/import.run", "", &o)).await;
+    let id = a.store.admin_book_rows().await.unwrap()[0].id;
+
+    // The window has the two fields and shows what the first file says: CD 2 of 2.
+    let w = send(&a, get(&format!("/admin/rpc/book.tags_form?id={id}"), &o)).await;
+    assert_eq!(w.status, StatusCode::OK, "{}", w.body);
+    assert!(w.body.contains("name=\"disc\"") && w.body.contains("name=\"discs\""), "{}", w.body);
+    assert!(w.body.contains("name=\"disc\" min=\"1\" max=\"99\" inputmode=\"numeric\" placeholder=\" \" value=\"2\""), "CD 2 shows");
+
+    // Numbers outside 1 to 99 are refused and change nothing.
+    for bad in ["0", "100", "x"] {
+        let r = send(&a, tags_request(&csrf, &cookie, &[("id", &id.to_string()), ("disc", bad)], None)).await;
+        assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY, "disc={bad}");
+    }
+    assert_eq!(david_server::tags::read_album(&dir.join("a_CD02_TR01.mp3")).disc, Some(2));
+
+    // It is one CD of one: the files and the library follow.
+    let r = send(&a, tags_request(&csrf, &cookie, &[("id", &id.to_string()), ("disc", "1"), ("discs", "1")], None)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    for f in ["a_CD02_TR01.mp3", "a_CD02_TR02.mp3"] {
+        let t = david_server::tags::read_album(&dir.join(f));
+        assert_eq!((t.disc, t.discs), (Some(1), Some(1)), "{f}");
+    }
+    assert!(a.store.tracks_of(id).await.unwrap().iter().all(|t| t.disc == 1), "every track is on CD 1 now");
+    assert_eq!(a.store.admin_book_rows().await.unwrap()[0].discs_total, Some(1));
+
+    // Only the total: the number of the CD stays.
+    let r = send(&a, tags_request(&csrf, &cookie, &[("id", &id.to_string()), ("discs", "3")], None)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let t = david_server::tags::read_album(&dir.join("a_CD02_TR01.mp3"));
+    assert_eq!((t.disc, t.discs), (Some(1), Some(3)));
+}
+
+
+#[tokio::test]
+async fn the_tags_window_keeps_the_barcode_in_the_library_and_refuses_a_wrong_one() {
+    if !common::audio::ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let lib = tempfile::TempDir::new().unwrap();
+    let dir = lib.path().join("Klaus Lage Band/Amtlich");
+    common::audio::make_mp3(&dir.join("a_CD01_TR01.mp3"), &[("album", "Amtlich!"), ("artist", "Klaus Lage Band")]);
+    let root = std::fs::canonicalize(lib.path()).unwrap().to_string_lossy().into_owned();
+    send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &root), ("rule", "manual")]), &o)).await;
+    send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
+    send(&a, post("/admin/rpc/import.run", "", &o)).await;
+    let id = a.store.admin_book_rows().await.unwrap()[0].id;
+    let ids = id.to_string();
+
+    // A wrong check digit, two values, and letters: refused at the field, nothing written.
+    for bad in ["Barcode=4006381333932", "Barcode=4006381333931\nBarcode=036000291452", "Barcode=abc"] {
+        let r = send(&a, tags_request(&csrf, &cookie, &[("id", &ids), ("more", bad)], None)).await;
+        assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY, "{bad}");
+        assert!(r.body.contains("not a valid EAN/UPC"), "{bad}: {}", r.body);
+    }
+    assert!(a.store.book_barcode(id).await.unwrap().is_none());
+    assert!(david_server::tags::read_fields(&dir.join("a_CD01_TR01.mp3")).unwrap().iter().all(|(k, _)| k != "Barcode"));
+
+    // A good one (typed with spaces) goes to the files as digits and into the library at once; the search finds the album by it.
+    let r = send(&a, tags_request(&csrf, &cookie, &[("id", &ids), ("more", "Barcode=4006 381 333931")], None)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let fields = david_server::tags::read_fields(&dir.join("a_CD01_TR01.mp3")).unwrap();
+    assert_eq!(fields.iter().find(|(k, _)| k == "Barcode").map(|(_, v)| v.clone()), Some(vec!["4006381333931".to_owned()]));
+    assert_eq!(a.store.book_barcode(id).await.unwrap().as_deref(), Some("4006381333931"));
+    let page = send(&a, get("/admin/books?q=4006381", &Opts { cookie: Some(&cookie), ..Default::default() })).await.body;
+    assert!(page.contains("Amtlich"), "{page}");
+
+    // An empty value removes it.
+    let r = send(&a, tags_request(&csrf, &cookie, &[("id", &ids), ("more", "Barcode=")], None)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(a.store.book_barcode(id).await.unwrap().is_none());
+}

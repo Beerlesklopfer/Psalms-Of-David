@@ -3302,6 +3302,42 @@ abstract class AppLocalizations {
   /// **'The most that \"Download the whole collection\" loads in one go.'**
   String get podcastBulkLimitHint;
 
+  /// No description provided for @podcastBulkWifiOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Collection downloads only on Wi-Fi'**
+  String get podcastBulkWifiOnly;
+
+  /// No description provided for @podcastBulkWifiOnlyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'\"Download the whole collection\" does not load on mobile data. A cable or Wi-Fi is fine.'**
+  String get podcastBulkWifiOnlyHint;
+
+  /// No description provided for @podcastDownloadAllMobile.
+  ///
+  /// In en, this message translates to:
+  /// **'You are on mobile data. The whole collection is only loaded on Wi-Fi (you can change that under Settings > Podcast downloads).'**
+  String get podcastDownloadAllMobile;
+
+  /// No description provided for @podcastDownloadAllSpace.
+  ///
+  /// In en, this message translates to:
+  /// **'Only {free} are free on this device, and 1 GB should stay free. Of the {count} episodes (about {size}) the newest {fitCount} (about {fitSize}) will be loaded.'**
+  String podcastDownloadAllSpace(
+    String free,
+    int count,
+    String size,
+    int fitCount,
+    String fitSize,
+  );
+
+  /// No description provided for @podcastDownloadAllNoSpace.
+  ///
+  /// In en, this message translates to:
+  /// **'There is not enough room on this device: only {free} are free, and 1 GB should stay free. Free some space and try again.'**
+  String podcastDownloadAllNoSpace(String free);
+
   /// No description provided for @podcastMegabytes.
   ///
   /// In en, this message translates to:
@@ -3313,6 +3349,78 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No episodes are on this device yet. Download episodes while you are online to listen to them here.'**
   String get offlinePodcastsNone;
+
+  /// No description provided for @barcodeCheckTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Check a barcode'**
+  String get barcodeCheckTooltip;
+
+  /// No description provided for @barcodeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Check a barcode'**
+  String get barcodeTitle;
+
+  /// No description provided for @barcodeFieldLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Barcode'**
+  String get barcodeFieldLabel;
+
+  /// No description provided for @barcodeCheck.
+  ///
+  /// In en, this message translates to:
+  /// **'Check'**
+  String get barcodeCheck;
+
+  /// No description provided for @barcodeInLibrary.
+  ///
+  /// In en, this message translates to:
+  /// **'In the library:'**
+  String get barcodeInLibrary;
+
+  /// No description provided for @barcodeNotInLibrary.
+  ///
+  /// In en, this message translates to:
+  /// **'Not in the library: {code}'**
+  String barcodeNotInLibrary(String code);
+
+  /// No description provided for @barcodeInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'This is not a valid barcode. Check the digits.'**
+  String get barcodeInvalid;
+
+  /// No description provided for @barcodeOfflineNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'The library on this device does not have it. The server was not asked, because you are offline.'**
+  String get barcodeOfflineNotFound;
+
+  /// No description provided for @barcodeLookupFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not be asked. Try again later.'**
+  String get barcodeLookupFailed;
+
+  /// No description provided for @barcodeOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get barcodeOpen;
+
+  /// No description provided for @barcodeScanHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold the barcode of the CD in front of the camera'**
+  String get barcodeScanHint;
+
+  /// No description provided for @barcodeTypeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Or type the digits below the barcode:'**
+  String get barcodeTypeHint;
 }
 
 class _AppLocalizationsDelegate

@@ -21,7 +21,8 @@ Status: **built and tested** for audiobooks (`server/src/api.rs`, `server/tests/
 | `POST /api/v1/pair` `{code, device_name, public_key}` | `{token, device_id, shared, user:{id,name,role}}`. `public_key` is a WireGuard key; until the tunnel exists the app sends a random one. |
 | `GET /api/v1/me`, `POST /api/v1/logout` | the user; `204` |
 | `GET /api/v1/items` | `[{id, kind, title, creator, min_age, recommended_age, part_count, discs, duration_ms}]` |
-| `GET /api/v1/items/{id}` | the same plus `parts:[{id,disc,number,title,duration_ms,labels}]` (`labels`: the labels of the title of its own; the ones of the album come with the item), `progress`, `access:{state, next_start}` |
+| `GET /api/v1/barcode/{code}` | is this EAN/UPC in the library: `{code, gtin, found, items:[{item_id,kind,title,creator,has_cover}]}`; `422 invalid_barcode` |
+| `GET /api/v1/items/{id}` | the same plus `barcode` (digits or `null`), `parts:[{id,disc,number,title,duration_ms,labels}]` (`labels`: the labels of the title of its own; the ones of the album come with the item), `progress`, `access:{state, next_start}` |
 | `GET /api/v1/labels` | `{labels:[{name, books, podcasts, stations, count}], can_manage}`: the labels with the number of the books (of those the asker sees), podcasts (that they follow) and radio stations (their favourites) that carry each; an item counts once, a book whether the book or one of its titles carries the label; `count` adds the kinds up |
 | `PUT /api/v1/items/{id}/labels` `{labels:[..]}` | all labels of a book at once (the owner, a member, and an administrator) -> `{labels}`; `422 invalid_label` |
 | `PUT /api/v1/podcasts/{id}/labels` `{labels:[..]}` and `PUT /api/v1/radio/{id}/labels` | **labels of a podcast / a radio station** (schema 0047), all at once -> `{labels}`; an administrator always, a member for what they follow / have as a favourite themselves, a child or a guest never (`403`); a podcast or station the member does not have is `404`; at most 30, `422 invalid_label`. The lists `GET /api/v1/podcasts` and `GET /api/v1/radio` carry `labels` and `can_label` for each entry |
@@ -225,3 +226,23 @@ The app keeps playing with the screen locked and shows the controls on the lock 
 Every part of an item (`GET /items/{id}`, `parts[]`) carries `format` (mp3, ogg, flac, m4a ...), `codec` and `mime` (additive fields; an app ignores what it does not know, a part not looked at yet has an empty `format`, `mime` is then guessed from the file name). The stream is served with that `Content-Type`. An app that cannot play a format says so instead of failing silently: on iOS the player (AVPlayer) cannot play Ogg Vorbis, Opus in Ogg, WMA or APE; a tap on such a track shows "This file format cannot be played on iPhone yet" (`app/lib/audio/file_formats.dart`). The Linux engine plays MP3, Ogg Vorbis, FLAC, WAV and AAC/ALAC in MP4; Android (ExoPlayer) plays all of them.
 
 `GET /parts/{id}/stream?as=mp3` serves an MP3 that the server makes of the file (cached; see `docs/spec-transcoding.md`): `400 unsupported_as` for another target, `422 transcode_failed` for a file that cannot be decoded, the original for a file that is MP3 already. A part whose format some devices cannot play carries `transcode: "mp3"`; an app that cannot play the format itself asks for `as=mp3` (and keeps the file under another name than the original) and shows the "cannot be played on iPhone yet" message only if the server answers `transcode_failed` or does not offer `transcode`.
+
+## Barcodes (app side, project owner, 2026-10-30)
+
+The person holds a CD and wants to know whether the album is already in the family library. The icon button "Check a barcode" sits in the app
+bar of the Library and the Search screen and opens `BarcodeScanScreen`. On Android, iOS and macOS it shows a live camera view (EAN-13, EAN-8,
+UPC-A, UPC-E; codes with a wrong check digit are ignored; it stops at the first valid code). On every platform, and as the fallback on the
+phones, a text field "Barcode" takes the digits (spaces and hyphens are removed). The answer comes in a bottom sheet: "In the library:" with
+cover, title, creator, kind and an Open button, or "Not in the library: <code>".
+
+Order: the **local** library is asked first (`Book.barcode`, kept in the offline cache; codes are compared as GTIN-14, so a UPC-A and the EAN-13
+with a leading 0 are the same). Only when nothing is found locally and the app is online, `GET /api/v1/barcode/{code}` asks the server, which
+also knows albums that this device has not loaded yet (they are listed but cannot be opened until the library is reloaded). Offline, a code that
+is not found locally gets the answer that the library of this device does not have it and that the server was not asked. A server `422
+invalid_barcode` is shown as an invalid code.
+
+### Barcodes (server side)
+
+Albums carry their EAN in the library (schema `0056`: `book.barcode` = the digits of the tag `Barcode`, `book.gtin` = the same as 14 digits, indexed). The scanner reads the first valid `Barcode` tag among the files of an album (digits only, 8/12/13/14 digits, correct GTIN check digit; anything else counts as none); a tag edit in the administration (`Barcode=...` line of the tags window) or by MCP `set_tags` updates the library at once and refuses a wrong code. A CD import writes the barcode of the chosen MusicBrainz release into the files.
+
+`GET /api/v1/barcode/{code}`, any signed-in device. `code`: digits, spaces and hyphens ignored, 8, 12, 13 or 14 digits with a valid check digit, else `422 {"error":"invalid_barcode"}`. Answer `200 {"code":"<cleaned digits>","gtin":"<14 digits>","found":bool,"items":[{"item_id","kind","title","creator","has_cover"}]}`. The match is by GTIN-14, so a UPC-A and the EAN-13 with a leading 0 are one product and an EAN-8 is padded. Only albums the caller may see are listed (the rule of the lists: age limit, release, blocks); what the caller hid in their own library still counts as present. `GET /api/v1/items/{id}` carries `"barcode"` (digits or `null`) so that an app can keep a copy and check offline. Albums get their code at the next rescan or at a tag edit.

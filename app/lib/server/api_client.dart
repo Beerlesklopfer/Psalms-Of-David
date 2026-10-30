@@ -8,6 +8,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
+import '../barcode.dart';
 import '../podcasts.dart';
 
 /// An answer of the server that is not a success. [code] is the server's error
@@ -79,7 +80,7 @@ class PairResult {
 /// of the server is checked against the certificate and the trust of the system. With a fingerprint the
 /// connection is HTTPS and only the server whose certificate has exactly this
 /// fingerprint is accepted; no other certificate is, whoever signed it.
-class ApiClient implements FeedApi {
+class ApiClient implements FeedApi, BarcodeApi {
   ApiClient({required this.address, this.fingerprint, this.ca = false, this.token, HttpClient? client})
       : _http = client ?? _pinnedClient(fingerprint, ca);
 
@@ -248,6 +249,18 @@ class ApiClient implements FeedApi {
   Future<({String version, String? playlists, String? hidden})> libraryVersions() async {
     final j = await _json('GET', '/api/v1/library/version') as Map<String, dynamic>;
     return (version: j['version'] as String, playlists: j['playlists'] as String?, hidden: j['hidden'] as String?);
+  }
+
+  /// Which albums of the library carry this barcode. A code that the server calls invalid (422 `invalid_barcode`) is an answer with `invalid` set,
+  /// not an exception; other failures throw an [ApiException].
+  @override
+  Future<BarcodeAnswer> barcodeLookup(String code) async {
+    try {
+      return BarcodeAnswer.fromJson(await _json('GET', '/api/v1/barcode/${Uri.encodeComponent(code)}') as Map<String, dynamic>);
+    } on ApiException catch (e) {
+      if (e.status == 422 && e.code == 'invalid_barcode') return BarcodeAnswer.invalid(code);
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> item(int id) async => await _json('GET', '/api/v1/items/$id') as Map<String, dynamic>;

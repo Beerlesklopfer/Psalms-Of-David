@@ -20,14 +20,20 @@ const int kAssumedEpisodeBytes = 40 * 1000 * 1000;
 /// About how large [e] is on the device.
 int estimatedEpisodeBytes(Episode e) => e.duration > Duration.zero ? e.duration.inSeconds * kEstimatedBytesPerSecond : kAssumedEpisodeBytes;
 
+/// The room that always stays free on the device, whatever a bulk download would still fit: 1 GB.
+const int kFreeSpaceReserveBytes = 1000 * 1000 * 1000;
+
 /// What a bulk download would do: [all] is everything that is missing on the device (the newest first), [fitting] the newest of them that fit in
-/// the limit. The two are the same when everything fits.
+/// the limit. The two are the same when everything fits. [freeBytes] is the room the device has (null: not known); when it, minus
+/// [kFreeSpaceReserveBytes], is less than the limit of the person, the room is what cuts the plan ([spaceBound]).
 class BulkPlan {
-  const BulkPlan({required this.all, required this.fitting, required this.limitBytes});
+  const BulkPlan({required this.all, required this.fitting, required this.limitBytes, this.freeBytes, this.spaceBound = false});
 
   final List<Episode> all;
   final List<Episode> fitting;
   final int limitBytes;
+  final int? freeBytes;
+  final bool spaceBound;
 
   int get count => all.length;
   int get fittingCount => fitting.length;
@@ -42,8 +48,16 @@ class BulkPlan {
 }
 
 /// Counts [todo] (the newest first) against [limitMegabytes]: the newest episodes are taken as long as their estimated sizes add up to at most the limit.
-BulkPlan planBulk(List<Episode> todo, {required int limitMegabytes}) {
-  final limit = limitMegabytes * 1000 * 1000;
+BulkPlan planBulk(List<Episode> todo, {required int limitMegabytes, int? freeBytes}) {
+  var limit = limitMegabytes * 1000 * 1000;
+  var spaceBound = false;
+  if (freeBytes != null) {
+    final room = freeBytes - kFreeSpaceReserveBytes;
+    if (room < limit) {
+      limit = room < 0 ? 0 : room;
+      spaceBound = true;
+    }
+  }
   final fitting = <Episode>[];
   var used = 0;
   for (final e in todo) {
@@ -52,5 +66,5 @@ BulkPlan planBulk(List<Episode> todo, {required int limitMegabytes}) {
     used = next;
     fitting.add(e);
   }
-  return BulkPlan(all: List.unmodifiable(todo), fitting: List.unmodifiable(fitting), limitBytes: limit);
+  return BulkPlan(all: List.unmodifiable(todo), fitting: List.unmodifiable(fitting), limitBytes: limit, freeBytes: freeBytes, spaceBound: spaceBound);
 }

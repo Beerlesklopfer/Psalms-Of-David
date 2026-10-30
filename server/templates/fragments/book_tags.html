@@ -18,6 +18,9 @@
   {% if kind == "audiobook" %}<label class="field span-all"><input type="text" name="narrator" maxlength="200" placeholder=" " value="{{ narrator }}"><span>{{ t("tags.narrator") }}</span></label>{% endif %}
   <label class="field"><input type="text" name="year" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder=" " value="{{ year }}"><span>{{ t("tags.year") }}</span></label>
   <label class="field"><input type="text" name="genre" maxlength="200" placeholder=" " value="{{ genre }}"><span>{{ t("tags.genre") }}</span></label>
+  <label class="field"><input type="number" name="disc" min="1" max="99" inputmode="numeric" placeholder=" "{% if disc %} value="{{ disc }}"{% endif %}><span>{{ t("tags.disc") }}</span></label>
+  <label class="field"><input type="number" name="discs" min="1" max="99" inputmode="numeric" placeholder=" "{% if discs %} value="{{ discs }}"{% endif %}><span>{{ t("tags.discs") }}</span></label>
+  <small class="span-all">{{ t("tags.disc_hint") }}</small>
   <div class="span-all fields-editor" data-fields-editor data-catalog="{{ catalog }}" data-choose="{{ t('tags.field_choose') }}" data-remove="{{ t('tags.field_remove') }}" data-add="{{ t('tags.field_add') }}">
     <span class="chips-label">{{ t("tags.more") }}</span>
     <div class="fields-rows"></div>

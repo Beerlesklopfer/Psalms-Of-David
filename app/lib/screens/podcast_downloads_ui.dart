@@ -286,6 +286,14 @@ class PodcastDownloadsCard extends StatelessWidget {
                     onChanged: downloads.setDeleteAfterListening,
                   ),
                   const Divider(height: 1),
+                  SwitchListTile(
+                    key: const ValueKey('podcast-bulk-wifi'),
+                    title: Text(l.podcastBulkWifiOnly),
+                    subtitle: Text(l.podcastBulkWifiOnlyHint),
+                    value: downloads.bulkWifiOnly,
+                    onChanged: downloads.setBulkWifiOnly,
+                  ),
+                  const Divider(height: 1),
                   ListTile(
                     title: Text(l.podcastBulkLimit),
                     subtitle: Text(l.podcastBulkLimitHint),
@@ -327,8 +335,12 @@ Future<List<Episode>?> askBulkDownload(BuildContext context, BulkPlan plan) {
   String size(int bytes) => formatBytes(l.localeName, bytes);
   final limit = size(plan.limitBytes);
   final String text;
-  if (plan.blocked) {
+  if (plan.blocked && plan.spaceBound) {
+    text = l.podcastDownloadAllNoSpace(size(plan.freeBytes ?? 0));
+  } else if (plan.blocked) {
     text = l.podcastDownloadAllBlocked(limit);
+  } else if (plan.exceedsLimit && plan.spaceBound) {
+    text = l.podcastDownloadAllSpace(size(plan.freeBytes ?? 0), plan.count, size(plan.totalBytes), plan.fittingCount, size(plan.fittingBytes));
   } else if (plan.exceedsLimit) {
     text = l.podcastDownloadAllLimited(plan.count, size(plan.totalBytes), limit, plan.fittingCount, size(plan.fittingBytes));
   } else {

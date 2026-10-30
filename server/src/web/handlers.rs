@@ -1324,6 +1324,7 @@ async fn book_files(state: &AppState, id: i64) -> Result<(crate::store::AdminBoo
 pub async fn book_tags(State(state): State<AppState>, s: AdminSession, mut form: axum::extract::Multipart) -> Response {
     let outcome = async {
         let (mut id, mut album, mut artist, mut narrator, mut year, mut genre) = (0i64, String::new(), String::new(), String::new(), String::new(), String::new());
+        let (mut disc, mut discs) = (String::new(), String::new());
         let mut picture = None;
         let mut more = String::new();
         loop {
@@ -1345,6 +1346,8 @@ pub async fn book_tags(State(state): State<AppState>, s: AdminSession, mut form:
                 "narrator" => narrator = text,
                 "year" => year = text,
                 "genre" => genre = text,
+                "disc" => disc = text,
+                "discs" => discs = text,
                 "more" => more = text,
                 _ => {}
             }
@@ -1370,8 +1373,35 @@ pub async fn book_tags(State(state): State<AppState>, s: AdminSession, mut form:
             }
             None => None,
         };
-        let more_fields = parse_more_fields(&more)?;
-        let tags = crate::tags::AlbumTags { album: clean(&album)?, artist: clean(&artist)?, narrator: clean(&narrator)?, year, genre: clean(&genre)?, cover };
+        let mut more_fields = parse_more_fields(&more)?;
+        // "CD 2 of 3": empty leaves it as it is. The number of the CD can only be changed on an album that holds one CD (the number belongs to every track then).
+        let disc_number = optional_number(disc.trim(), 1, 99).map_err(|e| e.at("disc"))?;
+        let discs_total = optional_number(discs.trim(), 1, 99).map_err(|e| e.at("discs"))?;
+        if disc_number.is_some() {
+            let held = state.store.admin_book_row(id).await?.ok_or_else(Failure::not_found)?.discs;
+            if held > 1 {
+                return Err(Failure::input().at("disc"));
+            }
+            more_fields.retain(|(n, _)| n != "DiscNumber");
+            more_fields.push(("DiscNumber".to_owned(), vec![disc_number.unwrap_or(1).to_string()]));
+        }
+        if let Some(total) = discs_total {
+            more_fields.retain(|(n, _)| n != "DiscTotal");
+            more_fields.push(("DiscTotal".to_owned(), vec![total.to_string()]));
+        }
+        // The barcode (EAN/UPC): checked here, so that a typo is shown at the field and the files stay as they are.
+        let mut barcode_change: Option<Option<String>> = None;
+        if let Some(pos) = more_fields.iter().position(|(n, _)| n == "Barcode") {
+            let values: Vec<String> = more_fields[pos].1.iter().filter(|v| !v.trim().is_empty()).cloned().collect();
+            let digits = match values.as_slice() {
+                [] => None,
+                [one] => Some(crate::gtin::parse(one).ok_or_else(barcode_failure)?),
+                _ => return Err(barcode_failure()),
+            };
+            more_fields[pos].1 = digits.iter().cloned().collect();
+            barcode_change = Some(digits);
+        }
+        let tags = crate::tags::AlbumTags { album: clean(&album)?, artist: clean(&artist)?, narrator: clean(&narrator)?, year, genre: clean(&genre)?, cover, ..Default::default() };
         let (_, files) = book_files(&state, id).await?;
         // A picture goes into every file: that many bytes more on the disk of the album.
         if let Some((bytes, _)) = &tags.cover {
@@ -1404,10 +1434,24 @@ pub async fn book_tags(State(state): State<AppState>, s: AdminSession, mut form:
             tracing::warn!(book = id, error = %e, "writing the tags failed");
             return Err(Failure::new(StatusCode::INTERNAL_SERVER_ERROR, "err.tags_write"));
         }
+        // The library follows the files at once (the next import would read the same).
+        if let Some(n) = disc_number {
+            state.store.set_book_disc_number(id, n).await?;
+        }
+        if let Some(total) = discs_total {
+            state.store.set_book_discs_total(id, Some(total)).await?;
+        }
+        if let Some(code) = barcode_change {
+            state.store.set_book_barcode(id, code.as_deref()).await?;
+        }
         book_row(&state, &s, id).await
     }
     .await;
     finish(&s, "/admin/books", outcome)
+}
+
+fn barcode_failure() -> Failure {
+    Failure::new(StatusCode::UNPROCESSABLE_ENTITY, "err.invalid_barcode").at("more")
 }
 
 /// The free lines of the tags window: `Field=Value`, one per line. A field written twice gets both

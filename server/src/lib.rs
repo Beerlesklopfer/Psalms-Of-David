@@ -32,6 +32,7 @@ pub mod fetch;
 pub mod filing;
 pub mod folders;
 pub mod genres;
+pub mod gtin;
 pub mod hidden;
 pub mod blacklist;
 pub mod labels;

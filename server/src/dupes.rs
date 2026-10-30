@@ -195,6 +195,7 @@ mod tests {
         AdminBookRow {
             id,
             discs_total: None,
+            barcode: None,
             kind: "audiobook".into(),
             folder: format!("{id}"),
             title: title.into(),

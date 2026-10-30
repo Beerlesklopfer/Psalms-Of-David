@@ -388,6 +388,7 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
       canLabel: canLabel.contains(id),
       canShare: canShare.contains(id),
       trackLabels: trackLabelsOf[id] ?? const [],
+      barcode: d['barcode'] as String?,
       tracks: [
         for (final p in parts)
           Track(

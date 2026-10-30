@@ -11,7 +11,7 @@ import '../offline/offline_controller.dart';
 import '../podcast_downloads.dart';
 import '../player_controller.dart';
 import '../podcasts.dart';
-import '../podcasts/download_gate.dart';
+import '../podcasts/bulk_preflight.dart';
 import '../server/api_client.dart';
 import '../widgets.dart';
 import 'labels_ui.dart';
@@ -259,7 +259,13 @@ class _EpisodesScreenState extends State<EpisodesScreen> {
       messenger.showSnackBar(SnackBar(content: Text(l.podcastDownloadNewestNone)));
       return;
     }
-    final chosen = await askBulkDownload(context, planBulk(todo, limitMegabytes: downloads.bulkMegabytes));
+    final preflight = await preflightBulk(downloads, todo);
+    if (!mounted) return;
+    if (preflight is BulkMobileData) {
+      messenger.showSnackBar(SnackBar(content: Text(l.podcastDownloadAllMobile)));
+      return;
+    }
+    final chosen = await askBulkDownload(context, (preflight as BulkReady).plan);
     if (chosen == null || chosen.isEmpty || !mounted) return;
     _bulkRunning = true;
     var stop = false;
@@ -268,6 +274,11 @@ class _EpisodesScreenState extends State<EpisodesScreen> {
     try {
       for (final e in chosen) {
         if (stop) break;
+        // The connection may have changed while the earlier episodes loaded: on mobile data the rest waits for Wi-Fi.
+        if (downloads.bulkWifiOnly && await downloads.environment.unmetered() == false) {
+          messenger.showSnackBar(SnackBar(content: Text(l.podcastDownloadAllMobile)));
+          break;
+        }
         current = e.id;
         messenger.hideCurrentSnackBar();
         messenger.showSnackBar(SnackBar(

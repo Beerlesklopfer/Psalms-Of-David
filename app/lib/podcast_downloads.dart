@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 
 import 'audio/file_formats.dart';
 import 'podcasts.dart';
+import 'podcasts/download_environment.dart';
 import 'podcasts/download_gate.dart';
 import 'podcasts/download_machine.dart' as machine;
 import 'server/app_paths.dart';
@@ -212,7 +213,9 @@ const kNewestEpisodes = 5;
 /// are fetched from the publisher (the server does not carry them) into the folder of the other downloads; a small file next to the pairing says
 /// which episodes they are, so the offline view can list them. The files are the truth: an entry whose file is gone is dropped.
 class PodcastDownloads extends ChangeNotifier {
-  PodcastDownloads({required this.cache, this.file, EpisodeFetcher? fetcher}) : fetcher = fetcher ?? HttpEpisodeFetcher() {
+  PodcastDownloads({required this.cache, this.file, EpisodeFetcher? fetcher, DownloadEnvironment? environment})
+      : fetcher = fetcher ?? HttpEpisodeFetcher(),
+        environment = environment ?? const PluginDownloadEnvironment() {
     _load();
     _dropPartials();
   }
@@ -243,6 +246,12 @@ class PodcastDownloads extends ChangeNotifier {
   /// The most one download may take, in megabytes.
   int maxMegabytes = 500;
 
+  /// What the device says about its room and its connection (the gate of a bulk download asks it).
+  final DownloadEnvironment environment;
+
+  /// A whole collection is only loaded on Wi-Fi or a cable, not on mobile data (on until the person turns it off).
+  bool bulkWifiOnly = true;
+
   /// The most "download the whole collection" may load in one go, in megabytes (1 GB until the person changes it, at most 20 GB).
   int bulkMegabytes = kBulkDefaultMegabytes;
 
@@ -258,6 +267,7 @@ class PodcastDownloads extends ChangeNotifier {
         deleteAfterListening = s['delete_after_listening'] == true;
         final mb = s['max_megabytes'];
         if (mb is int && mb >= 10) maxMegabytes = mb;
+        if (s['bulk_wifi_only'] is bool) bulkWifiOnly = s['bulk_wifi_only'] as bool;
         final bulk = s['bulk_megabytes'];
         if (bulk is int && bulk >= 10) bulkMegabytes = bulk;
       }
@@ -282,7 +292,7 @@ class PodcastDownloads extends ChangeNotifier {
       f.parent.createSync(recursive: true);
       final temp = File('${f.path}.tmp');
       temp.writeAsStringSync(jsonEncode({
-        'settings': {'delete_after_listening': deleteAfterListening, 'max_megabytes': maxMegabytes, 'bulk_megabytes': bulkMegabytes},
+        'settings': {'delete_after_listening': deleteAfterListening, 'max_megabytes': maxMegabytes, 'bulk_megabytes': bulkMegabytes, 'bulk_wifi_only': bulkWifiOnly},
         'episodes': [for (final e in _entries.values) e.toJson()],
       }));
       temp.renameSync(f.path);
@@ -606,6 +616,13 @@ class PodcastDownloads extends ChangeNotifier {
   void setDeleteAfterListening(bool value) {
     if (deleteAfterListening == value) return;
     deleteAfterListening = value;
+    _save();
+    _notify();
+  }
+
+  void setBulkWifiOnly(bool value) {
+    if (bulkWifiOnly == value) return;
+    bulkWifiOnly = value;
     _save();
     _notify();
   }

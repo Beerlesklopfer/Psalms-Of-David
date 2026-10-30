@@ -614,6 +614,9 @@ pub struct Meta {
     pub mbid: Option<String>,
     #[serde(default)]
     pub disc_id: Option<String>,
+    /// The EAN/UPC of the release (from MusicBrainz): written to the files as the tag `Barcode` when it is a valid one.
+    #[serde(default)]
+    pub barcode: Option<String>,
     /// The genre of a music CD (an audiobook gets the genre of the settings).
     #[serde(default)]
     pub genre: Option<String>,
@@ -1169,6 +1172,9 @@ fn write_tags(path: &Path, m: &Meta, s: &CdSettings, t: &StagedTrack, title: &st
     if let Some(total) = m.discs_total {
         fields.push(("DiscTotal".into(), vec![total.to_string()]));
     }
+    if let Some(code) = m.barcode.as_deref().and_then(crate::gtin::parse) {
+        fields.push(("Barcode".into(), vec![code]));
+    }
     crate::tags::write_fields(path, &fields).map_err(broken)?;
     let album = crate::tags::AlbumTags {
         album: Some(m.album.trim().to_owned()),
@@ -1177,6 +1183,7 @@ fn write_tags(path: &Path, m: &Meta, s: &CdSettings, t: &StagedTrack, title: &st
         year: m.year.clone().filter(|y| !y.is_empty()),
         genre: genre.map(str::to_owned),
         cover: cover.cloned(),
+        ..Default::default()
     };
     crate::tags::write_album(path, &album).map_err(broken)?;
     if s.id3_version == "2.3" {
@@ -1247,6 +1254,7 @@ mod place_tests {
             disc_id: None,
             genre: None,
             job_id: None,
+            barcode: None,
             allow_gaps: true,
             tracks: numbers.iter().map(|n| MetaTrack { number: *n, title: None, file: format!("{n:02}.mp3") }).collect(),
         }

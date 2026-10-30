@@ -60,6 +60,8 @@ pub struct FoundBook {
     pub genre: Option<String>,
     /// How many CDs the set has, as the tag of the first track says (`DiscTotal`); `None` if it does not say.
     pub discs_total: Option<i64>,
+    /// The EAN/UPC of the album: the first valid `Barcode` tag among its files, digits only; `None` if no file has one.
+    pub barcode: Option<String>,
     pub tracks: Vec<FoundTrack>,
 }
 
@@ -373,7 +375,7 @@ impl Store {
 }
 
 async fn upsert_book(conn: &impl ConnectionTrait, author_id: i64, b: &FoundBook) -> Result<i64> {
-    let values: [Value; 9] = [
+    let values: [Value; 11] = [
         b.narrator.clone().into(),
         b.title.clone().into(),
         author_id.into(),
@@ -383,13 +385,16 @@ async fn upsert_book(conn: &impl ConnectionTrait, author_id: i64, b: &FoundBook)
         b.kind.clone().into(),
         b.genre.clone().into(),
         b.discs_total.into(),
+        b.barcode.clone().into(),
+        b.barcode.as_deref().map(crate::gtin::to_gtin14).into(),
     ];
     let row = conn
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "INSERT INTO book (narrator, title, author_id, folder, added_at, recommended_age, kind, genre_tag, discs_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) \
+            "INSERT INTO book (narrator, title, author_id, folder, added_at, recommended_age, kind, genre_tag, discs_total, barcode, gtin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
              ON CONFLICT (folder) DO UPDATE SET title = excluded.title, author_id = excluded.author_id, kind = excluded.kind, narrator = excluded.narrator, \
                genre_tag = excluded.genre_tag, discs_total = coalesce(excluded.discs_total, book.discs_total), \
+               barcode = excluded.barcode, gtin = excluded.gtin, \
                recommended_age = coalesce(excluded.recommended_age, book.recommended_age) \
              RETURNING id",
             values,
@@ -645,9 +650,14 @@ fn book_of(root: &Path, dir: &Path, parts: &[(PathBuf, Option<i64>)], kind: &str
     let title = tag_title.unwrap_or_else(|| names.last().cloned().unwrap_or_default());
     let genre = first_tags.as_ref().and_then(|t| t.genre.clone());
     let discs_total = first_tags.as_ref().and_then(|t| t.disc_total).map(i64::from).filter(|n| (1..=99).contains(n));
+    // The barcode: the first file that carries a valid one speaks for the album (the first file was read already).
+    let barcode = first_tags
+        .as_ref()
+        .and_then(|t| t.barcode.as_deref().and_then(crate::gtin::parse))
+        .or_else(|| readable.iter().skip(1).find_map(|p| tags::read(p).ok().and_then(|t| t.barcode).and_then(|b| crate::gtin::parse(&b))));
     // The composer tag is the narrator of an audiobook; on music it names the composer, who is nobody to listen to.
     let narrator = first_tags.and_then(|t| t.narrator).filter(|_| kind == "audiobook");
-    Ok(FoundBook { kind: kind.to_owned(), folder: names.join("/"), author, title, recommended_age, narrator, genre, discs_total, tracks })
+    Ok(FoundBook { kind: kind.to_owned(), folder: names.join("/"), author, title, recommended_age, narrator, genre, discs_total, barcode, tracks })
 }
 
 /// The first audio file below `dir`, at most `depth` folders down; `None` if there is none (or it

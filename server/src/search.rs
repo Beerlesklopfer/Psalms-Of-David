@@ -62,6 +62,17 @@ impl Matcher {
         }
     }
 
+    /// Does the search find this barcode? Typing the digits (at least 6, spaces and hyphens allowed) finds the album whose code contains them.
+    /// A pattern is matched against the code as it is stored.
+    pub fn matches_barcode(&self, barcode: Option<&str>) -> bool {
+        let Some(code) = barcode else { return false };
+        match self {
+            Matcher::All => false,
+            Matcher::Contains(needle) => crate::gtin::clean(needle).is_some_and(|d| d.len() >= 6 && code.contains(&d)),
+            Matcher::Pattern(re) => re.is_match(code),
+        }
+    }
+
     /// The text of a book that is searched: title, author and narrator, joined by spaces.
     pub fn matches_book(&self, title: &str, author: &str, narrator: Option<&str>) -> bool {
         self.is_match(format!("{title} {author} {}", narrator.unwrap_or("")).trim_end())

@@ -113,9 +113,10 @@ fn tool_list() -> Value {
     json!([
         {
             "name": "list_albums",
-            "description": "Lists audiobooks and albums: id, kind (audiobook or music), title, author, narrator, tracks, recommended_age and whether it has a blurb (has_description). With with_description=true each entry carries its blurb text, to compare many at once.",
+            "description": "Lists audiobooks and albums: id, kind (audiobook or music), title, author, narrator, tracks, recommended_age, the barcode (EAN/UPC, when the tags carry one) and whether it has a blurb (has_description). With with_description=true each entry carries its blurb text, to compare many at once.",
             "inputSchema": { "type": "object", "properties": {
-                "query": { "type": "string", "description": "Only albums whose title or author matches: words (case ignored), * and ? as wildcards, or a regular expression between slashes (/^der .* welt$/)" },
+                "query": { "type": "string", "description": "Only albums whose title or author matches: words (case ignored), * and ? as wildcards, or a regular expression between slashes (/^der .* welt$/); digits (at least 6) find an album by a part of its barcode" },
+                "barcode": { "type": "string", "description": "Only the album with this barcode (EAN-8, UPC-A, EAN-13 or GTIN-14, check digit must be right; a UPC-A and the EAN-13 with a leading 0 are the same product)" },
                 "kind": { "type": "string", "enum": ["audiobook", "music"] },
                 "with_description": { "type": "boolean", "description": "Put the blurb text (Klappentext) of each album into the answer" },
                 "has_description": { "type": "boolean", "description": "true: only albums that have a blurb; false: only those that have none" },
@@ -125,7 +126,7 @@ fn tool_list() -> Value {
         },
         {
             "name": "get_album",
-            "description": "One album with its tracks (id, disc, number, title, file, format, codec, mime, sample_rate, channels) and the folder picture, if any.",
+            "description": "One album with its barcode (EAN/UPC, null if none) and its tracks (id, disc, number, title, file, format, codec, mime, sample_rate, channels) and the folder picture, if any.",
             "inputSchema": { "type": "object", "properties": { "id": id }, "required": ["id"] }
         },
         {
@@ -140,7 +141,7 @@ fn tool_list() -> Value {
         },
         {
             "name": "set_tags",
-            "description": "Sets tag fields in every track of an album, or in one track. `fields` maps a field name to a string, a list of strings (several values) or null (remove the field). Use dry_run first to see what would change. Needs a token that may write.",
+            "description": "Sets tag fields in every track of an album, or in one track. `fields` maps a field name to a string, a list of strings (several values) or null (remove the field). Use dry_run first to see what would change. `Barcode` must be a valid EAN/UPC (8, 12, 13 or 14 digits with a correct check digit) or null; the library follows at once. Needs a token that may write.",
             "inputSchema": { "type": "object", "properties": {
                 "id": id,
                 "track": { "type": "integer", "description": "Only this track id; without it every track of the album" },
@@ -424,7 +425,7 @@ const WRITING_TOOLS: [&str; 28] = ["hide_albums", "edit_blacklist", "merge_album
 /// A sample call of a tool, for `help_for`.
 fn example_of(tool: &str) -> Value {
     match tool {
-        "list_albums" => json!({ "kind": "audiobook", "with_description": true, "has_description": true }),
+        "list_albums" => json!({ "kind": "audiobook", "with_description": true, "has_description": true, "barcode": "4006381333931" }),
         "get_album" | "get_tags" | "set_cover_from_folder" => json!({ "id": 12 }),
         "set_tags" => json!({ "id": 12, "dry_run": true, "fields": { "AlbumTitle": "Back to the Street" } }),
         "set_cover_from_url" => json!({ "id": 12, "url": "https://example.org/cover.jpg" }),
@@ -583,6 +584,11 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
         "list_albums" => {
             let matcher = crate::search::compile(&text("query").unwrap_or_default()).map_err(|e| format!("query: {e}"))?;
             let kind = text("kind");
+            // The barcode filter compares the products (EAN-13 with a leading 0 = UPC-A); a code that cannot be a barcode is an error, not "nothing found".
+            let barcode_filter = match text("barcode").filter(|b| !b.trim().is_empty()) {
+                None => None,
+                Some(b) => Some(crate::gtin::to_gtin14(&crate::gtin::parse(&b).ok_or("barcode: not a valid EAN/UPC (8, 12, 13 or 14 digits with a correct check digit)")?)),
+            };
             let with_description = args.get("with_description").and_then(Value::as_bool).unwrap_or(false);
             let offset = int("offset").unwrap_or(0).max(0) as usize;
             let limit = (int("limit").unwrap_or(100).max(1) as usize).min(PAGE_MAX);
@@ -601,7 +607,8 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 })
                 .filter(|b| kind.as_deref().is_none_or(|k| b.kind == k))
                 .filter(|b| args.get("has_description").and_then(Value::as_bool).is_none_or(|want| want == b.description.as_deref().is_some_and(|d| !d.trim().is_empty())))
-                .filter(|b| matcher.is_match(&b.title) || matcher.is_match(&b.author))
+                .filter(|b| barcode_filter.as_deref().is_none_or(|g| b.barcode.as_deref().map(crate::gtin::to_gtin14).as_deref() == Some(g)))
+                .filter(|b| matcher.is_match(&b.title) || matcher.is_match(&b.author) || matcher.matches_barcode(b.barcode.as_deref()))
                 .collect();
             let total = matching.len();
             let albums: Vec<Value> = matching
@@ -614,6 +621,9 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                         "recommended_age": b.recommended_age, "has_description": b.description.as_deref().is_some_and(|d| !d.trim().is_empty()),
                         "owner": b.owner, "released": b.released
                     });
+                    if let Some(code) = &b.barcode {
+                        entry["barcode"] = json!(code);
+                    }
                     if with_description {
                         entry["description"] = json!(b.description);
                     }
@@ -652,7 +662,7 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             let picture = album.dir.as_deref().and_then(folder_picture);
             Ok(json!({
                 "id": id, "kind": album.row.kind, "title": album.row.title, "author": album.row.author,
-                "narrator": album.row.narrator, "owner": album.row.owner, "description": album.row.description, "folder": album.folder, "folder_picture": picture, "tracks": tracks
+                "narrator": album.row.narrator, "barcode": album.row.barcode, "owner": album.row.owner, "description": album.row.description, "folder": album.folder, "folder_picture": picture, "tracks": tracks
             }))
         }
         "get_tags" => {
@@ -714,6 +724,12 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             .await
             .map_err(|e| e.to_string())??;
             if !dry {
+                // The library follows the files at once for the barcode (a scan would read the same); a change of one track only waits for the scan.
+                if only.is_none()
+                    && let Some((_, values)) = changes.iter().find(|(n, _)| n == "Barcode")
+                {
+                    s.store.set_book_barcode(id, values.first().map(String::as_str)).await.map_err(db)?;
+                }
                 s.store.rescan_soon();
                 for (file, field, old, new) in &outcome {
                     tracing::info!(token = %token.name, album = id, %file, %field, %old, %new, "tag changed");
@@ -2032,6 +2048,19 @@ fn parse_changes(fields: Option<&Value>) -> Result<Vec<(String, Vec<String>)>, S
         if values.iter().any(|v| v.chars().count() > 2000 || v.contains('\0')) {
             return Err(format!("{name}: value too long or invalid"));
         }
+        // The barcode is kept as digits and must be a real one: a typo would make the album unfindable by scanning.
+        let values = if *canonical == "Barcode" {
+            let mut digits = Vec::new();
+            for v in values.iter().filter(|v| !v.trim().is_empty()) {
+                digits.push(crate::gtin::parse(v).ok_or_else(|| format!("Barcode: {v:?} is not a valid EAN/UPC (8, 12, 13 or 14 digits with a correct check digit)"))?);
+            }
+            if digits.len() > 1 {
+                return Err("Barcode: only one value".into());
+            }
+            digits
+        } else {
+            values
+        };
         out.push(((*canonical).to_owned(), values));
     }
     Ok(out)

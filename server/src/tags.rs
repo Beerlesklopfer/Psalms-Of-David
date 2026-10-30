@@ -47,6 +47,8 @@ pub struct MediaTags {
     /// How many discs the set has (`TPOS` as `2/4`, or the field `DiscTotal`).
     pub disc_total: Option<u32>,
     pub track: Option<u32>,
+    /// The text of the field `Barcode` as the tag has it (not checked).
+    pub barcode: Option<String>,
     /// The medium's own age recommendation (see `docs/spec-discovery-profiles-roles.md`).
     pub age_recommendation: Option<u32>,
     /// Which kind of tag the values came from, for logs and tests.
@@ -103,6 +105,7 @@ pub fn read(path: &Path) -> Result<MediaTags, Error> {
         out.album_artist = non_empty(tag.get_string(ItemKey::AlbumArtist).map(str::to_owned));
         out.genre = non_empty(tag.genre().map(Cow::into_owned));
         out.narrator = non_empty(tag.get_string(ItemKey::Composer).map(str::to_owned));
+        out.barcode = non_empty(tag.get_string(ItemKey::Barcode).map(str::to_owned));
         out.disc = tag.disk().or_else(|| number(tag.get_string(ItemKey::DiscNumber)));
         out.disc_total = tag.disk_total().or_else(|| number(tag.get_string(ItemKey::DiscTotal)));
         // RIFF INFO keeps "5/17" as one string, which the shared view cannot split.
@@ -280,6 +283,9 @@ pub struct AlbumTags {
     pub narrator: Option<String>,
     pub year: Option<String>,
     pub genre: Option<String>,
+    /// "CD 2 of 3": the number of the disc and the number of discs of the set (what the first file says; the form writes them through the fields DiscNumber and DiscTotal).
+    pub disc: Option<u32>,
+    pub discs: Option<u32>,
     /// The picture bytes and their type (decided by the bytes, see `profile::sniff_image`).
     pub cover: Option<(Vec<u8>, &'static str)>,
 }
@@ -296,6 +302,8 @@ pub fn read_album(path: &Path) -> AlbumTags {
         year: text(tag.get_string(ItemKey::RecordingDate).or_else(|| tag.get_string(ItemKey::Year)))
             .map(|y| y.chars().take(4).collect()),
         genre: non_empty(tag.genre().map(Cow::into_owned)),
+        disc: tag.disk(),
+        discs: tag.disk_total(),
         cover: None,
     }
 }

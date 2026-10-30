@@ -116,7 +116,7 @@ struct LookupRequest {
 fn candidate_json(c: &musicbrainz::Candidate) -> Value {
     json!({
         "release_id": c.release_id, "title": c.title, "author": c.author, "narrators": c.narrators, "credits": c.credits,
-        "date": c.date, "year": c.year, "language": c.language,
+        "barcode": c.barcode, "date": c.date, "year": c.year, "language": c.language,
         "disc": c.disc, "discs_total": c.discs_total, "disc_id_matched": c.disc_id_matched,
         "tracks": c.tracks.iter().map(|t| t.title.clone()).collect::<Vec<_>>(),
         "track_details": c.tracks,
@@ -377,7 +377,7 @@ async fn import_inner(s: &ApiState, d: &Device, headers: &HeaderMap, form: &mut 
                 info.tracks_total = Some(m.tracks.len() as i64);
                 meta_json = Some(m);
             }
-            "kind" | "author" | "title" | "album" | "narrator" | "year" | "disc" | "discs_total" | "mbid" | "disc_id" | "genre" | "job_id" => {
+            "kind" | "author" | "title" | "album" | "narrator" | "year" | "disc" | "discs_total" | "mbid" | "disc_id" | "barcode" | "genre" | "job_id" => {
                 let text = field.text().await.map_err(|_| err(422, "invalid_meta"))?;
                 if text.len() > 500 {
                     return Err(err(422, "invalid_meta"));
@@ -459,7 +459,7 @@ async fn import_inner(s: &ApiState, d: &Device, headers: &HeaderMap, form: &mut 
 
     // What the CD is.
     let num = |k: &str| fields.get(k).filter(|v| !v.is_empty()).map(|v| v.parse::<u32>());
-    let (meta, staged_tracks) = match meta_json {
+    let (mut meta, staged_tracks) = match meta_json {
         Some(m) => {
             cdimport::check_meta(&m)?;
             let mut staged_tracks = Vec::new();
@@ -489,6 +489,7 @@ async fn import_inner(s: &ApiState, d: &Device, headers: &HeaderMap, form: &mut 
                 kind: text("kind"),
                 mbid: text("mbid"),
                 disc_id: text("disc_id"),
+                barcode: text("barcode"),
                 genre: text("genre"),
                 allow_gaps: false,
                 job_id: num("job_id").transpose().map_err(|_| err(422, "invalid_meta"))?.map(i64::from),
@@ -504,6 +505,15 @@ async fn import_inner(s: &ApiState, d: &Device, headers: &HeaderMap, form: &mut 
     *job = Some(start_job(s, d, &meta).await?);
     let job_now = job.clone().ok_or_else(|| err(500, "internal"))?;
 
+    // The EAN of the release goes into the tags: taken from the app, else (best effort) from the chosen MusicBrainz release.
+    meta.barcode = meta.barcode.as_deref().and_then(crate::gtin::parse);
+    if meta.barcode.is_none()
+        && set.lookup_ready
+        && let Some(mbid) = &meta.mbid
+        && let Ok(Some(release)) = cdimport::release_for(&s.store, &s.cd, &set, mbid, meta.tracks.len()).await
+    {
+        meta.barcode = release.barcode.as_deref().and_then(crate::gtin::parse);
+    }
     let kind = meta.kind.clone().unwrap_or_else(|| set.target_kind.clone());
     let root = import_root(s, &kind).await?;
     if cover.is_none()

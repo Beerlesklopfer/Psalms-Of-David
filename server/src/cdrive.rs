@@ -1086,6 +1086,7 @@ pub async fn start_rip(store: &Store, cd: &CdService, library: Option<PathBuf>, 
         genre: None,
         job_id: None,
         // The files keep their numbers on the disc; a choice has gaps.
+        barcode: None,
         allow_gaps: true,
         tracks: selected
             .iter()
@@ -1555,6 +1556,14 @@ async fn run_rip(
         (Some(mbid), true) => cdimport::fetch_cover(store, cd, &set, mbid).await.ok().flatten(),
         _ => None,
     };
+    // The EAN of the chosen release goes into the tags (best effort: a rip does not fail because MusicBrainz is not reachable).
+    if meta.barcode.is_none()
+        && set.lookup_ready
+        && let Some(mbid) = &meta.mbid
+        && let Ok(Some(release)) = cdimport::release_for(store, cd, &set, mbid, meta.tracks.len()).await
+    {
+        meta.barcode = release.barcode;
+    }
     let staged: Vec<StagedTrack> = meta.tracks.iter().map(|t| StagedTrack { number: t.number, title: t.title.clone().unwrap_or_default(), path: staging_dir.join(&t.file) }).collect();
     // What the disc is made of is written down once the files are placed (SHA-1 of the PCM as the manifest has it).
     let info: HashMap<u32, (String, u32)> = plan.manifest.lock().unwrap_or_else(|e| e.into_inner()).tracks.iter().map(|e| (e.number, (e.sha1.clone(), e.seconds))).collect();

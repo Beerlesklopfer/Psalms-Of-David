@@ -12,6 +12,7 @@ import '../library_groups.dart';
 import '../library_hiding.dart';
 import '../models.dart';
 import '../podcasts.dart';
+import 'barcode_scan_screen.dart';
 import 'hidden_list.dart';
 import 'labels_ui.dart';
 import 'media_category.dart';
@@ -211,6 +212,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             if (_category == MediaCategory.playlists && playlists != null)
               PlaylistsActions(controller: playlists),
             if (widget.cd != null) CdActions(kit: widget.cd!),
+            BarcodeButton(api: widget.api),
             // One refresh button: it reloads the library and, in the categories of podcasts and radio, both lists.
             RefreshButton(
               also: widget.api == null
