@@ -12,6 +12,8 @@
 | `package-android` | push to main, tags | Psalms for Android: one `.apk` per processor type (`arm64-v8a`, `armeabi-v7a`, `x86_64`) |
 | `package-app-macos` | push to main and development, tags, by hand | Psalms for macOS: `.zip` and `.dmg` of the app (macOS runner); signed and notarized only with the Developer ID secrets |
 | `package-server-macos` | push to main and development, tags, by hand | David for macOS: an installer `.pkg` that sets the server up as a launchd daemon (macOS runner); signed, notarized only with the Developer ID secrets |
+| `package-server-windows` | push to main and development, tags, by hand | David for Windows: `david-server-VERSION-windows-x64.zip` with `david.exe` and `install-service.ps1` (sets up the service `DavidServer`, started with the computer; not signed) |
+| `package-app-windows` | push to main and development, tags, by hand | Psalms for Windows: `psalms-VERSION-windows-x64.zip` (the folder `Release` of `flutter build windows`; unsigned, Windows SmartScreen asks the first time) |
 | `release` | tags `v*` | a release with all of the above, `SHA256SUMS` and, if a key is set, `SHA256SUMS.asc` |
 
 The packages of a normal push are kept as workflow artifacts for 14 days. The version is the tag without
@@ -230,3 +232,9 @@ https://developer.apple.com/contact/request/device-name (the account holder fill
 the repository variable `IOS_DEVICE_NAME_ENTITLEMENT` set to `true` (Settings, Secrets and variables, Actions, Variables): then the CI writes
 `ios/Runner/Runner.entitlements` and sets `CODE_SIGN_ENTITLEMENTS` for that build. Do not set the variable before the profiles contain the entitlement: signing fails.
 The person can always change the name in the field.
+
+## Windows
+
+- **David:** unzip `david-server-VERSION-windows-x64.zip`, open PowerShell **as administrator** in the folder and run `.\install-service.ps1 -MediaFolder D:\Audiobooks, D:\Music` (the folders are only given read access for the service; they are chosen per user afterwards in the administration). The service `DavidServer` runs as `NT AUTHORITY\LocalService`, stores its data in `C:\ProgramData\David` (`-DataDir` changes it) and starts with the computer. Without a certificate the administration listens on `127.0.0.1:8484` over plain HTTP, as on the other systems; remove the service with `david.exe uninstall`. Tried on Windows 11: the build, the start and the service (install, start, remove).
+- **Psalms:** unzip `psalms-VERSION-windows-x64.zip` and start `psalm.exe`. The sound comes from Media Foundation through `just_audio_windows`; there is no QR camera on Windows (pair with the address and the code, or with a picture of the QR code). **Not tried on a real Windows yet**: the build on the VM failed because Flutter wants the generator "Visual Studio 18 2026" and the CMake of Visual Studio 2026 does not know it; the CI job (Visual Studio 2022) is the way to build it.
+- Not done yet: an installer (`.msi` or Inno Setup) and signing with a certificate.

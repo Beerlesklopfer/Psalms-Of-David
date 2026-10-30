@@ -211,6 +211,8 @@ jobs:
           - { arch: amd64, runner: ubuntu-latest, nfpm: x86_64 }
           - { arch: arm64, runner: ubuntu-24.04-arm, nfpm: arm64 }
     runs-on: ${{ matrix.runner }}
+    # The arm64 build is new: it must not turn the whole run red until it works.
+    continue-on-error: ${{ matrix.arch == 'arm64' }}
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
@@ -220,7 +222,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: audio }
       - uses: subosito/flutter-action@v2
+        if: matrix.arch == 'amd64'
         with: { channel: stable, cache: true }
+      # Flutter publishes no SDK archive for Linux on arm64: the tool is taken from git (it fetches the arm64 Dart SDK itself).
+      - name: Flutter from git (arm64)
+        if: matrix.arch == 'arm64'
+        run: |
+          git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
       - name: Install nfpm
         run: curl -sSL https://github.com/goreleaser/nfpm/releases/download/v2.41.0/nfpm_2.41.0_Linux_${{ matrix.nfpm }}.tar.gz | sudo tar -xz -C /usr/local/bin nfpm
       - run: scripts/package-app.sh
@@ -289,6 +298,52 @@ jobs:
           name: packages-app-macos
           path: dist/*
           retention-days: 14
+
+  # David and Psalms for Windows: a .zip each (a PowerShell script in the server's zip sets the service up; docs/releasing.md). Not signed.
+  package-server-windows:
+    needs: [server, version]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: server }
+      - run: cargo build --release --locked
+        working-directory: server
+      - name: Make the zip
+        shell: pwsh
+        run: |
+          $stage = "stage/david-server"
+          New-Item -ItemType Directory -Force $stage, dist | Out-Null
+          Copy-Item server/target/release/david.exe, server/packaging/windows/install-service.ps1, LICENSE, README.md $stage
+          Compress-Archive -Path $stage -DestinationPath "dist/david-server-$env:VERSION-windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with: { name: packages-server-windows, path: dist/*, retention-days: 14 }
+
+  package-app-windows:
+    needs: [app, version]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - run: flutter pub get
+        working-directory: app
+      - run: flutter build windows --release --build-name "$env:VERSION" --build-number "$env:GITHUB_RUN_NUMBER"
+        working-directory: app
+      - name: Make the zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path "app/build/windows/x64/runner/Release/*" -DestinationPath "dist/psalms-$env:VERSION-windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with: { name: packages-app-windows, path: dist/*, retention-days: 14 }
 
   package-android:
     needs: [app, version]
@@ -484,7 +539,7 @@ jobs:
           retention-days: 14
 
   release:
-    needs: [package-server, package-server-macos, package-app-linux, package-android, package-app-macos]
+    needs: [package-server, package-server-macos, package-server-windows, package-app-linux, package-android, package-app-macos, package-app-windows]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions: { contents: write }

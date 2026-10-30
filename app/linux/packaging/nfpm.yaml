@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Builds the .deb and .rpm of the Linux client with nfpm (https://nfpm.goreleaser.com).
 # Run by scripts/package-app.sh from the app/ folder; VERSION and ARCH come from the environment
-# (ARCH is the Debian name: amd64 or arm64; nfpm maps it for the rpm; BUNDLE_ARCH is the folder of Flutter: x64 or arm64).
+# (ARCH is the Debian name: amd64 or arm64; nfpm maps it for the rpm).
+# The bundle is copied to build/linux/bundle by the script (Flutter puts it in a folder named by the processor; nfpm does not expand variables in a path).
 name: psalm
 arch: ${ARCH}
 platform: linux
@@ -20,7 +21,7 @@ license: AGPL-3.0-or-later
 contents:
   # The Flutter bundle (program, lib/, data/) lives in /opt/psalm; the program finds its
   # libraries next to its real path, so /usr/bin/psalm is a link.
-  - src: build/linux/${BUNDLE_ARCH}/release/bundle/
+  - src: build/linux/bundle/
     dst: /opt/psalm/
     type: tree
     file_info: { mode: 0755 }

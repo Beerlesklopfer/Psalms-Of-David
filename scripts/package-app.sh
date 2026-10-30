@@ -17,6 +17,8 @@ case "$arch" in amd64) export BUNDLE_ARCH=x64 ;; *) export BUNDLE_ARCH=$arch ;; 
 # The sound engine goes into the bundle: the CMake install step picks it up from here.
 (cd audio && cargo build --release --locked)
 (cd app && flutter pub get && flutter build linux --release --build-name "$VERSION")
+# A fixed place for nfpm (the folder Flutter builds into is named x64 or arm64).
+rm -rf app/build/linux/bundle && cp -r "app/build/linux/$BUNDLE_ARCH/release/bundle" app/build/linux/bundle
 
 if command -v nfpm >/dev/null; then
     (cd app && nfpm package --config linux/packaging/nfpm.yaml --packager deb --target "$dist/psalm_${VERSION}_${arch}.deb" \
