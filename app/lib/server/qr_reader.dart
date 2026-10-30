@@ -7,8 +7,9 @@ import 'package:zxing2/qrcode.dart';
 
 /// Reads the text of the first QR code in a picture (PNG, JPEG, WebP, GIF), or null if
 /// there is none to be found. Used on the computer, where the pairing code of the
-/// administration is on the screen: a screenshot of it is enough. The phones will scan
-/// with the camera instead.
+/// administration is on the screen: a screenshot of it is enough. Phones and the Mac scan
+/// with the camera (`QrScanScreen`); this stays the way for the other systems and the
+/// "choose a picture instead" of the scanner.
 String? readQrCode(Uint8List pictureBytes) {
   final decoded = img.decodeImage(pictureBytes);
   if (decoded == null) return null;

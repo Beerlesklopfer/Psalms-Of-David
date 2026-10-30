@@ -16,15 +16,19 @@ use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::thread::JoinHandle;
+#[cfg(target_os = "linux")]
 use std::time::Duration;
 
 /// `NETLINK_KOBJECT_UEVENT` (linux/netlink.h).
+#[cfg(target_os = "linux")]
 const NETLINK_KOBJECT_UEVENT: libc::c_int = 15;
 /// The multicast group of kernel uevents.
+#[cfg(target_os = "linux")]
 const KERNEL_UEVENT_GROUP: u32 = 1;
 /// Major device number of SCSI CD-ROM drives (`sr`, linux/major.h `SCSI_CDROM_MAJOR`).
 pub const SCSI_CDROM_MAJOR: u32 = 11;
 /// How long the receiving thread waits for a message before it looks at the stop flag.
+#[cfg(target_os = "linux")]
 const RECEIVE_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// One kernel uevent: the action and its `KEY=value` properties.
@@ -80,9 +84,11 @@ pub enum Received {
     Closed,
 }
 
-/// The netlink socket.
+/// The netlink socket (Linux only: other systems have no kernel uevents).
+#[cfg(target_os = "linux")]
 struct Socket(libc::c_int);
 
+#[cfg(target_os = "linux")]
 impl Socket {
     fn open() -> io::Result<Socket> {
         // SAFETY: plain system calls; the descriptor is owned by the returned value.
@@ -129,6 +135,7 @@ impl Socket {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl Drop for Socket {
     fn drop(&mut self) {
         // SAFETY: the descriptor is ours and closed once.
@@ -137,8 +144,15 @@ impl Drop for Socket {
 }
 
 /// Can the kernel's uevents be listened to here? (Opens and closes a socket.)
+#[cfg(target_os = "linux")]
 pub fn available() -> bool {
     Socket::open().is_ok()
+}
+
+/// Other systems: no kernel uevents; the server then looks at the drives by polling (and finds none on macOS).
+#[cfg(not(target_os = "linux"))]
+pub fn available() -> bool {
+    false
 }
 
 /// A running watch: a thread that counts relevant events. The owner asks [`Watch::take`] now and
@@ -151,9 +165,16 @@ pub struct Watch {
 
 impl Watch {
     /// Listens to the kernel's uevents. Fails where no netlink socket can be opened.
+    #[cfg(target_os = "linux")]
     pub fn start() -> io::Result<Watch> {
         let socket = Socket::open()?;
         Ok(Watch::spawn(move || socket.receive()))
+    }
+
+    /// Other systems: not supported.
+    #[cfg(not(target_os = "linux"))]
+    pub fn start() -> io::Result<Watch> {
+        Err(io::Error::new(io::ErrorKind::Unsupported, "kernel uevents exist on Linux only"))
     }
 
     /// Runs the watch over any source of messages (tests use a channel).
@@ -196,6 +217,7 @@ impl Drop for Watch {
 mod tests {
     use super::*;
     use std::sync::mpsc;
+    use std::time::Duration;
 
     fn msg(action: &str, props: &[(&str, &str)]) -> Vec<u8> {
         let mut v = format!("{action}@/devices/pci0000:00/block/sr1").into_bytes();

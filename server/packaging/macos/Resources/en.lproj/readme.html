@@ -1,0 +1,28 @@
+<html><body style="font-family: -apple-system, Helvetica, sans-serif; font-size: 13px;">
+<h2>After the installation</h2>
+<ol>
+<li><b>Create the first administrator</b> (once), in Terminal:<br><code>sudo -u _david /usr/local/bin/david init</code></li>
+<li><b>Start the daemon:</b><br><code>sudo launchctl bootstrap system /Library/LaunchDaemons/com.the-abraham-box.david.plist</code><br>
+It starts by itself after every restart of the Mac. If macOS asks whether <i>david</i> may accept incoming network connections, allow it.</li>
+<li><b>Open the administration pages:</b> <code>https://localhost:8484/admin</code> (the browser warns about the certificate that David makes itself:
+that is expected; the apps check its fingerprint, which the pairing code carries). Set the import folders there and pair the apps (menu "Koppeln").</li>
+</ol>
+<h2>Where things are</h2>
+<ul>
+<li>Program: <code>/usr/local/bin/david</code> &middot; launchd files: <code>/Library/LaunchDaemons/com.the-abraham-box.david*.plist</code></li>
+<li>Data (database, certificate): <code>/Library/Application Support/David</code> (owner <code>_david</code>)</li>
+<li>Settings of the machine: <code>/etc/david.toml</code> (an update keeps it)</li>
+<li>Log: <code>/var/log/david.log</code></li>
+<li>Restart: <code>sudo launchctl kickstart -k system/com.the-abraham-box.david</code> &middot; stop: <code>sudo launchctl bootout system/com.the-abraham-box.david</code></li>
+<li>Remove: <code>sudo /usr/local/bin/david-uninstall.sh</code> (<code>--purge</code> removes the data too)</li>
+</ul>
+<h2>Music folders</h2>
+<p>The daemon runs as <code>_david</code> and has to <b>read</b> the folders of the library (and <b>write</b> if David should edit tags and covers or take uploads).
+Linux gives these rights with POSIX ACLs; on the Mac you give them yourself, for example for a folder <code>/Users/Shared/Musik</code>:
+<code>sudo chmod -R +a "_david allow list,search,readattr,readextattr,readsecurity,file_inherit,directory_inherit" /Users/Shared/Musik</code> (read) or
+<code>sudo chown -R _david /Users/Shared/Musik</code> (full rights).</p>
+<h2>Privacy (macOS)</h2>
+<p>Folders below <i>Documents</i>, <i>Desktop</i>, <i>Downloads</i>, <i>Music</i> or on external disks are protected by macOS; a daemon may only read them with
+<b>Full Disk Access</b>. Either put the library into a plain folder such as <code>/Users/Shared/Musik</code>, or give the program the right:
+System Settings &rarr; Privacy &amp; Security &rarr; Full Disk Access &rarr; <b>+</b> &rarr; press <i>Shift-Command-G</i>, type <code>/usr/local/bin</code>, choose <code>david</code>, then restart the daemon.</p>
+</body></html>

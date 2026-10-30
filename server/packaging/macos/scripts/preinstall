@@ -1,0 +1,7 @@
+#!/bin/sh
+# Runs before the files of the package are put in place (as root). An update stops the running daemon first; the files, the data folder and
+# /etc/david.toml of the old version stay where they are (the package does not replace the config: see postinstall).
+LABEL=com.the-abraham-box.david
+launchctl bootout "system/$LABEL" >/dev/null 2>&1 || true
+launchctl bootout "system/$LABEL-reindex" >/dev/null 2>&1 || true
+exit 0

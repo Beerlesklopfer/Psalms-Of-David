@@ -55,22 +55,22 @@ class _Source extends MediaSource {
 }
 
 void main() {
-  tearDown(() => runsOnIos = () => false);
+  tearDown(() => runsOnApple = () => false);
 
-  test('the iPhone cannot play Ogg and a few others; every other platform and an unknown format plays', () {
-    runsOnIos = () => true;
+  test('an Apple platform (iPhone, iPad, Mac) cannot play Ogg and a few others; every other platform and an unknown format plays', () {
+    runsOnApple = () => true;
     for (final f in ['ogg', 'OGG', 'opus', 'wma', 'ape']) {
       expect(formatPlayableHere(f), isFalse, reason: f);
     }
     for (final f in ['mp3', 'm4a', 'flac', 'wav', '', null]) {
       expect(formatPlayableHere(f), isTrue, reason: '$f');
     }
-    runsOnIos = () => false;
+    runsOnApple = () => false;
     expect(formatPlayableHere('ogg'), isTrue, reason: 'Android and Linux play Ogg');
   });
 
   test('the player does not try a file the platform cannot decode, and says which track', () {
-    runsOnIos = () => true;
+    runsOnApple = () => true;
     final backend = FakeBackend();
     final p = PlayerController([_book()], backend: backend, source: _Source());
     p.open(p.library.first, track: 0);
@@ -84,13 +84,13 @@ void main() {
   });
 
   testWidgets('on an iPhone a tap on an Ogg track shows the message and starts nothing; an MP3 track plays', (tester) async {
-    runsOnIos = () => true;
+    runsOnApple = () => true;
     _tall(tester);
     final p = PlayerController([_book()]);
     await tester.pumpWidget(_app(p));
     await tester.tap(find.text('Der neue Himmel'));
     await tester.pump();
-    expect(find.text('This file format cannot be played on iPhone yet.'), findsOneWidget);
+    expect(find.text('This file format cannot be played on Apple devices (iPhone, iPad, Mac) yet.'), findsOneWidget);
     expect(p.playing, isFalse);
     await tester.tap(find.text('Warten'));
     await tester.pump();
@@ -100,32 +100,32 @@ void main() {
   });
 
   testWidgets('on other platforms the Ogg track plays', (tester) async {
-    runsOnIos = () => false;
+    runsOnApple = () => false;
     _tall(tester);
     final p = PlayerController([_book()]);
     await tester.pumpWidget(_app(p));
     await tester.tap(find.text('Der neue Himmel'));
     await tester.pump();
-    expect(find.text('This file format cannot be played on iPhone yet.'), findsNothing);
+    expect(find.text('This file format cannot be played on Apple devices (iPhone, iPad, Mac) yet.'), findsNothing);
     expect(p.playing, isTrue);
     p.dispose();
     await tester.pump();
   });
 
   test('a track the server can make an MP3 of is playable on the iPhone, one it cannot is not', () {
-    runsOnIos = () => true;
+    runsOnApple = () => true;
     expect(trackPlayableHere('ogg', 'mp3'), isTrue);
     expect(trackPlayableHere('ogg', null), isFalse, reason: 'an older server: the message as before');
     expect(trackPlayableHere('mp3', null), isTrue);
     expect(needsTranscode('ogg', 'mp3'), isTrue);
     expect(needsTranscode('ogg', null), isFalse);
     expect(needsTranscode('mp3', 'mp3'), isFalse, reason: 'a file that plays is asked for as it is');
-    runsOnIos = () => false;
+    runsOnApple = () => false;
     expect(needsTranscode('ogg', 'mp3'), isFalse, reason: 'Android and Linux play Ogg themselves');
   });
 
   test('on the iPhone a track with an MP3 on offer is played, and the message stays only if the server cannot make it', () async {
-    runsOnIos = () => true;
+    runsOnApple = () => true;
     const ogg = Track(disc: 1, number: 1, title: 'Der neue Himmel', length: Duration(minutes: 3), partId: 10, format: 'ogg', transcode: 'mp3');
     Book book() => Book(id: '1', title: 'Caipiranha', author: 'Duo Camillo', color: const Color(0xFF6E1F2B), tracks: const [ogg]);
 
@@ -147,7 +147,7 @@ void main() {
   });
 
   test('the part is asked for as an MP3 and kept under its own name next to the original', () async {
-    runsOnIos = () => true;
+    runsOnApple = () => true;
     // The test binding answers every HTTP request with 400; this test talks to a server of its own on the loopback.
     HttpOverrides.global = null;
     final asked = <String>[];
@@ -178,7 +178,7 @@ void main() {
     expect(await source.fetchPart(mp3), '${dir.path}/11.audio');
     expect(asked.last, '/api/v1/parts/11/stream');
     // Where the platform plays Ogg itself, the original is asked for.
-    runsOnIos = () => false;
+    runsOnApple = () => false;
     expect(await source.fetchPart(ogg), '${dir.path}/10.audio');
     expect(asked.last, '/api/v1/parts/10/stream');
   });

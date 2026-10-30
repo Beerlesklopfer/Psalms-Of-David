@@ -190,7 +190,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get formatNotPlayableIos =>
-      'Dieses Dateiformat lässt sich auf dem iPhone noch nicht abspielen.';
+      'Dieses Dateiformat lässt sich auf Apple-Geräten (iPhone, iPad, Mac) noch nicht abspielen.';
 
   @override
   String get connectSearching => 'Suche den Server erneut ...';
@@ -214,7 +214,30 @@ class AppLocalizationsDe extends AppLocalizations {
   String get pasteButton => 'Einfügen';
 
   @override
-  String get qrButton => 'QR-Code aus einem Bild lesen';
+  String get qrButton => 'QR-Code scannen';
+
+  @override
+  String get qrScanTitle => 'Kopplungscode scannen';
+
+  @override
+  String get qrScanHint =>
+      'Halte die Kamera auf den QR-Code der Kopplungsseite deines Servers.';
+
+  @override
+  String get qrScanNotPairing => 'Das ist kein Kopplungscode.';
+
+  @override
+  String get qrScanUsePicture => 'Stattdessen ein Bild wählen';
+
+  @override
+  String get qrScanTorch => 'Taschenlampe';
+
+  @override
+  String get qrScanPermissionDenied =>
+      'Die Kamera ist für Psalm nicht erlaubt. Erlaube sie in den Einstellungen, oder wähle stattdessen ein Bild des QR-Codes.';
+
+  @override
+  String get qrScanOpenSettings => 'Einstellungen öffnen';
 
   @override
   String get qrNotFound =>

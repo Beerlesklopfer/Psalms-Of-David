@@ -1,0 +1,28 @@
+<html><body style="font-family: -apple-system, Helvetica, sans-serif; font-size: 13px;">
+<h2>Nach der Installation</h2>
+<ol>
+<li><b>Ersten Administrator anlegen</b> (einmalig), im Terminal:<br><code>sudo -u _david /usr/local/bin/david init</code></li>
+<li><b>Daemon starten:</b><br><code>sudo launchctl bootstrap system /Library/LaunchDaemons/com.the-abraham-box.david.plist</code><br>
+Er startet nach jedem Neustart des Macs von selbst. Fragt macOS, ob <i>david</i> eingehende Netzwerkverbindungen annehmen darf, erlaube es.</li>
+<li><b>Verwaltung öffnen:</b> <code>https://localhost:8484/admin</code> (der Browser warnt vor dem Zertifikat, das David selbst erzeugt: das ist so
+gewollt; die Apps prüfen seinen Fingerabdruck, den der Kopplungscode mitbringt). Dort die Importordner einstellen und die Apps koppeln (Menü „Koppeln“).</li>
+</ol>
+<h2>Wo was liegt</h2>
+<ul>
+<li>Programm: <code>/usr/local/bin/david</code> &middot; launchd-Dateien: <code>/Library/LaunchDaemons/com.the-abraham-box.david*.plist</code></li>
+<li>Daten (Datenbank, Zertifikat): <code>/Library/Application Support/David</code> (Besitzer <code>_david</code>)</li>
+<li>Einstellungen der Maschine: <code>/etc/david.toml</code> (eine Aktualisierung behält sie)</li>
+<li>Protokoll: <code>/var/log/david.log</code></li>
+<li>Neustart: <code>sudo launchctl kickstart -k system/com.the-abraham-box.david</code> &middot; Stopp: <code>sudo launchctl bootout system/com.the-abraham-box.david</code></li>
+<li>Entfernen: <code>sudo /usr/local/bin/david-uninstall.sh</code> (<code>--purge</code> entfernt auch die Daten)</li>
+</ul>
+<h2>Musikordner</h2>
+<p>Der Daemon läuft als <code>_david</code> und muss die Ordner der Bibliothek <b>lesen</b> können (und <b>schreiben</b>, wenn David Tags und Cover ändern oder Uploads annehmen soll).
+Unter Linux vergibt David diese Rechte selbst mit POSIX-ACLs; auf dem Mac gibst du sie selbst, zum Beispiel für einen Ordner <code>/Users/Shared/Musik</code>:
+<code>sudo chmod -R +a "_david allow list,search,readattr,readextattr,readsecurity,file_inherit,directory_inherit" /Users/Shared/Musik</code> (Lesen) oder
+<code>sudo chown -R _david /Users/Shared/Musik</code> (volle Rechte).</p>
+<h2>Datenschutz (macOS)</h2>
+<p>Ordner unter <i>Dokumente</i>, <i>Schreibtisch</i>, <i>Downloads</i>, <i>Musik</i> oder auf externen Medien schützt macOS; ein Daemon darf sie nur mit
+<b>Vollzugriff auf die Festplatte</b> lesen. Lege die Bibliothek entweder in einen gewöhnlichen Ordner wie <code>/Users/Shared/Musik</code> oder gib dem Programm das Recht:
+Systemeinstellungen &rarr; Datenschutz &amp; Sicherheit &rarr; Vollständiger Festplattenzugriff &rarr; <b>+</b> &rarr; <i>Umschalt-Befehl-G</i>, <code>/usr/local/bin</code> eingeben, <code>david</code> wählen, danach den Daemon neu starten.</p>
+</body></html>

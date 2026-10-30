@@ -20,9 +20,9 @@ class PsalmAudioHandler extends BaseAudioHandler with SeekHandler {
   /// The handler of this run, or null where the platform has none (Linux uses PipeWire and the desktop shell, the tests make their own).
   static PsalmAudioHandler? instance;
 
-  /// Starts the service on Android and iOS. Call once, before the app runs; elsewhere it does nothing.
+  /// Starts the service on Android, iOS and macOS (Now Playing and the media keys). Call once, before the app runs; elsewhere it does nothing.
   static Future<void> init() async {
-    if (instance != null || !(Platform.isAndroid || Platform.isIOS)) return;
+    if (instance != null || !(Platform.isAndroid || Platform.isIOS || Platform.isMacOS)) return;
     instance = await AudioService.init(
       builder: PsalmAudioHandler.new,
       config: const AudioServiceConfig(

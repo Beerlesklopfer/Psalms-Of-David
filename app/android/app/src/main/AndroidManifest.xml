@@ -2,6 +2,9 @@
     xmlns:tools="http://schemas.android.com/tools">
     <!-- The server is reached over the network. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- The live scanner reads the QR code of a pairing with the camera; a device without a camera still installs the app (the scanner then offers a picture). -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <!-- Playback goes on with the screen locked: a foreground service of the type media playback holds the player (just_audio_background). -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>

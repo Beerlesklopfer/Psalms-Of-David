@@ -10,6 +10,8 @@
 | `package-server` | push to main, tags | David: `.deb`, `.rpm`, `.tar.gz`; the sound engine as `.tar.gz` |
 | `package-app-linux` | push to main, tags | Psalm for Linux: `.deb`, `.rpm`, `.tar.gz` (built with nfpm from `app/linux/packaging/nfpm.yaml`) |
 | `package-android` | push to main, tags | Psalm for Android: one `.apk` per processor type (`arm64-v8a`, `armeabi-v7a`, `x86_64`) |
+| `package-app-macos` | push to main and development, tags, by hand | Psalm for macOS: `.zip` and `.dmg` of the app (macOS runner); signed and notarized only with the Developer ID secrets |
+| `package-server-macos` | push to main and development, tags, by hand | David for macOS: an installer `.pkg` that sets the server up as a launchd daemon (macOS runner); signed, notarized only with the Developer ID secrets |
 | `release` | tags `v*` | a release with all of the above, `SHA256SUMS` and, if a key is set, `SHA256SUMS.asc` |
 
 The packages of a normal push are kept as workflow artifacts for 14 days. The version is the tag without
@@ -77,6 +79,75 @@ weeks), then an entitlements file in the project and a profile that contains it.
 
 Not verified here: the workflow has not run on GitHub (no Mac runner available), and the Xcode project was edited by hand on Linux. The first CI run
 will show if `flutter build ios` accepts the product settings. The CI runs on pushes to `main` and `development`, on tags and on pull requests; the signed iOS builds and the upload to TestFlight only for tags and `main` (the repository has no `main` yet: its default branch is `development`); the workflow can also be started by hand (Actions, ci, Run workflow), which signs and uploads the iOS builds too.
+
+## Psalm for macOS
+
+`package-app-macos` builds the desktop app (`app/macos/`, bundle id `com.the-abraham-box.psalm`, macOS 12 or later) on a macOS runner with
+`flutter build macos --release` and packs it as `psalm-<version>-macos.zip` and `psalm-<version>-macos.dmg`. A tag publishes both with the release.
+The app plays through `just_audio` (AVPlayer, as on iOS), with Now Playing and the media keys through `audio_service`; the app sandbox
+(`macos/Runner/*.entitlements`) allows the network client and the file chooser. There is no mDNS search on the Mac (it would need
+`com.apple.security.network.server` and gets nothing in the sandbox otherwise): the app keeps the address it was paired with. Ogg Vorbis and the other formats AVPlayer
+cannot decode come as an MP3 from the server (`?as=mp3`), as on the iPhone. The camera button is not offered; the profile picture is chosen with the file chooser.
+
+**Unsigned** (no secrets): the build works, the job warns. macOS refuses to open such a download with a double click: right click, "Open", or
+`xattr -dr com.apple.quarantine Psalm.app` in the terminal.
+
+**Signed and notarized** (what a user can simply open): a certificate "Developer ID Application" (not "Apple Distribution"; Developer portal, Certificates, "+",
+"Developer ID Application", G2 Sub-CA). Make the key and the request as in the iOS section
+(`openssl req -new -newkey rsa:2048 -nodes -keyout devid.key -out devid.csr -subj "/CN=Psalm/C=DE"`), upload `devid.csr`, download the `.cer`, then
+`openssl x509 -inform der -in developerID_application.cer -out devid.pem` and
+`openssl pkcs12 -export -inkey devid.key -in devid.pem -out devid.p12 -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1`.
+Secrets: `MACOS_CERTIFICATE_P12_BASE64` (`base64 -w0 devid.p12`) and `MACOS_CERTIFICATE_PASSWORD`. The job signs with the hardened runtime and
+`macos/Runner/Release.entitlements`, and notarizes with the App Store Connect API key that the iOS builds use already (`APPSTORE_API_KEY_ID`,
+`APPSTORE_API_ISSUER_ID`, `APPSTORE_API_KEY_P8_BASE64`: `xcrun notarytool submit --wait`, then `xcrun stapler staple`). Without that key the app is signed but not notarized.
+
+**Mac App Store** (not set up): it needs a third app record (platform macOS, the bundle id `com.the-abraham-box.psalm` may be shared with the iPhone app
+as a universal purchase or a separate id), the certificates "Apple Distribution" and "Mac Installer Distribution", a profile for macOS and a signed `.pkg`.
+
+Not verified: nothing of this macOS part could be built on the machine where it was written (Linux); the first run of the job on GitHub will show it.
+
+## David for macOS (installer package)
+
+The job `package-server-macos` builds `david-server-VERSION-macos.pkg` (a universal binary for Apple silicon and Intel; if the Intel build fails in CI
+the package is for Apple silicon only and the job says so). The files are in `server/packaging/macos/`; `build-pkg.sh` makes the package from a binary
+(`pkgbuild`, `productbuild`, optional `productsign`) and checks what is inside. Opening the .pkg runs the installer (German and English text, license,
+read-me); macOS 11 or newer.
+
+What it installs:
+
+| Where | What |
+|---|---|
+| `/usr/local/bin/david` | the server |
+| `/Library/LaunchDaemons/com.the-abraham-box.david.plist` | the daemon (RunAtLoad, KeepAlive; starts at boot, restarts after a crash) |
+| `/Library/LaunchDaemons/com.the-abraham-box.david-reindex.plist` | the hourly import (`david reindex`, as the service account), like `david-reindex.timer` |
+| `/etc/david.toml` | the machine's settings; written only if there is none (an update keeps yours); the default is also in `/usr/local/share/david/david.toml.default` |
+| `/Library/Application Support/David` | the data (database, certificate), owner `_david`, mode 700 |
+| `/var/log/david.log`, `/var/log/david-reindex.log` | the logs, turned over by newsyslog (`/etc/newsyslog.d/david.conf`) |
+| the account `_david` | a hidden service account (shell `/usr/bin/false`, no home), created by the post-install script with an id below 500 |
+| `/usr/local/bin/david-uninstall.sh` | removes it all again |
+
+The daemon starts as root, hands the data folder to `_david` and drops to that account for good (`user = "_david"` in `/etc/david.toml`), like the systemd unit.
+POSIX ACLs exist on Linux only (`acl = false` in the macOS file): the music folders have to be readable (and writable, if tags and covers are edited or uploads are taken)
+by `_david`; macOS also protects `Documents`, `Desktop`, `Downloads`, `Music` and external disks, so either the library lives in a plain folder such as `/Users/Shared/Musik`
+or `/usr/local/bin/david` gets *Full Disk Access* (System Settings, Privacy & Security). The read-me of the installer says how.
+The CD import and the kernel's drive events are Linux only: on macOS the server reports "no drive". The sound engine (`audio/`) is not part of the package.
+
+First start: the installer does **not** start the daemon on a fresh install (there is no administrator yet). `sudo -u _david /usr/local/bin/david init`, then
+`sudo launchctl bootstrap system /Library/LaunchDaemons/com.the-abraham-box.david.plist`; the administration pages are at `https://localhost:8484/admin`.
+An update installs over the old files, keeps data and config and starts the daemon again.
+
+Everyday: restart `sudo launchctl kickstart -k system/com.the-abraham-box.david`, stop `sudo launchctl bootout system/com.the-abraham-box.david`, log
+`tail -f /var/log/david.log`, remove `sudo /usr/local/bin/david-uninstall.sh` (the data folder and `/etc/david.toml` stay; `--purge` removes them, the account and the logs too;
+the music files are never touched).
+
+Signing and notarization (optional; without them the package opens with a right click, Open): two certificates of the Developer ID kind, made like the distribution
+certificate of the iOS section (a key and a request with `openssl`, uploaded under Certificates as **Developer ID Application** (signs the program) and **Developer ID Installer**
+(signs the package), each downloaded as `.cer`, turned into a `.p12`). Secrets: `MACOS_CERTIFICATE_P12_BASE64` (Application), `MACOS_INSTALLER_CERT_P12_BASE64` (Installer), both
+with the same password `MACOS_CERTIFICATE_PASSWORD`; for the notarization the App Store Connect key of the iOS section (`APPSTORE_API_KEY_ID`, `APPSTORE_API_ISSUER_ID`,
+`APPSTORE_API_KEY_P8_BASE64`) is used, and the stapled package opens without a warning.
+
+Not verified here: nothing of this ran on a real Mac (the code only type-checks for `x86_64-apple-darwin` on Linux; the installer, the launchd files, the
+scripts and the CI job are untested). The first CI run is the test.
 
 ## The David service and its folders
 

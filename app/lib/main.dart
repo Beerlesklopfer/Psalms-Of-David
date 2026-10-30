@@ -70,7 +70,7 @@ String? _pairingAddress(List<String> args) {
 /// and iOS. Null elsewhere or if the library or PipeWire is missing; the app then runs silently
 /// on demo data.
 AudioBackend? _openBackend() {
-  if (Platform.isAndroid || Platform.isIOS) return JustAudioBackend();
+  if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS) return JustAudioBackend();
   if (!Platform.isLinux) return null;
   try {
     return PipeWireBackend.open();

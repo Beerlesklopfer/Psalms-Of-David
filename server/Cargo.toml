@@ -64,8 +64,11 @@ windows-service = "0.8"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem"] }
 
 [target.'cfg(unix)'.dependencies]
-sd-notify = "0.5"
 libc = "0.2"
+
+# systemd exists on Linux only (macOS runs the server as a launchd daemon, see packaging/macos/).
+[target.'cfg(target_os = "linux")'.dependencies]
+sd-notify = "0.5"
 
 [dev-dependencies]
 image = { version = "0.25.10", default-features = false }

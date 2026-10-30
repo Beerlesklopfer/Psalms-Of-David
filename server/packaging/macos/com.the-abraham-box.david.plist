@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchDaemon of the David server (installed to /Library/LaunchDaemons by the .pkg), the counterpart of packaging/david-deb.service.
+  It starts David as root; David gives the data folder to the account named in /etc/david.toml (`_david`), drops to it for good and serves.
+  The settings of the machine (account, data folder, listen addresses) are in /etc/david.toml, not here.
+  Stop:  sudo launchctl bootout system/com.the-abraham-box.david
+  Start: sudo launchctl bootstrap system /Library/LaunchDaemons/com.the-abraham-box.david.plist
+  Restart: sudo launchctl kickstart -k system/com.the-abraham-box.david
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.the-abraham-box.david</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/david</string>
+		<string>run</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<!-- A server that stops at once is not started again in a loop: 5 s between two starts (RestartSec of the systemd unit). -->
+	<key>ThrottleInterval</key>
+	<integer>5</integer>
+	<!-- A stop lets a CD that is being read finish its track and write down what is finished (TimeoutStopSec of the systemd unit). -->
+	<key>ExitTimeOut</key>
+	<integer>60</integer>
+	<key>WorkingDirectory</key>
+	<string>/var/empty</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin</string>
+		<key>HOME</key>
+		<string>/Library/Application Support/David</string>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>/var/log/david.log</string>
+	<key>StandardErrorPath</key>
+	<string>/var/log/david.log</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+</dict>
+</plist>

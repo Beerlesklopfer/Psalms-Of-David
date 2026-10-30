@@ -208,10 +208,22 @@ pub fn certificate_names(listen: SocketAddr) -> Vec<String> {
     names
 }
 
+/// The host name from the C library (`gethostname`), for the systems that have neither `/proc/sys/kernel/hostname` nor `/etc/hostname` (macOS).
+#[cfg(unix)]
+fn unix_host_name() -> Option<String> {
+    let mut buf = [0u8; 256];
+    // SAFETY: the buffer is valid for its length; the name is cut at the first NUL.
+    if unsafe { libc::gethostname(buf.as_mut_ptr().cast(), buf.len() - 1) } != 0 {
+        return None;
+    }
+    let end = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
+    String::from_utf8(buf[..end].to_vec()).ok()
+}
+
 /// The host name of this machine, if it can be found.
 fn host_name() -> Option<String> {
     #[cfg(unix)]
-    let name = std::fs::read_to_string("/proc/sys/kernel/hostname").or_else(|_| std::fs::read_to_string("/etc/hostname")).ok();
+    let name = std::fs::read_to_string("/proc/sys/kernel/hostname").or_else(|_| std::fs::read_to_string("/etc/hostname")).ok().or_else(unix_host_name);
     #[cfg(windows)]
     let name = std::env::var("COMPUTERNAME").ok();
     let name = name?.trim().to_owned();

@@ -1,14 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //! Linux and other Unix systems: runs in the foreground and is supervised by
-//! systemd (`packaging/david.service`, `Type=notify`).
+//! systemd (`packaging/david.service`, `Type=notify`) or, on macOS, by launchd (`packaging/macos/`).
 
+#[cfg(target_os = "linux")]
 use sd_notify::NotifyState;
 
 use crate::app::{self, Config};
 
 /// Runs until Ctrl-C or SIGTERM. Tells systemd when startup is complete and when
-/// shutdown begins; outside systemd these notifications are silently ignored.
+/// shutdown begins; outside systemd these notifications are silently ignored (and on other systems than Linux they are not sent).
 pub fn run_foreground(config: Config) -> u8 {
     app::init_stderr_logging(config.log);
     let runtime = match tokio::runtime::Runtime::new() {
@@ -21,9 +22,11 @@ pub fn run_foreground(config: Config) -> u8 {
     let result = runtime.block_on(async {
         let shutdown = async {
             app::shutdown_signal().await;
+            #[cfg(target_os = "linux")]
             let _ = sd_notify::notify(&[NotifyState::Stopping]);
         };
         app::run(config, shutdown, |_addr| {
+            #[cfg(target_os = "linux")]
             let _ = sd_notify::notify(&[NotifyState::Ready]);
         })
         .await

@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The drive itself: listing, table of contents, error classes and ejecting.
+//! The drive itself: listing, table of contents, error classes and ejecting. The calls that talk to a drive through the kernel (state of the
+//! tray, speed, eject, the list of drives) exist on Linux only; elsewhere they report "no drive" or "not supported".
 //! Nothing here assumes a device name; paths come from the system or from the caller.
 
+#[cfg(target_os = "linux")]
 use std::fs::OpenOptions;
+#[cfg(target_os = "linux")]
 use std::os::fd::AsRawFd;
+#[cfg(target_os = "linux")]
 use std::os::unix::fs::OpenOptionsExt;
 
 use cd_da_reader::{CdReader, CdReaderError, Toc};
@@ -12,19 +16,28 @@ use cd_da_reader::{CdReader, CdReaderError, Toc};
 use crate::discid::{TocInfo, TocTrack};
 
 /// `CDROM_DRIVE_STATUS` ioctl (linux/cdrom.h).
+#[cfg(target_os = "linux")]
 const CDROM_DRIVE_STATUS: libc::c_ulong = 0x5326;
 /// Argument of `CDROM_DRIVE_STATUS` meaning "the drive itself, not a slot of a changer" (`CDSL_CURRENT`, `INT_MAX`).
+#[cfg(target_os = "linux")]
 const CDSL_CURRENT: libc::c_int = i32::MAX;
 /// Drive status values (linux/cdrom.h).
+#[cfg(target_os = "linux")]
 const CDS_NO_DISC: libc::c_int = 1;
+#[cfg(target_os = "linux")]
 const CDS_TRAY_OPEN: libc::c_int = 2;
+#[cfg(target_os = "linux")]
 const CDS_DISC_OK: libc::c_int = 4;
 /// `CDROMEJECT` ioctl. It toggles on some drives, so it is only sent while a disc is known to be in.
+#[cfg(target_os = "linux")]
 const CDROMEJECT: libc::c_ulong = 0x5309;
+#[cfg(target_os = "linux")]
 const CDROM_LOCKDOOR: libc::c_ulong = 0x5329;
 /// `SG_IO` ioctl.
+#[cfg(target_os = "linux")]
 const SG_IO: libc::c_ulong = 0x2285;
 /// `O_NONBLOCK`, so opening a drive never waits for a disc.
+#[cfg(target_os = "linux")]
 const O_NONBLOCK: i32 = 0o4000;
 
 /// Why a drive command failed, as far as the helper can tell.
@@ -41,7 +54,10 @@ pub enum ErrorClass {
 pub fn classify(e: &CdReaderError) -> ErrorClass {
     match e {
         CdReaderError::Io(io) => match io.raw_os_error() {
-            Some(libc::ENODEV) | Some(libc::ENXIO) | Some(libc::ENOMEDIUM) | Some(libc::EBADF) => ErrorClass::DriveGone,
+            Some(libc::ENODEV) | Some(libc::ENXIO) | Some(libc::EBADF) => ErrorClass::DriveGone,
+            // `ENOMEDIUM` exists on Linux only.
+            #[cfg(target_os = "linux")]
+            Some(libc::ENOMEDIUM) => ErrorClass::DriveGone,
             _ if io.kind() == std::io::ErrorKind::NotFound => ErrorClass::DriveGone,
             _ => ErrorClass::Read,
         },
@@ -69,6 +85,7 @@ pub enum DriveStatus {
 /// Asks the kernel for the state of the tray and disc. Opens the device without waiting for a disc and
 /// sends no command to the drive that could move the tray. The error is the one of opening (`PermissionDenied`
 /// for a drive the process may not use, `NotFound` for one that is gone).
+#[cfg(target_os = "linux")]
 pub fn status(device: &str) -> std::io::Result<DriveStatus> {
     let f = OpenOptions::new().read(true).custom_flags(O_NONBLOCK).open(device)?;
     // SAFETY: plain ioctl with an integer argument on an open descriptor.
@@ -82,11 +99,19 @@ pub fn status(device: &str) -> std::io::Result<DriveStatus> {
     })
 }
 
+/// Other systems: the state of a drive cannot be asked without reading (the audio CD import runs on Linux only).
+#[cfg(not(target_os = "linux"))]
+pub fn status(_device: &str) -> std::io::Result<DriveStatus> {
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "reading audio CDs is supported on Linux only"))
+}
+
 /// `CDROM_MEDIA_CHANGED` ioctl: 1 if the disc was changed (or the tray opened) since the last time somebody asked.
+#[cfg(target_os = "linux")]
 const CDROM_MEDIA_CHANGED: libc::c_ulong = 0x5325;
 
 /// Has the medium changed since the last call (by anyone)? Cheap: no command goes to the drive's optics. `None`
 /// if the drive cannot tell.
+#[cfg(target_os = "linux")]
 pub fn media_changed(device: &str) -> Option<bool> {
     let f = OpenOptions::new().read(true).custom_flags(O_NONBLOCK).open(device).ok()?;
     // SAFETY: plain ioctl with an integer argument on an open descriptor.
@@ -94,14 +119,27 @@ pub fn media_changed(device: &str) -> Option<bool> {
     (r >= 0).then_some(r == 1)
 }
 
+#[cfg(not(target_os = "linux"))]
+pub fn media_changed(_device: &str) -> Option<bool> {
+    None
+}
+
 /// The optical drives the system knows, as device paths (`/dev/sr0`, ...): the block devices named `sr<number>` in
 /// sysfs (the kernel's name for SCSI/SATA/USB CD drives), without opening any of them. The paths come from the
 /// system; nothing else about them is assumed.
+#[cfg(target_os = "linux")]
 pub fn devices() -> Vec<String> {
     devices_in(std::path::Path::new("/sys/class/block"))
 }
 
+/// Other systems: no drive is offered (the audio CD import runs on Linux only), so the server reports "no drive".
+#[cfg(not(target_os = "linux"))]
+pub fn devices() -> Vec<String> {
+    Vec::new()
+}
+
 /// The same for another sysfs folder (tests).
+#[cfg(target_os = "linux")]
 pub fn devices_in(sys_block: &std::path::Path) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(sys_block)
         .map(|rd| {
@@ -144,6 +182,7 @@ pub fn track_sectors(info: &TocInfo) -> Vec<(u8, u32)> {
 }
 
 /// Sends a command without data through `SG_IO`; true if the drive reports good status.
+#[cfg(target_os = "linux")]
 fn sg_cmd(fd: i32, cdb: &[u8]) -> bool {
     #[repr(C)]
     struct SgIoHdr {
@@ -205,6 +244,7 @@ pub const KB_PER_SECOND_1X: u32 = 176;
 
 /// `SET CD-ROM SPEED` (MMC 0xBB) through `SG_IO` on the drive; `read_speed_kbs` is in kilobytes per second, 0xFFFF
 /// means "as fast as the drive can".
+#[cfg(target_os = "linux")]
 fn set_cd_speed(device: &str, read_speed_kbs: u16) -> std::io::Result<()> {
     // SG_IO needs the device open for reading and writing (as `cd-da-reader` opens it).
     let f = OpenOptions::new().read(true).write(true).custom_flags(O_NONBLOCK).open(device)?;
@@ -215,6 +255,7 @@ fn set_cd_speed(device: &str, read_speed_kbs: u16) -> std::io::Result<()> {
 
 /// Asks the drive to read at `times` x 1x (176 kB/s each). A drive reading at full speed and then waiting for a
 /// slow consumer brakes and speeds up again; a moderate steady speed lets it run evenly. 0 changes nothing.
+#[cfg(target_os = "linux")]
 pub fn set_speed(device: &str, times: u32) -> std::io::Result<()> {
     if times == 0 {
         return Ok(());
@@ -222,9 +263,21 @@ pub fn set_speed(device: &str, times: u32) -> std::io::Result<()> {
     set_cd_speed(device, (times.saturating_mul(KB_PER_SECOND_1X)).min(u32::from(u16::MAX) - 1) as u16)
 }
 
+/// Other systems: the speed is not changed (nothing to ask for).
+#[cfg(not(target_os = "linux"))]
+pub fn set_speed(_device: &str, _times: u32) -> std::io::Result<()> {
+    Ok(())
+}
+
 /// Gives the drive its own speed back (the fastest it chooses itself).
+#[cfg(target_os = "linux")]
 pub fn reset_speed(device: &str) -> std::io::Result<()> {
     set_cd_speed(device, 0xFFFF)
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn reset_speed(_device: &str) -> std::io::Result<()> {
+    Ok(())
 }
 
 /// What `eject` found and did.
@@ -237,6 +290,7 @@ pub enum EjectOutcome {
 }
 
 /// Opens the tray of [`device`], but only if the kernel says a disc is in. Never closes a tray.
+#[cfg(target_os = "linux")]
 pub fn eject(device: &str) -> std::io::Result<EjectOutcome> {
     // The SCSI commands below pass the filter of the kernel only on a descriptor that is open for writing too (as for the speed);
     // a device that does not allow it is opened for reading, which still serves the kernel's own eject.
@@ -271,6 +325,11 @@ pub fn eject(device: &str) -> std::io::Result<EjectOutcome> {
     Ok(if ok { EjectOutcome::Ejected } else { EjectOutcome::Failed })
 }
 
+#[cfg(not(target_os = "linux"))]
+pub fn eject(_device: &str) -> std::io::Result<EjectOutcome> {
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "reading audio CDs is supported on Linux only"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,6 +358,7 @@ mod tests {
         assert_eq!(classify(&CdReaderError::Parse("x".into())), ErrorClass::Read);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn drives_are_found_by_their_sysfs_names_in_order() {
         let d = tempfile::TempDir::new().unwrap();
@@ -309,6 +369,7 @@ mod tests {
         assert!(devices_in(std::path::Path::new("/nonexistent")).is_empty());
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_speed_of_a_missing_device_is_an_error_and_zero_changes_nothing() {
         assert!(set_speed("/nonexistent/device", 8).is_err());
@@ -316,11 +377,13 @@ mod tests {
         assert!(set_speed("/nonexistent/device", 0).is_ok(), "0 = the drive's own speed: no request, so no open");
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn the_status_of_a_missing_device_is_an_error() {
         assert!(status("/nonexistent/device").is_err());
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn eject_of_a_missing_device_is_an_error_not_a_command() {
         assert!(eject("/nonexistent/device").is_err());

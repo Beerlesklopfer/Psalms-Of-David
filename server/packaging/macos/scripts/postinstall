@@ -1,0 +1,81 @@
+#!/bin/sh
+# Runs after the files are in place (as root): the hidden account `_david`, the data folder, the config (only if there is none), the logs,
+# and the start of the daemon (not on a fresh install: the first administrator has to be made first, see the read-me).
+# Everything here is safe to run again (an update runs it too); an existing account, data folder and config stay untouched.
+set -u
+
+LABEL=com.the-abraham-box.david
+ACCOUNT=_david
+GROUP=_david
+DATA="/Library/Application Support/David"
+CONFIG=/etc/david.toml
+DEFAULT_CONFIG=/usr/local/share/david/david.toml.default
+
+# The data folder from the config the machine has (the line `data_dir = "..."`), else the default of the package.
+if [ -f "$CONFIG" ]; then
+    d=$(sed -n 's/^data_dir[[:space:]]*=[[:space:]]*"\(.*\)".*/\1/p' "$CONFIG" | head -n 1)
+    [ -n "$d" ] && DATA="$d"
+fi
+
+# A free number below 500 (the range macOS keeps for accounts of services) that is free as a user id and as a group id.
+free_id() {
+    id=399
+    while [ "$id" -ge 200 ]; do
+        if ! dscl . -list /Users UniqueID | awk '{print $2}' | grep -qx "$id" && ! dscl . -list /Groups PrimaryGroupID | awk '{print $2}' | grep -qx "$id"; then
+            echo "$id"
+            return 0
+        fi
+        id=$((id - 1))
+    done
+    return 1
+}
+
+if ! dscl . -read "/Groups/$GROUP" >/dev/null 2>&1; then
+    id=$(free_id) || { echo "david: no free group id below 500" >&2; exit 1; }
+    dscl . -create "/Groups/$GROUP"
+    dscl . -create "/Groups/$GROUP" PrimaryGroupID "$id"
+    dscl . -create "/Groups/$GROUP" RealName "David server"
+    dscl . -create "/Groups/$GROUP" Password '*'
+fi
+if ! dscl . -read "/Users/$ACCOUNT" >/dev/null 2>&1; then
+    gid=$(dscl . -read "/Groups/$GROUP" PrimaryGroupID | awk '{print $2}')
+    uid=$gid
+    dscl . -list /Users UniqueID | awk '{print $2}' | grep -qx "$uid" && uid=$(free_id)
+    dscl . -create "/Users/$ACCOUNT"
+    dscl . -create "/Users/$ACCOUNT" UserShell /usr/bin/false
+    dscl . -create "/Users/$ACCOUNT" RealName "David server"
+    dscl . -create "/Users/$ACCOUNT" UniqueID "$uid"
+    dscl . -create "/Users/$ACCOUNT" PrimaryGroupID "$gid"
+    dscl . -create "/Users/$ACCOUNT" NFSHomeDirectory /var/empty
+    dscl . -create "/Users/$ACCOUNT" Password '*'
+    # No entry in the login window, and no home folder.
+    dscl . -create "/Users/$ACCOUNT" IsHidden 1
+fi
+
+mkdir -p "$DATA"
+chown "$ACCOUNT:$GROUP" "$DATA"
+chmod 700 "$DATA"
+
+# The config only if there is none: an update keeps what the administrator changed.
+if [ ! -f "$CONFIG" ] && [ -f "$DEFAULT_CONFIG" ]; then
+    cp "$DEFAULT_CONFIG" "$CONFIG"
+    chmod 644 "$CONFIG"
+fi
+
+# The logs: the daemon writes its own (it starts as root), the job of the hourly import runs as the account.
+touch /var/log/david.log /var/log/david-reindex.log
+chown root:wheel /var/log/david.log
+chmod 644 /var/log/david.log
+chown "$ACCOUNT:$GROUP" /var/log/david-reindex.log
+chmod 644 /var/log/david-reindex.log
+
+# The hourly import is started by launchd in any case (it does nothing while the import is locked).
+launchctl bootstrap system "/Library/LaunchDaemons/$LABEL-reindex.plist" >/dev/null 2>&1 || true
+
+# A fresh install has no database yet: the first administrator is made first (read-me), then the daemon is started. An update starts it again.
+if [ -f "$DATA/david.db" ]; then
+    launchctl bootstrap system "/Library/LaunchDaemons/$LABEL.plist" >/dev/null 2>&1 || launchctl kickstart -k "system/$LABEL" >/dev/null 2>&1 || true
+else
+    echo "david: installed. Next: sudo -u $ACCOUNT /usr/local/bin/david init   and then   sudo launchctl bootstrap system /Library/LaunchDaemons/$LABEL.plist"
+fi
+exit 0

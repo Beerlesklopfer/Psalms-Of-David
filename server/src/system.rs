@@ -122,6 +122,7 @@ mod unix {
     /// asks for the highest (`cd_settings::NICE_RANGE`). Without this a plain user may not go below nice 0. The limit stays when the user
     /// changes; a service that systemd starts has it from `LimitNICE=` already, and then nothing is changed. A failure only costs the
     /// priority (the encoder then runs at the nearest value allowed), so it is said and not fatal.
+    #[cfg(target_os = "linux")]
     fn allow_priority() {
         let mut now = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
         // SAFETY: plain system call with a valid pointer.
@@ -142,6 +143,10 @@ mod unix {
         }
     }
 
+    /// Other systems have no `RLIMIT_NICE`: the encoder then runs at the priority it has.
+    #[cfg(not(target_os = "linux"))]
+    fn allow_priority() {}
+
     /// The user ID and group ID of the service user: from the file, else from the system's user database.
     fn ids(file: &FileConfig) -> Result<(u32, u32), String> {
         if let (Some(uid), Some(gid)) = (file.uid, file.gid) {
@@ -158,7 +163,8 @@ mod unix {
         Ok((file.uid.unwrap_or(uid), file.gid.unwrap_or(gid)))
     }
 
-    /// The library folders the user needs rights on, read from the database of the data folder.
+    /// The library folders the user needs rights on, read from the database of the data folder (only for the ACLs: Linux).
+    #[cfg(target_os = "linux")]
     fn library_folders(data_dir: &Path) -> Vec<std::path::PathBuf> {
         let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build() else { return Vec::new() };
         runtime.block_on(async {
@@ -194,18 +200,40 @@ mod unix {
         Ok(())
     }
 
-    /// The groups of the account (as the system lists them) and the ones named in the file.
-    fn group_list(user: &CString, gid: u32, extra: &[String]) -> Vec<libc::gid_t> {
+    /// The groups of the account as the system lists them. `getgrouplist` takes and gives `int` on macOS and `gid_t` on Linux.
+    #[allow(clippy::unnecessary_cast)]
+    fn system_groups(user: &CString, gid: u32) -> Vec<libc::gid_t> {
+        #[cfg(target_os = "macos")]
+        type Raw = libc::c_int;
+        #[cfg(not(target_os = "macos"))]
+        type Raw = libc::gid_t;
         let mut count: libc::c_int = 32;
-        let mut groups: Vec<libc::gid_t> = vec![0; count as usize];
+        let mut groups: Vec<Raw> = vec![0; count as usize];
         // SAFETY: `groups` has room for `count` entries; the call updates `count` and says -1 if it was too small.
         unsafe {
-            if libc::getgrouplist(user.as_ptr(), gid, groups.as_mut_ptr(), &mut count) == -1 {
+            if libc::getgrouplist(user.as_ptr(), gid as Raw, groups.as_mut_ptr(), &mut count) == -1 {
                 groups.resize(count.max(1) as usize, 0);
-                libc::getgrouplist(user.as_ptr(), gid, groups.as_mut_ptr(), &mut count);
+                libc::getgrouplist(user.as_ptr(), gid as Raw, groups.as_mut_ptr(), &mut count);
             }
         }
         groups.truncate(count.max(0) as usize);
+        groups.into_iter().map(|g| g as libc::gid_t).collect()
+    }
+
+    /// `setgroups` takes the number of groups as `size_t` on Linux and as `int` on macOS.
+    #[allow(clippy::unnecessary_cast)]
+    fn set_groups(groups: &[libc::gid_t]) -> bool {
+        #[cfg(target_os = "macos")]
+        let n = groups.len() as libc::c_int;
+        #[cfg(not(target_os = "macos"))]
+        let n = groups.len();
+        // SAFETY: the pointer and the number belong to the same slice.
+        unsafe { libc::setgroups(n, groups.as_ptr()) == 0 }
+    }
+
+    /// The groups of the account (as the system lists them) and the ones named in the file.
+    fn group_list(user: &CString, gid: u32, extra: &[String]) -> Vec<libc::gid_t> {
+        let mut groups = system_groups(user, gid);
         for name in extra {
             let Ok(c) = CString::new(name.as_str()) else { continue };
             // SAFETY: valid C string; the record is read at once.
@@ -235,6 +263,11 @@ mod unix {
             return Err("the service user must not be root".into());
         }
         std::fs::create_dir_all(&config.data_dir).map_err(|e| format!("{}: {e}", config.data_dir.display()))?;
+        #[cfg(not(target_os = "linux"))]
+        if file.acl {
+            eprintln!("david: rights on the library folders are not set on this system (POSIX ACLs are Linux only): the folders must be readable by {}", file.user);
+        }
+        #[cfg(target_os = "linux")]
         if file.acl {
             // Read the folders first: the database may be new, so it is handed over afterwards.
             let folders = library_folders(&config.data_dir);
@@ -256,7 +289,7 @@ mod unix {
         let groups = group_list(&name, gid, &file.groups);
         // SAFETY: plain system calls in the order that works: groups first, then the group, then the user.
         unsafe {
-            if libc::setgroups(groups.len(), groups.as_ptr()) != 0 || libc::setgid(gid) != 0 || libc::setuid(uid) != 0 {
+            if !set_groups(&groups) || libc::setgid(gid) != 0 || libc::setuid(uid) != 0 {
                 return Err(format!("cannot become {}: {}", file.user, std::io::Error::last_os_error()));
             }
             // A way back would defeat the point.
@@ -316,6 +349,20 @@ mod tests {
         let env = |k: &str| (k == "DAVID_LISTEN").then(|| "127.0.0.1:9".to_owned()).or_else(|| file.as_env(k));
         let Ok(crate::cli::Command::Run(c)) = crate::cli::parse(["run".to_owned()], env) else { panic!() };
         assert_eq!((c.listen.to_string().as_str(), c.mcp), ("127.0.0.1:9", true));
+    }
+
+    #[test]
+    fn the_macos_package_file_parses_and_names_the_account_the_launchd_daemon_drops_to() {
+        let text = include_str!("../packaging/macos/david.toml");
+        let file: FileConfig = toml::from_str(text).unwrap();
+        assert_eq!(file.user, "_david", "the hidden account the installer creates");
+        assert!(!file.acl, "POSIX ACLs exist on Linux only");
+        assert_eq!(file.data_dir.as_deref(), Some(Path::new("/Library/Application Support/David")));
+        assert_eq!(file.as_env("DAVID_LISTEN").as_deref(), Some("0.0.0.0:8484,[::]:8484"));
+        // The commented examples that are whole lines are real keys, too.
+        for line in text.lines().filter_map(|l| l.strip_prefix("# ")).filter(|r| r.contains(" = ") && !r.contains(": ") && !r.contains(". ")) {
+            assert!(toml::from_str::<FileConfig>(line).is_ok(), "{line}");
+        }
     }
 
     #[test]

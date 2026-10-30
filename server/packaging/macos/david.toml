@@ -1,0 +1,41 @@
+# /etc/david.toml - the machine's settings of the David server (macOS package).
+#
+# A value comes from, in this order: the command line, the environment (DAVID_...), this file, the
+# built-in default. Everything the family decides in the pages (import folders, rules) lives in the
+# database, not here. Changes apply at the next start:
+#   sudo launchctl kickstart -k system/com.the-abraham-box.david
+# The installer keeps this file when David is updated; the file that came with the package is
+# /usr/local/share/david/david.toml.default.
+
+# The account the server runs as. The daemon starts as root, hands the data folder to this account
+# and drops to it for good. The installer creates the hidden account `_david`.
+user = "_david"
+
+# POSIX ACLs (rights on the library folders at every start) exist on Linux only. On macOS the folders
+# of the library must be readable by the account `_david` (and writable if David should edit tags,
+# covers and uploads there); see the installer's read-me ("Music folders" and "Privacy").
+acl = false
+
+# Where the database, the certificate and the files of David live. The account `_david` owns the folder.
+data_dir = "/Library/Application Support/David"
+
+# mcp = false
+
+# Where the interface listens: IPv4 and IPv6 are separate addresses, both are served. The apps of the family
+# reach the server over the network; anything but this machine speaks TLS with a certificate David makes itself
+# (the pairing code carries its fingerprint, so the apps accept only this server; browsers warn about it).
+# To keep the server on this machine only: listen = "127.0.0.1:8484".
+listen = ["0.0.0.0:8484", "[::]:8484"]
+
+# Log level: error, warn, info, debug or trace. Also a setting in the pages, where it applies at once.
+# log = "info"
+
+# A certificate from a certificate authority (Let's Encrypt, ...) instead of the self-made one: both files in PEM, readable
+# by the account `_david`. tls_host is the name that devices connect to.
+# tls_cert = "/path/to/fullchain.pem"
+# tls_key = "/path/to/privkey.pem"
+# tls_host = "david.example.org"
+# tls_reload_s = 300
+
+# Groups the service is a member of in addition to those of its account.
+# groups = ["staff"]

@@ -60,8 +60,9 @@ class CredentialStore {
   void save(Credentials c) {
     file.parent.createSync(recursive: true);
     file.writeAsStringSync(jsonEncode(c.toJson()));
-    // Only where a program can be started (not on iOS, whose sandbox keeps the file private anyway) and where the file mode counts.
-    if (Platform.isLinux || Platform.isMacOS || Platform.isAndroid) {
+    // Only where a program can be started and the folder is not private anyway: not on iOS and not on macOS, whose app sandbox keeps the
+    // folder of the app to the app.
+    if (Platform.isLinux || Platform.isAndroid) {
       try {
         Process.runSync('chmod', ['600', file.path]);
       } on ProcessException {

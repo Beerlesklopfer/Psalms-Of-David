@@ -188,7 +188,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get formatNotPlayableIos =>
-      'This file format cannot be played on iPhone yet.';
+      'This file format cannot be played on Apple devices (iPhone, iPad, Mac) yet.';
 
   @override
   String get connectSearching => 'Looking for the server again ...';
@@ -212,7 +212,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pasteButton => 'Paste';
 
   @override
-  String get qrButton => 'Read QR code from a picture';
+  String get qrButton => 'Scan the QR code';
+
+  @override
+  String get qrScanTitle => 'Scan the pairing code';
+
+  @override
+  String get qrScanHint =>
+      'Hold the camera on the QR code of the pairing page of your server.';
+
+  @override
+  String get qrScanNotPairing => 'This is not a pairing code.';
+
+  @override
+  String get qrScanUsePicture => 'Choose a picture instead';
+
+  @override
+  String get qrScanTorch => 'Torch';
+
+  @override
+  String get qrScanPermissionDenied =>
+      'The camera is not allowed for Psalm. Allow it in the settings, or choose a picture of the QR code instead.';
+
+  @override
+  String get qrScanOpenSettings => 'Open settings';
 
   @override
   String get qrNotFound =>

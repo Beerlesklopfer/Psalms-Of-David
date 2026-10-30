@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
 import '../server/qr_reader.dart';
+import 'qr_scan_screen.dart';
 
 Future<Uint8List?> _pickPicture(String title) async {
   const images = XTypeGroup(label: 'images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif']);
@@ -30,6 +31,7 @@ class ConnectScreen extends StatefulWidget {
     this.searching = false,
     this.initialAddress,
     this.pickPicture = _pickPicture,
+    this.scanQr,
   });
 
   final String deviceName;
@@ -52,6 +54,10 @@ class ConnectScreen extends StatefulWidget {
   /// A parameter so that a test can answer without a dialog.
   final Future<Uint8List?> Function(String title) pickPicture;
 
+  /// Opens the camera and returns what it read; null if the person cancelled. On phones and the Mac the default is the live scanner, elsewhere
+  /// there is none and the picture chooser is used. A parameter so that a test can answer without a camera.
+  final Future<QrScanOutcome?> Function(BuildContext context)? scanQr;
+
   @override
   State<ConnectScreen> createState() => _ConnectScreenState();
 }
@@ -59,6 +65,7 @@ class ConnectScreen extends StatefulWidget {
 class _ConnectScreenState extends State<ConnectScreen> {
   late final TextEditingController _address = TextEditingController(text: widget.initialAddress);
   late final TextEditingController _name = TextEditingController(text: widget.deviceName);
+  late final FocusNode _connectFocus = FocusNode(debugLabel: 'connect');
   ConnectError? _error;
   bool _busy = false;
 
@@ -90,6 +97,23 @@ class _ConnectScreenState extends State<ConnectScreen> {
 
   /// The QR code of the administration, as a picture: a screenshot or a photo.
   Future<void> _readQr() async {
+    final scan = widget.scanQr ?? (cameraScanSupported ? QrScanScreen.route : null);
+    if (scan != null) {
+      final outcome = await scan(context);
+      if (!mounted || outcome == null) return; // cancelled: nothing changes
+      final scanned = outcome.text;
+      if (scanned != null) {
+        // A whole pairing address: it goes into the field and the button to connect is ready (nothing connects by itself).
+        setState(() {
+          _error = null;
+          _address.text = scanned.trim();
+        });
+        _connectFocus.requestFocus();
+        return;
+      }
+      // The person chose a picture, or there is no camera: the picture chooser follows.
+    }
+    if (!mounted) return;
     final l = AppLocalizations.of(context);
     final bytes = await widget.pickPicture(l.qrChooseTitle);
     if (bytes == null || !mounted) return;
@@ -114,6 +138,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
   void dispose() {
     _address.dispose();
     _name.dispose();
+    _connectFocus.dispose();
     super.dispose();
   }
 
@@ -221,6 +246,7 @@ class _ConnectScreenState extends State<ConnectScreen> {
               ],
               const SizedBox(height: 20),
               FilledButton(
+                focusNode: _connectFocus,
                 onPressed: _busy ? null : () => _run(() => widget.onPair(_address.text, _name.text)),
                 child: Text(l.connectButton),
               ),

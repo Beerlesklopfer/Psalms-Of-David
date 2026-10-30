@@ -395,7 +395,7 @@ abstract class AppLocalizations {
   /// No description provided for @formatNotPlayableIos.
   ///
   /// In en, this message translates to:
-  /// **'This file format cannot be played on iPhone yet.'**
+  /// **'This file format cannot be played on Apple devices (iPhone, iPad, Mac) yet.'**
   String get formatNotPlayableIos;
 
   /// No description provided for @connectSearching.
@@ -437,8 +437,50 @@ abstract class AppLocalizations {
   /// No description provided for @qrButton.
   ///
   /// In en, this message translates to:
-  /// **'Read QR code from a picture'**
+  /// **'Scan the QR code'**
   String get qrButton;
+
+  /// No description provided for @qrScanTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan the pairing code'**
+  String get qrScanTitle;
+
+  /// No description provided for @qrScanHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold the camera on the QR code of the pairing page of your server.'**
+  String get qrScanHint;
+
+  /// No description provided for @qrScanNotPairing.
+  ///
+  /// In en, this message translates to:
+  /// **'This is not a pairing code.'**
+  String get qrScanNotPairing;
+
+  /// No description provided for @qrScanUsePicture.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a picture instead'**
+  String get qrScanUsePicture;
+
+  /// No description provided for @qrScanTorch.
+  ///
+  /// In en, this message translates to:
+  /// **'Torch'**
+  String get qrScanTorch;
+
+  /// No description provided for @qrScanPermissionDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'The camera is not allowed for Psalm. Allow it in the settings, or choose a picture of the QR code instead.'**
+  String get qrScanPermissionDenied;
+
+  /// No description provided for @qrScanOpenSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open settings'**
+  String get qrScanOpenSettings;
 
   /// No description provided for @qrNotFound.
   ///

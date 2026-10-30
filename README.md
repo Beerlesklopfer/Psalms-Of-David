@@ -19,7 +19,7 @@ Status: früh, aber benutzbar auf Linux und im Android-Emulator.
   „LLM-Zugang“), lesend oder schreibend. Werkzeuge: Alben und Tags lesen, `find_problems` (fehlende oder
   widersprüchliche Tags), `set_tags` mit `dry_run`, Cover aus dem Ordnerbild einbetten. Jede Änderung wird mit altem
   und neuem Wert protokolliert (`docs/releasing.md`, Abschnitt MCP).
-- **Psalm (App):** Bibliothek, Kopplung (Code einfügen, QR aus Bild), Wiedergabe mit Tempo ohne Tonhöhenänderung,
+- **Psalm (App):** Bibliothek, Kopplung (Code einfügen, QR mit der Kamera oder aus einem Bild), Wiedergabe mit Tempo ohne Tonhöhenänderung,
   Download für Hören ohne Server, Fortschritt (wird beim Start wieder aufgenommen), Aktualisierung der Bibliothek.
   Ton über PipeWire (Linux) und `just_audio` (Android).
 - **Offen:** Offline-Start der App ohne Server (die Bibliothek wird noch nicht lokal gespeichert), Musik in der App,
