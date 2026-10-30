@@ -1,5 +1,5 @@
 {# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
-   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% if pager.total > 0 %}
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% if pager.total > 0 and (pager.pages > 1 or not (pager.q or pager.problems)) %}
 <nav class="pager" aria-label="{{ t('pager.label') }}">
   <span class="pager-count">{{ pager.from }}&ndash;{{ pager.to }} {{ t("pager.of") }} {{ pager.total }}</span>
   {% set page_url = "/admin/" ~ ("music" if kind == "music" else "books") ~ "?" ~ (pager.base ~ "&" if pager.base else "") ~ "page=" %}

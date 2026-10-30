@@ -3806,6 +3806,11 @@ async fn the_media_lists_come_in_pages_with_links_a_size_and_a_search_over_all_p
     assert!(last.contains("rel=\"prev\""), "{last}");
     let narrow = send(&a, get("/admin/books?q=buch+2*", &o)).await.body;
     assert_eq!(rows(&narrow), 6, "Buch 20 to 25 fit on one page");
+    assert!(!narrow.contains("class=\"pager\""), "a search that fits on one page has no pagination: {narrow}");
+    let one = send(&a, get("/admin/books?q=Buch+17", &o)).await.body;
+    assert_eq!(rows(&one), 1, "{one}");
+    assert!(!one.contains("class=\"pager\"") && one.contains("id=\"media-results\""), "exactly one entry and no pagination: {one}");
+    assert!(one.contains("hx-get=\"/admin/books\"") && one.contains("hx-select=\"#media-results\""), "the search form asks the server while typing");
     // The size of a page is kept in a cookie of this browser: asked for once with ?per=, it holds for the next visits; a query wins over the cookie.
     let first = send(&a, get("/admin/books?per=25", &o)).await;
     let set = first.header("set-cookie").expect("the size is kept in a cookie").to_owned();

@@ -8,7 +8,8 @@
 <div class="page-head">
   <h1>{{ t("music.title") if kind == "music" else t("books.title") }}</h1>
 </div>
-<form class="search-bar" method="get" action="/admin/{{ 'music' if kind == 'music' else 'books' }}" role="search">
+<form class="search-bar" method="get" action="/admin/{{ 'music' if kind == 'music' else 'books' }}" role="search"
+      hx-get="/admin/{{ 'music' if kind == 'music' else 'books' }}" hx-trigger="submit, input delay:300ms, change" hx-target="#media-results" hx-select="#media-results" hx-swap="outerHTML" hx-push-url="true" hx-sync="this:replace">
   <input type="search" id="book-search" name="q" value="{{ q }}" list="book-words" autocomplete="off" spellcheck="false" maxlength="100"
          placeholder="{{ t('books.search_hint') }}" title="{{ t('books.search_syntax') }}" aria-label="{{ t('books.search') }}">
   <datalist id="book-words">{% for w in words %}<option value="{{ w }}">{% endfor %}</datalist>
@@ -16,6 +17,7 @@
   <button type="submit" class="btn">{{ t("books.search") }}</button>
   {% if searched %}<a class="btn outline" href="/admin/{{ 'music' if kind == 'music' else 'books' }}">{{ t("ui.cancel") }}</a>{% endif %}
 </form>
+<div id="media-results">
 {% include "fragments/pager.html" %}
 {% include "fragments/book_list.html" %}
 {% include "fragments/pager.html" %}
@@ -31,4 +33,5 @@
 {% endif %}
 {% if search_error is defined and search_error %}<p class="form-error" role="alert">{{ t("books.bad_pattern") }}: {{ search_error }}</p>{% endif %}
 {% if searched and not books %}<p class="unit">{{ t("books.no_match") }}</p>{% endif %}
+</div>
 {% endblock %}

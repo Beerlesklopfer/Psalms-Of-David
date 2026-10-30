@@ -162,7 +162,7 @@ class _BufferSliderState extends State<_BufferSlider> {
   }
 }
 
-/// The own library: the switch "show what I hid" and the list of what was hidden, each with "show again".
+/// The own library: the switch "show what I hid". The list of what was hidden is a rubric of the library (Library -> Hidden).
 class _HidingCard extends StatelessWidget {
   const _HidingCard({required this.controller});
 
@@ -183,12 +183,6 @@ class _HidingCard extends StatelessWidget {
           if (!await change()) messenger?.showSnackBar(SnackBar(content: Text(failed)));
         }
 
-        String authorLine(HiddenAuthor a) => switch (a.kind) {
-          'music' => l.settingsHiddenAuthorMusic(a.name),
-          'audiobook' => l.settingsHiddenAuthorAudiobooks(a.name),
-          _ => l.settingsHiddenAuthorAll(a.name),
-        };
-
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -206,46 +200,6 @@ class _HidingCard extends StatelessWidget {
                     value: s.showHidden,
                     onChanged: (v) => run(() => controller.setShowHidden(v)),
                   ),
-                  const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(l.settingsHiddenTitle, style: text.titleSmall),
-                    ),
-                  ),
-                  if (s.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                      child: Text(
-                        l.settingsHiddenNone,
-                        key: const Key('hidden-none'),
-                        style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                      ),
-                    ),
-                  for (final a in s.authors)
-                    ListTile(
-                      key: Key('hidden-author-${a.id}-${a.kind}'),
-                      dense: true,
-                      leading: const Icon(Icons.person_off_outlined),
-                      title: Text(authorLine(a)),
-                      trailing: TextButton(
-                        onPressed: () => run(() => controller.hideAuthor(a.name, a.kind, false)),
-                        child: Text(l.settingsShowAgain),
-                      ),
-                    ),
-                  for (final b in s.books)
-                    ListTile(
-                      key: Key('hidden-book-${b.id}'),
-                      dense: true,
-                      leading: const Icon(Icons.visibility_off_outlined),
-                      title: Text(b.title),
-                      subtitle: Text(b.author),
-                      trailing: TextButton(
-                        onPressed: () => run(() => controller.hideBook('${b.id}', false)),
-                        child: Text(l.settingsShowAgain),
-                      ),
-                    ),
                 ],
               ),
             ),

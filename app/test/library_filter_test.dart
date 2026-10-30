@@ -141,6 +141,7 @@ void main() {
         'playlists',
         'videos',
         'ebooks',
+        'hidden',
       ]);
     });
   });

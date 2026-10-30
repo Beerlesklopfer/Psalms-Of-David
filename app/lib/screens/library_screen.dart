@@ -8,8 +8,10 @@ import '../cd/cd_progress_bar.dart';
 import '../l10n/app_localizations.dart';
 import '../library_folds.dart';
 import '../library_groups.dart';
+import '../library_hiding.dart';
 import '../models.dart';
 import '../podcasts.dart';
+import 'hidden_list.dart';
 import 'media_category.dart';
 import 'playlists_screen.dart';
 import 'podcasts_screen.dart';
@@ -151,10 +153,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
+  /// Stands in where there is no hiding (no server), so that the build has something to listen to.
+  static final ChangeNotifier _noHiding = ChangeNotifier();
+
   @override
   Widget build(BuildContext context) {
+    final hiding = HidingScope.maybeOf(context);
+    return ListenableBuilder(
+      listenable: hiding ?? _noHiding,
+      builder: (context, _) => _content(context, hiding),
+    );
+  }
+
+  Widget _content(BuildContext context, HidingController? hiding) {
     final l = AppLocalizations.of(context);
     final p = PlayerScope.of(context);
+    // The rubric of what the person hid is there while their switch is on; with the switch off it falls back to the books.
+    final showHidden = hiding != null && hiding.available && hiding.state.showHidden;
+    if (_category == MediaCategory.hidden && !showHidden) _category = MediaCategory.audiobooks;
     final cs = Theme.of(context).colorScheme;
     // The books of the chosen category; null for a category David does not manage yet.
     final shown = _category.pick(p.library);
@@ -202,7 +218,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: CategoryChips(value: _category, onChanged: (c) => setState(() => _category = c)),
+            child: CategoryChips(
+              value: _category,
+              showHidden: showHidden,
+              onChanged: (c) => setState(() => _category = c),
+            ),
           ),
         ),
         if (isMusic)
@@ -216,6 +236,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
           PodcastsBody(controller: _podcasts!)
         else if (_category == MediaCategory.radio)
           RadioBody(controller: _radio!)
+        else if (_category == MediaCategory.hidden)
+          HiddenBody(controller: hiding!)
         else if (_category == MediaCategory.playlists)
           playlists == null
               ? SliverFillRemaining(

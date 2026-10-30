@@ -7,7 +7,7 @@ import '../models.dart';
 
 /// The kinds of media, as the library and the search offer them. Videos and e-books are shown so
 /// that it is clear they are coming; David does not manage them yet.
-enum MediaCategory { all, music, audiobooks, podcasts, radio, playlists, videos, ebooks }
+enum MediaCategory { all, music, audiobooks, podcasts, radio, playlists, videos, ebooks, hidden }
 
 extension MediaCategoryBooks on MediaCategory {
   /// The books of this category, or null for a category David does not manage yet.
@@ -15,7 +15,12 @@ extension MediaCategoryBooks on MediaCategory {
         MediaCategory.all => library,
         MediaCategory.music => library.where((b) => b.kind == 'music').toList(),
         MediaCategory.audiobooks => library.where((b) => b.kind == 'audiobook').toList(),
-        MediaCategory.podcasts || MediaCategory.radio || MediaCategory.playlists || MediaCategory.videos || MediaCategory.ebooks => null,
+        MediaCategory.podcasts ||
+        MediaCategory.radio ||
+        MediaCategory.playlists ||
+        MediaCategory.videos ||
+        MediaCategory.ebooks ||
+        MediaCategory.hidden => null,
       };
 }
 
@@ -23,11 +28,20 @@ extension MediaCategoryBooks on MediaCategory {
 /// and no podcasts and radio (they are lists of feeds and stations, not found by the search); the
 /// library has them and no "All".
 class CategoryChips extends StatelessWidget {
-  const CategoryChips({super.key, required this.value, required this.onChanged, this.forSearch = false});
+  const CategoryChips({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.forSearch = false,
+    this.showHidden = false,
+  });
 
   final MediaCategory value;
   final ValueChanged<MediaCategory> onChanged;
   final bool forSearch;
+
+  /// The library offers the rubric of what the person hid (their switch "show what I hid" is on).
+  final bool showHidden;
 
   @override
   Widget build(BuildContext context) {
@@ -41,6 +55,8 @@ class CategoryChips extends StatelessWidget {
       if (!forSearch) (MediaCategory.playlists, l.filterPlaylists, Icons.queue_music),
       (MediaCategory.videos, l.filterVideos, Icons.movie_outlined),
       (MediaCategory.ebooks, l.filterEbooks, Icons.auto_stories_outlined),
+      if (!forSearch && showHidden)
+        (MediaCategory.hidden, l.settingsHiddenTitle, Icons.visibility_off_outlined),
     ];
     return Wrap(
       spacing: 8,

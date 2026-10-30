@@ -331,23 +331,6 @@
     return (text) => text.toLowerCase().includes(needle);
   };
 
-  // ---- Search of the media pages: filters the rows while typing ----------------------
-  // Without JavaScript the form submits and the server filters (`?q=`).
-  const search = document.getElementById('book-search');
-  if (search) {
-    const rows = () => document.querySelectorAll('#book-list tbody tr[data-search]');
-    // A list in pages is searched by the server (the rows of one page are not all there are): no filtering while typing, the form submits.
-    const paged = () => !!document.querySelector('#book-list[data-paged]');
-    const apply = () => {
-      if (paged()) return;
-      const match = searchMatcher(search.value);
-      for (const row of rows()) row.hidden = !match(row.dataset.search || '');
-    };
-    search.addEventListener('input', apply);
-    search.form.addEventListener('submit', (e) => { if (rows().length && !paged()) e.preventDefault(); });
-    apply();
-  }
-
   // ---- Filter of a table while typing: <input data-filter-rows="table rows selector"> -------
   // The rows carry their text in data-search (lower case). Without JavaScript the form submits and the server filters.
   document.querySelectorAll('input[data-filter-rows]').forEach((input) => {
@@ -382,47 +365,34 @@
 
   // ---- Tree of the media lists: a level folds the rows below it ----------------------------
   // The rows carry the ids of their levels (data-parents); without JavaScript everything is open.
-  const tree = document.getElementById('book-list');
-  if (tree) {
-    const folded = new Set();
-    const box = document.getElementById('book-search');
-    const refresh = () => {
-      const needle = (box?.value || '').trim().toLowerCase();
-      const match = searchMatcher(box?.value || '');
-      const rows = Array.from(tree.querySelectorAll('tbody tr'));
-      const parentsOf = (row) => (row.dataset.parents ? row.dataset.parents.split(' ') : []);
-      // A book matches when there is no search or its text holds the words searched for.
-      const matches = (row) => needle === '' || match(row.dataset.search || '');
-      // A level that is folded hides everything below it, but never itself: that is where the click is.
-      // A search shows what it finds, even inside a folded level.
-      const hiddenByFold = (row) => needle === '' && parentsOf(row).some((p) => folded.has(p));
-      const found = new Set();
-      for (const row of rows) {
-        if (row.classList.contains('tree-node')) continue;
-        if (matches(row)) for (const p of parentsOf(row)) found.add(p);
+  // The search is the server's (it looks at all pages and answers with the books it found, see the search form of the
+  // media pages), so a search shows everything it found: the folds are not applied while there is a search.
+  // The list is swapped by htmx on every search, therefore the click is delegated and the rows are drawn again after a swap.
+  const folded = new Set();
+  const refreshTree = () => {
+    const tree = document.getElementById('book-list');
+    if (!tree) return;
+    const searching = (document.getElementById('book-search')?.value || '').trim() !== '';
+    const parentsOf = (row) => (row.dataset.parents ? row.dataset.parents.split(' ') : []);
+    for (const row of tree.querySelectorAll('tbody tr')) {
+      const hidden = !searching && parentsOf(row).some((p) => folded.has(p));
+      row.hidden = hidden;
+      if (row.classList.contains('tree-node')) {
+        row.querySelector('.tree-toggle')?.setAttribute('aria-expanded', folded.has(row.dataset.node) && !searching ? 'false' : 'true');
       }
-      for (const row of rows) {
-        if (row.classList.contains('tree-node')) {
-          const id = row.dataset.node;
-          row.hidden = hiddenByFold(row) || !found.has(id);
-          row.querySelector('.tree-toggle')?.setAttribute('aria-expanded', folded.has(id) && needle === '' ? 'false' : 'true');
-        } else {
-          row.hidden = hiddenByFold(row) || !matches(row);
-        }
-      }
-    };
-    tree.addEventListener('click', (e) => {
-      const button = e.target.closest('.tree-toggle');
-      if (!button) return;
-      const id = button.closest('tr').dataset.node;
-      if (folded.has(id)) folded.delete(id); else folded.add(id);
-      refresh();
-    });
-    // The search of the page filters the rows too; the tree takes it over, so a level is shown only
-    // while a book below it is.
-    if (box) box.addEventListener('input', () => queueMicrotask(refresh));
-    refresh();
-  }
+    }
+  };
+  document.addEventListener('click', (e) => {
+    const button = e.target.closest('#book-list .tree-toggle');
+    if (!button) return;
+    const id = button.closest('tr').dataset.node;
+    if (folded.has(id)) folded.delete(id); else folded.add(id);
+    refreshTree();
+  });
+  document.body.addEventListener('htmx:afterSwap', (e) => {
+    if (e.target && (e.target.id === 'media-results' || e.target.querySelector?.('#book-list'))) refreshTree();
+  });
+  refreshTree();
 
   // ---- Drop files, folders and archives on the import page -----------------------------
   // An archive is sent as an upload of its own (upload.create); audio files, pictures and folders go together in

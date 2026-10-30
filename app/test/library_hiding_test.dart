@@ -7,6 +7,7 @@ import 'package:psalm/library_hiding.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
 import 'package:psalm/screens/book_screen.dart';
+import 'package:psalm/screens/library_screen.dart';
 import 'package:psalm/screens/settings_screen.dart';
 import 'package:psalm/server/api_client.dart';
 import 'package:psalm/widgets.dart';
@@ -228,33 +229,55 @@ void main() {
       expect(api.calls, ['book:5:false']);
     });
 
+    testWidgets('the settings have the switch; the list of what was hidden is not there', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await c.hideBook('5', true);
+      await tester.pumpWidget(_app(const Scaffold(body: SettingsScreen()), hiding: c));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('show-hidden')), findsOneWidget);
+      expect(find.byKey(const Key('hidden-book-5')), findsNothing);
+      await tester.tap(find.byKey(const Key('show-hidden')));
+      await tester.pumpAndSettle();
+      expect(c.state.showHidden, isTrue);
+    });
+
     testWidgets(
-      'the settings have the switch and the list of what was hidden, each with "show again"',
+      'the library has the rubric "Hidden" while the switch is on: what was hidden, each with "show again"',
       (tester) async {
         tester.view.physicalSize = const Size(900, 2400);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
-        await tester.pumpWidget(_app(const Scaffold(body: SettingsScreen()), hiding: c));
-        await tester.pumpAndSettle();
-        expect(find.byKey(const Key('hidden-none')), findsOneWidget);
         await c.hideBook('5', true);
         await c.hideAuthor('Lindgren', 'music', true);
+        await tester.pumpWidget(
+          _app(const Scaffold(body: LibraryScreen()), hiding: c),
+        );
+        await tester.pumpAndSettle();
+        // The switch is off: no rubric.
+        expect(find.widgetWithText(ChoiceChip, 'Hidden'), findsNothing);
+        await c.setShowHidden(true);
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ChoiceChip, 'Hidden'));
         await tester.pumpAndSettle();
         expect(find.text('Music by Lindgren'), findsOneWidget);
         expect(find.text('Der Hobbit'), findsOneWidget);
-        await tester.tap(find.byKey(const Key('show-hidden')));
-        await tester.pumpAndSettle();
-        expect(c.state.showHidden, isTrue);
         await tester.tap(
-          find.byKey(const Key('hidden-book-5')).evaluate().isEmpty
-              ? find.text('Show again').first
-              : find.descendant(
-                  of: find.byKey(const Key('hidden-book-5')),
-                  matching: find.text('Show again'),
-                ),
+          find.descendant(
+            of: find.byKey(const Key('hidden-book-5')),
+            matching: find.text('Show again'),
+          ),
         );
         await tester.pumpAndSettle();
         expect(c.state.books, isEmpty);
+        // With the switch off the rubric is gone and the library shows the books again.
+        await c.setShowHidden(false);
+        await tester.pumpAndSettle();
+        expect(find.widgetWithText(ChoiceChip, 'Hidden'), findsNothing);
+        expect(find.byKey(const Key('hidden-none')), findsNothing);
       },
     );
   });
