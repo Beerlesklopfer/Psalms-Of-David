@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 
 import 'audio/file_formats.dart';
 import 'podcasts.dart';
+import 'podcasts/download_gate.dart';
 import 'podcasts/download_machine.dart' as machine;
 import 'server/app_paths.dart';
 
@@ -242,6 +243,9 @@ class PodcastDownloads extends ChangeNotifier {
   /// The most one download may take, in megabytes.
   int maxMegabytes = 500;
 
+  /// The most "download the whole collection" may load in one go, in megabytes (1 GB until the person changes it, at most 20 GB).
+  int bulkMegabytes = kBulkDefaultMegabytes;
+
   File _fileOfUrl(String url) => episodeCacheFile(cache, url);
 
   void _load() {
@@ -254,6 +258,8 @@ class PodcastDownloads extends ChangeNotifier {
         deleteAfterListening = s['delete_after_listening'] == true;
         final mb = s['max_megabytes'];
         if (mb is int && mb >= 10) maxMegabytes = mb;
+        final bulk = s['bulk_megabytes'];
+        if (bulk is int && bulk >= 10) bulkMegabytes = bulk;
       }
       for (final e in (j['episodes'] as List? ?? const [])) {
         try {
@@ -276,7 +282,7 @@ class PodcastDownloads extends ChangeNotifier {
       f.parent.createSync(recursive: true);
       final temp = File('${f.path}.tmp');
       temp.writeAsStringSync(jsonEncode({
-        'settings': {'delete_after_listening': deleteAfterListening, 'max_megabytes': maxMegabytes},
+        'settings': {'delete_after_listening': deleteAfterListening, 'max_megabytes': maxMegabytes, 'bulk_megabytes': bulkMegabytes},
         'episodes': [for (final e in _entries.values) e.toJson()],
       }));
       temp.renameSync(f.path);
@@ -468,6 +474,14 @@ class PodcastDownloads extends ChangeNotifier {
     return todo.take(limit).toList();
   }
 
+  /// Every episode of [list] that is not on the device and not on its way, the newest first (heard or not): what "download the whole collection"
+  /// would fetch. It is never fetched without the gate (`planBulk` and the question in the episodes page).
+  List<Episode> allToFetch(List<Episode> list) {
+    final todo = [for (final e in list) if (!isDownloading(e.id) && !isDownloaded(e.audioUrl)) e];
+    todo.sort((a, b) => (b.published ?? DateTime(1970)).compareTo(a.published ?? DateTime(1970)));
+    return todo;
+  }
+
   // ---- Removing -------------------------------------------------------------------------------
 
   /// Deletes an episode from the device. The podcast keeps it; it can be fetched again.
@@ -592,6 +606,13 @@ class PodcastDownloads extends ChangeNotifier {
   void setDeleteAfterListening(bool value) {
     if (deleteAfterListening == value) return;
     deleteAfterListening = value;
+    _save();
+    _notify();
+  }
+
+  void setBulkMegabytes(int value) {
+    if (bulkMegabytes == value || value < 10) return;
+    bulkMegabytes = value;
     _save();
     _notify();
   }

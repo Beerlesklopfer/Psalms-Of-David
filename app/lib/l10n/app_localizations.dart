@@ -3230,6 +3230,78 @@ abstract class AppLocalizations {
   /// **'Largest download'**
   String get podcastMaxSize;
 
+  /// No description provided for @podcastDownloadAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Download the whole collection'**
+  String get podcastDownloadAll;
+
+  /// No description provided for @podcastDownloadAllTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Download the whole collection?'**
+  String get podcastDownloadAllTitle;
+
+  /// No description provided for @podcastDownloadAllText.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} episodes, about {size}. They are loaded one after the other and take that much space on this device. You can stop at any time.'**
+  String podcastDownloadAllText(int count, String size);
+
+  /// No description provided for @podcastDownloadAllLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'The collection has {count} episodes, about {size}. That is more than your limit of {limit}, so only the newest {fitCount} (about {fitSize}) will be loaded. You can raise the limit under Settings > Podcast downloads.'**
+  String podcastDownloadAllLimited(
+    int count,
+    String size,
+    String limit,
+    int fitCount,
+    String fitSize,
+  );
+
+  /// No description provided for @podcastDownloadAllBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Even the newest episode is larger than your limit of {limit}. You can raise the limit under Settings > Podcast downloads.'**
+  String podcastDownloadAllBlocked(String limit);
+
+  /// No description provided for @podcastDownloadAllStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Download'**
+  String get podcastDownloadAllStart;
+
+  /// No description provided for @podcastDownloadAllRunning.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading {done} of {total} ...'**
+  String podcastDownloadAllRunning(int done, int total);
+
+  /// No description provided for @podcastDownloadAllStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get podcastDownloadAllStop;
+
+  /// No description provided for @podcastDownloadAllDone.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} episodes loaded.'**
+  String podcastDownloadAllDone(int count);
+
+  /// No description provided for @podcastBulkLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Largest collection download'**
+  String get podcastBulkLimit;
+
+  /// No description provided for @podcastBulkLimitHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The most that \"Download the whole collection\" loads in one go.'**
+  String get podcastBulkLimitHint;
+
   /// No description provided for @podcastMegabytes.
   ///
   /// In en, this message translates to:

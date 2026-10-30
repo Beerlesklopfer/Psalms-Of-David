@@ -173,7 +173,8 @@ class ApiClient implements FeedApi {
 
   /// The media time of the family for the line charts: `{from_day, days, members: [{user_id, name, me, kinds: {kind: [ms…]}, total: [ms…]}]}`.
   Future<Map<String, dynamic>> familyMediaTime({int days = 14}) async =>
-      await _json('GET', '/api/v1/family/media-time?days=$days') as Map<String, dynamic>;
+      // The query goes in the `query` parameter: in the path a "?" would be percent-encoded and the server would not find the route.
+      await _json('GET', '/api/v1/family/media-time', query: {'days': '$days'}) as Map<String, dynamic>;
 
   /// Shows or hides the own listening to the family; refused (403) when an administrator forbade hiding it.
   Future<void> setShareListening(bool share) => _json('PUT', '/api/v1/me', body: {'share_listening': share});

@@ -7,6 +7,7 @@ import '../l10n/app_localizations.dart';
 import '../player_controller.dart';
 import '../podcast_downloads.dart';
 import '../podcasts.dart';
+import '../podcasts/download_gate.dart';
 import '../podcasts/download_machine.dart' as machine;
 
 /// The words for why a download did not work (the codes of [EpisodeDownloadException]).
@@ -257,6 +258,7 @@ class PodcastDownloadsCard extends StatelessWidget {
         final cs = Theme.of(context).colorScheme;
         final usage = downloads.usage();
         final choices = {...kEpisodeSizeChoices, downloads.maxMegabytes}.toList()..sort();
+        final bulkChoices = {...kBulkSizeChoices, downloads.bulkMegabytes}.toList()..sort();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -285,6 +287,19 @@ class PodcastDownloadsCard extends StatelessWidget {
                   ),
                   const Divider(height: 1),
                   ListTile(
+                    title: Text(l.podcastBulkLimit),
+                    subtitle: Text(l.podcastBulkLimitHint),
+                    trailing: DropdownButton<int>(
+                      key: const ValueKey('podcast-bulk-limit'),
+                      value: downloads.bulkMegabytes,
+                      items: [for (final mb in bulkChoices) DropdownMenuItem(value: mb, child: Text(formatBytes(l.localeName, mb * 1000 * 1000)))],
+                      onChanged: (mb) {
+                        if (mb != null) downloads.setBulkMegabytes(mb);
+                      },
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
                     title: Text(l.podcastMaxSize),
                     trailing: DropdownButton<int>(
                       key: const ValueKey('podcast-max-size'),
@@ -303,4 +318,37 @@ class PodcastDownloadsCard extends StatelessWidget {
       },
     );
   }
+}
+
+/// The question in front of "download the whole collection": how many episodes, about how large, and, when more is missing than the limit allows, what
+/// would be loaded instead. Returns the episodes to fetch, or null for "no". Nothing is fetched without this question.
+Future<List<Episode>?> askBulkDownload(BuildContext context, BulkPlan plan) {
+  final l = AppLocalizations.of(context);
+  String size(int bytes) => formatBytes(l.localeName, bytes);
+  final limit = size(plan.limitBytes);
+  final String text;
+  if (plan.blocked) {
+    text = l.podcastDownloadAllBlocked(limit);
+  } else if (plan.exceedsLimit) {
+    text = l.podcastDownloadAllLimited(plan.count, size(plan.totalBytes), limit, plan.fittingCount, size(plan.fittingBytes));
+  } else {
+    text = l.podcastDownloadAllText(plan.count, size(plan.totalBytes));
+  }
+  return showDialog<List<Episode>>(
+    context: context,
+    builder: (context) => AlertDialog(
+      key: const ValueKey('bulk-download-dialog'),
+      title: Text(l.podcastDownloadAllTitle),
+      content: Text(text),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(l.cancel)),
+        if (!plan.blocked)
+          FilledButton(
+            key: const ValueKey('bulk-download-start'),
+            onPressed: () => Navigator.pop(context, plan.fitting),
+            child: Text(l.podcastDownloadAllStart),
+          ),
+      ],
+    ),
+  );
 }

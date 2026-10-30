@@ -169,6 +169,14 @@ succeeds (or the switch goes off, or the person taps "Send changes now"); then t
   nothing is deleted unless the person does it; on: an episode heard to the end goes, and so does one that the podcast no longer lists, meaning
   it is newer than the oldest listed episode but missing from the list); the largest single download (100 MB to 2 GB, default 500 MB).
   Forgetting the pairing forgets the list of episodes but keeps the files (like the downloaded parts of books).
+- **The gate in front of "download the whole collection"** (project owner, 2026-10-30: a collection can take several gigabytes). The app bar of the episodes has a second
+  button, "Download the whole collection", for every episode that is not on the device (heard or not, the newest first). It **never starts by itself**: a question
+  says how many episodes and about how large (the size is estimated from the duration at 128 kbit/s, 40 MB for an episode without a duration), and "Download" starts
+  them one after the other, with a "Stop" in the message; the first failure stops it. There is a **limit per collection download, 1 GB until the person changes it,
+  250 MB to 20 GB in Settings > Podcast downloads** (`bulk_megabytes` in `podcast-downloads.json`): when more is missing than the limit allows, the question says so and
+  loads only the newest episodes that fit; when not even the newest fits there is no "Download", only the hint to raise the limit. The pure part is
+  `app/lib/podcasts/download_gate.dart` (`planBulk`), the question is `askBulkDownload`. Not done: a check of the free space of the device and a "Wi-Fi only" rule
+  (neither is available in the app yet).
 - **Offline.** An episode on the device plays without the server. In the offline view the page Podcasts (and the category in the library) lists
   the podcasts with downloaded episodes and, below, only those episodes, with the position of this device. If the server does not answer while
   the list of a podcast is open the downloaded episodes are shown instead of the error. Where the person is in an episode is reported to the

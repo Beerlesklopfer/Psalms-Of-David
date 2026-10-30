@@ -1884,6 +1884,56 @@ class AppLocalizationsDe extends AppLocalizations {
   String get podcastMaxSize => 'Größter Download';
 
   @override
+  String get podcastDownloadAll => 'Gesamte Sammlung laden';
+
+  @override
+  String get podcastDownloadAllTitle => 'Die gesamte Sammlung laden?';
+
+  @override
+  String podcastDownloadAllText(int count, String size) {
+    return '$count Folgen, etwa $size. Sie werden nacheinander geladen und belegen so viel Platz auf diesem Gerät. Du kannst jederzeit abbrechen.';
+  }
+
+  @override
+  String podcastDownloadAllLimited(
+    int count,
+    String size,
+    String limit,
+    int fitCount,
+    String fitSize,
+  ) {
+    return 'Die Sammlung hat $count Folgen, etwa $size. Das ist mehr als deine Grenze von $limit, deshalb werden nur die neuesten $fitCount (etwa $fitSize) geladen. Die Grenze kannst du unter Einstellungen > Podcast-Downloads erhöhen.';
+  }
+
+  @override
+  String podcastDownloadAllBlocked(String limit) {
+    return 'Schon die neueste Folge ist größer als deine Grenze von $limit. Die Grenze kannst du unter Einstellungen > Podcast-Downloads erhöhen.';
+  }
+
+  @override
+  String get podcastDownloadAllStart => 'Laden';
+
+  @override
+  String podcastDownloadAllRunning(int done, int total) {
+    return 'Lade $done von $total ...';
+  }
+
+  @override
+  String get podcastDownloadAllStop => 'Stopp';
+
+  @override
+  String podcastDownloadAllDone(int count) {
+    return '$count Folgen geladen.';
+  }
+
+  @override
+  String get podcastBulkLimit => 'Größter Sammel-Download';
+
+  @override
+  String get podcastBulkLimitHint =>
+      'Das Meiste, was „Gesamte Sammlung laden“ auf einmal lädt.';
+
+  @override
   String podcastMegabytes(int mb) {
     return '$mb MB';
   }

@@ -1860,6 +1860,56 @@ class AppLocalizationsEn extends AppLocalizations {
   String get podcastMaxSize => 'Largest download';
 
   @override
+  String get podcastDownloadAll => 'Download the whole collection';
+
+  @override
+  String get podcastDownloadAllTitle => 'Download the whole collection?';
+
+  @override
+  String podcastDownloadAllText(int count, String size) {
+    return '$count episodes, about $size. They are loaded one after the other and take that much space on this device. You can stop at any time.';
+  }
+
+  @override
+  String podcastDownloadAllLimited(
+    int count,
+    String size,
+    String limit,
+    int fitCount,
+    String fitSize,
+  ) {
+    return 'The collection has $count episodes, about $size. That is more than your limit of $limit, so only the newest $fitCount (about $fitSize) will be loaded. You can raise the limit under Settings > Podcast downloads.';
+  }
+
+  @override
+  String podcastDownloadAllBlocked(String limit) {
+    return 'Even the newest episode is larger than your limit of $limit. You can raise the limit under Settings > Podcast downloads.';
+  }
+
+  @override
+  String get podcastDownloadAllStart => 'Download';
+
+  @override
+  String podcastDownloadAllRunning(int done, int total) {
+    return 'Downloading $done of $total ...';
+  }
+
+  @override
+  String get podcastDownloadAllStop => 'Stop';
+
+  @override
+  String podcastDownloadAllDone(int count) {
+    return '$count episodes loaded.';
+  }
+
+  @override
+  String get podcastBulkLimit => 'Largest collection download';
+
+  @override
+  String get podcastBulkLimitHint =>
+      'The most that \"Download the whole collection\" loads in one go.';
+
+  @override
   String podcastMegabytes(int mb) {
     return '$mb MB';
   }

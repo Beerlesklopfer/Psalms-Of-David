@@ -11,6 +11,7 @@ import '../offline/offline_controller.dart';
 import '../podcast_downloads.dart';
 import '../player_controller.dart';
 import '../podcasts.dart';
+import '../podcasts/download_gate.dart';
 import '../server/api_client.dart';
 import '../widgets.dart';
 import 'labels_ui.dart';
@@ -245,6 +246,57 @@ class _EpisodesScreenState extends State<EpisodesScreen> {
     }
   }
 
+  bool _bulkRunning = false;
+
+  /// "Download the whole collection": behind the gate. The person is asked with the number and the size, and what does not fit the limit is left out;
+  /// the episodes come one after the other, a "Stop" in the message ends it, and the first failure stops it with its message.
+  Future<void> _downloadAll(PodcastDownloads downloads) async {
+    if (_bulkRunning) return;
+    final l = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final todo = downloads.allToFetch(_episodes ?? const []);
+    if (todo.isEmpty) {
+      messenger.showSnackBar(SnackBar(content: Text(l.podcastDownloadNewestNone)));
+      return;
+    }
+    final chosen = await askBulkDownload(context, planBulk(todo, limitMegabytes: downloads.bulkMegabytes));
+    if (chosen == null || chosen.isEmpty || !mounted) return;
+    _bulkRunning = true;
+    var stop = false;
+    var done = 0;
+    int? current;
+    try {
+      for (final e in chosen) {
+        if (stop) break;
+        current = e.id;
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(SnackBar(
+          content: Text(l.podcastDownloadAllRunning(done + 1, chosen.length)),
+          duration: const Duration(days: 1),
+          action: SnackBarAction(
+            label: l.podcastDownloadAllStop,
+            onPressed: () {
+              stop = true;
+              final id = current;
+              if (id != null) downloads.cancel(id);
+            },
+          ),
+        ));
+        final code = await downloads.download(e, widget.podcast);
+        if (code == null) {
+          done++;
+        } else {
+          if (code != 'cancelled') messenger.showSnackBar(SnackBar(content: Text(episodeDownloadMessage(l, code, downloads.maxMegabytes))));
+          break;
+        }
+      }
+    } finally {
+      _bulkRunning = false;
+      messenger.hideCurrentSnackBar();
+      if (done > 0) messenger.showSnackBar(SnackBar(content: Text(l.podcastDownloadAllDone(done))));
+    }
+  }
+
   /// The server does not answer: the episodes that are on the device are still listed (and play).
   Widget _unreachable(BuildContext context, PodcastDownloads? downloads) {
     final l = AppLocalizations.of(context);
@@ -268,6 +320,13 @@ class _EpisodesScreenState extends State<EpisodesScreen> {
               tooltip: l.podcastDownloadNewest(kNewestEpisodes),
               icon: const Icon(Icons.download_for_offline_outlined),
               onPressed: () => _downloadNewest(downloads),
+            ),
+          if (downloads != null && list != null && list.isNotEmpty)
+            IconButton(
+              key: const ValueKey('download-all'),
+              tooltip: l.podcastDownloadAll,
+              icon: const Icon(Icons.library_add_check_outlined),
+              onPressed: () => _downloadAll(downloads),
             ),
           IconButton(
             tooltip: l.podcastUnfollow,
