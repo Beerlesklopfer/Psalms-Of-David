@@ -181,8 +181,7 @@ Signing: see `docs/releasing.md`.
 2. The exact callback for `.handleInApp` in an app with scenes: both `application(_:handle:completionHandler:)` (written without `override`; if
    `FlutterAppDelegate` declares it the compiler will say so) and the scene methods are implemented; which one fires is unknown. Also whether `override` of
    the two `FlutterSceneDelegate` methods compiles with the Flutter of the CI.
-3. `INSupportedMediaCategories`: the strings `INMediaCategoryMusic`, `INMediaCategoryAudiobooks`, `INMediaCategoryPodcasts`, `INMediaCategoryRadio` are from
-   memory of the SDK documentation, and the key is only in the app's `Info.plist` (Apple: it is set with the app's Supported Intents; the key page names no extension). A wrong place or string means Siri may not offer the app for that kind of media.
+3. `INSupportedMediaCategories`: **removed again from the app's `Info.plist`** (TestFlight upload, 2026-10-30: "Invalid Bundle. The SupportedMediaCategories key in the 'Runner.app' Info.plist cannot be present unless the INPlayMediaIntent intent is supported", code 90775). Apple's key page only says the key is set with the app's Supported Intents (the plist key that Xcode writes for that list is not named there; only `INMediaCategoryGeneral` is documented). The extension's `IntentsSupported = INPlayMediaIntent` carries Siri's routing meanwhile. To bring the categories back: find out in Xcode what adding `INPlayMediaIntent` under Supported Intents of the app target writes into `Info.plist`, and set both.
 4. `INPlayMediaMediaItemResolutionResult.successes(with:)` (array form) and `INMediaItem(identifier:title:type:artwork:)`; the item type is the type
    of the search or `.unknown`.
 5. The keys of the extension `Info.plist` (`IntentsSupported`, `IntentsRestrictedWhileLocked` empty meaning "allowed on the lock screen",

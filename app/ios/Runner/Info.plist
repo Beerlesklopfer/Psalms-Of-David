@@ -32,13 +32,6 @@
 		</dict>
 	</array>
 	<!-- The kinds of media that Siri may start in this app by "Play <title>" without the app name (also in the Intents extension; strings unverified). -->
-	<key>INSupportedMediaCategories</key>
-	<array>
-		<string>INMediaCategoryMusic</string>
-		<string>INMediaCategoryAudiobooks</string>
-		<string>INMediaCategoryPodcasts</string>
-		<string>INMediaCategoryRadio</string>
-	</array>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>en</string>
