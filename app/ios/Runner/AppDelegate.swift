@@ -1,4 +1,5 @@
 import Flutter
+import Intents
 import UIKit
 
 @main
@@ -9,6 +10,24 @@ import UIKit
   ) -> Bool {
     excludeAppFilesFromBackup()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  /// The channel to Flutter (also used to say "a command is waiting" when a Siri media intent arrives while the app runs).
+  var voiceChannel: FlutterMethodChannel?
+
+  /// INPlayMediaIntent answered with .handleInApp by the Intents extension, delivered to an app that plays audio in the background
+  /// (no `override`: FlutterAppDelegate does not implement it; the signature is from the UIApplicationDelegate documentation, unverified).
+  func application(
+    _ application: UIApplication,
+    handle intent: INIntent,
+    completionHandler: @escaping (INIntentResponse) -> Void
+  ) {
+    if intent is INPlayMediaIntent {
+      SiriMediaHandoff.handle(intent)
+      completionHandler(INPlayMediaIntentResponse(code: .success, userActivity: nil))
+    } else {
+      completionHandler(INIntentResponse())
+    }
   }
 
   /// The pairing (server address, certificate, token) and the downloaded parts live in
@@ -33,6 +52,7 @@ import UIKit
     guard let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "PsalmsVoice") else { return }
     let channel = FlutterMethodChannel(
       name: "com.the-abraham-box.psalm/voice", binaryMessenger: registrar.messenger())
+    voiceChannel = channel
     channel.setMethodCallHandler { call, result in
       guard call.method == "takePending" else {
         result(FlutterMethodNotImplemented)

@@ -54,7 +54,7 @@ to the server. The model of phase 2 never gets more rights than the person who s
   and an `AppShortcutsProvider` with the spoken phrases ("Play *name* in Psalms"). They also appear in the Shortcuts app and on the lock screen. The author
   expects that **no special permission from Apple** is needed (unlike CarPlay), only the usage text for speech; to be confirmed when the first build runs.
 - *SiriKit media intents* (`INPlayMediaIntent`) would give "Play X" without the app name, but need an *Intents extension* and the capability "Siri" on the App
-  IDs (as the device name needed a request, this is a switch in the Apple Developer account and new profiles). Worth it only if the short phrase matters.
+  IDs (as the device name needed a request, this is a switch in the Apple Developer account and new profiles). Worth it only if the short phrase matters. **Built 2026-10-30:** see "SiriKit media intents" at the end.
 - The intents are native code (Swift) that calls the same API as the Flutter app (address and token are in the app folder; the intent runs in the app's
   process and can read them) or tells the Flutter side through the existing platform channel. The CI builds it with the app; it **cannot be run on this
   computer**: every try is a TestFlight build.
@@ -143,3 +143,52 @@ Not possible here, to be checked with a TestFlight build (nothing of the Swift s
   needed then and nothing is confused with Spotify. Worth telling the family.
 - To be tried on a device: what Siri says when "in Psalms" is spoken, and whether "in Psalm" works.
 
+## SiriKit media intents: "Spiele <Titel>" without the name of the app (project owner, 2026-10-30)
+
+Goal: Siri starts playback with the short phrase, as with Spotify. The App Intents above need the app name in the phrase; `INPlayMediaIntent` does not.
+
+**What was written (2026-10-30, nothing compiled or run; the CI on macOS is the first compiler):**
+
+- Xcode target **PsalmsIntents** (app extension, Swift, iOS 15) in `app/ios/Runner.xcodeproj/project.pbxproj` (by hand, checked by a script for balanced
+  braces, unique and defined ids), embedded in Runner (phase "Embed Foundation Extensions", `dstSubfolderSpec = 13`, plus a target dependency). Bundle id
+  `$(PSALM_BUNDLE_ID).intents`, device family and version from the same settings as the app (`FLUTTER_BUILD_NUMBER`, `FLUTTER_BUILD_NAME`), because Apple
+  rejects an extension whose version differs from the app.
+- `app/ios/PsalmsIntents/`: `IntentHandler.swift` (`INExtension`, returns the handler), `PlayMediaIntentHandler.swift` (`INPlayMediaIntentHandling`:
+  `resolveMediaItems` takes the spoken text from the media search - name, album, artist - and returns **one** `INMediaItem` whose identifier and title are that
+  text, or `needsValue` if nothing was spoken; `confirm` answers `.ready`; `handle` answers `.handleInApp`), `Info.plist` (`NSExtension`, point
+  `com.apple.intents-service`, `IntentsSupported` = `INPlayMediaIntent`, `IntentsRestrictedWhileLocked` empty),
+  `PsalmsIntents.entitlements` (`com.apple.developer.siri`; no app group: the intent itself carries the text).
+- The app: `Runner/Runner.entitlements` (`com.apple.developer.siri`, set in the project for Runner; the CI only adds the device-name key when its variable is
+  true), `Runner/SiriMediaHandoff.swift` (turns the intent into the same JSON as the App Intents: `{"action":"play","query":"..."}`, or `{"action":"continue"}` when
+  nothing was spoken, into the key `psalms.voice.pending`, and tells Flutter), `AppDelegate.swift` (`application(_:handle:completionHandler:)`, the path for apps
+  that play audio in the background) and `SceneDelegate.swift` (`scene(_:willConnectTo:options:)` and `scene(_:continue:)`, the path as an `NSUserActivity` whose
+  `interaction.intent` is the `INPlayMediaIntent`). The same text within five seconds is taken once, because both paths could fire.
+- Flutter: `VoiceChannel.listen` answers a call `pendingChanged` from the native side by taking the command at once (`main.dart`: `_runVoice`, with the existing
+  retry); a cold start is covered by the existing take after the start and on resume. Test in `test/voice_commands_test.dart`.
+- The extension resolves to the spoken text; the app searches the library (`playByVoice`). The extension cannot know the library, so Siri says "OK" even for a
+  title that does not exist; the app then stays silent.
+
+**What the owner did in the Apple account:** enabled the capability Siri on the App IDs `com.the-abraham-box.psalm` and `com.the-abraham-box.psalm.ipad`;
+created the App IDs `com.the-abraham-box.psalm.intents` and `com.the-abraham-box.psalm.ipad.intents` (Siri on); made four App Store profiles.
+**Secrets expected:** `IOS_PROFILE_IPHONE_BASE64`, `IOS_PROFILE_IPAD_BASE64` (the apps, made again with Siri), `IOS_PROFILE_IPHONE_INTENTS_BASE64`,
+`IOS_PROFILE_IPAD_INTENTS_BASE64` (the extensions), team `RRT2J4HCC5` (`IOS_TEAM_ID`). Profile names are read from the decoded profiles, not written in the repository.
+Signing: see `docs/releasing.md`.
+
+**Unverified (a Mac or an iPhone is needed), highest risk first:**
+
+1. Signing two targets in one `flutter build ipa` with the profile name of the extension given through the project setting `PSALM_INTENTS_PROFILE` and an
+   `ExportOptions.plist` with both bundle ids. Look at the log of `package-ios` for "provisioning profile" errors.
+2. The exact callback for `.handleInApp` in an app with scenes: both `application(_:handle:completionHandler:)` (written without `override`; if
+   `FlutterAppDelegate` declares it the compiler will say so) and the scene methods are implemented; which one fires is unknown. Also whether `override` of
+   the two `FlutterSceneDelegate` methods compiles with the Flutter of the CI.
+3. `INSupportedMediaCategories`: the strings `INMediaCategoryMusic`, `INMediaCategoryAudiobooks`, `INMediaCategoryPodcasts`, `INMediaCategoryRadio` are from
+   memory of the SDK documentation, and the key is only in the app's `Info.plist` (Apple: it is set with the app's Supported Intents; the key page names no extension). A wrong place or string means Siri may not offer the app for that kind of media.
+4. `INPlayMediaMediaItemResolutionResult.successes(with:)` (array form) and `INMediaItem(identifier:title:type:artwork:)`; the item type is the type
+   of the search or `.unknown`.
+5. The keys of the extension `Info.plist` (`IntentsSupported`, `IntentsRestrictedWhileLocked` empty meaning "allowed on the lock screen",
+   `NSExtensionPrincipalClass` = `$(PRODUCT_MODULE_NAME).IntentHandler`) and the embed phase name/placement before "Thin Binary" (a build cycle would show
+   up as "Cycle inside Runner").
+6. Whether Siri prefers Spotify anyway for "Spiele X": the person may have to choose Psalms as the app for the media category (Settings > Siri, or by answering
+   Siri once); a name like "Psalms" may need the alternative names (`INAlternativeAppNames`, already there).
+7. That "Spiele" with no words starts "continue" (the extension answers `needsValue`, so Siri asks what to play; the app-side `continue` is only reached when the
+   intent arrives empty).

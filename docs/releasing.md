@@ -58,18 +58,28 @@ public repository has them free.
 |---|---|
 | `IOS_CERTIFICATE_P12_BASE64`, `IOS_CERTIFICATE_PASSWORD` | the "Apple Distribution" certificate with its private key as .p12 (`base64 -w0`) |
 | `IOS_TEAM_ID` | the ten characters of the team (developer account, membership) |
-| `IOS_PROFILE_IPHONE_BASE64`, `IOS_PROFILE_IPAD_BASE64` | the App Store provisioning profile of each bundle id (`base64 -w0 x.mobileprovision`) |
+| `IOS_PROFILE_IPHONE_BASE64`, `IOS_PROFILE_IPAD_BASE64` | the App Store provisioning profile of each app (`base64 -w0 x.mobileprovision`); **with the capability Siri** |
+| `IOS_PROFILE_IPHONE_INTENTS_BASE64`, `IOS_PROFILE_IPAD_INTENTS_BASE64` | the App Store profile of the Siri Intents extension of each app (App IDs `...psalm.intents` and `...psalm.ipad.intents`), also with Siri |
 | `APPSTORE_API_KEY_ID`, `APPSTORE_API_ISSUER_ID`, `APPSTORE_API_KEY_P8_BASE64` | the App Store Connect API key (role App Manager) for the upload; without it the .ipa stays an artifact |
 
 One-time setup (everything works from Linux, a Mac is not needed):
 1. Apple Developer Program (99 EUR a year, an individual or a company account). The free Apple ID is not enough for TestFlight, CarPlay or a profile that lasts.
-2. Developer portal: two App IDs (`com.the-abraham-box.psalm`, `com.the-abraham-box.psalm.ipad`).
+2. Developer portal: four App IDs: the apps `com.the-abraham-box.psalm`, `com.the-abraham-box.psalm.ipad` and their Siri extensions
+   `com.the-abraham-box.psalm.intents`, `com.the-abraham-box.psalm.ipad.intents`; the capability **Siri** is on for all four (done 2026-10-30).
 3. A certificate: make a key and a request with `openssl req -new -newkey rsa:2048 -nodes -keyout dist.key -out dist.csr -subj "/CN=Psalms"`,
    upload `dist.csr` as "Apple Distribution", download the `.cer`, then `openssl x509 -inform der -in dist.cer -out dist.pem` and
    `openssl pkcs12 -export -inkey dist.key -in dist.pem -out dist.p12`. Keep the key safe: whoever has it can sign as the team.
-4. Two App Store provisioning profiles (one per App ID, type "App Store Connect").
+4. Four App Store provisioning profiles (one per App ID, type "App Store Connect"); they have to be made again after a capability was added.
 5. App Store Connect: two app records (for example "Psalms" and "Psalms for iPad", the names must be free), and an API key (users and access, integrations).
 6. Put the secrets into the repository settings. Tag or push to main: the builds appear in TestFlight after Apple has processed them (about ten minutes).
+
+**The Siri extension.** The app contains an app extension `PsalmsIntents` (`app/ios/PsalmsIntents`, bundle id = the id of the app + `.intents`, same version
+as the app) so that Siri can play without the name of the app ("Spiele ..."); see `docs/spec-voice.md`, "SiriKit media intents". `flutter build ipa` signs both
+bundles in one run: the CI (`package-ios`) decodes the profile of the app and of the extension, checks that each belongs to its bundle id and contains the
+capability Siri (a clear error otherwise), installs both, writes both names into `ExportOptions.plist` and gives the extension its profile through
+`PSALM_INTENTS_PROFILE` in `Product.xcconfig` (the extension target reads it). **Without the extension profile the job signs nothing** (warning; the unsigned
+`ios-build` still checks that the extension is embedded, has the right id and the version of the app). Because both apps now carry the entitlement
+`com.apple.developer.siri` (`app/ios/Runner/Runner.entitlements`, always), **the old profiles without Siri no longer work**.
 
 How the family gets it: TestFlight. Internal testers (up to 100 people of the team, no review) need an invitation by Apple ID; external
 testers (up to 10 000, a public link) need one beta review of the first build. A TestFlight build runs for 90 days. For a longer life without the
@@ -229,8 +239,8 @@ else the maker and the model. iOS and iPadOS: from iOS 16 an app gets the model 
 Apple has granted the entitlement `com.apple.developer.device-information.user-assigned-device-name`. To get it: ask Apple at
 https://developer.apple.com/contact/request/device-name (the account holder fills in the form, the answer can take days), then enable the capability
 "User Assigned Device Name" for both App IDs, make new App Store profiles, replace the secrets `IOS_PROFILE_*_BASE64`, and add the entitlement to
-the repository variable `IOS_DEVICE_NAME_ENTITLEMENT` set to `true` (Settings, Secrets and variables, Actions, Variables): then the CI writes
-`ios/Runner/Runner.entitlements` and sets `CODE_SIGN_ENTITLEMENTS` for that build. Do not set the variable before the profiles contain the entitlement: signing fails.
+the repository variable `IOS_DEVICE_NAME_ENTITLEMENT` set to `true` (Settings, Secrets and variables, Actions, Variables): then the CI adds the key to the file
+`ios/Runner/Runner.entitlements` (which has Siri always) for that build. Do not set the variable before the profiles contain the entitlement: signing fails.
 The person can always change the name in the field.
 
 ## Windows

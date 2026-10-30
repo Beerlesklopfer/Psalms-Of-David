@@ -131,7 +131,9 @@ To prepare:
 - [ ] An update is a new build from the CI (version from the tag, build number counted), a new version in App Store Connect, the "What's new" text, and a
       new submission.
 - [ ] When the profiles or the certificate run out (one year after 2026-10-30: the Apple Distribution certificate and the profiles; the membership
-      renews on 2027-10-31), make them again as described in `docs/releasing.md` and replace the secrets.
+      renews on 2027-10-31), make them again as described in `docs/releasing.md` and replace the secrets: **four** profiles (the two apps and their Siri
+      extensions `...psalm.intents`, `...psalm.ipad.intents`; secrets `IOS_PROFILE_IPHONE_BASE64`, `IOS_PROFILE_IPAD_BASE64`, `IOS_PROFILE_IPHONE_INTENTS_BASE64`,
+      `IOS_PROFILE_IPAD_INTENTS_BASE64`). The App Store Connect listing needs nothing for the extension (it is part of the app).
 
 ## 7. The other systems
 

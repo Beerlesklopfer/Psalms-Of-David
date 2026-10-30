@@ -73,5 +73,26 @@ void main() {
         VoiceAction.next,
       );
     });
+
+    test('listen calls back when the native side reports a waiting command', () async {
+      var calls = 0;
+      VoiceChannel(supported: true).listen(() => calls++);
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null),
+      );
+      Future<void> fromNative(String method) async {
+        await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .handlePlatformMessage(
+              channel.name,
+              channel.codec.encodeMethodCall(MethodCall(method)),
+              (_) {},
+            );
+      }
+
+      await fromNative('pendingChanged');
+      await fromNative('other');
+      expect(calls, 1);
+    });
   });
 }

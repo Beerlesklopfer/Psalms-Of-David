@@ -414,6 +414,24 @@ jobs:
             iphone) [ "$id" = "com.the-abraham-box.psalm" ] && echo "$family" | grep -q "1" && ! echo "$family" | grep -q "2" ;;
             ipad) [ "$id" = "com.the-abraham-box.psalm.ipad" ] && echo "$family" | grep -q "2" && ! echo "$family" | grep -q "1" ;;
           esac
+      - name: The Siri Intents extension is embedded with the version of the app
+        run: |
+          app=build/ios/iphoneos/Runner.app
+          plist="$app/PlugIns/PsalmsIntents.appex/Info.plist"
+          if [ ! -f "$plist" ]; then
+            echo "::error::$plist is missing: the extension target PsalmsIntents is not embedded in the app."
+            ls -R "$app" | head -50
+            exit 1
+          fi
+          appid=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
+          extid=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")
+          appver=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")
+          extver=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")
+          appname=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")
+          extname=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
+          echo "app $appid $appname ($appver), extension $extid $extname ($extver)"
+          [ "$extid" = "$appid.intents" ] || { echo "::error::The extension bundle id must be $appid.intents"; exit 1; }
+          [ "$extver" = "$appver" ] && [ "$extname" = "$appname" ] || { echo "::error::The extension version differs from the app version"; exit 1; }
 
   # Signed apps for iPhone and iPad; the upload to TestFlight when the App Store Connect key is set.
   package-ios:
@@ -431,6 +449,8 @@ jobs:
       CERT_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
       TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
       PROFILE_BASE64: ${{ matrix.product == 'iphone' && secrets.IOS_PROFILE_IPHONE_BASE64 || secrets.IOS_PROFILE_IPAD_BASE64 }}
+      # The profile of the Siri Intents extension (bundle id of the app + ".intents").
+      PROFILE_INTENTS_BASE64: ${{ matrix.product == 'iphone' && secrets.IOS_PROFILE_IPHONE_INTENTS_BASE64 || secrets.IOS_PROFILE_IPAD_INTENTS_BASE64 }}
       ASC_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
       ASC_KEY_BASE64: ${{ secrets.APPSTORE_API_KEY_P8_BASE64 }}
@@ -469,6 +489,10 @@ jobs:
             echo "::warning::No iOS signing secrets: no .ipa for ${{ matrix.product }} (the unsigned build above is the check)."
             echo "ready=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
+          if [ -z "$PROFILE_INTENTS_BASE64" ]; then
+            echo "::warning::No profile for the Siri Intents extension (IOS_PROFILE_IPHONE_INTENTS_BASE64 / IOS_PROFILE_IPAD_INTENTS_BASE64): no signed .ipa for ${{ matrix.product }}, only the unsigned build above (the app contains the extension, so it cannot be signed without its profile)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           keychain="$RUNNER_TEMP/build.keychain-db"
           security create-keychain -p ci "$keychain"
           security set-keychain-settings -lut 21600 "$keychain"
@@ -478,12 +502,29 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k ci "$keychain"
           security list-keychains -d user -s "$keychain" login.keychain-db
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          echo "$PROFILE_BASE64" | base64 -d > "$RUNNER_TEMP/p.mobileprovision"
-          security cms -D -i "$RUNNER_TEMP/p.mobileprovision" > "$RUNNER_TEMP/p.plist"
-          uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/p.plist")
-          name=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/p.plist")
-          cp "$RUNNER_TEMP/p.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
           case "${{ matrix.product }}" in iphone) bundle=com.the-abraham-box.psalm ;; ipad) bundle=com.the-abraham-box.psalm.ipad ;; esac
+          # Decodes a profile, checks that it belongs to the bundle id and has the Siri capability, installs it. Sets $name (the profile name).
+          install_profile() {
+            local b64="$1" want="$2" file="$RUNNER_TEMP/$3" uuid appid
+            echo "$b64" | base64 -d > "$file.mobileprovision"
+            security cms -D -i "$file.mobileprovision" > "$file.plist"
+            uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$file.plist")
+            name=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$file.plist")
+            appid=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$file.plist")
+            echo "profile '$name' ($uuid) is for $appid"
+            if [ "$appid" != "$TEAM_ID.$want" ]; then
+              echo "::error::The profile '$name' is for $appid, but $TEAM_ID.$want is expected (wrong secret?)."; exit 1
+            fi
+            if ! /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.siri' "$file.plist" > /dev/null 2>&1; then
+              echo "::error::The profile '$name' does not contain the capability Siri: enable Siri on the App ID $want and make the profile again."; exit 1
+            fi
+            cp "$file.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
+          }
+          install_profile "$PROFILE_BASE64" "$bundle" app
+          app_name="$name"
+          install_profile "$PROFILE_INTENTS_BASE64" "$bundle.intents" intents
+          intents_name="$name"
+          name="$app_name"
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -491,10 +532,14 @@ jobs:
             <key>method</key><string>app-store-connect</string>
             <key>teamID</key><string>$TEAM_ID</string>
             <key>signingStyle</key><string>manual</string>
-            <key>provisioningProfiles</key><dict><key>$bundle</key><string>$name</string></dict>
+            <key>provisioningProfiles</key><dict>
+              <key>$bundle</key><string>$name</string>
+              <key>$bundle.intents</key><string>$intents_name</string>
+            </dict>
           </dict></plist>
           EOF
           echo "profile_name=$name" >> "$GITHUB_OUTPUT"
+          echo "intents_profile_name=$intents_name" >> "$GITHUB_OUTPUT"
           echo "ready=true" >> "$GITHUB_OUTPUT"
       - if: steps.sign.outputs.ready == 'true'
         uses: subosito/flutter-action@v2
@@ -509,20 +554,18 @@ jobs:
           CODE_SIGN_IDENTITY = Apple Distribution
           CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Distribution
           PROVISIONING_PROFILE_SPECIFIER = ${{ steps.sign.outputs.profile_name }}
+          PSALM_INTENTS_PROFILE = ${{ steps.sign.outputs.intents_profile_name }}
           EOF
-          # The name the person gave the device (iOS 16 and later give an app only "iPhone" without it): only when Apple has granted the entitlement and the
+          # The extension target (PsalmsIntents) sets PROVISIONING_PROFILE_SPECIFIER = $(PSALM_INTENTS_PROFILE) itself in the project file, which
+          # wins over the line above for that target; both targets share the style, team and identity.
+          # ios/Runner/Runner.entitlements is in the repository and always has Siri (com.apple.developer.siri; the project file points to it).
+          # The name the person gave the device (iOS 16 and later give an app only "iPhone" without it) is added only when Apple has granted the entitlement and the
           # profiles were made again with it (repository variable IOS_DEVICE_NAME_ENTITLEMENT = true; see docs/releasing.md). Signing fails if the profile lacks it.
           if [ "${{ vars.IOS_DEVICE_NAME_ENTITLEMENT }}" = "true" ]; then
-            cat > ios/Runner/Runner.entitlements <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>com.apple.developer.device-information.user-assigned-device-name</key><true/>
-          </dict></plist>
-          EOF
-            echo "CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements" >> ios/Flutter/Product.xcconfig
+            /usr/libexec/PlistBuddy -c 'Add :com.apple.developer.device-information.user-assigned-device-name bool true' ios/Runner/Runner.entitlements
             echo "Entitlement user-assigned-device-name is on."
           fi
+          /usr/libexec/PlistBuddy -c 'Print' ios/Runner/Runner.entitlements
           flutter pub get
           flutter build ipa --release --build-name "$VERSION" --build-number "$GITHUB_RUN_NUMBER" --export-options-plist "$RUNNER_TEMP/ExportOptions.plist"
           mkdir -p ../dist

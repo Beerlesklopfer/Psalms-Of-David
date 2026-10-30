@@ -62,6 +62,21 @@ class VoiceChannel {
   final MethodChannel _channel;
   final bool _supported;
 
+  /// Calls [onPending] when the native side says a new command is waiting while the app is running (Siri media intent handed over
+  /// with `handleInApp`). The caller then takes it with [takePending]. No effect off iOS.
+  void listen(VoidCallback onPending) {
+    if (!_supported) return;
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'pendingChanged') onPending();
+      return null;
+    });
+  }
+
+  /// Stops listening (see [listen]).
+  void stopListening() {
+    if (_supported) _channel.setMethodCallHandler(null);
+  }
+
   /// The waiting command, which is cleared by this call; null if none, off iOS, or if the native side is missing.
   Future<VoiceCommand?> takePending() async {
     if (!_supported) return null;

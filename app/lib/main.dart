@@ -164,6 +164,8 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // A Siri media intent that reaches the running app (iOS): the native side says so, the command is taken at once.
+    if (!widget.demo) _voice.listen(() => unawaited(_runVoice(retry: true)));
     if (!widget.demo) loadThemeMode();
     themeModeNotifier.addListener(_themeChanged);
     _player.onPlaylistPosition = _playlists.remember;
@@ -484,6 +486,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _voice.stopListening();
     _libraryTimer?.cancel();
     _retryTimer?.cancel();
     _offline.removeListener(_onOfflineChanged);
