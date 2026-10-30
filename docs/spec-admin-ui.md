@@ -394,3 +394,7 @@ carries the **system mark "Blacklist"**. Nothing is blocked or hidden by it: it 
 The picture a user chose (on the page `/profile` or in the app, see `spec-app-api.md`, "Personal profile") is shown in a small circle before the
 nickname in the list of users. In the edit window of a user an administrator finds "Remove picture" (with a question first); the row is drawn again
 without it (`POST /admin/rpc/user.remove_avatar`, administrators only). Nobody but the user and an administrator can change or remove a picture.
+
+## File formats in the album dialog
+
+The tab "Ablage" lists the distinct formats of the tracks of the album (format, codec, sample rate, channels, with the number of tracks), and the list of the titles shows a format badge per track. A track the importer has not looked at yet shows no badge until the next import.

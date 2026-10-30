@@ -31,6 +31,8 @@ argon2 = "0.6.0"
 sha2 = "0.11.1"
 sha1 = "0.11"
 cdrip = { path = "cdrip" }
+# Decoding for the transcoding to MP3 (see src/transcode.rs); the same codecs as the sound engine of the app (audio/Cargo.toml).
+symphonia = { version = "0.6", default-features = false, features = ["mp3", "ogg", "vorbis", "flac", "wav", "pcm", "isomp4", "aac", "alac"] }
 hyper = { version = "1", default-features = false }
 hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
 serde_urlencoded = "0.7.1"

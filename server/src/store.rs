@@ -36,6 +36,10 @@ pub struct Store {
     queue: WriteQueue,
     /// The last check of the rights on the library folders (see `access`).
     pub(crate) access_cache: std::sync::Arc<crate::access::Cache>,
+    /// The folder of the database file (the data folder of the server): the cache of the transcoded files lies below it.
+    pub(crate) data_dir: std::path::PathBuf,
+    /// The transcoding to MP3, made at the first use (its limits are settings).
+    transcoder: std::sync::Arc<tokio::sync::OnceCell<std::sync::Arc<crate::transcode::Transcoder>>>,
 }
 
 #[derive(Debug, Clone, FromQueryResult)]
@@ -242,10 +246,22 @@ pub(crate) const VISIBLE: &str = "(NOT EXISTS (SELECT 1 FROM book_block k WHERE 
                     AND (r.profile_id = p.id OR r.role = p.role))))";
 
 impl Store {
+    /// The transcoder of this server (MP3 files for the devices that cannot play a format).
+    pub async fn transcoder(&self) -> std::sync::Arc<crate::transcode::Transcoder> {
+        self.transcoder
+            .get_or_init(|| async {
+                let parallel = self.setting("transcode_parallel").await.ok().flatten().and_then(|v| v.trim().parse::<usize>().ok()).filter(|n| (1..=8).contains(n)).unwrap_or(2);
+                std::sync::Arc::new(crate::transcode::Transcoder::new(self.data_dir.join("transcode"), parallel))
+            })
+            .await
+            .clone()
+    }
+
     pub async fn open(path: &Path) -> Result<Store> {
         let db = Db::open(path).await?;
         let queue = WriteQueue::spawn(db.writer.clone(), COALESCE_WINDOW);
-        let store = Store { db, queue, access_cache: std::sync::Arc::default() };
+        let data_dir = path.parent().filter(|p| !p.as_os_str().is_empty()).map_or_else(|| std::path::PathBuf::from("."), std::path::Path::to_path_buf);
+        let store = Store { db, queue, access_cache: std::sync::Arc::default(), data_dir, transcoder: std::sync::Arc::default() };
         store.ensure_server_identity().await?;
         let open = store.unconfirmed_defaults().await?;
         if open > 0 {

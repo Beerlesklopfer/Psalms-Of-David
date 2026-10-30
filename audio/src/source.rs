@@ -252,4 +252,32 @@ mod tests {
         assert!(opener.join().unwrap().is_some());
         queue.close();
     }
+
+    /// A 3 s stereo sine in the container `ext` made by ffmpeg with the encoder `codec`; `None` if ffmpeg cannot make it.
+    fn encoded(ext: &str, codec: &str) -> Option<std::path::PathBuf> {
+        let path = std::env::temp_dir().join(format!("psalm-audio-test-{}-{codec}.{ext}", std::process::id()));
+        let ok = Command::new("ffmpeg")
+            .args(["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=3:sample_rate=44100", "-ac", "2", "-c:a", codec])
+            .arg(&path)
+            .status()
+            .ok()?
+            .success();
+        ok.then_some(path)
+    }
+
+    #[test]
+    fn the_formats_of_a_music_library_play_not_only_mp3() {
+        // Ogg Vorbis (the Duo Camillo albums), FLAC, WAV and AAC in MP4 decode through the same path as MP3 files.
+        for (ext, codec) in [("ogg", "libvorbis"), ("flac", "flac"), ("wav", "pcm_s16le"), ("m4a", "aac")] {
+            let Some(path) = encoded(ext, codec) else { return eprintln!("skipped: ffmpeg cannot make {ext}") };
+            let (mut source, first) = Source::open(&path, Duration::ZERO).unwrap_or_else(|e| panic!("{ext}: {e}"));
+            let mut frames = (first.len() / source.channels as usize) as u64;
+            while let Some(block) = source.next_samples().unwrap() {
+                frames += (block.len() / source.channels as usize) as u64;
+            }
+            let seconds = frames as f64 / source.rate as f64;
+            assert!((2.8..=3.3).contains(&seconds), "{ext}: about 3 s decoded, got {seconds}");
+            let _ = std::fs::remove_file(&path);
+        }
+    }
 }

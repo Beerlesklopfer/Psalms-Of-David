@@ -276,8 +276,10 @@ class ApiClient implements FeedApi {
 
   /// Downloads a part into [dest]. The file appears under its name only when it
   /// is complete, so a cut-off download is never played.
-  Future<void> downloadPart(int partId, File dest) async {
-    final res = await _send('GET', _uri('/api/v1/parts/$partId/stream'));
+  ///
+  /// With [asMp3] the server makes an MP3 of a file the device cannot play (it can take seconds the first time).
+  Future<void> downloadPart(int partId, File dest, {bool asMp3 = false}) async {
+    final res = await _send('GET', _uri('/api/v1/parts/$partId/stream', asMp3 ? {'as': 'mp3'} : null));
     if (res.statusCode != 200) await _fail(res);
     await dest.parent.create(recursive: true);
     final partial = File('${dest.path}.part');

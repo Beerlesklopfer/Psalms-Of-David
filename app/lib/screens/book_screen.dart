@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'package:flutter/material.dart';
 
+import '../audio/file_formats.dart';
 import '../format.dart';
 import '../l10n/app_localizations.dart';
 import '../models.dart';
@@ -188,7 +189,14 @@ class _TrackTile extends StatelessWidget {
             AddToPlaylistButton(partId: track.partId, asMenu: true),
         ],
       ),
-      onTap: () => p.open(book, track: index),
+      onTap: () {
+        // A file this platform cannot play (Ogg on an iPhone) says so instead of failing silently.
+        if (!trackPlayableHere(track.format, track.transcode)) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(AppLocalizations.of(context).formatNotPlayableIos)));
+          return;
+        }
+        p.open(book, track: index);
+      },
     );
   }
 }

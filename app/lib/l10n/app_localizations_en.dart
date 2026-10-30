@@ -187,6 +187,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Time of this track. Tap for the time of the whole CD.';
 
   @override
+  String get formatNotPlayableIos =>
+      'This file format cannot be played on iPhone yet.';
+
+  @override
   String get connectSearching => 'Looking for the server again ...';
 
   @override

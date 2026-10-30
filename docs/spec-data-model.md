@@ -34,6 +34,10 @@ Migration `0001` and the first server code use the age-based rule: a book is vis
 
 `progress.track_id` references `track` with `ON DELETE CASCADE`. If a rescan finds that a file has vanished, the listening position pointing at that track is deleted as well. Renaming files therefore loses positions. A later migration can store the position per book plus a track identity that survives renames.
 
+## File format of a track
+
+Migration `0051` gives `track` the format of its file: `format` (the file kind: mp3, ogg, opus, flac, m4a, wav ...), `codec` (mpeg, vorbis, opus, flac, aac, pcm ...), `mime_type` (what the stream is served with: audio/mpeg, audio/ogg, audio/flac, audio/mp4 ...), `bitrate_kbps`, `sample_rate`, `channels`. The values come from the file itself (the extension is only the fallback); one function in `src/audioformat.rs` maps them. Old rows hold `''` and `0` until the next import has looked at the file: a row with an empty `format` is filled in at once, whether or not the file changed (`david reindex` does the same). Reason: the album Caipiranha (Ogg Vorbis) did not play in the Linux app and cannot play on an iPhone, and nothing in the system knew it. The MCP tool `list_formats` and the check `unsupported_format_on_ios` of `find_problems` read these columns.
+
 ## Disc and track numbers
 
 The ripped audiobooks are named `<Author>_<Title>_CDnn_TRnn.mp3`. The scanner reads disc and track from that pattern first. If it is missing, it falls back to the audio tags (`disc`, `track`; a track tag of `101` means disc 1, track 1). If neither exists, the ordinal in the folder is used.

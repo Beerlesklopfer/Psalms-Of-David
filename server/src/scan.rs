@@ -24,7 +24,7 @@ const TRACK_CHUNK: usize = 100;
 
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "m4b", "flac", "ogg", "opus"];
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FoundTrack {
     pub disc: i64,
     pub number: i64,
@@ -34,6 +34,14 @@ pub struct FoundTrack {
     pub duration_ms: i64,
     pub size_bytes: i64,
     pub mtime: i64,
+    /// The format of the file as the tag library recognised it (`audioformat.rs`); empty if it did not.
+    pub format: String,
+    pub codec: String,
+    pub mime_type: String,
+    /// 0 if the file does not say.
+    pub bitrate_kbps: i64,
+    pub sample_rate: i64,
+    pub channels: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -62,6 +70,8 @@ pub struct ScanReport {
     pub tracks_added: usize,
     pub tracks_updated: usize,
     pub tracks_unchanged: usize,
+    /// Tracks whose file did not change but whose format was not known yet (rows from before the format was kept): filled in now.
+    pub formats_filled: usize,
     pub tracks_removed: usize,
     /// Albums taken out of the library because their files are gone from the disk (`prune.rs`).
     pub books_removed: usize,
@@ -173,8 +183,13 @@ impl Store {
             let txn = self.db.writer.begin().await?;
             for t in chunk {
                 match existing.get(&t.file) {
-                    Some(&(mtime, size)) if mtime == t.mtime && size == t.size_bytes => {
+                    Some(&(mtime, size, known)) if mtime == t.mtime && size == t.size_bytes => {
                         report.tracks_unchanged += 1;
+                        // A row from before the format was kept: only the format columns are written, the rest of the row stays as it is.
+                        if !known && !t.format.is_empty() {
+                            fill_format(&txn, book_id, t).await?;
+                            report.formats_filled += 1;
+                        }
                         continue;
                     }
                     Some(_) => report.tracks_updated += 1,
@@ -226,18 +241,24 @@ async fn existing_numbers(conn: &impl ConnectionTrait, book_id: i64) -> Result<V
 
 /// The file of a track was renamed: the row stays, with its id and the progress that points at it.
 async fn rename_track(conn: &impl ConnectionTrait, book_id: i64, old_file: &str, t: &FoundTrack) -> Result<()> {
-    let values: [Value; 7] = [
+    let values: [Value; 13] = [
         t.file.clone().into(),
         t.title.clone().into(),
         t.duration_ms.into(),
         t.size_bytes.into(),
         t.mtime.into(),
+        t.format.clone().into(),
+        t.codec.clone().into(),
+        t.mime_type.clone().into(),
+        t.bitrate_kbps.into(),
+        t.sample_rate.into(),
+        t.channels.into(),
         book_id.into(),
         old_file.to_owned().into(),
     ];
     conn.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
-        "UPDATE track SET file = ?, title = ?, duration_ms = ?, size_bytes = ?, mtime = ? WHERE book_id = ? AND file = ?",
+        "UPDATE track SET file = ?, title = ?, duration_ms = ?, size_bytes = ?, mtime = ?, format = ?, codec = ?, mime_type = ?, bitrate_kbps = ?, sample_rate = ?, channels = ? WHERE book_id = ? AND file = ?",
         values,
     ))
     .await?;
@@ -247,12 +268,12 @@ async fn rename_track(conn: &impl ConnectionTrait, book_id: i64, old_file: &str,
 async fn existing_tracks(
     conn: &impl ConnectionTrait,
     book_id: i64,
-) -> Result<HashMap<String, (i64, i64)>> {
+) -> Result<HashMap<String, (i64, i64, bool)>> {
     let values: [Value; 1] = [book_id.into()];
     let rows = conn
         .query_all_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "SELECT file, mtime, size_bytes FROM track WHERE book_id = ?",
+            "SELECT file, mtime, size_bytes, format <> '' FROM track WHERE book_id = ?",
             values,
         ))
         .await?;
@@ -261,7 +282,8 @@ async fn existing_tracks(
         let file: String = row.try_get_by_index(0)?;
         let mtime: i64 = row.try_get_by_index(1)?;
         let size: i64 = row.try_get_by_index(2)?;
-        map.insert(file, (mtime, size));
+        let known: bool = row.try_get_by_index(3)?;
+        map.insert(file, (mtime, size, known));
     }
     Ok(map)
 }
@@ -385,8 +407,29 @@ async fn upsert_book(conn: &impl ConnectionTrait, author_id: i64, b: &FoundBook)
     Ok(id)
 }
 
-async fn upsert_track(conn: &impl ConnectionTrait, book_id: i64, t: &FoundTrack) -> Result<()> {
+/// Writes the format of a track whose file did not change.
+async fn fill_format(conn: &impl ConnectionTrait, book_id: i64, t: &FoundTrack) -> Result<()> {
     let values: [Value; 8] = [
+        t.format.clone().into(),
+        t.codec.clone().into(),
+        t.mime_type.clone().into(),
+        t.bitrate_kbps.into(),
+        t.sample_rate.into(),
+        t.channels.into(),
+        book_id.into(),
+        t.file.clone().into(),
+    ];
+    conn.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE track SET format = ?, codec = ?, mime_type = ?, bitrate_kbps = ?, sample_rate = ?, channels = ? WHERE book_id = ? AND file = ?",
+        values,
+    ))
+    .await?;
+    Ok(())
+}
+
+async fn upsert_track(conn: &impl ConnectionTrait, book_id: i64, t: &FoundTrack) -> Result<()> {
+    let values: [Value; 14] = [
         book_id.into(),
         t.disc.into(),
         t.number.into(),
@@ -395,14 +438,22 @@ async fn upsert_track(conn: &impl ConnectionTrait, book_id: i64, t: &FoundTrack)
         t.duration_ms.into(),
         t.size_bytes.into(),
         t.mtime.into(),
+        t.format.clone().into(),
+        t.codec.clone().into(),
+        t.mime_type.clone().into(),
+        t.bitrate_kbps.into(),
+        t.sample_rate.into(),
+        t.channels.into(),
     ];
     conn.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
-        "INSERT INTO track (book_id, disc, number, title, file, duration_ms, size_bytes, mtime) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?) \
+        "INSERT INTO track (book_id, disc, number, title, file, duration_ms, size_bytes, mtime, format, codec, mime_type, bitrate_kbps, sample_rate, channels) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
          ON CONFLICT (book_id, file) DO UPDATE SET \
            disc = excluded.disc, number = excluded.number, title = excluded.title, \
-           duration_ms = excluded.duration_ms, size_bytes = excluded.size_bytes, mtime = excluded.mtime",
+           duration_ms = excluded.duration_ms, size_bytes = excluded.size_bytes, mtime = excluded.mtime, \
+           format = excluded.format, codec = excluded.codec, mime_type = excluded.mime_type, \
+           bitrate_kbps = excluded.bitrate_kbps, sample_rate = excluded.sample_rate, channels = excluded.channels",
         values,
     ))
     .await?;
@@ -677,14 +728,24 @@ fn read_track(path: &Path, file: &str, ordinal: i64, disc_hint: Option<i64>) -> 
         .filter(|t| !t.is_empty())
         .unwrap_or(stem);
 
+    // The format comes from the file itself; the extension only fills in what the tag library does not say.
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let format = crate::audioformat::describe(Some(tagged.file_type()), ext);
+    let props = tagged.properties();
     Ok(FoundTrack {
         disc,
         number,
         title,
         file,
-        duration_ms: tagged.properties().duration().as_millis() as i64,
+        duration_ms: props.duration().as_millis() as i64,
         size_bytes: meta.len() as i64,
         mtime,
+        format: format.format,
+        codec: format.codec,
+        mime_type: format.mime,
+        bitrate_kbps: props.audio_bitrate().map_or(0, i64::from),
+        sample_rate: props.sample_rate().map_or(0, i64::from),
+        channels: props.channels().map_or(0, i64::from),
     })
 }
 
@@ -709,7 +770,7 @@ mod tests {
     use super::{FoundTrack, normalize_numbers, parse_disc_track};
 
     fn track(disc: i64, number: i64) -> FoundTrack {
-        FoundTrack { disc, number, title: String::new(), file: format!("{disc}-{number}.mp3"), duration_ms: 0, size_bytes: 0, mtime: 0 }
+        FoundTrack { disc, number, title: String::new(), file: format!("{disc}-{number}.mp3"), ..Default::default() }
     }
 
     #[test]

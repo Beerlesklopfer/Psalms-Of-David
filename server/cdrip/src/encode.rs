@@ -134,6 +134,66 @@ pub fn encode(mut input: impl Read, s: &EncoderSettings, mut on_bytes: impl FnMu
     Ok(out)
 }
 
+/// The nearest bitrate (kbit/s) LAME offers: the setting of the server may hold any number.
+pub fn nearest_bitrate(kbps: u32) -> u16 {
+    const OFFERED: [u16; 16] = [8, 16, 24, 32, 40, 48, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
+    OFFERED.iter().copied().min_by_key(|b| (*b as i64 - kbps as i64).abs()).unwrap_or(128)
+}
+
+/// Encodes PCM of any rate and one or two channels to MP3 piece by piece, so a long file never lies in memory as a whole. The input is
+/// 16-bit interleaved. A rate MP3 does not know is resampled by LAME to 44.1 kHz. Used by the server to make an MP3 of a file that a device
+/// cannot play (see `docs/spec-transcoding.md`).
+pub struct StreamEncoder {
+    enc: mp3lame_encoder::Encoder,
+    channels: u8,
+}
+
+impl StreamEncoder {
+    /// A rate that MPEG audio layer III has (8 to 48 kHz).
+    const MPEG_RATES: [u32; 9] = [8_000, 11_025, 12_000, 16_000, 22_050, 24_000, 32_000, 44_100, 48_000];
+
+    pub fn new(channels: u8, sample_rate: u32, kbps: u32) -> Result<StreamEncoder, String> {
+        if !(1..=2).contains(&channels) || sample_rate == 0 {
+            return Err(format!("{channels} channels at {sample_rate} Hz cannot be encoded"));
+        }
+        let mut b = Builder::new().ok_or("the encoder could not be created")?;
+        b.set_num_channels(channels).map_err(|e| format!("{e:?}"))?;
+        b.set_sample_rate(sample_rate).map_err(|e| format!("{e:?}"))?;
+        if !Self::MPEG_RATES.contains(&sample_rate) {
+            b.set_output_sample_rate(NonZeroU32::new(CD_SAMPLE_RATE)).map_err(|e| format!("{e:?}"))?;
+        }
+        b.set_brate(bitrate(nearest_bitrate(kbps))?).map_err(|e| format!("{e:?}"))?;
+        b.set_mode(if channels == 1 { Mode::Mono } else { Mode::JointStereo }).map_err(|e| format!("{e:?}"))?;
+        b.set_quality(Quality::VeryNice).map_err(|e| format!("{e:?}"))?;
+        Ok(StreamEncoder { enc: b.build().map_err(|e| format!("{e:?}"))?, channels })
+    }
+
+    /// Encodes a block of interleaved samples and appends the MP3 bytes to `out`.
+    pub fn push(&mut self, pcm: &[i16], out: &mut Vec<u8>) -> Result<(), String> {
+        if pcm.is_empty() {
+            return Ok(());
+        }
+        out.reserve(mp3lame_encoder::max_required_buffer_size(pcm.len() / self.channels as usize));
+        if self.channels == 1 {
+            self.enc.encode_to_vec(mp3lame_encoder::MonoPcm(pcm), out).map_err(|e| format!("{e:?}"))?;
+        } else {
+            self.enc.encode_to_vec(InterleavedPcm(pcm), out).map_err(|e| format!("{e:?}"))?;
+        }
+        Ok(())
+    }
+
+    /// Flushes the encoder: the last bytes are appended to `out`. Returns the Xing/Info frame that belongs at the start of the file (its room was
+    /// reserved at the start of the stream; empty if the encoder made none).
+    pub fn finish(mut self, out: &mut Vec<u8>) -> Result<Vec<u8>, String> {
+        out.reserve(7200);
+        self.enc.flush_to_vec::<FlushGap>(out).map_err(|e| format!("{e:?}"))?;
+        let mut tag = Vec::with_capacity(self.enc.lame_tag_size());
+        let n = self.enc.lame_tag_encode_to_vec(&mut tag).map(|n| n.get()).unwrap_or(0);
+        tag.truncate(n);
+        Ok(tag)
+    }
+}
+
 /// Properties of the first MPEG audio frame found in [`mp3`] (after any ID3v2 tag): sample rate, bitrate in kbit/s, channel mode bits.
 pub fn first_frame(mp3: &[u8]) -> Option<(u32, u32, u8)> {
     let mut p = 0;
@@ -222,5 +282,34 @@ pub(crate) mod tests {
         let mut last = 0;
         encode(&pcm[..], &settings(), |b| last = b).unwrap();
         assert_eq!(last as usize, pcm.len());
+    }
+
+    #[test]
+    fn the_stream_encoder_makes_an_mp3_of_mono_and_stereo_pcm_of_any_rate() {
+        for (channels, rate) in [(2u8, 44_100u32), (1, 22_050), (2, 96_000), (1, 8_000)] {
+            let mut e = StreamEncoder::new(channels, rate, 128).unwrap();
+            let mut out = Vec::new();
+            // One second of a sine, in pieces.
+            let frames = rate as usize;
+            let pcm: Vec<i16> = (0..frames)
+                .flat_map(|i| {
+                    let v = ((i as f32 / rate as f32 * 440.0 * std::f32::consts::TAU).sin() * 12_000.0) as i16;
+                    std::iter::repeat_n(v, channels as usize)
+                })
+                .collect();
+            for piece in pcm.chunks(4096 * channels as usize) {
+                e.push(piece, &mut out).unwrap();
+            }
+            let tag = e.finish(&mut out).unwrap();
+            if !tag.is_empty() {
+                out[..tag.len()].copy_from_slice(&tag);
+            }
+            let (found_rate, _kbps, _mode) = first_frame(&out).unwrap_or_else(|| panic!("no MP3 frame for {channels} ch at {rate} Hz"));
+            let expected = if StreamEncoder::MPEG_RATES.contains(&rate) { rate } else { CD_SAMPLE_RATE };
+            assert_eq!(found_rate, expected, "{channels} ch at {rate} Hz");
+        }
+        assert!(StreamEncoder::new(3, 44_100, 128).is_err());
+        assert_eq!(nearest_bitrate(130), 128);
+        assert_eq!(nearest_bitrate(1000), 320);
     }
 }

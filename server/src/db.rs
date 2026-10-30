@@ -60,6 +60,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0047_feed_station_label.sql"),
     include_str!("../migrations/0048_blacklist.sql"),
     include_str!("../migrations/0050_blacklist_word.sql"),
+    include_str!("../migrations/0051_track_format.sql"),
+    include_str!("../migrations/0052_transcode_settings.sql"),
 ];
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);

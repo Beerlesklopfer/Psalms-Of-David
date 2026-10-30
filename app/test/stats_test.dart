@@ -27,6 +27,8 @@ Map<String, Object?> _item(int id, {bool stats = true}) => {
       'number': 1,
       'title': 'One',
       'duration_ms': 60000,
+      if (stats) 'format': 'ogg',
+      if (stats) 'mime': 'audio/ogg',
       if (stats) 'plays': 3,
       if (stats) 'last_played_at': 1793000000000,
     },
@@ -127,6 +129,8 @@ void main() {
       expect(b.plays, 0);
       expect(b.lastPlayedAt, DateTime.fromMillisecondsSinceEpoch(1793000000000));
       expect(b.tracks[0].plays, 3);
+      expect((b.tracks[0].format, b.tracks[0].mime), ('ogg', 'audio/ogg'), reason: 'the file format comes with the part');
+      expect(b.tracks[1].format, isNull, reason: 'a part that does not say');
       expect(b.tracks[0].lastPlayedAt, DateTime.fromMillisecondsSinceEpoch(1793000000000));
       expect(b.tracks[1].plays, 0);
       expect(b.tracks[1].lastPlayedAt, isNull);
@@ -140,6 +144,7 @@ void main() {
       expect(lib.books.first.plays, 0);
       expect(lib.books.first.lastPlayedAt, isNull);
       expect(lib.books.first.tracks.first.plays, 0);
+      expect(lib.books.first.tracks.first.format, isNull, reason: 'an older server does not send the format');
       expect(lib.newIds, isEmpty);
     });
 

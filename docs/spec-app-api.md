@@ -208,3 +208,9 @@ is reached from the first entry of the settings and from the picture on the home
 ## Background playback and the car
 
 The app keeps playing with the screen locked and shows the controls on the lock screen and in the notification (Android: foreground service, iOS: remote command centre); a car (CarPlay, Android Auto) is the next step. What is built, the wiring of the extension point for the car and what each platform needs: `docs/spec-car.md`.
+
+## File format of a part
+
+Every part of an item (`GET /items/{id}`, `parts[]`) carries `format` (mp3, ogg, flac, m4a ...), `codec` and `mime` (additive fields; an app ignores what it does not know, a part not looked at yet has an empty `format`, `mime` is then guessed from the file name). The stream is served with that `Content-Type`. An app that cannot play a format says so instead of failing silently: on iOS the player (AVPlayer) cannot play Ogg Vorbis, Opus in Ogg, WMA or APE; a tap on such a track shows "This file format cannot be played on iPhone yet" (`app/lib/audio/file_formats.dart`). The Linux engine plays MP3, Ogg Vorbis, FLAC, WAV and AAC/ALAC in MP4; Android (ExoPlayer) plays all of them.
+
+`GET /parts/{id}/stream?as=mp3` serves an MP3 that the server makes of the file (cached; see `docs/spec-transcoding.md`): `400 unsupported_as` for another target, `422 transcode_failed` for a file that cannot be decoded, the original for a file that is MP3 already. A part whose format some devices cannot play carries `transcode: "mp3"`; an app that cannot play the format itself asks for `as=mp3` (and keeps the file under another name than the original) and shows the "cannot be played on iPhone yet" message only if the server answers `transcode_failed` or does not offer `transcode`.

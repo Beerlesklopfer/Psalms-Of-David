@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import 'audio/audio_backend.dart';
+import 'audio/file_formats.dart';
 import 'audio/playback_settings.dart';
 import 'm3u.dart';
 import 'models.dart';
@@ -96,6 +97,9 @@ class PlayerController extends ChangeNotifier {
 
   /// Where the playback settings of this device are kept; null in tests and demos.
   final PlaybackSettingsStore? playbackStore;
+
+  /// The track that was asked for but cannot be played on this platform (its file format), or null. The mini player says so.
+  Track? unplayable;
 
   /// The time of the mini player (and its bar) is the time of the whole book (CD), not of the track that plays. The listener switches it by a tap.
   bool showBookTime = false;
@@ -620,6 +624,15 @@ class PlayerController extends ChangeNotifier {
     }
     final b = backend!;
     final key = '${book!.id}:$trackIndex';
+    // A file this platform cannot decode (Ogg on an iPhone) is not tried: the person is told, and nothing plays.
+    if (key != _loadedKey && !trackPlayableHere(track?.format, track?.transcode)) {
+      unplayable = track;
+      if (_loadedKey != null) b.stop();
+      _loadedKey = null;
+      playing = false;
+      return;
+    }
+    unplayable = null;
     try {
       if (b.speed != speed) b.setSpeed(speed);
       if (key != _loadedKey) {
@@ -657,6 +670,13 @@ class PlayerController extends ChangeNotifier {
       error = null;
     } on Object catch (e) {
       if (_disposed || key != '${book?.id}:$trackIndex') return;
+      // The server could not make an MP3 of the file: the person is told that the format cannot be played here, as without transcoding.
+      if (e is ApiException && e.code == 'transcode_failed') {
+        unplayable = t;
+        playing = false;
+        _timer?.cancel();
+        return;
+      }
       error = e is AudioException ? e.message : '$e';
       playing = false;
       _timer?.cancel();

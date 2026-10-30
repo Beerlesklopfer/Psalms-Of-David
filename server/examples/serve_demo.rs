@@ -52,6 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 duration_ms: 30_000,
                 size_bytes: std::fs::metadata(&audio)?.len() as i64,
                 mtime: 0,
+                format: "mp3".into(),
+                codec: "mpeg".into(),
+                mime_type: "audio/mpeg".into(),
+                ..Default::default()
             }],
         }])
         .await?;

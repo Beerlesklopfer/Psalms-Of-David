@@ -11,5 +11,6 @@
   <div><dt>{{ t("filing.added") }}</dt><dd>{{ info.added or "–" }}</dd></div>
   <div><dt>{{ t("filing.created") }}</dt><dd>{{ info.created or "–" }}{% if info.created_by %} <small>{{ info.created_by }}</small>{% endif %}</dd></div>
   <div><dt>{{ t("filing.updated") }}</dt><dd>{{ info.updated or "–" }}{% if info.updated_by %} <small>{{ info.updated_by }}</small>{% endif %}</dd></div>
+  <div class="meta-wide"><dt>{{ t("filing.formats") }}</dt><dd>{% for f in info.formats %}<span class="badge{% if not f.ios_ok %} warn{% endif %}"{% if not f.ios_ok %} title="{{ t('filing.ios_warn') }}"{% endif %}>{% if f.known %}{{ f.line }}{% else %}{{ t("filing.format_unknown") }}{% endif %} &times; {{ f.count }}</span> {% endfor %}</dd></div>
   <div><dt>{{ t("filing.tracks_updated") }}</dt><dd>{{ info.tracks_updated or "–" }}</dd></div>
 </dl>

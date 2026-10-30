@@ -1624,6 +1624,39 @@ async fn the_audiobook_page_shows_cover_status_content_and_one_window_per_book()
 }
 
 #[tokio::test]
+async fn the_tab_filing_and_the_track_list_show_the_file_formats_and_warn_about_the_iphone() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let hx = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, ..Default::default() };
+    // Two MP3 files and one Ogg Vorbis file (as the album Caipiranha); a row that no import has looked at has no format.
+    let mut b = book("Duo Camillo", "Caipiranha", &[4]);
+    b.tracks[2].format = "ogg".into();
+    b.tracks[2].codec = "vorbis".into();
+    b.tracks[2].mime_type = "audio/ogg".into();
+    b.tracks[2].sample_rate = 44_100;
+    b.tracks[2].channels = 2;
+    b.tracks[3].format = String::new();
+    b.tracks[3].codec = String::new();
+    b.tracks[3].mime_type = String::new();
+    a.store.import_books(vec![b]).await.unwrap();
+    let id = a.store.find_book("Duo Camillo/Caipiranha").await.unwrap().unwrap().id;
+
+    let r = send(&a, get(&format!("/admin/rpc/book.filing?id={id}"), &hx)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    // One line per combination with the number of tracks; the one the iPhone cannot play is marked.
+    for needle in ["File formats", "ogg&#x2f;vorbis 44.1 kHz stereo &times; 1", "mp3&#x2f;mpeg &times; 2", "not read yet", "class=\"badge warn\"", "An iPhone cannot play this format."] {
+        assert!(r.body.contains(needle), "{needle}: {}", r.body);
+    }
+    let de = send(&a, get(&format!("/admin/rpc/book.filing?id={id}"), &Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, lang: Some("de"), ..Default::default() })).await;
+    assert!(de.body.contains("Dateiformate") && de.body.contains("noch nicht gelesen") && de.body.contains("Ein iPhone kann dieses Format nicht abspielen."), "{}", de.body);
+
+    // The track list names the format of every file.
+    let list = send(&a, get(&format!("/admin/rpc/book.tracks?id={id}"), &hx)).await.body;
+    assert!(list.contains(">ogg</span>") && list.contains(">mp3</span>"), "{list}");
+    assert_eq!(list.matches("badge warn").count(), 1, "only the Ogg track is marked: {list}");
+}
+
+#[tokio::test]
 async fn the_tab_filing_shows_the_place_and_the_metadata_of_the_database() {
     let a = app().await;
     let (cookie, csrf) = sign_in(&a).await;

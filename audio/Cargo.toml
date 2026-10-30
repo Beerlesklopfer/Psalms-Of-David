@@ -15,4 +15,4 @@ crate-type = ["rlib", "cdylib"]
 [dependencies]
 pipewire = { version = "0.10", features = ["v0_3_50"] }
 rtrb = "0.4.1"
-symphonia = { version = "0.6", default-features = false, features = ["mp3"] }
+symphonia = { version = "0.6", default-features = false, features = ["mp3", "ogg", "vorbis", "flac", "wav", "pcm", "isomp4", "aac", "alac"] }

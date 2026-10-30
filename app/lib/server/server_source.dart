@@ -3,6 +3,7 @@
 import 'dart:io';
 import 'dart:ui';
 
+import '../audio/file_formats.dart';
 import '../m3u.dart';
 import '../models.dart';
 import '../podcast_downloads.dart';
@@ -65,7 +66,8 @@ class ServerSource implements MediaSource {
   @override
   bool get canDownload => true;
 
-  File _fileOf(Track track) => File('${cache.path}/${track.partId}.audio');
+  /// The file of a part: named by its id; an MP3 that the server made for a platform that cannot play the format has its own name, so both can coexist.
+  File _fileOf(Track track) => File('${cache.path}/${track.partId}${needsTranscode(track.format, track.transcode) ? '-mp3' : ''}.audio');
 
   /// The file of a track: a part of the server by its id, an episode by its address (a radio stream has none).
   File? _anyFileOf(Track track) {
@@ -98,7 +100,7 @@ class ServerSource implements MediaSource {
   }
 
   @override
-  String? relativePath(Track track) => isDownloaded(track) ? '${track.partId}.audio' : null;
+  String? relativePath(Track track) => isDownloaded(track) ? _fileOf(track).uri.pathSegments.last : null;
 
   @override
   Future<void> writeM3u(String name, List<M3uEntry> entries) async {
@@ -136,8 +138,8 @@ class ServerSource implements MediaSource {
       return file.path;
     }
     final id = track.partId!;
-    final file = File('${cache.path}/$id.audio');
-    if (!file.existsSync()) await api.downloadPart(id, file);
+    final file = _fileOf(track);
+    if (!file.existsSync()) await api.downloadPart(id, file, asMp3: needsTranscode(track.format, track.transcode));
     return file.path;
   }
 
@@ -315,6 +317,9 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
             plays: p['plays'] as int? ?? 0,
             lastPlayedAt: dateFromMs(p['last_played_at']),
             labels: [for (final l in (p['labels'] as List? ?? const [])) l as String],
+            format: p['format'] as String?,
+            mime: p['mime'] as String?,
+            transcode: p['transcode'] as String?,
           ),
       ],
     ));

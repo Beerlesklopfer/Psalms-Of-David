@@ -379,6 +379,7 @@ table.books td.cover-cell { width: 6.5rem; padding-right: 0; }
          color: var(--muted); white-space: nowrap; }
 .badge.ok { color: var(--ok); border-color: currentColor; background: color-mix(in srgb, var(--ok) 10%, transparent); }
 .badge.muted { color: var(--muted); }
+.badge.warn { color: var(--warn); border-color: currentColor; background: color-mix(in srgb, var(--warn) 10%, transparent); }
 @media (max-width: 40rem) {
   table.stack.books td.cover-cell { width: auto; padding: 0 0 .25rem; }
 }

@@ -1627,7 +1627,10 @@ pub async fn book_set_exempt(State(state): State<AppState>, s: AdminSession, For
 }
 
 /// The values of the settings page. Each is a number in the unit the page shows, except the time zone.
-const SETTING_RULES: [(&str, i64, i64, i64); 11] = [
+const SETTING_RULES: [(&str, i64, i64, i64); 14] = [
+    ("transcode_kbps", 32, 320, 1),
+    ("transcode_cache_mb", 64, 1_000_000, 1),
+    ("transcode_parallel", 1, 8, 1),
     ("new_days", 1, 365, 1),
     ("list_page_size", 10, 500, 1),
     ("feed_refresh_min", 0, 10_080, 1),

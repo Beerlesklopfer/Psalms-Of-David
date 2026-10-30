@@ -3,7 +3,7 @@
   <thead><tr><th>{{ t("books.disc") }}</th><th>#</th><th>{{ t("books.track_title") }}</th><th>{{ t("books.track_length") }}</th></tr></thead>
   <tbody>
   {% for track in tracks %}
-    <tr><td>{{ track.disc }}</td><td>{{ track.number }}</td><td>{{ track.title }}{% for l in track.labels %} <span class="badge label">{{ l }}</span>{% endfor %}</td><td>{{ track.length }}</td></tr>
+    <tr><td>{{ track.disc }}</td><td>{{ track.number }}</td><td>{{ track.title }}{% for l in track.labels %} <span class="badge label">{{ l }}</span>{% endfor %}{% if track.format %} <span class="badge{% if not track.ios_ok %} warn{% endif %}"{% if not track.ios_ok %} title="{{ t('filing.ios_warn') }}"{% endif %}>{{ track.format }}</span>{% endif %}</td><td>{{ track.length }}</td></tr>
   {% else %}
     <tr><td colspan="4">{{ t("books.no_tracks") }}</td></tr>
   {% endfor %}

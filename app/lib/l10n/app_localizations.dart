@@ -392,6 +392,12 @@ abstract class AppLocalizations {
   /// **'Time of this track. Tap for the time of the whole CD.'**
   String get tooltipTimeTrack;
 
+  /// No description provided for @formatNotPlayableIos.
+  ///
+  /// In en, this message translates to:
+  /// **'This file format cannot be played on iPhone yet.'**
+  String get formatNotPlayableIos;
+
   /// No description provided for @connectSearching.
   ///
   /// In en, this message translates to:

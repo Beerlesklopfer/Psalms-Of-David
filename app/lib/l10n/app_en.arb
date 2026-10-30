@@ -103,6 +103,7 @@
   "connectErrorSignedOut": "The server no longer knows this device. Pair it again with a new code; the old pairing stays until then.",
   "tooltipTimeBook": "Time of the whole CD. Tap for the time of this track.",
   "tooltipTimeTrack": "Time of this track. Tap for the time of the whole CD.",
+  "formatNotPlayableIos": "This file format cannot be played on iPhone yet.",
   "connectSearching": "Looking for the server again ...",
   "connectErrorOther": "Connecting failed.",
   "openPassage": "Open passage “{text}”",

@@ -30,7 +30,7 @@ use std::path::{Path, PathBuf};
 use axum::Router;
 use axum::extract::{FromRequestParts, Path as UrlPath, Query, Request, State};
 use axum::http::request::Parts;
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::Json;
@@ -560,7 +560,7 @@ async fn item_detail(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<
         .iter()
         .map(|t| {
             let h = heard.get(&t.id).copied().unwrap_or_default();
-            json!({ "id": t.id, "disc": t.disc, "number": t.number, "title": t.title, "duration_ms": t.duration_ms, "plays": h.plays, "last_played_at": h.last_played_at, "labels": part_labels.get(&t.id).cloned().unwrap_or_default() })
+            json!({ "id": t.id, "disc": t.disc, "number": t.number, "title": t.title, "duration_ms": t.duration_ms, "plays": h.plays, "last_played_at": h.last_played_at, "labels": part_labels.get(&t.id).cloned().unwrap_or_default(), "format": t.format, "codec": t.codec, "transcode": if crate::audioformat::ios_playable(&t.format) { Value::Null } else { json!("mp3") }, "mime": crate::audioformat::mime_or_guess(&t.mime_type, &t.file) })
         })
         .collect();
     let all: Vec<crate::plays::TrackPlays> = heard.values().copied().collect();
@@ -727,8 +727,44 @@ async fn stream(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>,
     }
     let b = book::Entity::find_by_id(t.book_id).one(&s.store.db.reader).await.map_err(Error::from)?.ok_or_else(not_found)?;
     let path = resolve(&s.store, s.library.as_deref(), &b.folder, &t.file).await.ok_or_else(not_found)?;
+    // `?as=mp3`: a device that cannot play the format asks for an MP3 made from the file (docs/spec-transcoding.md). An MP3 is served as it is.
+    let as_mp3 = match stream_query(&req).as_deref() {
+        None | Some("") => false,
+        Some("mp3") => crate::audioformat::mime_or_guess(&t.mime_type, &t.file) != "audio/mpeg",
+        Some(_) => return Err(ApiError(StatusCode::BAD_REQUEST, "unsupported_as")),
+    };
+    let mut served_mime = crate::audioformat::mime_or_guess(&t.mime_type, &t.file);
+    let path = if as_mp3 {
+        let kbps = s.store.setting("transcode_kbps").await?.and_then(|v| v.trim().parse::<u32>().ok()).filter(|n| *n > 0).unwrap_or(crate::transcode::DEFAULT_KBPS);
+        let limit_mb = s.store.setting("transcode_cache_mb").await?.and_then(|v| v.trim().parse::<u64>().ok()).filter(|n| *n > 0).unwrap_or(crate::transcode::DEFAULT_CACHE_MB);
+        let made = s.store.transcoder().await.mp3_of(t.id, &path, kbps, limit_mb).await.map_err(|e| {
+            tracing::warn!(track = t.id, error = %e, "transcoding failed");
+            ApiError(StatusCode::UNPROCESSABLE_ENTITY, "transcode_failed")
+        })?;
+        served_mime = "audio/mpeg".to_owned();
+        made
+    } else {
+        path
+    };
     let res = ServeFile::new(path).oneshot(req).await.map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal"))?;
-    Ok(res.map(axum::body::Body::new).into_response())
+    let mut res = res.map(axum::body::Body::new).into_response();
+    // The mime type is what the database knows of the file (read from the file itself), the extension only the fallback.
+    if res.status().is_success() {
+        let mime = served_mime;
+        if let Ok(value) = HeaderValue::from_str(&mime) {
+            res.headers_mut().insert(header::CONTENT_TYPE, value);
+        }
+    }
+    Ok(res)
+}
+
+/// The value of `as` in the query of a stream request (`?as=mp3`).
+fn stream_query(req: &Request) -> Option<String> {
+    #[derive(Deserialize)]
+    struct Q {
+        r#as: Option<String>,
+    }
+    serde_urlencoded::from_str::<Q>(req.uri().query().unwrap_or("")).ok().and_then(|q| q.r#as)
 }
 
 /// The file of a track below one of the library folders. Only a file that really

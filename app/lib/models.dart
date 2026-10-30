@@ -27,7 +27,17 @@ class Track {
     this.bookTitle,
     this.bookAuthor,
     this.labels = const [],
+    this.format,
+    this.mime,
+    this.transcode,
   });
+
+  /// The file format as the server names it (`mp3`, `ogg`, `flac`, `m4a`, ...) and its mime type; null from an older server.
+  final String? format;
+  final String? mime;
+
+  /// `mp3` when the server can make an MP3 of the file for a device that cannot play its format (`?as=mp3`); null otherwise (and from an older server).
+  final String? transcode;
 
   /// The labels of this title of its own (the ones of its album come on top, see [Book.labels]).
   final List<String> labels;

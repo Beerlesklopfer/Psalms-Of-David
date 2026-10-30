@@ -119,12 +119,13 @@ fn tool_list() -> Value {
                 "kind": { "type": "string", "enum": ["audiobook", "music"] },
                 "with_description": { "type": "boolean", "description": "Put the blurb text (Klappentext) of each album into the answer" },
                 "has_description": { "type": "boolean", "description": "true: only albums that have a blurb; false: only those that have none" },
+                "format": { "type": "string", "description": "Only albums that have a track of this file format (mp3, ogg, opus, flac, m4a, wav, ...; see list_formats); a leading ! means: only albums without any track of it, e.g. !mp3" },
                 "offset": { "type": "integer" }, "limit": { "type": "integer", "description": format!("At most {PAGE_MAX}") }
             } }
         },
         {
             "name": "get_album",
-            "description": "One album with its tracks (id, disc, number, title, file) and the folder picture, if any.",
+            "description": "One album with its tracks (id, disc, number, title, file, format, codec, mime, sample_rate, channels) and the folder picture, if any.",
             "inputSchema": { "type": "object", "properties": { "id": id }, "required": ["id"] }
         },
         {
@@ -158,8 +159,13 @@ fn tool_list() -> Value {
             "inputSchema": { "type": "object", "properties": { "id": id, "url": { "type": "string", "description": "https:// address of the picture" } }, "required": ["id", "url"] }
         },
         {
+            "name": "list_formats",
+            "description": "The file formats of the library: for every format (mp3, ogg, flac, m4a, ...) its codec, mime type, the number of tracks and albums, whether an iPhone can play it (ios_playable) and the sample rates. With format=ogg the albums that have such files. Tracks that an import has not looked at yet show as format \"\" (unknown): run an import (david reindex) once.",
+            "inputSchema": { "type": "object", "properties": { "format": { "type": "string", "description": "List the albums that have a track of this format" } } }
+        },
+        {
             "name": "find_problems",
-            "description": "Looks for albums with faulty tags: missing artist, album, year, genre (music), narrator (audiobook) or cover; tracks that disagree on album or artist; stray spaces; gaps in track numbers; album tag unlike the title; titles with a CD number, underscores or a number prefix; an author that looks like a file name. Returns only albums with problems; continue with next_offset.",
+            "description": "Looks for albums with faulty tags: missing artist, album, year, genre (music), narrator (audiobook) or cover; tracks that disagree on album or artist; stray spaces; gaps in track numbers; album tag unlike the title; titles with a CD number, underscores or a number prefix; an author that looks like a file name; files that an iPhone cannot play (unsupported_format_on_ios: Ogg Vorbis, Opus, WMA, APE; a hint, not an error). Returns only albums with problems; continue with next_offset.",
             "inputSchema": { "type": "object", "properties": { "offset": { "type": "integer" }, "limit": { "type": "integer", "description": "Albums to look at, at most 200 (default 100)" } } }
         },
         {
@@ -412,6 +418,7 @@ fn example_of(tool: &str) -> Value {
         "set_tags" => json!({ "id": 12, "dry_run": true, "fields": { "AlbumTitle": "Back to the Street" } }),
         "set_cover_from_url" => json!({ "id": 12, "url": "https://example.org/cover.jpg" }),
         "find_problems" => json!({ "offset": 0, "limit": 100 }),
+        "list_formats" => json!({ "format": "ogg" }),
         "change_log" => json!({ "id": 12, "limit": 20 }),
         "help_for" => json!({ "tool": "set_tags" }),
         "check_access" => json!({}),
@@ -568,8 +575,18 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             let offset = int("offset").unwrap_or(0).max(0) as usize;
             let limit = (int("limit").unwrap_or(100).max(1) as usize).min(PAGE_MAX);
             let rows = s.store.admin_book_rows().await.map_err(db)?;
+            // The formats of the albums (book id -> formats of its tracks), only if the filter asks for it.
+            let wanted_format = text("format").map(|f| f.trim().to_lowercase()).filter(|f| !f.is_empty());
+            let formats = if wanted_format.is_some() { s.store.formats_by_book().await.map_err(db)? } else { Default::default() };
             let matching: Vec<_> = rows
                 .into_iter()
+                .filter(|b| match &wanted_format {
+                    None => true,
+                    Some(f) => match f.strip_prefix('!') {
+                        Some(not) => !formats.get(&b.id).is_some_and(|set| set.contains(not.trim())),
+                        None => formats.get(&b.id).is_some_and(|set| set.contains(f.as_str())),
+                    },
+                })
                 .filter(|b| kind.as_deref().is_none_or(|k| b.kind == k))
                 .filter(|b| args.get("has_description").and_then(Value::as_bool).is_none_or(|want| want == b.description.as_deref().is_some_and(|d| !d.trim().is_empty())))
                 .filter(|b| matcher.is_match(&b.title) || matcher.is_match(&b.author))
@@ -593,11 +610,33 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 .collect();
             Ok(json!({ "total": total, "albums": albums }))
         }
+        "list_formats" => {
+            let only = text("format").map(|f| f.trim().to_lowercase()).filter(|f| !f.is_empty());
+            let rows = s.store.format_summary().await.map_err(db)?;
+            let formats: Vec<Value> = rows
+                .iter()
+                .map(|r| {
+                    json!({
+                        "format": r.format, "codec": r.codec, "mime": crate::audioformat::mime_or_guess(&r.mime_type, &format!("x.{}", r.format)),
+                        "tracks": r.tracks, "albums": r.albums, "sample_rates": r.sample_rates,
+                        "ios_playable": crate::audioformat::ios_playable(&r.format),
+                    })
+                })
+                .collect();
+            match only {
+                None => Ok(json!({ "formats": formats })),
+                Some(f) => {
+                    let books = s.store.format_albums(&f).await.map_err(db)?;
+                    let albums: Vec<Value> = books.into_iter().map(|(id, title, author, n)| json!({ "id": id, "title": title, "author": author, "tracks_in_format": n })).collect();
+                    Ok(json!({ "format": f, "ios_playable": crate::audioformat::ios_playable(&f), "total": albums.len(), "albums": albums }))
+                }
+            }
+        }
         "get_album" => {
             let id = int("id").ok_or("id is required")?;
             let album = Album::load(s, id).await?;
             let own = s.store.track_labels().await.map_err(db)?;
-            let tracks: Vec<Value> = album.tracks.iter().map(|(t, _)| json!({ "track": t.id, "disc": t.disc, "number": t.number, "title": t.title, "file": t.file, "labels": own.get(&t.id).cloned().unwrap_or_default() })).collect();
+            let tracks: Vec<Value> = album.tracks.iter().map(|(t, _)| json!({ "track": t.id, "disc": t.disc, "number": t.number, "title": t.title, "file": t.file, "labels": own.get(&t.id).cloned().unwrap_or_default(), "format": t.format, "codec": t.codec, "mime": crate::audioformat::mime_or_guess(&t.mime_type, &t.file), "sample_rate": t.sample_rate, "channels": t.channels })).collect();
             let picture = album.dir.as_deref().and_then(folder_picture);
             Ok(json!({
                 "id": id, "kind": album.row.kind, "title": album.row.title, "author": album.row.author,
@@ -2019,6 +2058,13 @@ fn problems_of(album: &Album) -> Vec<String> {
     let stray = per_file.iter().flatten().flat_map(|(_, v)| v).any(|v| v != v.trim() || v.contains("  "));
     if stray {
         problems.push("stray_spaces".into());
+    }
+    // A file an iPhone cannot play (the format as the database knows it, else the extension says): a hint for the owner.
+    if album.tracks.iter().any(|(t, _)| {
+        let format = if t.format.is_empty() { crate::audioformat::from_extension(t.file.rsplit_once('.').map_or("", |(_, e)| e)).format } else { t.format.clone() };
+        !crate::audioformat::ios_playable(&format)
+    }) {
+        problems.push("unsupported_format_on_ios".into());
     }
     // Gaps in the track numbers of every disc.
     let mut discs: std::collections::BTreeMap<i64, Vec<i64>> = std::collections::BTreeMap::new();

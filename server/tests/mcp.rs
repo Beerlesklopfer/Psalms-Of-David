@@ -71,7 +71,7 @@ async fn nothing_works_without_a_valid_token_and_a_read_only_token_cannot_write(
     let (status, j) = post(&m, Some(&read), ask).await;
     assert_eq!(status, StatusCode::OK);
     let names: Vec<&str> = j["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    for n in ["list_albums", "get_tags", "set_tags", "find_problems", "change_log", "set_cover_from_folder"] {
+    for n in ["list_albums", "list_formats", "get_tags", "set_tags", "find_problems", "change_log", "set_cover_from_folder"] {
         assert!(names.contains(&n), "{n}");
     }
     let (is_error, text) = tool(&m, &read, "set_tags", json!({ "id": 1, "fields": { "Genre": "x" } })).await;
@@ -174,6 +174,51 @@ async fn find_problems_names_what_is_wrong_and_skips_what_is_fine() {
     let of_good = albums.iter().find(|a| a["id"] == good);
     assert!(of_good.is_none_or(|a| !a["problems"].to_string().contains("missing_artist")), "{of_good:?}");
     assert!(found["next_offset"].is_null());
+}
+
+#[tokio::test]
+async fn the_formats_of_the_library_can_be_listed_filtered_and_flagged_for_the_iphone() {
+    if !ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let m = mcp().await;
+    // One album of MP3 files, one of Ogg Vorbis files (as Duo Camillo's Caipiranha).
+    let mp3 = album(&m, &[("artist", "Follett"), ("album", "Winter")]).await;
+    let b = book("Duo Camillo", "Caipiranha", &[2]);
+    let folder = m.library.path().join(&b.folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    for t in &b.tracks {
+        make(&folder.join(t.file.replace(".mp3", ".ogg")), &["-c:a", "libvorbis", "-q:a", "2"], &[("artist", "Duo Camillo"), ("album", "Caipiranha")]);
+    }
+    let report = m.store.scan_kind(m.library.path(), "music").await.unwrap();
+    assert_eq!(report.books_failed, 0, "{report:?}");
+    let ogg = m.store.find_book("Duo Camillo/Caipiranha").await.unwrap().expect("the Ogg album").id;
+
+    let t = m.store.create_mcp_token("llm", false, m.admin).await.unwrap();
+    // The summary: both formats with their counts, and whether an iPhone plays them.
+    let (err, all) = tool(&m, &t, "list_formats", json!({})).await;
+    assert!(!err, "{all}");
+    let row = |f: &str| all["formats"].as_array().unwrap().iter().find(|r| r["format"] == f).cloned().unwrap_or_else(|| panic!("{f} in {all}"));
+    assert_eq!((row("ogg")["tracks"].as_i64(), row("ogg")["ios_playable"].as_bool(), row("ogg")["mime"].as_str()), (Some(2), Some(false), Some("audio/ogg")));
+    assert_eq!((row("mp3")["ios_playable"].as_bool(), row("mp3")["mime"].as_str()), (Some(true), Some("audio/mpeg")));
+    // The albums that have a format.
+    let (_, only) = tool(&m, &t, "list_formats", json!({ "format": "ogg" })).await;
+    assert_eq!((only["total"].as_i64(), only["albums"][0]["id"].as_i64(), only["ios_playable"].as_bool()), (Some(1), Some(ogg), Some(false)));
+    // list_albums: with and without a format.
+    let ids = |v: &Value| v["albums"].as_array().unwrap().iter().map(|a| a["id"].as_i64().unwrap()).collect::<Vec<_>>();
+    let (_, with) = tool(&m, &t, "list_albums", json!({ "format": "ogg" })).await;
+    assert_eq!(ids(&with), vec![ogg]);
+    let (_, without) = tool(&m, &t, "list_albums", json!({ "format": "!mp3" })).await;
+    assert_eq!(ids(&without), vec![ogg], "only the album without any MP3 track");
+    // get_album names the format of every track.
+    let (_, got) = tool(&m, &t, "get_album", json!({ "id": ogg })).await;
+    assert_eq!((got["tracks"][0]["format"].as_str(), got["tracks"][0]["mime"].as_str(), got["tracks"][0]["codec"].as_str()), (Some("ogg"), Some("audio/ogg"), Some("vorbis")));
+    // find_problems: a hint for the album that an iPhone cannot play, none for the MP3 album.
+    let (_, found) = tool(&m, &t, "find_problems", json!({})).await;
+    let problems = |id: i64| found["albums_with_problems"].as_array().unwrap().iter().find(|a| a["id"] == id).map(|a| a["problems"].to_string()).unwrap_or_default();
+    assert!(problems(ogg).contains("unsupported_format_on_ios"), "{found}");
+    assert!(!problems(mp3).contains("unsupported_format_on_ios"), "{found}");
 }
 
 #[tokio::test]

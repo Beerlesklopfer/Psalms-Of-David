@@ -418,7 +418,9 @@ class MiniPlayer extends StatelessWidget {
                               ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         Text(
-                          p.nowPlaying ?? (p.track!.live ? p.track!.title : l.discTrack(p.track!.disc, p.track!.title)),
+                          p.unplayable != null
+                              ? l.formatNotPlayableIos
+                              : p.nowPlaying ?? (p.track!.live ? p.track!.title : l.discTrack(p.track!.disc, p.track!.title)),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: text.bodySmall

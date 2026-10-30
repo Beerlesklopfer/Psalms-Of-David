@@ -217,6 +217,9 @@ impl SettingView {
             "log_level" => ("general", "", s.value.clone()),
             "tree_audiobook" | "tree_music" => ("library", "", s.value.clone()),
             "quarantine_folder" | "audiobook_genres" | "placeholder_tags" => ("library", "", s.value.clone()),
+            "transcode_kbps" => ("library", "unit.kbps", s.value.clone()),
+            "transcode_cache_mb" => ("library", "unit.mb", s.value.clone()),
+            "transcode_parallel" => ("library", "", s.value.clone()),
             "feed_refresh_min" => ("podcasts", "unit.minutes", s.value.clone()),
             "feed_max_bytes" => ("podcasts", "unit.mb", s.value.parse::<i64>().map_or_else(|_| s.value.clone(), |n| (n / 1_048_576).to_string())),
             "radio_directory_url" => ("podcasts", "", s.value.clone()),
@@ -843,6 +846,9 @@ impl AdminUi {
             length: String,
             /// The labels of its own.
             labels: Vec<String>,
+            /// The file format (`mp3`, `ogg`, ...); empty until an import has looked at the file; `ios_ok` is false for one an iPhone cannot play.
+            format: String,
+            ios_ok: bool,
         }
         let own = store.track_labels().await?;
         let lines: Vec<Line> = store
@@ -858,6 +864,8 @@ impl AdminUi {
                     title: t.title,
                     length: if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) },
                     labels: own.get(&t.id).cloned().unwrap_or_default(),
+                    ios_ok: crate::audioformat::ios_playable(&t.format),
+                    format: t.format,
                 }
             })
             .collect();
@@ -892,6 +900,17 @@ impl AdminUi {
         let when = |ms: i64| if ms > 0 { stamp(ms, zone.as_deref()) } else { String::new() };
         let place = crate::relocate::book_dir(store, library, id).await.map(|(dir, _, _)| dir.display().to_string());
         let megabytes = format!("{:.1}", meta.files_bytes as f64 / 1_048_576.0);
+        // The file formats of the tracks, one line per distinct combination with the number of tracks (`ogg/vorbis 44.1 kHz stereo`).
+        let mut combos: std::collections::BTreeMap<(String, String, i64, i64), i64> = std::collections::BTreeMap::new();
+        for t in store.tracks_of(id).await? {
+            *combos.entry((t.format, t.codec, t.sample_rate, t.channels)).or_default() += 1;
+        }
+        let formats: Vec<serde_json::Value> = combos
+            .into_iter()
+            .map(|((format, codec, rate, channels), count)| {
+                serde_json::json!({ "line": crate::audioformat::describe_line(&format, &codec, rate, channels), "count": count, "known": !format.is_empty(), "ios_ok": crate::audioformat::ios_playable(&format) })
+            })
+            .collect();
         let info = serde_json::json!({
             "place": place,
             "added": when(meta.added_at),
@@ -903,6 +922,7 @@ impl AdminUi {
             "tracks_updated": meta.tracks_updated_at.map(&when).unwrap_or_default(),
             "megabytes": megabytes,
             "genre_tag": meta.genre_tag,
+            "formats": formats,
         });
         self.render("fragments/book_filing.html", context! { book => Serde(book), info => Serde(info), ..view.into().context() }).map(Some)
     }

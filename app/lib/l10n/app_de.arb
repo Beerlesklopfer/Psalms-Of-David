@@ -42,6 +42,7 @@
   "connectErrorSignedOut": "Der Server kennt dieses Gerät nicht mehr. Koppele es mit einem neuen Code erneut; die alte Kopplung bleibt bis dahin erhalten.",
   "tooltipTimeBook": "Zeit der ganzen CD. Tippen für die Zeit dieses Titels.",
   "tooltipTimeTrack": "Zeit dieses Titels. Tippen für die Zeit der ganzen CD.",
+  "formatNotPlayableIos": "Dieses Dateiformat lässt sich auf dem iPhone noch nicht abspielen.",
   "connectSearching": "Suche den Server erneut ...",
   "retryButton": "Erneut versuchen",
   "useDemoButton": "Mit Demodaten ausprobieren",

@@ -11,6 +11,7 @@ use axum::http::{HeaderMap, Request, StatusCode, header};
 use common::{book, open};
 use david_server::api::{ApiState, router};
 use david_server::{Anchor, NewProfile, Role, Schedule, Store};
+use sea_orm::{ConnectionTrait, Database};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -45,6 +46,11 @@ async fn api() -> Api {
     let library = tempfile::TempDir::new().unwrap();
     let state = ApiState { store: store.clone(), library: Some(library.path().to_owned()), cd: david_server::cdimport::CdService::new(dir.path()) };
     Api { router: router(state), store, admin, library, _dir: dir }
+}
+
+/// A second connection to the database of the test, to put rows in the state of an older version.
+async fn raw(a: &Api) -> sea_orm::DatabaseConnection {
+    Database::connect(format!("sqlite://{}?mode=rw", a._dir.path().join("david.db").display())).await.unwrap()
 }
 
 async fn call(a: &Api, method: &str, uri: &str, token: Option<&str>, body: Option<Value>, range: Option<&str>) -> Reply {
@@ -165,6 +171,36 @@ async fn the_stream_serves_the_file_and_ranges() {
     assert_eq!(part.status, StatusCode::PARTIAL_CONTENT);
     assert_eq!(part.bytes, whole.bytes[250..500]);
     assert_eq!(part.headers.get(header::CONTENT_RANGE).unwrap(), "bytes 250-499/1000");
+}
+
+#[tokio::test]
+async fn the_stream_and_the_parts_carry_the_format_the_database_knows() {
+    let a = api().await;
+    let anna = a.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    let token = pair(&a, anna, 1).await;
+    let (book, track) = add_book(&a, "Shown", Some(0)).await;
+    let uri = format!("/api/v1/parts/{track}/stream");
+    let part = || async {
+        let uri = format!("/api/v1/items/{book}");
+        call(&a, "GET", &uri, Some(&token), None, None).await.json()["parts"][0].clone()
+    };
+
+    // The mime type is what the import stored (the synthetic book names an MP3).
+    let r = call(&a, "GET", &uri, Some(&token), None, None).await;
+    assert_eq!(r.headers.get(header::CONTENT_TYPE).unwrap(), "audio/mpeg");
+    let p = part().await;
+    assert_eq!((p["format"].as_str(), p["codec"].as_str(), p["mime"].as_str()), (Some("mp3"), Some("mpeg"), Some("audio/mpeg")));
+
+    // What the database says wins over the extension of the file name.
+    raw(&a).await.execute_unprepared(&format!("UPDATE track SET format = 'ogg', codec = 'vorbis', mime_type = 'audio/ogg' WHERE id = {track}")).await.unwrap();
+    let r = call(&a, "GET", &uri, Some(&token), None, None).await;
+    assert_eq!(r.headers.get(header::CONTENT_TYPE).unwrap(), "audio/ogg");
+    // A row that no import has looked at yet: the extension of the file name decides, as before.
+    raw(&a).await.execute_unprepared(&format!("UPDATE track SET format = '', codec = '', mime_type = '' WHERE id = {track}")).await.unwrap();
+    let r = call(&a, "GET", &uri, Some(&token), None, None).await;
+    assert_eq!(r.headers.get(header::CONTENT_TYPE).unwrap(), "audio/mpeg");
+    let p = part().await;
+    assert_eq!((p["format"].as_str(), p["mime"].as_str()), (Some(""), Some("audio/mpeg")));
 }
 
 #[tokio::test]

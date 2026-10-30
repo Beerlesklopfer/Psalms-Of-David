@@ -26,6 +26,11 @@ pub fn book(author: &str, title: &str, per_disc: &[usize]) -> FoundBook {
                 duration_ms: 240_000,
                 size_bytes: 1_000_000,
                 mtime: 1_700_000_000_000,
+                // The format is what the import reads from the file; the synthetic books name an MP3.
+                format: "mp3".into(),
+                codec: "mpeg".into(),
+                mime_type: "audio/mpeg".into(),
+                ..Default::default()
             });
         }
     }
