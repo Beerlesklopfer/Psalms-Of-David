@@ -213,7 +213,13 @@ impl<R: AudioSectorReader> AudioSectorReader for Guard<'_, R> {
 
 /// `disk_full` for a full disk, else `io`.
 fn io_error(e: &std::io::Error, track: u8) -> RipError {
-    let kind = if e.raw_os_error() == Some(libc::ENOSPC) || e.raw_os_error() == Some(libc::EDQUOT) { "disk_full" } else { "io" };
+    let code = e.raw_os_error();
+    // A full disk or a used-up quota; Windows says ERROR_DISK_FULL (112) and ERROR_HANDLE_DISK_FULL (39) and has no quota code in libc.
+    #[cfg(unix)]
+    let full = code == Some(libc::ENOSPC) || code == Some(libc::EDQUOT);
+    #[cfg(not(unix))]
+    let full = code == Some(libc::ENOSPC) || code == Some(112) || code == Some(39);
+    let kind = if full { "disk_full" } else { "io" };
     RipError::new(kind, e.to_string(), Some(track))
 }
 

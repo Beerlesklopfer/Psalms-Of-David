@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Audio output for Psalm on Linux, through PipeWire.
+//! Audio output for Psalms on Linux, through PipeWire.
 //!
 //! The design is described in `docs/spec-audio-pipewire.md`:
 //!

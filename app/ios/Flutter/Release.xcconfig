@@ -4,5 +4,5 @@
 // (CI copies Product-iphone.xcconfig or Product-ipad.xcconfig to Product.xcconfig; without it: a universal build).
 PSALM_BUNDLE_ID = com.the-abraham-box.psalm
 PSALM_DEVICE_FAMILY = 1,2
-PSALM_NAME = Psalm
+PSALM_NAME = Psalms
 #include? "Product.xcconfig"

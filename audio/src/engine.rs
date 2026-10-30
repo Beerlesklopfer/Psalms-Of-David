@@ -631,7 +631,7 @@ impl Ctx {
             *pw::keys::MEDIA_TYPE => "Audio",
             *pw::keys::MEDIA_CATEGORY => "Playback",
             *pw::keys::MEDIA_ROLE => self.role.as_str(),
-            *pw::keys::APP_NAME => "Psalm",
+            *pw::keys::APP_NAME => "Psalms",
             *pw::keys::NODE_NAME => "psalm",
             *pw::keys::MEDIA_NAME => media_name,
         };

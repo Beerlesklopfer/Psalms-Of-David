@@ -1,10 +1,10 @@
-# David und Psalm
+# David und Psalms
 
 Selbst gehosteter Musik- und Hörbuchdienst für die Familie, für Android, iPhone
 und Desktop.
 
 - **David** ist der Server (Bibliothek, Profile, Hörfortschritt).
-- **Psalm** ist die App. Zusammen sind sie das Paar aus dem Namen: David und seine Psalmen.
+- **Psalms** ist die App. Zusammen sind sie das Paar aus dem Namen: David und seine Psalmen.
 
 Status: früh, aber benutzbar auf Linux und im Android-Emulator.
 
@@ -19,7 +19,7 @@ Status: früh, aber benutzbar auf Linux und im Android-Emulator.
   „LLM-Zugang“), lesend oder schreibend. Werkzeuge: Alben und Tags lesen, `find_problems` (fehlende oder
   widersprüchliche Tags), `set_tags` mit `dry_run`, Cover aus dem Ordnerbild einbetten. Jede Änderung wird mit altem
   und neuem Wert protokolliert (`docs/releasing.md`, Abschnitt MCP).
-- **Psalm (App):** Bibliothek, Kopplung (Code einfügen, QR mit der Kamera oder aus einem Bild), Wiedergabe mit Tempo ohne Tonhöhenänderung,
+- **Psalms (App):** Bibliothek, Kopplung (Code einfügen, QR mit der Kamera oder aus einem Bild), Wiedergabe mit Tempo ohne Tonhöhenänderung,
   Download für Hören ohne Server, Fortschritt (wird beim Start wieder aufgenommen), Aktualisierung der Bibliothek.
   Ton über PipeWire (Linux) und `just_audio` (Android).
 - **Offen:** Offline-Start der App ohne Server (die Bibliothek wird noch nicht lokal gespeichert), Musik in der App,
@@ -72,7 +72,7 @@ Navidrome für Musik.
 
 | Ordner | Inhalt |
 |---|---|
-| `app/` | Psalm, die Flutter-App (Linux, Android) |
+| `app/` | Psalms, die Flutter-App (Linux, Android) |
 | `audio/` | Ton unter Linux: Rust-Engine über PipeWire (Laden, Abspielen, Pause, Springen, Lautstärke, Position), C-Schnittstelle für Flutter, Prüfskripte gegen eine virtuelle Senke |
 | `server/` | David, der Server (Programm `david`): SQLite mit SeaORM, Profile, Fortschritt, Bibliotheksscan, Dienstbetrieb (systemd, Windows-Dienst), Tests und Zapp-Test |
 | `docs/` | Specs auf Englisch: Datenmodell, Nebenläufigkeit, Audio (PipeWire), Entdeckung/Profile/Rollen, Verwaltungsoberfläche, App-Schnittstelle, Bibel, Tags/ID3 und Genres (`docs/spec-tags-id3.md`), CD-Rippen, Veröffentlichen |
@@ -103,7 +103,7 @@ Plurale laufen über ICU-Syntax in der ARB-Datei, nicht über Stringbau im Code.
 
 ## Namenswahl
 
-"Psalm" ist im App Store und bei Google Play vielfach durch Bibel-Apps belegt
+"Psalms" ist im App Store und bei Google Play vielfach durch Bibel-Apps belegt
 (Stand der Websuche vom 2026-10-27, kein Anspruch auf Vollständigkeit). Für den
 privaten Gebrauch egal, vor einer Veröffentlichung Name, Marke und Domain prüfen.
 

@@ -50,7 +50,7 @@ Map<String, DBusValue> rootProperties() => {
   'CanQuit': DBusBoolean(false),
   'CanRaise': DBusBoolean(false),
   'HasTrackList': DBusBoolean(false),
-  'Identity': DBusString('Psalm'),
+  'Identity': DBusString('Psalms'),
   'DesktopEntry': DBusString(_desktopEntry),
   'SupportedUriSchemes': DBusArray.string(const []),
   'SupportedMimeTypes': DBusArray.string(const []),

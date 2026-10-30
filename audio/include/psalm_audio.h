@@ -1,4 +1,4 @@
-/* Psalm audio engine: C interface (see src/ffi.rs for the rules).
+/* Psalms audio engine: C interface (see src/ffi.rs for the rules).
  *
  * Build:  cargo build --release   ->  target/release/libpsalm_audio.so
  * All functions return 0 on success and -1 on failure unless said otherwise;

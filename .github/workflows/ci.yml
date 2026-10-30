@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 # Tests on every push and pull request. On pushes to main and on tags v* the packages are built too:
-#   - David (server): .deb, .rpm, .tar.gz          - Psalm for Linux: .deb, .rpm, .tar.gz
-#   - Psalm for Android: .apk (one per processor type)
-#   - Psalm for macOS: .zip and .dmg of the app (signed and notarized only with the Developer ID secrets, see docs/releasing.md)
-#   - Psalm for iPhone and Psalm for iPad: two apps (two bundle ids), built on macOS runners; signed .ipa and the upload to
+#   - David (server): .deb, .rpm, .tar.gz          - Psalms for Linux: .deb, .rpm, .tar.gz
+#   - Psalms for Android: .apk (one per processor type)
+#   - Psalms for macOS: .zip and .dmg of the app (signed and notarized only with the Developer ID secrets, see docs/releasing.md)
+#   - Psalms for iPhone and Psalms for iPad: two apps (two bundle ids), built on macOS runners; signed .ipa and the upload to
 #     TestFlight only if the iOS secrets exist (see docs/releasing.md), otherwise only a build without signing as a check.
 # A tag v1.2.3 also makes a release with all of them, their SHA256SUMS and, if a signing key is set
 # up (secret GPG_PRIVATE_KEY), a signature of the sums.
@@ -93,10 +93,17 @@ jobs:
             echo "version=$(sed -n 's/^version: *\([0-9.]*\).*/\1/p' app/pubspec.yaml | head -1)" >> "$GITHUB_OUTPUT"
           fi
 
+  # The packages for Linux on both processors: amd64 and arm64 (Raspberry Pi 4 and 5, ARM servers); the arm64 runner is free for a public repository.
   package-server:
     needs: [server, audio]
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-latest }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y $PIPEWIRE_DEPS libacl1-dev
@@ -106,7 +113,7 @@ jobs:
       - run: cargo install cargo-deb cargo-generate-rpm --locked
       - run: scripts/package.sh
       - uses: actions/upload-artifact@v4
-        with: { name: packages-server, path: dist/*, retention-days: 14 }
+        with: { name: "packages-server-${{ matrix.arch }}", path: dist/*, retention-days: 14 }
 
   # David for macOS: an installer package that sets the server up as a launchd daemon (server/packaging/macos/, docs/releasing.md).
   # Unsigned unless the secrets MACOS_CERTIFICATE_P12_BASE64 (Developer ID Application) and MACOS_INSTALLER_CERT_P12_BASE64 (Developer ID Installer),
@@ -197,7 +204,13 @@ jobs:
   package-app-linux:
     needs: [app, audio, version]
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-latest, nfpm: x86_64 }
+          - { arch: arm64, runner: ubuntu-24.04-arm, nfpm: arm64 }
+    runs-on: ${{ matrix.runner }}
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
@@ -209,12 +222,12 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       - name: Install nfpm
-        run: curl -sSL https://github.com/goreleaser/nfpm/releases/download/v2.41.0/nfpm_2.41.0_Linux_x86_64.tar.gz | sudo tar -xz -C /usr/local/bin nfpm
+        run: curl -sSL https://github.com/goreleaser/nfpm/releases/download/v2.41.0/nfpm_2.41.0_Linux_${{ matrix.nfpm }}.tar.gz | sudo tar -xz -C /usr/local/bin nfpm
       - run: scripts/package-app.sh
       - uses: actions/upload-artifact@v4
-        with: { name: packages-app-linux, path: dist/*, retention-days: 14 }
+        with: { name: "packages-app-linux-${{ matrix.arch }}", path: dist/*, retention-days: 14 }
 
-  # Psalm for macOS: the app as .zip and .dmg. Without the Developer ID secrets it is not signed: macOS then asks the first time (see the warning).
+  # Psalms for macOS: the app as .zip and .dmg. Without the Developer ID secrets it is not signed: macOS then asks the first time (see the warning).
   package-app-macos:
     needs: [app, version]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -269,7 +282,7 @@ jobs:
           app=$(ls -d build/macos/Build/Products/Release/*.app | head -1)
           mkdir -p ../dist
           ditto -c -k --keepParent "$app" "../dist/psalm-$VERSION-macos.zip"
-          hdiutil create -volname Psalm -srcfolder "$app" -ov -format UDZO "../dist/psalm-$VERSION-macos.dmg"
+          hdiutil create -volname Psalms -srcfolder "$app" -ov -format UDZO "../dist/psalm-$VERSION-macos.dmg"
           ls -l ../dist
       - uses: actions/upload-artifact@v4
         with:

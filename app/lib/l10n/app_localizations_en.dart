@@ -10,7 +10,7 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appTitle => 'Psalm';
+  String get appTitle => 'Psalms';
 
   @override
   String get navHome => 'Home';
@@ -232,7 +232,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get qrScanPermissionDenied =>
-      'The camera is not allowed for Psalm. Allow it in the settings, or choose a picture of the QR code instead.';
+      'The camera is not allowed for Psalms. Allow it in the settings, or choose a picture of the QR code instead.';
 
   @override
   String get qrScanOpenSettings => 'Open settings';
@@ -386,7 +386,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Shows a QR code that the other device scans. The code works once and only for a short time.';
 
   @override
-  String get pairQrScan => 'Scan this code with Psalm on the other device.';
+  String get pairQrScan => 'Scan this code with Psalms on the other device.';
 
   @override
   String pairQrExpires(String time) {
@@ -450,7 +450,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aboutDescription =>
-      'Psalm plays audiobooks, music and more from your own David server, for the whole family.';
+      'Psalms plays audiobooks, music and more from your own David server, for the whole family.';
 
   @override
   String get aboutLicense =>
@@ -473,18 +473,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get connectNeedsDavid =>
-      'Psalm is only the player. It needs a David server, which holds your audiobooks, music and the family\'s profiles. Without one, Psalm has nothing to play.';
+      'Psalms is only the player. It needs a David server, which holds your audiobooks, music and the family\'s profiles. Without one, Psalms has nothing to play.';
 
   @override
-  String get aboutDavidTitle => 'Psalm needs a David server';
+  String get aboutDavidTitle => 'Psalms needs a David server';
 
   @override
   String get aboutDavidText =>
-      'Psalm does not come with any content. It plays what a David server offers: audiobooks, music and more from your own library, with a profile for each family member. David is free software that you run yourself, on a home server or a small computer. Whoever runs it creates a pairing code on its admin page; you enter that code here once. Without a David server you can only try the demo data.';
+      'Psalms does not come with any content. It plays what a David server offers: audiobooks, music and more from your own library, with a profile for each family member. David is free software that you run yourself, on a home server or a small computer. Whoever runs it creates a pairing code on its admin page; you enter that code here once. Without a David server you can only try the demo data.';
 
   @override
   String get aboutDavidSteps =>
-      '1. Run a David server.  2. Open its admin page and choose Pair a device.  3. Scan or paste the code in Psalm.';
+      '1. Run a David server.  2. Open its admin page and choose Pair a device.  3. Scan or paste the code in Psalms.';
 
   @override
   String get tooltipRefresh => 'Refresh the library';
@@ -556,7 +556,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get craDataText =>
-      'Psalm talks only to the David server you paired it with, over a connection that checks the server\'s certificate. It has no analytics and no advertising. The pairing and the downloaded files stay on this device.';
+      'Psalms talks only to the David server you paired it with, over a connection that checks the server\'s certificate. It has no analytics and no advertising. The pairing and the downloaded files stay on this device.';
 
   @override
   String get craComponents => 'Software components';

@@ -1,4 +1,4 @@
-// Psalm for iPhone: its own app on the App Store (bundle id com.the-abraham-box.psalm), runs on iPhone only.
+// Psalms for iPhone: its own app on the App Store (bundle id com.the-abraham-box.psalm), runs on iPhone only.
 PSALM_BUNDLE_ID = com.the-abraham-box.psalm
 PSALM_DEVICE_FAMILY = 1
-PSALM_NAME = Psalm
+PSALM_NAME = Psalms

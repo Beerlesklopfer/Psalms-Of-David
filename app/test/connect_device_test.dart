@@ -182,7 +182,7 @@ void main() {
     await tester.tap(find.byKey(const Key('connect-device')));
     await tester.pump();
     await tester.pump();
-    expect(find.text('Scanne diesen Code mit Psalm auf dem anderen Gerät.'), findsOneWidget);
+    expect(find.text('Scanne diesen Code mit Psalms auf dem anderen Gerät.'), findsOneWidget);
     await tester.tap(find.byKey(const Key('pair-close')));
     await tester.pumpAndSettle();
   });

@@ -222,6 +222,13 @@ impl Store {
                 [values[0].clone(), values[1].clone(), values[2].clone(), values[3].clone(), values[4].clone(), values[4].clone(), values[5].clone()],
             ))
             .await?;
+        // A paired device is seen when it signs in (afterwards `session_for_token` renews it once a minute).
+        if let Some(device) = device_id {
+            self.db
+                .writer
+                .execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE device SET last_seen = ? WHERE id = ?", [Value::from(now), Value::from(device)]))
+                .await?;
+        }
         Ok(token)
     }
 
@@ -249,8 +256,17 @@ impl Store {
         if expires_at <= now || user_expires.is_some_and(|e| e <= now) {
             return Ok(None);
         }
-        // Record use at most once a minute, so a page view is not a write.
+        // Record use at most once a minute, so a page view is not a write. The paired device of the session shows "last seen" from it
+        // (the profile page and the administration list the devices with that time); a browser session has no device.
         if now - last_used > 60_000 {
+            self.db
+                .writer
+                .execute_raw(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    "UPDATE device SET last_seen = ? WHERE id = (SELECT device_id FROM session WHERE token_hash = ?)",
+                    [Value::from(now), Value::from(hash.clone())],
+                ))
+                .await?;
             self.db
                 .writer
                 .execute_raw(Statement::from_sql_and_values(

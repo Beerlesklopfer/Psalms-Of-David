@@ -9,7 +9,7 @@ A certificate from Let's Encrypt is renewed about every 60 days, and with each r
 changes. A device that pins the fingerprint would then refuse the server. With such a certificate the devices
 have to check the name instead, and the server needs a host name, not only an IP address
 (`david.example.org`, not `192.168.0.2`). The pairing code then carries the name and the mark `ca=1`
-instead of a fingerprint, and the app (Psalm) checks the name against the certificate and the trust of the system.
+instead of a fingerprint, and the app (Psalms) checks the name against the certificate and the trust of the system.
 
 The files are named in `/etc/david.toml` (`tls_cert`, `tls_key`, `tls_host`), or in the settings of the pages
 (Settings > Values > Certificate), or by `--tls-cert`, `--tls-key`, `--tls-host` and `DAVID_TLS_*`. A renewed

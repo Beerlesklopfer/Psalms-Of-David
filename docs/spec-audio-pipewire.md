@@ -35,7 +35,7 @@ Scope: Linux only, PipeWire only (decision of the project owner). Android and iO
 | `media.type` | `Audio` | required |
 | `media.category` | `Playback` | routing |
 | `media.role` | `Music` | WirePlumber policies (for example ducking) use the role |
-| `application.name` / `app.name` | `Psalm` | name in mixers |
+| `application.name` / `app.name` | `Psalms` | name in mixers |
 | `node.name` | `psalm` | stable name for scripts and tests |
 | `media.name` | `<title> - <author>` | what `pavucontrol` shows as the stream |
 | `media.title`, `media.artist` | from the track | used by some desktop widgets |
@@ -76,7 +76,7 @@ What was measured (10 s of a ripped audiobook, played into a temporary null sink
 
 | Check | Result |
 |---|---|
-| Stream node in PipeWire | present with `media.name`, `media.role=Music`, `media.category=Playback`, `application.name=Psalm`, state `running`, linked to the target sink (two links, FL and FR) |
+| Stream node in PipeWire | present with `media.name`, `media.role=Music`, `media.category=Playback`, `application.name=Psalms`, state `running`, linked to the target sink (two links, FL and FR) |
 | Level | recording RMS is 1.027 times the reference |
 | Shape of the signal | envelope correlation 0.9978, lag 0 samples |
 | Length | recording 9.89 s, reference 9.91 s |

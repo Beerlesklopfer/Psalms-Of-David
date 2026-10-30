@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Builds the .deb and .rpm of the Linux client with nfpm (https://nfpm.goreleaser.com).
 # Run by scripts/package-app.sh from the app/ folder; VERSION and ARCH come from the environment
-# (ARCH is the Debian name: amd64 or arm64; nfpm maps it for the rpm).
+# (ARCH is the Debian name: amd64 or arm64; nfpm maps it for the rpm; BUNDLE_ARCH is the folder of Flutter: x64 or arm64).
 name: psalm
 arch: ${ARCH}
 platform: linux
@@ -11,7 +11,7 @@ section: sound
 priority: optional
 maintainer: Joerg Bernau <Joerg@bernau.family>
 description: |
-  Psalm, the audiobook and music player of the family.
+  Psalms, the audiobook and music player of the family.
   Plays what a David server offers, with a profile for every family member.
 vendor: Joerg Bernau
 homepage: https://github.com/Beerlesklopfer/Psalms-Of-David
@@ -20,7 +20,7 @@ license: AGPL-3.0-or-later
 contents:
   # The Flutter bundle (program, lib/, data/) lives in /opt/psalm; the program finds its
   # libraries next to its real path, so /usr/bin/psalm is a link.
-  - src: build/linux/x64/release/bundle/
+  - src: build/linux/${BUNDLE_ARCH}/release/bundle/
     dst: /opt/psalm/
     type: tree
     file_info: { mode: 0755 }

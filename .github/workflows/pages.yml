@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-# The website of Psalm and David (privacy, support: the addresses the App Store asks for) from the folder site/ on GitHub Pages.
+# The website of Psalms and David (privacy, support: the addresses the App Store asks for) from the folder site/ on GitHub Pages.
 name: pages
 on:
   push:

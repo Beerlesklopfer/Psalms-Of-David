@@ -101,7 +101,7 @@ abstract class AppLocalizations {
   /// No description provided for @appTitle.
   ///
   /// In en, this message translates to:
-  /// **'Psalm'**
+  /// **'Psalms'**
   String get appTitle;
 
   /// No description provided for @navHome.
@@ -473,7 +473,7 @@ abstract class AppLocalizations {
   /// No description provided for @qrScanPermissionDenied.
   ///
   /// In en, this message translates to:
-  /// **'The camera is not allowed for Psalm. Allow it in the settings, or choose a picture of the QR code instead.'**
+  /// **'The camera is not allowed for Psalms. Allow it in the settings, or choose a picture of the QR code instead.'**
   String get qrScanPermissionDenied;
 
   /// No description provided for @qrScanOpenSettings.
@@ -731,7 +731,7 @@ abstract class AppLocalizations {
   /// No description provided for @pairQrScan.
   ///
   /// In en, this message translates to:
-  /// **'Scan this code with Psalm on the other device.'**
+  /// **'Scan this code with Psalms on the other device.'**
   String get pairQrScan;
 
   /// No description provided for @pairQrExpires.
@@ -845,7 +845,7 @@ abstract class AppLocalizations {
   /// No description provided for @aboutDescription.
   ///
   /// In en, this message translates to:
-  /// **'Psalm plays audiobooks, music and more from your own David server, for the whole family.'**
+  /// **'Psalms plays audiobooks, music and more from your own David server, for the whole family.'**
   String get aboutDescription;
 
   /// No description provided for @aboutLicense.
@@ -887,25 +887,25 @@ abstract class AppLocalizations {
   /// No description provided for @connectNeedsDavid.
   ///
   /// In en, this message translates to:
-  /// **'Psalm is only the player. It needs a David server, which holds your audiobooks, music and the family\'s profiles. Without one, Psalm has nothing to play.'**
+  /// **'Psalms is only the player. It needs a David server, which holds your audiobooks, music and the family\'s profiles. Without one, Psalms has nothing to play.'**
   String get connectNeedsDavid;
 
   /// No description provided for @aboutDavidTitle.
   ///
   /// In en, this message translates to:
-  /// **'Psalm needs a David server'**
+  /// **'Psalms needs a David server'**
   String get aboutDavidTitle;
 
   /// No description provided for @aboutDavidText.
   ///
   /// In en, this message translates to:
-  /// **'Psalm does not come with any content. It plays what a David server offers: audiobooks, music and more from your own library, with a profile for each family member. David is free software that you run yourself, on a home server or a small computer. Whoever runs it creates a pairing code on its admin page; you enter that code here once. Without a David server you can only try the demo data.'**
+  /// **'Psalms does not come with any content. It plays what a David server offers: audiobooks, music and more from your own library, with a profile for each family member. David is free software that you run yourself, on a home server or a small computer. Whoever runs it creates a pairing code on its admin page; you enter that code here once. Without a David server you can only try the demo data.'**
   String get aboutDavidText;
 
   /// No description provided for @aboutDavidSteps.
   ///
   /// In en, this message translates to:
-  /// **'1. Run a David server.  2. Open its admin page and choose Pair a device.  3. Scan or paste the code in Psalm.'**
+  /// **'1. Run a David server.  2. Open its admin page and choose Pair a device.  3. Scan or paste the code in Psalms.'**
   String get aboutDavidSteps;
 
   /// No description provided for @tooltipRefresh.
@@ -1031,7 +1031,7 @@ abstract class AppLocalizations {
   /// No description provided for @craDataText.
   ///
   /// In en, this message translates to:
-  /// **'Psalm talks only to the David server you paired it with, over a connection that checks the server\'s certificate. It has no analytics and no advertising. The pairing and the downloaded files stay on this device.'**
+  /// **'Psalms talks only to the David server you paired it with, over a connection that checks the server\'s certificate. It has no analytics and no advertising. The pairing and the downloaded files stay on this device.'**
   String get craDataText;
 
   /// No description provided for @craComponents.

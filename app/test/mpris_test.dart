@@ -90,7 +90,7 @@ void busTest() {
     final client = DBusClient.session();
     try {
       final remote = DBusRemoteObject(client, name: mprisName, path: DBusObjectPath('/org/mpris/MediaPlayer2'));
-      expect((await remote.getProperty('org.mpris.MediaPlayer2', 'Identity')).asString(), 'Psalm');
+      expect((await remote.getProperty('org.mpris.MediaPlayer2', 'Identity')).asString(), 'Psalms');
       expect((await remote.getProperty('org.mpris.MediaPlayer2.Player', 'PlaybackStatus')).asString(), 'Paused');
       // What the media key of the keyboard (or `playerctl play-pause`) sends.
       await remote.callMethod('org.mpris.MediaPlayer2.Player', 'PlayPause', []);

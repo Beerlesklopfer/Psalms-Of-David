@@ -12,7 +12,7 @@
     <!-- Android 13 and later: the notification with the controls; playback works without it, asked for at the first playback. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="psalm"
+        android:label="Psalms"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

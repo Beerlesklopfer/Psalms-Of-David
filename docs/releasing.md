@@ -7,10 +7,10 @@
 | Job | When | Result |
 |---|---|---|
 | `server`, `audio`, `app` | every push and pull request | clippy, tests, `flutter analyze`, `flutter test` |
-| `package-server` | push to main, tags | David: `.deb`, `.rpm`, `.tar.gz`; the sound engine as `.tar.gz` |
-| `package-app-linux` | push to main, tags | Psalm for Linux: `.deb`, `.rpm`, `.tar.gz` (built with nfpm from `app/linux/packaging/nfpm.yaml`) |
-| `package-android` | push to main, tags | Psalm for Android: one `.apk` per processor type (`arm64-v8a`, `armeabi-v7a`, `x86_64`) |
-| `package-app-macos` | push to main and development, tags, by hand | Psalm for macOS: `.zip` and `.dmg` of the app (macOS runner); signed and notarized only with the Developer ID secrets |
+| `package-server` | push to main, tags | David for Linux on `amd64` and `arm64` (two runners, `ubuntu-latest` and `ubuntu-24.04-arm`): `.deb`, `.rpm`, `.tar.gz`; the sound engine as `.tar.gz` |
+| `package-app-linux` | push to main, tags | Psalms for Linux on `amd64` and `arm64`: `.deb`, `.rpm`, `.tar.gz` (built with nfpm from `app/linux/packaging/nfpm.yaml`) |
+| `package-android` | push to main, tags | Psalms for Android: one `.apk` per processor type (`arm64-v8a`, `armeabi-v7a`, `x86_64`) |
+| `package-app-macos` | push to main and development, tags, by hand | Psalms for macOS: `.zip` and `.dmg` of the app (macOS runner); signed and notarized only with the Developer ID secrets |
 | `package-server-macos` | push to main and development, tags, by hand | David for macOS: an installer `.pkg` that sets the server up as a launchd daemon (macOS runner); signed, notarized only with the Developer ID secrets |
 | `release` | tags `v*` | a release with all of the above, `SHA256SUMS` and, if a key is set, `SHA256SUMS.asc` |
 
@@ -18,7 +18,7 @@ The packages of a normal push are kept as workflow artifacts for 14 days. The ve
 its `v` (`v1.2.3` gives `1.2.3`), otherwise the one in `app/pubspec.yaml`. The version of David's packages comes
 from `server/Cargo.toml`: change both before tagging.
 
-Locally: `scripts/package.sh` (David), `scripts/package-app.sh` (Psalm for Linux, needs `nfpm`),
+Locally: `scripts/package.sh` (David), `scripts/package-app.sh` (Psalms for Linux, needs `nfpm`),
 `flutter build apk --release --split-per-abi` (Android), `scripts/checksums.sh` (sums and signature).
 
 ## Signing
@@ -39,9 +39,9 @@ Nothing is signed unless the secrets exist; the build then still works and says 
 Not verified here: the workflow has not run on GitHub; the Linux client packages need `nfpm` (downloaded in
 CI), which could not be tried on this machine.
 
-## Psalm for iPhone and Psalm for iPad (iOS)
+## Psalms for iPhone and Psalms for iPad (iOS)
 
-Two products come out of one Xcode project: **Psalm** for iPhone (bundle id `com.the-abraham-box.psalm`, device family iPhone) and **Psalm for iPad**
+Two products come out of one Xcode project: **Psalms** for iPhone (bundle id `com.the-abraham-box.psalm`, device family iPhone) and **Psalms for iPad**
 (`com.the-abraham-box.psalm.ipad`, device family iPad). They are two apps on the App Store with two listings, two builds and two profiles. The project
 reads three settings from `app/ios/Flutter/Product.xcconfig` (`PSALM_BUNDLE_ID`, `PSALM_DEVICE_FAMILY`, `PSALM_NAME`); CI copies
 `Product-iphone.xcconfig` or `Product-ipad.xcconfig` to it before the build. Without that file a build is universal (`com.the-abraham-box.psalm`,
@@ -62,11 +62,11 @@ public repository has them free.
 One-time setup (everything works from Linux, a Mac is not needed):
 1. Apple Developer Program (99 EUR a year, an individual or a company account). The free Apple ID is not enough for TestFlight, CarPlay or a profile that lasts.
 2. Developer portal: two App IDs (`com.the-abraham-box.psalm`, `com.the-abraham-box.psalm.ipad`).
-3. A certificate: make a key and a request with `openssl req -new -newkey rsa:2048 -nodes -keyout dist.key -out dist.csr -subj "/CN=Psalm"`,
+3. A certificate: make a key and a request with `openssl req -new -newkey rsa:2048 -nodes -keyout dist.key -out dist.csr -subj "/CN=Psalms"`,
    upload `dist.csr` as "Apple Distribution", download the `.cer`, then `openssl x509 -inform der -in dist.cer -out dist.pem` and
    `openssl pkcs12 -export -inkey dist.key -in dist.pem -out dist.p12`. Keep the key safe: whoever has it can sign as the team.
 4. Two App Store provisioning profiles (one per App ID, type "App Store Connect").
-5. App Store Connect: two app records (for example "Psalm" and "Psalm for iPad", the names must be free), and an API key (users and access, integrations).
+5. App Store Connect: two app records (for example "Psalms" and "Psalms for iPad", the names must be free), and an API key (users and access, integrations).
 6. Put the secrets into the repository settings. Tag or push to main: the builds appear in TestFlight after Apple has processed them (about ten minutes).
 
 How the family gets it: TestFlight. Internal testers (up to 100 people of the team, no review) need an invitation by Apple ID; external
@@ -80,7 +80,7 @@ weeks), then an entitlements file in the project and a profile that contains it.
 Not verified here: the workflow has not run on GitHub (no Mac runner available), and the Xcode project was edited by hand on Linux. The first CI run
 will show if `flutter build ios` accepts the product settings. The CI runs on pushes to `main` and `development`, on tags and on pull requests; the iOS apps are signed in every run; the upload to TestFlight follows the rules above (the repository has no `main` yet: its default branch is `development`); a run can also be started by hand (Actions, ci, Run workflow).
 
-## Psalm for macOS
+## Psalms for macOS
 
 `package-app-macos` builds the desktop app (`app/macos/`, bundle id `com.the-abraham-box.psalm`, macOS 12 or later) on a macOS runner with
 `flutter build macos --release` and packs it as `psalm-<version>-macos.zip` and `psalm-<version>-macos.dmg`. A tag publishes both with the release.
@@ -94,7 +94,7 @@ cannot decode come as an MP3 from the server (`?as=mp3`), as on the iPhone. The 
 
 **Signed and notarized** (what a user can simply open): a certificate "Developer ID Application" (not "Apple Distribution"; Developer portal, Certificates, "+",
 "Developer ID Application", G2 Sub-CA). Make the key and the request as in the iOS section
-(`openssl req -new -newkey rsa:2048 -nodes -keyout devid.key -out devid.csr -subj "/CN=Psalm/C=DE"`), upload `devid.csr`, download the `.cer`, then
+(`openssl req -new -newkey rsa:2048 -nodes -keyout devid.key -out devid.csr -subj "/CN=Psalms/C=DE"`), upload `devid.csr`, download the `.cer`, then
 `openssl x509 -inform der -in developerID_application.cer -out devid.pem` and
 `openssl pkcs12 -export -inkey devid.key -in devid.pem -out devid.p12 -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1`.
 Secrets: `MACOS_CERTIFICATE_P12_BASE64` (`base64 -w0 devid.p12`) and `MACOS_CERTIFICATE_PASSWORD`. The job signs with the hardened runtime and
@@ -215,14 +215,14 @@ a format that cannot keep a field refuses it, and then nothing is written to tha
 
 ## Desktop entries
 
-- `app/linux/com.the-abraham-box.psalm.desktop`: the Psalm launcher; also registers the `david://` links. Shipped in the bundle
+- `app/linux/com.the-abraham-box.psalm.desktop`: the Psalms launcher; also registers the `david://` links. Shipped in the bundle
   and in the `.deb`; `install-desktop-entry.sh` registers it for the current user.
 - `server/packaging/io.onesimus.david-admin.desktop`: "David Administration", opens `http://127.0.0.1:8484/admin/` in
   the browser (change `Exec=` if the server listens elsewhere). Shipped in David's `.deb` and `.rpm` with its icons.
 
 ## The name of the device when it is paired
 
-Psalm proposes a name for the device in the field "Name of this device". Android: the name the person gave the device (the setting `device_name`),
+Psalms proposes a name for the device in the field "Name of this device". Android: the name the person gave the device (the setting `device_name`),
 else the maker and the model. iOS and iPadOS: from iOS 16 an app gets the model ("iPhone", "iPad") and not the name the person gave the device, unless
 Apple has granted the entitlement `com.apple.developer.device-information.user-assigned-device-name`. To get it: ask Apple at
 https://developer.apple.com/contact/request/device-name (the account holder fills in the form, the answer can take days), then enable the capability

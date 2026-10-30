@@ -1,4 +1,4 @@
-// Psalm for iPad: its own app on the App Store (bundle id com.the-abraham-box.psalm.ipad), runs on iPad only.
+// Psalms for iPad: its own app on the App Store (bundle id com.the-abraham-box.psalm.ipad), runs on iPad only.
 PSALM_BUNDLE_ID = com.the-abraham-box.psalm.ipad
 PSALM_DEVICE_FAMILY = 2
-PSALM_NAME = Psalm
+PSALM_NAME = Psalms

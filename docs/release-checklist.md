@@ -1,8 +1,8 @@
 <!-- SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family> -->
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# Checklist: Psalm in the stores
+# Checklist: Psalms in the stores
 
-Status 2026-10-30. What has to be done, in this order, to publish Psalm for iPhone and iPad in the public App Store, and the other systems. The
+Status 2026-10-30. What has to be done, in this order, to publish Psalms for iPhone and iPad in the public App Store, and the other systems. The
 technical side (signing, TestFlight upload) is in `docs/releasing.md`. The texts below are proposals in German and English: change them, but keep
 every sentence true (Apple and the review check the app against them).
 
@@ -18,15 +18,15 @@ every sentence true (Apple and the review check the app against them).
       external testers (up to 10 000, a public link) need one beta review of the first build.
 - [ ] **A demo server** for the reviewer (see 4). The app is empty without a David server: this is the most common reason for a rejection.
 
-## 1. Name and texts (App Store Connect > The Abraham Box / Psalm > Version 1.0)
+## 1. Name and texts (App Store Connect > The Abraham Box / Psalms > Version 1.0)
 
 Limits: name 30 characters, subtitle 30, promotional text 170, keywords 100 (separated by commas, no spaces), description 4000.
-The store name is the "App Name" of the record ("The Abraham Box / Psalm" today, 23 characters; it can be changed before the first submission).
-The name under the icon on the phone is "Psalm" (set in the app).
+The store name is the "App Name" of the record ("The Abraham Box / Psalms" today, 23 characters; it can be changed before the first submission).
+The name under the icon on the phone is "Psalms" (set in the app).
 
 | Field | Deutsch | English |
 |---|---|---|
-| Name (alternatives) | `Psalm – Familien-Mediathek` (25) | `Psalm – Family Media Player` (27) |
+| Name (alternatives) | `Psalms – Familien-Mediathek` (25) | `Psalms – Family Media Player` (27) |
 | Subtitle | `Hörbücher, Musik, Podcasts` (26) | `Audiobooks, music, podcasts` (27) |
 | Promotional text | `Der Player für den eigenen Familienserver David: Hörbücher, Musik, Podcasts und Radio, mit Profilen und Altersgrenzen für Kinder.` | `The player for your family's own David server: audiobooks, music, podcasts and radio, with profiles and age limits for children.` |
 | Keywords | `Hörbuch,Musik,Podcast,Radio,Familie,Kinder,Predigt,Bibel,Server,Mediathek,Offline` | `audiobook,music,podcast,radio,family,kids,sermon,bible,server,library,offline` |
@@ -38,9 +38,9 @@ The name under the icon on the phone is "Psalm" (set in the app).
 
 **Description (Deutsch):**
 
-> Psalm ist der Player für **David**, den Medienserver deiner Familie. Hörbücher, Musik, Podcasts und Radio liegen auf einem eigenen Rechner zu Hause, nicht bei einem fremden Anbieter, und Psalm bringt sie auf iPhone und iPad.
+> Psalms ist der Player für **David**, den Medienserver deiner Familie. Hörbücher, Musik, Podcasts und Radio liegen auf einem eigenen Rechner zu Hause, nicht bei einem fremden Anbieter, und Psalms bringt sie auf iPhone und iPad.
 >
-> **Wichtig:** Psalm braucht einen David-Server, den deine Familie selbst betreibt. Ohne Server hat die App nichts abzuspielen. David ist freie Software und kostenlos.
+> **Wichtig:** Psalms braucht einen David-Server, den deine Familie selbst betreibt. Ohne Server hat die App nichts abzuspielen. David ist freie Software und kostenlos.
 >
 > • Hörbücher und Musik hören, mit Hörfortschritt auf allen Geräten
 > • Titel herunterladen und ohne Netz hören, Änderungen werden später abgeglichen
@@ -54,9 +54,9 @@ The name under the icon on the phone is "Psalm" (set in the app).
 
 **Description (English):**
 
-> Psalm is the player for **David**, your family's media server. Audiobooks, music, podcasts and radio live on a computer at home, not with a stranger, and Psalm brings them to your iPhone and iPad.
+> Psalms is the player for **David**, your family's media server. Audiobooks, music, podcasts and radio live on a computer at home, not with a stranger, and Psalms brings them to your iPhone and iPad.
 >
-> **Important:** Psalm needs a David server that your family runs itself. Without a server the app has nothing to play. David is free software and costs nothing.
+> **Important:** Psalms needs a David server that your family runs itself. Without a server the app has nothing to play. David is free software and costs nothing.
 >
 > • Listen to audiobooks and music, with your progress on every device
 > • Download titles and listen without a network; changes are synchronised later
@@ -98,12 +98,12 @@ The name under the icon on the phone is "Psalm" (set in the app).
 
 The reviewer must be able to use the app. Put into "App Review Information > Notes" (English):
 
-> Psalm is the player app for David, a media server that a family runs itself. The app has no content of its own. To try it, pair it with our demo server:
+> Psalms is the player app for David, a media server that a family runs itself. The app has no content of its own. To try it, pair it with our demo server:
 > 1. Open the app, tap the QR icon (or paste the address) on the first screen.
 > 2. Paste this pairing address into the field "Pairing address": `david://pair?v=1&id=…&addr=…&code=…` (valid until <date>; four more codes are
 >    in the attachment, each works once).
 > 3. Tap "Connect". The library of the demo server (public domain and Creative Commons audio) appears.
-> "Try with demo data" on the first screen shows the screens without a server.
+> "Try with demo data" on the first screen only shows the screens without any interactions (no server, nothing can be played or changed).
 > The camera is used only to scan the pairing QR code and for an optional profile picture. The local network permission is used to reach the server.
 
 To prepare:

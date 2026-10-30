@@ -28,7 +28,7 @@ class PsalmAudioHandler extends BaseAudioHandler with SeekHandler {
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.the-abraham-box.psalm.channel.audio',
         // The name of the channel is shown in the settings of the system; the app name is the same in every language.
-        androidNotificationChannelName: 'Psalm',
+        androidNotificationChannelName: 'Psalms',
         // A paused notification can be swiped away, and the service stops with it.
         androidNotificationOngoing: false,
         androidStopForegroundOnPause: true,

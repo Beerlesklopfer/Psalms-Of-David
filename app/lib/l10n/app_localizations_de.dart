@@ -10,7 +10,7 @@ class AppLocalizationsDe extends AppLocalizations {
   AppLocalizationsDe([String locale = 'de']) : super(locale);
 
   @override
-  String get appTitle => 'Psalm';
+  String get appTitle => 'Psalms';
 
   @override
   String get navHome => 'Start';
@@ -234,7 +234,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get qrScanPermissionDenied =>
-      'Die Kamera ist für Psalm nicht erlaubt. Erlaube sie in den Einstellungen, oder wähle stattdessen ein Bild des QR-Codes.';
+      'Die Kamera ist für Psalms nicht erlaubt. Erlaube sie in den Einstellungen, oder wähle stattdessen ein Bild des QR-Codes.';
 
   @override
   String get qrScanOpenSettings => 'Einstellungen öffnen';
@@ -390,7 +390,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get pairQrScan =>
-      'Scanne diesen Code mit Psalm auf dem anderen Gerät.';
+      'Scanne diesen Code mit Psalms auf dem anderen Gerät.';
 
   @override
   String pairQrExpires(String time) {
@@ -455,7 +455,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get aboutDescription =>
-      'Psalm spielt Hörbücher, Musik und mehr von deinem eigenen David-Server, für die ganze Familie.';
+      'Psalms spielt Hörbücher, Musik und mehr von deinem eigenen David-Server, für die ganze Familie.';
 
   @override
   String get aboutLicense =>
@@ -478,18 +478,18 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get connectNeedsDavid =>
-      'Psalm ist nur der Player. Es braucht einen David-Server, auf dem deine Hörbücher, deine Musik und die Profile der Familie liegen. Ohne einen gibt es in Psalm nichts zu hören.';
+      'Psalms ist nur der Player. Es braucht einen David-Server, auf dem deine Hörbücher, deine Musik und die Profile der Familie liegen. Ohne einen gibt es in Psalms nichts zu hören.';
 
   @override
-  String get aboutDavidTitle => 'Psalm braucht einen David-Server';
+  String get aboutDavidTitle => 'Psalms braucht einen David-Server';
 
   @override
   String get aboutDavidText =>
-      'Psalm bringt selbst keine Inhalte mit. Es spielt, was ein David-Server anbietet: Hörbücher, Musik und mehr aus deiner eigenen Bibliothek, mit einem Profil für jedes Familienmitglied. David ist freie Software, die du selbst betreibst, auf einem Heimserver oder einem kleinen Rechner. Wer ihn betreibt, erzeugt auf der Verwaltungsseite einen Kopplungscode; den gibst du hier einmal ein. Ohne David-Server kannst du nur die Demodaten ausprobieren.';
+      'Psalms bringt selbst keine Inhalte mit. Es spielt, was ein David-Server anbietet: Hörbücher, Musik und mehr aus deiner eigenen Bibliothek, mit einem Profil für jedes Familienmitglied. David ist freie Software, die du selbst betreibst, auf einem Heimserver oder einem kleinen Rechner. Wer ihn betreibt, erzeugt auf der Verwaltungsseite einen Kopplungscode; den gibst du hier einmal ein. Ohne David-Server kannst du nur die Demodaten ausprobieren.';
 
   @override
   String get aboutDavidSteps =>
-      '1. David-Server betreiben.  2. Seine Verwaltungsseite öffnen und „Gerät koppeln“ wählen.  3. Den Code in Psalm scannen oder einfügen.';
+      '1. David-Server betreiben.  2. Seine Verwaltungsseite öffnen und „Gerät koppeln“ wählen.  3. Den Code in Psalms scannen oder einfügen.';
 
   @override
   String get tooltipRefresh => 'Bibliothek aktualisieren';
@@ -561,7 +561,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get craDataText =>
-      'Psalm spricht nur mit dem David-Server, mit dem es gekoppelt ist, über eine Verbindung, die das Zertifikat des Servers prüft. Es gibt keine Analyse und keine Werbung. Die Kopplung und die heruntergeladenen Dateien bleiben auf diesem Gerät.';
+      'Psalms spricht nur mit dem David-Server, mit dem es gekoppelt ist, über eine Verbindung, die das Zertifikat des Servers prüft. Es gibt keine Analyse und keine Werbung. Die Kopplung und die heruntergeladenen Dateien bleiben auf diesem Gerät.';
 
   @override
   String get craComponents => 'Software-Komponenten';

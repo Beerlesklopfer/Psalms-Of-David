@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Registers Psalm with the desktop of the current user, so that the launcher, the dock and the
+# Registers Psalms with the desktop of the current user, so that the launcher, the dock and the
 # session manager show its icon and name, and david://pair links open it. Run it from the bundle
 # folder (where `psalm` is); it points the entry at the program next to it. Nothing needs root.
 set -euo pipefail
@@ -17,4 +17,4 @@ chmod 644 "$DATA/applications/$ID.desktop"
 command -v update-desktop-database >/dev/null && update-desktop-database "$DATA/applications" || true
 command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t "$DATA/icons/hicolor" || true
 command -v xdg-mime >/dev/null && xdg-mime default "$ID.desktop" x-scheme-handler/david || true
-echo "Psalm is registered: $DATA/applications/$ID.desktop"
+echo "Psalms is registered: $DATA/applications/$ID.desktop"

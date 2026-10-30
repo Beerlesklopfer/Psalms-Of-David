@@ -216,3 +216,12 @@ async fn the_own_listening_can_be_hidden_unless_an_administrator_forbids_it() {
     assert_eq!(family.json()["days"], 7);
     assert_eq!(family.json()["members"][0]["me"], true);
 }
+
+#[tokio::test]
+async fn a_paired_device_is_seen_when_it_pairs() {
+    let a = api().await;
+    let (_, token) = member(&a, "Anna", 6).await;
+    let devices = json_call(&a, "GET", "/api/v1/me/devices", &token, Value::Null).await.json();
+    let this = devices.as_array().unwrap().iter().find(|d| d["this"] == true).expect("this device");
+    assert!(this["last_seen"].as_i64().is_some_and(|ms| ms > 0), "\"last seen\" is set at the pairing, not never: {this}");
+}

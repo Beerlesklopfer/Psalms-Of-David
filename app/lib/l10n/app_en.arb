@@ -1,6 +1,6 @@
 {
   "@@locale": "en",
-  "appTitle": "Psalm",
+  "appTitle": "Psalms",
   "navHome": "Home",
   "navSearch": "Search",
   "navLibrary": "Library",
@@ -123,7 +123,7 @@
   "qrScanNotPairing": "This is not a pairing code.",
   "qrScanUsePicture": "Choose a picture instead",
   "qrScanTorch": "Torch",
-  "qrScanPermissionDenied": "The camera is not allowed for Psalm. Allow it in the settings, or choose a picture of the QR code instead.",
+  "qrScanPermissionDenied": "The camera is not allowed for Psalms. Allow it in the settings, or choose a picture of the QR code instead.",
   "qrScanOpenSettings": "Open settings",
   "qrNotFound": "No QR code found in this picture. Try a sharper or larger one.",
   "qrChooseTitle": "Choose a picture of the QR code",
@@ -208,7 +208,7 @@
   },
   "settingsConnectDevice": "Connect another device",
   "settingsConnectDeviceHint": "Shows a QR code that the other device scans. The code works once and only for a short time.",
-  "pairQrScan": "Scan this code with Psalm on the other device.",
+  "pairQrScan": "Scan this code with Psalms on the other device.",
   "pairQrExpires": "Valid for {time}",
   "@pairQrExpires": {
     "placeholders": {
@@ -234,7 +234,7 @@
   "streamWaiting": "Waiting for the information of the station …",
   "cancel": "Cancel",
   "aboutVersion": "Version {version}",
-  "aboutDescription": "Psalm plays audiobooks, music and more from your own David server, for the whole family.",
+  "aboutDescription": "Psalms plays audiobooks, music and more from your own David server, for the whole family.",
   "aboutLicense": "Free software under the GNU Affero General Public License, version 3 or later.",
   "aboutLicenses": "Open-source licences",
   "@aboutVersion": {
@@ -248,10 +248,10 @@
   "aboutLicenseTitle": "License",
   "aboutScripture": "Scripture",
   "aboutFamily": "Family",
-  "connectNeedsDavid": "Psalm is only the player. It needs a David server, which holds your audiobooks, music and the family's profiles. Without one, Psalm has nothing to play.",
-  "aboutDavidTitle": "Psalm needs a David server",
-  "aboutDavidText": "Psalm does not come with any content. It plays what a David server offers: audiobooks, music and more from your own library, with a profile for each family member. David is free software that you run yourself, on a home server or a small computer. Whoever runs it creates a pairing code on its admin page; you enter that code here once. Without a David server you can only try the demo data.",
-  "aboutDavidSteps": "1. Run a David server.  2. Open its admin page and choose Pair a device.  3. Scan or paste the code in Psalm.",
+  "connectNeedsDavid": "Psalms is only the player. It needs a David server, which holds your audiobooks, music and the family's profiles. Without one, Psalms has nothing to play.",
+  "aboutDavidTitle": "Psalms needs a David server",
+  "aboutDavidText": "Psalms does not come with any content. It plays what a David server offers: audiobooks, music and more from your own library, with a profile for each family member. David is free software that you run yourself, on a home server or a small computer. Whoever runs it creates a pairing code on its admin page; you enter that code here once. Without a David server you can only try the demo data.",
+  "aboutDavidSteps": "1. Run a David server.  2. Open its admin page and choose Pair a device.  3. Scan or paste the code in Psalms.",
   "tooltipRefresh": "Refresh the library",
   "tooltipDownload": "Download for listening without the server",
   "tooltipDownloadCancel": "Stop the download",
@@ -292,7 +292,7 @@
   "craSupportOpen": "Given with new versions. The end of the support period has not been set yet.",
   "craSupportUntil": "Until {date}",
   "craData": "Data and network",
-  "craDataText": "Psalm talks only to the David server you paired it with, over a connection that checks the server's certificate. It has no analytics and no advertising. The pairing and the downloaded files stay on this device.",
+  "craDataText": "Psalms talks only to the David server you paired it with, over a connection that checks the server's certificate. It has no analytics and no advertising. The pairing and the downloaded files stay on this device.",
   "craComponents": "Software components",
   "craComponentsText": "The list of all components with their licences.",
   "@craSupportUntil": {
