@@ -174,7 +174,8 @@ void main() {
     test('clearNext and a new load drop the queued track', skip: _skip, () async {
       final dir = Directory.systemTemp.createTempSync('psalm-null-dart');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final a = File('${dir.path}/a.wav')..writeAsBytesSync(toneWav(44100, 4410));
+      // 4 s: longer than the ring buffer (2 s), so that the paused decoder cannot reach the end of the file, and take the queued one, before clearNext arrives.
+      final a = File('${dir.path}/a.wav')..writeAsBytesSync(toneWav(44100, 44100 * 4));
       final b = File('${dir.path}/b.wav')..writeAsBytesSync(toneWav(44100, 44100));
       final backend = PipeWireBackend.openNull(libraryPath: _lib);
       addTearDown(backend.dispose);
@@ -186,13 +187,13 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 200));
       backend.play();
       expect(await _until(() => backend.state == BackendState.ended), isTrue);
-      expect(backend.duration, const Duration(milliseconds: 100));
+      expect(backend.duration, const Duration(seconds: 4));
       backend.enqueueNext(b.path);
       backend.load(a.path);
       expect(await _until(() => backend.state == BackendState.ended), isTrue);
       await Future<void>.delayed(const Duration(milliseconds: 300));
       expect(advances, 0);
-      expect(backend.duration, const Duration(milliseconds: 100));
+      expect(backend.duration, const Duration(seconds: 4));
     });
 
     test('a library without the version function is refused with a clear message', () {
