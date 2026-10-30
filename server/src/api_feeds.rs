@@ -8,7 +8,7 @@
 //! | `POST /podcasts` `{url}` | follows a feed (an address of a feed or of a page that points to one); `201`, or `202` when a child asked and the request waits |
 //! | `DELETE /podcasts/{id}` | stops following |
 //! | `GET /podcasts/{id}/episodes` | the newest episodes with where this account stopped |
-//! | `PUT /episodes/{id}/state` `{position_ms, finished}` | where the account stopped; every device of the account reads it |
+//! | `PUT /episodes/{id}/state` `{position_ms, finished, at?}` | where the account stopped (`at`: when it happened, for a report sent later; the newer state wins); every device of the account reads it |
 //! | `POST /podcasts/{id}/assign` `{profile_id}` | a parent (administrator or member) gives the feed to a child, released at once |
 //! | `GET /radio/search?q=` | stations of the directory in the settings (`radio_directory_url`) by name; `404 no_directory` if none is set |
 //! | `GET /radio`, `POST /radio` `{stream_url, name, homepage?, logo_url?}`, `DELETE /radio/{id}`, `POST /radio/{id}/assign` | the same for stations |
@@ -245,6 +245,10 @@ struct StateRequest {
     position_ms: i64,
     #[serde(default)]
     finished: bool,
+    /// When the listening happened (Unix milliseconds on the device), for a report that is sent later; the newer state wins. Without it, or in the
+    /// future, now counts.
+    #[serde(default)]
+    at: Option<i64>,
 }
 
 async fn episode_state(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, Json(req): Json<StateRequest>) -> ApiResult<StatusCode> {
@@ -255,7 +259,8 @@ async fn episode_state(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPat
     if req.position_ms < 0 {
         return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_state"));
     }
-    s.store.put_episode_state(d.user_id, id, req.position_ms, req.finished).await?;
+    let now = crate::store::now_ms();
+    s.store.put_episode_state_at(d.user_id, id, req.position_ms, req.finished, req.at.map_or(now, |at| at.clamp(1, now))).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

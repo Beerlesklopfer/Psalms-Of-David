@@ -6,7 +6,7 @@ import '../offline/outbox.dart';
 import 'api_client.dart';
 
 /// The replay of the changes made without the server: label deltas (`PATCH`), hiding (`POST /api/v1/me/hidden`, sets a state) and the listening
-/// (`PUT /api/v1/progress` with the time of the listening).
+/// (`PUT /api/v1/progress` and `PUT /api/v1/episodes/{id}/state`, both with the time of the listening).
 class ServerOutboxApi implements OutboxApi {
   ServerOutboxApi(this.api);
 
@@ -44,6 +44,10 @@ class ServerOutboxApi implements OutboxApi {
   @override
   Future<void> hideAuthor(String name, String kind, bool hidden) =>
       _call('POST', '/api/v1/me/hidden', {'scope': 'author', 'name': name, if (kind.isNotEmpty) 'kind': kind, 'hidden': hidden});
+
+  @override
+  Future<void> episodeState({required int id, required int positionMs, required bool finished, required int at}) =>
+      _call('PUT', '/api/v1/episodes/$id/state', {'position_ms': positionMs, 'finished': finished, 'at': at});
 
   @override
   Future<void> progress({required int item, required int part, required int positionMs, required bool finished, required int at}) =>

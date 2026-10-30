@@ -179,6 +179,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'The server no longer knows this device. Pair it again with a new code; the old pairing stays until then.';
 
   @override
+  String get tooltipTimeBook =>
+      'Time of the whole CD. Tap for the time of this track.';
+
+  @override
+  String get tooltipTimeTrack =>
+      'Time of this track. Tap for the time of the whole CD.';
+
+  @override
   String get connectSearching => 'Looking for the server again ...';
 
   @override
@@ -1651,4 +1659,92 @@ class AppLocalizationsEn extends AppLocalizations {
   String profileDeviceCountFree(int used) {
     return 'Devices: $used';
   }
+
+  @override
+  String get episodeDownload => 'Download episode';
+
+  @override
+  String get episodeDownloadCancel => 'Stop the download';
+
+  @override
+  String get episodeDownloaded => 'On this device';
+
+  @override
+  String get episodeRemoveTitle => 'Remove the download?';
+
+  @override
+  String get episodeRemoveText =>
+      'The episode is deleted from this device. It stays in the podcast and can be downloaded again.';
+
+  @override
+  String episodeProgress(String done, String total) {
+    return '$done of $total';
+  }
+
+  @override
+  String get episodeErrorScheme =>
+      'This episode has no http or https address and cannot be downloaded.';
+
+  @override
+  String get episodeErrorHttp => 'The publisher refused the download.';
+
+  @override
+  String episodeErrorTooLarge(String limit) {
+    return 'The episode is larger than the limit of $limit in the settings.';
+  }
+
+  @override
+  String get episodeErrorNetwork =>
+      'The download failed: the publisher cannot be reached.';
+
+  @override
+  String get episodeErrorIo => 'The file could not be saved on this device.';
+
+  @override
+  String podcastDownloadNewest(int count) {
+    return 'Download the newest $count unheard episodes';
+  }
+
+  @override
+  String get podcastDownloadNewestNone => 'Nothing new to download.';
+
+  @override
+  String get podcastDownloadsTitle => 'Podcast downloads';
+
+  @override
+  String podcastDownloadsUsed(String size, int count) {
+    return '$size in $count episodes';
+  }
+
+  @override
+  String get podcastDownloadsNone => 'No podcast episodes on this device.';
+
+  @override
+  String get podcastDownloadsDeleteAll => 'Delete all';
+
+  @override
+  String get podcastDownloadsDeleteAllTitle => 'Delete all podcast downloads?';
+
+  @override
+  String get podcastDownloadsDeleteAllText =>
+      'All downloaded episodes are deleted from this device. The podcasts keep them.';
+
+  @override
+  String get podcastDeleteAfter => 'Delete episodes after listening';
+
+  @override
+  String get podcastDeleteAfterHint =>
+      'A heard episode is deleted from this device, and so is one that the podcast does not list any more. Off: nothing is deleted unless you do it.';
+
+  @override
+  String get podcastMaxSize => 'Largest download';
+
+  @override
+  String podcastMegabytes(int mb) {
+    return '$mb MB';
+  }
+
+  @override
+  String get offlinePodcastsNone =>
+      'No episodes are on this device yet. Download episodes while you are online to listen to them here.';
 }

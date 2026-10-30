@@ -15,26 +15,37 @@ class PlaybackSettingsStore {
 
   final File file;
 
-  /// Seconds of audio the engine keeps ready; the default when nothing (or nothing usable) is stored.
-  int readBufferSeconds() {
+  Map<String, dynamic> _read() {
     try {
-      final j = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
-      final n = j['buffer_seconds'];
-      if (n is int) return n.clamp(kBufferMinSeconds, kBufferMaxSeconds);
+      final j = jsonDecode(file.readAsStringSync());
+      if (j is Map<String, dynamic>) return j;
     } on Object {
-      // Missing or damaged: the default.
+      // Missing or damaged: nothing is stored.
     }
-    return kBufferDefaultSeconds;
+    return {};
   }
 
-  void writeBufferSeconds(int seconds) {
+  void _write(Map<String, dynamic> values) {
     try {
       file.parent.createSync(recursive: true);
       final temp = File('${file.path}.tmp');
-      temp.writeAsStringSync(jsonEncode({'buffer_seconds': seconds}));
+      temp.writeAsStringSync(jsonEncode(values));
       temp.renameSync(file.path);
     } on FileSystemException {
       // Not being able to remember is not worth a failure; the setting then holds until the app ends.
     }
   }
+
+  /// Seconds of audio the engine keeps ready; the default when nothing (or nothing usable) is stored.
+  int readBufferSeconds() {
+    final n = _read()['buffer_seconds'];
+    return n is int ? n.clamp(kBufferMinSeconds, kBufferMaxSeconds) : kBufferDefaultSeconds;
+  }
+
+  void writeBufferSeconds(int seconds) => _write({..._read(), 'buffer_seconds': seconds});
+
+  /// The time in the mini player: of the whole book (CD), or of the track that plays; the track when nothing is stored.
+  bool readShowBookTime() => _read()['show_book_time'] == true;
+
+  void writeShowBookTime(bool value) => _write({..._read(), 'show_book_time': value});
 }

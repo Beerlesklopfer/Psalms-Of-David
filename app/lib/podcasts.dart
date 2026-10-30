@@ -84,6 +84,9 @@ class Episode {
       );
 }
 
+/// The id of the episode a book of the player stands for (`ep:5` is episode 5), or null for anything else.
+int? episodeIdOf(Book b) => b.kind == 'podcast' && b.id.startsWith('ep:') ? int.tryParse(b.id.substring(3)) : null;
+
 /// A radio station of the favourites.
 class Station {
   const Station({required this.id, required this.name, required this.streamUrl, required this.approved, this.homepage, this.logoUrl, this.labels = const [], this.canLabel = false});

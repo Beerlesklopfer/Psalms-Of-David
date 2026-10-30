@@ -380,6 +380,18 @@ abstract class AppLocalizations {
   /// **'The server no longer knows this device. Pair it again with a new code; the old pairing stays until then.'**
   String get connectErrorSignedOut;
 
+  /// No description provided for @tooltipTimeBook.
+  ///
+  /// In en, this message translates to:
+  /// **'Time of the whole CD. Tap for the time of this track.'**
+  String get tooltipTimeBook;
+
+  /// No description provided for @tooltipTimeTrack.
+  ///
+  /// In en, this message translates to:
+  /// **'Time of this track. Tap for the time of the whole CD.'**
+  String get tooltipTimeTrack;
+
   /// No description provided for @connectSearching.
   ///
   /// In en, this message translates to:
@@ -2881,6 +2893,150 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Devices: {used}'**
   String profileDeviceCountFree(int used);
+
+  /// No description provided for @episodeDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Download episode'**
+  String get episodeDownload;
+
+  /// No description provided for @episodeDownloadCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop the download'**
+  String get episodeDownloadCancel;
+
+  /// No description provided for @episodeDownloaded.
+  ///
+  /// In en, this message translates to:
+  /// **'On this device'**
+  String get episodeDownloaded;
+
+  /// No description provided for @episodeRemoveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the download?'**
+  String get episodeRemoveTitle;
+
+  /// No description provided for @episodeRemoveText.
+  ///
+  /// In en, this message translates to:
+  /// **'The episode is deleted from this device. It stays in the podcast and can be downloaded again.'**
+  String get episodeRemoveText;
+
+  /// No description provided for @episodeProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'{done} of {total}'**
+  String episodeProgress(String done, String total);
+
+  /// No description provided for @episodeErrorScheme.
+  ///
+  /// In en, this message translates to:
+  /// **'This episode has no http or https address and cannot be downloaded.'**
+  String get episodeErrorScheme;
+
+  /// No description provided for @episodeErrorHttp.
+  ///
+  /// In en, this message translates to:
+  /// **'The publisher refused the download.'**
+  String get episodeErrorHttp;
+
+  /// No description provided for @episodeErrorTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'The episode is larger than the limit of {limit} in the settings.'**
+  String episodeErrorTooLarge(String limit);
+
+  /// No description provided for @episodeErrorNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'The download failed: the publisher cannot be reached.'**
+  String get episodeErrorNetwork;
+
+  /// No description provided for @episodeErrorIo.
+  ///
+  /// In en, this message translates to:
+  /// **'The file could not be saved on this device.'**
+  String get episodeErrorIo;
+
+  /// No description provided for @podcastDownloadNewest.
+  ///
+  /// In en, this message translates to:
+  /// **'Download the newest {count} unheard episodes'**
+  String podcastDownloadNewest(int count);
+
+  /// No description provided for @podcastDownloadNewestNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing new to download.'**
+  String get podcastDownloadNewestNone;
+
+  /// No description provided for @podcastDownloadsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Podcast downloads'**
+  String get podcastDownloadsTitle;
+
+  /// No description provided for @podcastDownloadsUsed.
+  ///
+  /// In en, this message translates to:
+  /// **'{size} in {count} episodes'**
+  String podcastDownloadsUsed(String size, int count);
+
+  /// No description provided for @podcastDownloadsNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No podcast episodes on this device.'**
+  String get podcastDownloadsNone;
+
+  /// No description provided for @podcastDownloadsDeleteAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete all'**
+  String get podcastDownloadsDeleteAll;
+
+  /// No description provided for @podcastDownloadsDeleteAllTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete all podcast downloads?'**
+  String get podcastDownloadsDeleteAllTitle;
+
+  /// No description provided for @podcastDownloadsDeleteAllText.
+  ///
+  /// In en, this message translates to:
+  /// **'All downloaded episodes are deleted from this device. The podcasts keep them.'**
+  String get podcastDownloadsDeleteAllText;
+
+  /// No description provided for @podcastDeleteAfter.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete episodes after listening'**
+  String get podcastDeleteAfter;
+
+  /// No description provided for @podcastDeleteAfterHint.
+  ///
+  /// In en, this message translates to:
+  /// **'A heard episode is deleted from this device, and so is one that the podcast does not list any more. Off: nothing is deleted unless you do it.'**
+  String get podcastDeleteAfterHint;
+
+  /// No description provided for @podcastMaxSize.
+  ///
+  /// In en, this message translates to:
+  /// **'Largest download'**
+  String get podcastMaxSize;
+
+  /// No description provided for @podcastMegabytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{mb} MB'**
+  String podcastMegabytes(int mb);
+
+  /// No description provided for @offlinePodcastsNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No episodes are on this device yet. Download episodes while you are online to listen to them here.'**
+  String get offlinePodcastsNone;
 }
 
 class _AppLocalizationsDelegate

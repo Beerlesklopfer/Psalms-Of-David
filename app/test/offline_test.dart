@@ -45,6 +45,10 @@ class FakeOutboxApi implements OutboxApi {
   @override
   Future<void> progress({required int item, required int part, required int positionMs, required bool finished, required int at}) =>
       _do('progress $item/$part $positionMs $finished @$at');
+
+  @override
+  Future<void> episodeState({required int id, required int positionMs, required bool finished, required int at}) =>
+      _do('episode $id $positionMs $finished @$at');
 }
 
 /// A source whose downloaded parts are the ones listed.
@@ -450,7 +454,11 @@ void main() {
       offline.setUnreachable(true);
       await tester.pump();
       expect(find.byKey(const ValueKey('offline-banner')), findsOneWidget);
+      // Podcasts show what is on the device (nothing here), Radio needs the server.
       await tester.tap(find.text('Podcasts').first);
+      await tester.pump();
+      expect(find.byKey(const ValueKey('offline-podcasts-none')), findsWidgets);
+      await tester.tap(find.text('Radio').first);
       await tester.pump();
       expect(find.byKey(const ValueKey('offline-needs-network')), findsWidgets);
       offline.setUnreachable(false);

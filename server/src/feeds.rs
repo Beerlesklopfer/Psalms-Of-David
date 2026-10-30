@@ -261,13 +261,20 @@ impl Store {
 
     /// Where a profile stopped in an episode; the devices of the account all see the latest.
     pub async fn put_episode_state(&self, profile_id: i64, episode_id: i64, position_ms: i64, finished: bool) -> Result<()> {
+        self.put_episode_state_at(profile_id, episode_id, position_ms, finished, now_ms()).await
+    }
+
+    /// The same for a report that is sent later (the device had no connection): `at` is when the listening happened. The newer state wins, so an
+    /// old report never overwrites what a more recent one (from this or another device) wrote, and sending a report twice changes nothing.
+    pub async fn put_episode_state_at(&self, profile_id: i64, episode_id: i64, position_ms: i64, finished: bool, at: i64) -> Result<()> {
         self.db
             .writer
             .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO episode_state (profile_id, episode_id, position_ms, finished, updated_at) VALUES (?, ?, ?, ?, ?) \
-                 ON CONFLICT (profile_id, episode_id) DO UPDATE SET position_ms = excluded.position_ms, finished = excluded.finished, updated_at = excluded.updated_at",
-                [profile_id.into(), episode_id.into(), position_ms.max(0).into(), i64::from(finished).into(), now_ms().into()],
+                 ON CONFLICT (profile_id, episode_id) DO UPDATE SET position_ms = excluded.position_ms, finished = excluded.finished, updated_at = excluded.updated_at \
+                 WHERE excluded.updated_at >= episode_state.updated_at",
+                [profile_id.into(), episode_id.into(), position_ms.max(0).into(), i64::from(finished).into(), at.into()],
             ))
             .await
             .map_err(|_| Error::WriteFailed("no such episode".into()))?;

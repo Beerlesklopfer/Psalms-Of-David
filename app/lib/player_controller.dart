@@ -9,6 +9,8 @@ import 'audio/playback_settings.dart';
 import 'm3u.dart';
 import 'models.dart';
 import 'playlists.dart' show kPlaylistBookPrefix, kPlaylistKind;
+import 'podcast_downloads.dart';
+import 'podcasts.dart' show episodeIdOf;
 import 'offline/offline_controller.dart';
 import 'offline/offline_view.dart';
 import 'server/api_client.dart' show ApiException;
@@ -22,6 +24,7 @@ class PlayerController extends ChangeNotifier {
   PlayerController(this.library, {this.backend, this.source, this.lastStore, this.playbackStore}) {
     final b = backend;
     if (b != null && b.bufferAdjustable) b.setBufferSeconds(playbackStore?.readBufferSeconds() ?? kBufferDefaultSeconds);
+    showBookTime = playbackStore?.readShowBookTime() ?? false;
     // The system may start or pause the engine (notification, headset, a call, unplugged headphones): the controller follows.
     if (b is ExternalControl) (b as ExternalControl).onExternalChange = _followBackend;
     // Demo: the first book has already been listened to.
@@ -94,6 +97,15 @@ class PlayerController extends ChangeNotifier {
   /// Where the playback settings of this device are kept; null in tests and demos.
   final PlaybackSettingsStore? playbackStore;
 
+  /// The time of the mini player (and its bar) is the time of the whole book (CD), not of the track that plays. The listener switches it by a tap.
+  bool showBookTime = false;
+
+  void toggleTimeScope() {
+    showBookTime = !showBookTime;
+    playbackStore?.writeShowBookTime(showBookTime);
+    notifyListeners();
+  }
+
   /// Whether the engine has a buffer whose size the listener can set.
   bool get bufferAdjustable => backend?.bufferAdjustable ?? false;
 
@@ -145,6 +157,9 @@ class PlayerController extends ChangeNotifier {
   bool loading = false;
   DateTime _lastReport = DateTime.fromMillisecondsSinceEpoch(0);
   bool _disposed = false;
+
+  /// The podcast episodes that are on this device (null in the demo); set by the app. The player reports the state of an episode to it.
+  PodcastDownloads? podcastDownloads;
 
   Track? get track => book?.tracks[trackIndex];
 
@@ -558,10 +573,14 @@ class PlayerController extends ChangeNotifier {
     final b = book;
     final t = track;
     final s = source;
-    if (b == null || t == null || s == null || t.partId == null) return;
+    // A title of the library reports with its part; an episode of a podcast has no part, its id says which one it is.
+    final episode = b == null ? null : episodeIdOf(b);
+    if (b == null || t == null || s == null || (t.partId == null && episode == null)) return;
     final now = DateTime.now();
     if (!force && now.difference(_lastReport) < const Duration(seconds: 10)) return;
     _lastReport = now;
+    // The offline list of the downloaded episodes shows where this device is (and a heard one may go, if the person asked for it).
+    if (episode != null) podcastDownloads?.noteState(episode, position, finished);
     // Offline the position waits for the server; a report that fails for want of a connection waits as well.
     if (offline?.active == true) {
       _queueProgress(b, t, finished);
@@ -572,12 +591,19 @@ class PlayerController extends ChangeNotifier {
     });
   }
 
-  /// Keeps where the listening is for the server (a book of the library only: an episode or a station is not).
+  /// Keeps where the listening is for the server (a book of the library or a podcast episode; a station has no position).
   void _queueProgress(Book b, Track t, bool finished) {
     final off = offline;
+    if (off == null || b.isStream) return;
+    final episode = episodeIdOf(b);
+    if (episode != null) {
+      off.outbox.addEpisode(id: episode, positionMs: position.inMilliseconds, finished: finished, title: b.title);
+      off.touch();
+      return;
+    }
     final part = t.partId;
     final item = int.tryParse(t.itemId ?? b.id);
-    if (off == null || part == null || item == null || b.kind == 'podcast' || b.isStream) return;
+    if (part == null || item == null || b.kind == 'podcast') return;
     off.outbox.addProgress(item: item, part: part, positionMs: position.inMilliseconds, finished: finished);
     off.touch();
   }
@@ -806,6 +832,7 @@ class PlayerController extends ChangeNotifier {
     _report();
     _timer?.cancel();
     backend?.dispose();
+    podcastDownloads?.dispose();
     super.dispose();
   }
 }

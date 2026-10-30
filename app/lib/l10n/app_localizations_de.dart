@@ -181,6 +181,14 @@ class AppLocalizationsDe extends AppLocalizations {
       'Der Server kennt dieses Gerät nicht mehr. Koppele es mit einem neuen Code erneut; die alte Kopplung bleibt bis dahin erhalten.';
 
   @override
+  String get tooltipTimeBook =>
+      'Zeit der ganzen CD. Tippen für die Zeit dieses Titels.';
+
+  @override
+  String get tooltipTimeTrack =>
+      'Zeit dieses Titels. Tippen für die Zeit der ganzen CD.';
+
+  @override
   String get connectSearching => 'Suche den Server erneut ...';
 
   @override
@@ -1671,4 +1679,95 @@ class AppLocalizationsDe extends AppLocalizations {
   String profileDeviceCountFree(int used) {
     return 'Geräte: $used';
   }
+
+  @override
+  String get episodeDownload => 'Folge herunterladen';
+
+  @override
+  String get episodeDownloadCancel => 'Download abbrechen';
+
+  @override
+  String get episodeDownloaded => 'Auf diesem Gerät';
+
+  @override
+  String get episodeRemoveTitle => 'Download entfernen?';
+
+  @override
+  String get episodeRemoveText =>
+      'Die Folge wird von diesem Gerät gelöscht. Sie bleibt im Podcast und lässt sich erneut herunterladen.';
+
+  @override
+  String episodeProgress(String done, String total) {
+    return '$done von $total';
+  }
+
+  @override
+  String get episodeErrorScheme =>
+      'Diese Folge hat keine http- oder https-Adresse und lässt sich nicht herunterladen.';
+
+  @override
+  String get episodeErrorHttp => 'Der Anbieter hat den Download verweigert.';
+
+  @override
+  String episodeErrorTooLarge(String limit) {
+    return 'Die Folge ist größer als die Grenze von $limit in den Einstellungen.';
+  }
+
+  @override
+  String get episodeErrorNetwork =>
+      'Der Download ist fehlgeschlagen: der Anbieter ist nicht erreichbar.';
+
+  @override
+  String get episodeErrorIo =>
+      'Die Datei konnte nicht auf diesem Gerät gespeichert werden.';
+
+  @override
+  String podcastDownloadNewest(int count) {
+    return 'Die neuesten $count ungehörten Folgen herunterladen';
+  }
+
+  @override
+  String get podcastDownloadNewestNone =>
+      'Es gibt nichts Neues zum Herunterladen.';
+
+  @override
+  String get podcastDownloadsTitle => 'Podcast-Downloads';
+
+  @override
+  String podcastDownloadsUsed(String size, int count) {
+    return '$size in $count Folgen';
+  }
+
+  @override
+  String get podcastDownloadsNone => 'Keine Podcast-Folgen auf diesem Gerät.';
+
+  @override
+  String get podcastDownloadsDeleteAll => 'Alle löschen';
+
+  @override
+  String get podcastDownloadsDeleteAllTitle =>
+      'Alle Podcast-Downloads löschen?';
+
+  @override
+  String get podcastDownloadsDeleteAllText =>
+      'Alle heruntergeladenen Folgen werden von diesem Gerät gelöscht. Die Podcasts behalten sie.';
+
+  @override
+  String get podcastDeleteAfter => 'Folgen nach dem Hören löschen';
+
+  @override
+  String get podcastDeleteAfterHint =>
+      'Eine gehörte Folge wird von diesem Gerät gelöscht, ebenso eine, die der Podcast nicht mehr listet. Aus: nichts wird gelöscht, wenn du es nicht selbst tust.';
+
+  @override
+  String get podcastMaxSize => 'Größter Download';
+
+  @override
+  String podcastMegabytes(int mb) {
+    return '$mb MB';
+  }
+
+  @override
+  String get offlinePodcastsNone =>
+      'Auf diesem Gerät sind noch keine Folgen. Lade Folgen herunter, solange du online bist, um sie hier zu hören.';
 }

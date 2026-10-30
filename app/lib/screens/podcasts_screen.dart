@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'package:flutter/material.dart';
 
-import '../format.dart';
 import '../l10n/app_localizations.dart';
 import '../labels.dart';
+import '../offline/offline_controller.dart';
+import '../podcast_downloads.dart';
 import '../player_controller.dart';
 import '../podcasts.dart';
 import '../server/api_client.dart';
 import '../widgets.dart';
 import 'labels_ui.dart';
+import 'podcast_downloads_ui.dart';
 
 /// The state of the podcast list: loading, adding. Owned by the page or the library, shown by
 /// [PodcastsBody], operated by [PodcastsActions].
@@ -81,7 +83,8 @@ class PodcastsActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    if (controller.api == null) return const SizedBox.shrink();
+    // Adding needs the server.
+    if (controller.api == null || OfflineScope.maybeOf(context)?.active == true) return const SizedBox.shrink();
     return Row(mainAxisSize: MainAxisSize.min, children: [
       IconButton(tooltip: l.podcastAdd, icon: const Icon(Icons.add), onPressed: () => controller.add(context)),
       if (withRefresh) IconButton(tooltip: l.tooltipRefresh, icon: const Icon(Icons.refresh), onPressed: controller.load),
@@ -101,6 +104,8 @@ class PodcastsBody extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
+        // The offline view: the podcasts have episodes on the device, nothing is asked of the server.
+        if (OfflineScope.maybeOf(context)?.active == true) return OfflinePodcastsSliver(downloads: PlayerScope.maybeOf(context)?.podcastDownloads);
         final list = controller.podcasts;
         if (controller.api == null) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.needsServer)));
         if (controller.error != null) return SliverFillRemaining(hasScrollBody: false, child: Center(child: Text(l.serverUnreachableShort)));
@@ -216,21 +221,57 @@ class _EpisodesScreenState extends State<EpisodesScreen> {
   Future<void> _load() async {
     try {
       final rows = await widget.api.episodes(widget.podcast.id);
-      if (mounted) setState(() { _episodes = rows.map(Episode.fromJson).toList(); _failed = false; });
+      final list = rows.map(Episode.fromJson).toList();
+      if (mounted) setState(() { _episodes = list; _failed = false; });
+      // What is on the device from playing gets its entry, the state of the account is taken over, and (if the person asked) heard episodes go.
+      if (mounted) await PlayerScope.maybeOf(context)?.podcastDownloads?.noteListed(widget.podcast, list);
     } on ApiException {
       if (mounted) setState(() => _failed = true);
     }
   }
 
+  /// Fetches the newest unheard episodes that are not on the device yet, one after the other.
+  Future<void> _downloadNewest(PodcastDownloads downloads) async {
+    final l = AppLocalizations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final todo = downloads.newestToFetch(_episodes ?? const []);
+    if (todo.isEmpty) {
+      messenger.showSnackBar(SnackBar(content: Text(l.podcastDownloadNewestNone)));
+      return;
+    }
+    for (final e in todo) {
+      final code = await downloads.download(e, widget.podcast);
+      if (code != null) {
+        if (code != 'cancelled') messenger.showSnackBar(SnackBar(content: Text(episodeDownloadMessage(l, code, downloads.maxMegabytes))));
+        break;
+      }
+    }
+  }
+
+  /// The server does not answer: the episodes that are on the device are still listed (and play).
+  Widget _unreachable(BuildContext context, PodcastDownloads? downloads) {
+    final l = AppLocalizations.of(context);
+    final rows = downloads?.episodesOf(widget.podcast.id) ?? const <DownloadedEpisode>[];
+    if (rows.isEmpty) return Center(child: Text(l.serverUnreachableShort));
+    return ListView(children: [for (final r in rows) EpisodeTile(episode: r.toEpisode(), podcast: widget.podcast)]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final p = PlayerScope.of(context);
+    final downloads = PlayerScope.of(context).podcastDownloads;
     final list = _episodes;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.podcast.title),
         actions: [
+          if (downloads != null && list != null && list.isNotEmpty)
+            IconButton(
+              key: const ValueKey('download-newest'),
+              tooltip: l.podcastDownloadNewest(kNewestEpisodes),
+              icon: const Icon(Icons.download_for_offline_outlined),
+              onPressed: () => _downloadNewest(downloads),
+            ),
           IconButton(
             tooltip: l.podcastUnfollow,
             icon: const Icon(Icons.bookmark_remove_outlined),
@@ -244,29 +285,14 @@ class _EpisodesScreenState extends State<EpisodesScreen> {
         ],
       ),
       body: _failed
-          ? Center(child: Text(l.serverUnreachableShort))
+          ? _unreachable(context, downloads)
           : list == null
               ? const Center(child: CircularProgressIndicator())
               : list.isEmpty
                   ? Center(child: Text(l.noEpisodesYet))
                   : ListView.builder(
                       itemCount: list.length,
-                      itemBuilder: (context, i) {
-                        final e = list[i];
-                        final date = e.published;
-                        return ListTile(
-                          leading: Icon(e.finished ? Icons.check_circle_outline : Icons.play_circle_outline),
-                          title: Text(e.title, style: e.finished ? TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant) : null),
-                          subtitle: Text([
-                            if (date != null) '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
-                            if (e.duration > Duration.zero) formatDuration(e.duration),
-                            if (!e.finished && e.position > Duration.zero) l.episodeAt(formatDuration(e.position)),
-                          ].join(' · ')),
-                          onTap: () {
-                            p.open(e.asBook(widget.podcast.title), start: e.finished ? Duration.zero : e.position);
-                          },
-                        );
-                      },
+                      itemBuilder: (context, i) => EpisodeTile(episode: list[i], podcast: widget.podcast),
                     ),
     );
   }

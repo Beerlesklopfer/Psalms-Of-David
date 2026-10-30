@@ -22,6 +22,9 @@ class OutboxChange {
   /// Where the listening to a book is (`item`, `part`, `position_ms`, `finished`, `at`).
   static const progress = 'progress';
 
+  /// Where the listening to a podcast episode is (`id`, `position_ms`, `finished`, `at`, `title`).
+  static const episode = 'episode';
+
   /// The order in which the changes were made; they are sent in this order.
   final int seq;
   final String kind;
@@ -42,6 +45,7 @@ class OutboxChange {
     hideBook => 'hide_book:${data['id']}',
     hideAuthor => 'hide_author:${(data['name'] as String).toLowerCase()}:${data['kind'] ?? ''}',
     progress => 'progress:${data['item']}',
+    episode => 'episode:${data['id']}',
     _ => '$kind:$seq',
   };
 
@@ -85,6 +89,9 @@ abstract class OutboxApi {
 
   /// [at] is when the listening happened: the server keeps the newer state, so an old report cannot overwrite a newer one.
   Future<void> progress({required int item, required int part, required int positionMs, required bool finished, required int at});
+
+  /// The same for a podcast episode (`PUT /api/v1/episodes/{id}/state`).
+  Future<void> episodeState({required int id, required int positionMs, required bool finished, required int at});
 }
 
 /// The changes waiting for the server, kept in a file so that they survive a restart of the app. Changes of the same thing are merged:
@@ -106,7 +113,7 @@ class Outbox {
   int get length => _entries.length;
 
   /// The changes that the person made and wants to hear about when they are refused: everything but the listening position.
-  int get visibleLength => _entries.where((e) => e.kind != OutboxChange.progress).length;
+  int get visibleLength => _entries.where((e) => e.kind != OutboxChange.progress && e.kind != OutboxChange.episode).length;
 
   void _load() {
     final f = file;
@@ -208,6 +215,14 @@ class Outbox {
     _replace('progress:$item', OutboxChange.progress, {'item': item, 'part': part, 'position_ms': positionMs, 'finished': finished, 'at': when}, when);
   }
 
+  /// Where the listening to a podcast episode is: only the newest position of an episode is kept.
+  void addEpisode({required int id, required int positionMs, required bool finished, String title = '', int? at}) {
+    final when = at ?? DateTime.now().millisecondsSinceEpoch;
+    final old = _find('episode:$id');
+    if (old != null && old.at > when) return;
+    _replace('episode:$id', OutboxChange.episode, {'id': id, 'position_ms': positionMs, 'finished': finished, 'title': title, 'at': when}, when);
+  }
+
   /// Sends the changes in the order in which they were made. What the server takes (or refuses with a final answer) leaves the list; when the
   /// server cannot be reached the rest stays and the next round goes on from there.
   Future<SyncResult> replay(OutboxApi api) async {
@@ -237,6 +252,7 @@ class Outbox {
       OutboxChange.hideBook => api.hideBook(d['id'] as int, d['hidden'] == true),
       OutboxChange.hideAuthor => api.hideAuthor(d['name'] as String, (d['kind'] as String?) ?? '', d['hidden'] == true),
       OutboxChange.progress => api.progress(item: d['item'] as int, part: d['part'] as int, positionMs: d['position_ms'] as int, finished: d['finished'] == true, at: d['at'] as int),
+      OutboxChange.episode => api.episodeState(id: d['id'] as int, positionMs: d['position_ms'] as int, finished: d['finished'] == true, at: d['at'] as int),
       _ => Future.value(),
     };
   }

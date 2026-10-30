@@ -106,8 +106,8 @@ synchronised, and the listening progress too."
 
 **The view.** Offline is the person's switch (settings, device-local, `offline.json`) **or** the fact that the server does not answer (the look
 at the library every 30 seconds fails). The lists, the search and the start page then show the **downloaded** titles only: an album of which some
-titles are downloaded shows those, one without any is left out, radio stations are left out. The pages Podcasts and Radio say that they need the
-server. A bar at the top says "Offline mode" or "Server not reachable", how many changes wait, and (unreachable only) has "Try again". What is
+titles are downloaded shows those, one without any is left out, radio stations are left out. The page Radio says that it needs the server;
+the page Podcasts shows the podcasts that have downloaded episodes (see "Podcast downloads"). A bar at the top says "Offline mode" or "Server not reachable", how many changes wait, and (unreachable only) has "Try again". What is
 downloaded plays without the server. With the switch on the app does not ask the server at all (no look at the library, no sending); switching
 it off sends what waits and loads the library again.
 
@@ -125,6 +125,7 @@ succeeds (or the switch goes off, or the person taps "Send changes now"); then t
 | a book hidden or shown | the state | the last state wins | `POST /me/hidden` (sets the state) |
 | an author hidden or shown | the state | the last state wins | `POST /me/hidden` |
 | where the listening to a book is | item, part, position, finished, time | only the newest of a book | `PUT /progress` with `at` |
+| where the listening to a podcast episode is | episode, position, finished, time | only the newest of an episode | `PUT /episodes/{id}/state` with `at` |
 
 - A label **delta** (not the whole list) is sent, so two devices that change the labels of the same book at the same time do not overwrite each
   other: the words added and taken off are applied to what the server has. Same permission as the `PUT` (administrator, or the owner of the
@@ -133,13 +134,42 @@ succeeds (or the switch goes off, or the person taps "Send changes now"); then t
   Offline a hidden book (or the books of a hidden author) leaves the lists at once (unless hidden books are shown); showing it again offline
   takes effect when the library is loaded again.
 - The listening position is stamped with the time of the listening (`at`). The server keeps the position with the newest time per user and
-  book, so an old offline report cannot overwrite what another device wrote later. Episodes and stations have no offline position.
+  book, so an old offline report cannot overwrite what another device wrote later. Stations have no position. The state of an episode
+  (`PUT /episodes/{id}/state {position_ms, finished, at?}`) works the same way: the newer state wins, a time in the future counts as now,
+  sending it twice changes nothing; the position of an episode is reported like the one of a book (before 2026-10-30 the app never reported
+  episodes: they have no part, and the report waited for one).
 - Answers: `0`/`5xx`/`429`/`401` stop the round and keep the rest; `403`, `404`, `409`, `422` drop the change and tell the person ("Not accepted
   by the server": labels of / hiding of "<title>" with the reason not allowed, no longer there, refused), in a bar and in the settings until
   dismissed. Refused listening positions are dropped silently.
 - Labels of podcasts and stations can only be set with the server (their pages are offline-only placeholders); a change that fails for want of a
   connection while the page is open waits like the others, but is not shown until it is sent.
 
+
+## Podcast downloads (project owner, 2026-10-30)
+
+"For podcasts the download function for listening offline." Code: `app/lib/podcast_downloads.dart`, `app/lib/screens/podcast_downloads_ui.dart`.
+
+- **Where the audio comes from.** The server does not carry the episodes: `audio_url` is the address at the publisher. The app fetches it with a
+  plain HTTPS client (no token, the publisher's own certificate rules, redirects are followed), **only `http` and `https` addresses** (any other
+  scheme is refused with `scheme` before a connection is made). The file is written through a `.part` file and renamed when complete; a `.part`
+  file of an earlier run is deleted at the start. A download that is cancelled or fails leaves no file.
+- **Where it lives.** In the folder of the other downloads (`AppPaths.parts`), named `ep-<sha1 of the address>.audio`. The player fetches an
+  episode the first time it plays it into the same file, so *played* and *downloaded* are the same thing for the files; "storage used" and
+  "remove all downloads" of the About page count and delete them too. A small file `podcast-downloads.json` (`AppPaths.base`) says which
+  episodes the files are (episode, podcast, title, address, size, date, position, finished) and holds the two settings. The files are the truth:
+  an entry whose file is gone is dropped; an episode that was only played gets its entry when the episodes of its podcast are listed.
+- **The button** (every episode in the list): not downloaded, downloading (bytes of the total, tap to stop), on this device (check mark; tap
+  asks, then removes). The size of a downloaded episode is shown in the list. The app bar of the episodes has "download the newest 5 unheard
+  episodes" (one after the other, the first failure stops it with its message). Messages: not a web address, the publisher refused (HTTP
+  error), larger than the limit, no connection / certificate, the file could not be saved.
+- **Settings** (Settings > Podcast downloads): what the episodes take and "delete all"; "Delete episodes after listening" (**off by default**:
+  nothing is deleted unless the person does it; on: an episode heard to the end goes, and so does one that the podcast no longer lists, meaning
+  it is newer than the oldest listed episode but missing from the list); the largest single download (100 MB to 2 GB, default 500 MB).
+  Forgetting the pairing forgets the list of episodes but keeps the files (like the downloaded parts of books).
+- **Offline.** An episode on the device plays without the server. In the offline view the page Podcasts (and the category in the library) lists
+  the podcasts with downloaded episodes and, below, only those episodes, with the position of this device. If the server does not answer while
+  the list of a podcast is open the downloaded episodes are shown instead of the error. Where the person is in an episode is reported to the
+  server like the position of a book and waits in the outbox offline (table above).
 
 ## The system label "Blacklist" (administrators only)
 

@@ -43,6 +43,7 @@ import 'server/server_source.dart';
 import 'screens/about_screen.dart';
 import 'screens/library_screen.dart';
 import 'screens/playlists_screen.dart';
+import 'podcast_downloads.dart';
 import 'screens/podcasts_screen.dart';
 import 'screens/radio_screen.dart';
 import 'screens/search_screen.dart';
@@ -163,6 +164,8 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _player.onPlaylistPosition = _playlists.remember;
     PsalmAudioHandler.instance?.attach(_player);
     _player.offline = _offline;
+    // The podcast episodes on this device: the offline view lists them and the player reports their state to it.
+    if (!widget.demo) _player.podcastDownloads = PodcastDownloads.standard();
     _labels
       ..offline = _offline
       ..bookOf = _bookOf
@@ -408,6 +411,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _credentials.clear();
     // What waits and the cached library belong to this pairing, not to the next one.
     _offline.outbox.clear();
+    _player.podcastDownloads?.forgetList();
     _offline.setUnreachable(false);
     unawaited(_cache.clear());
     setState(() {
@@ -554,7 +558,7 @@ class _ShellState extends State<Shell> {
     const HomeScreen(),
     SearchScreen(api: widget.api),
     LibraryScreen(cd: _cd, api: widget.api),
-    OnlineOnly(child: PodcastsScreen(api: widget.api)),
+    PodcastsScreen(api: widget.api),
     OnlineOnly(child: RadioScreen(api: widget.api)),
     SettingsScreen(
       credentials: widget.credentials,

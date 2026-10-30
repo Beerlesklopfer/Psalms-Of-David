@@ -16,6 +16,7 @@ import '../server/credentials.dart';
 import '../server/device_pairing.dart';
 import 'connect_device.dart';
 import 'labels_ui.dart';
+import 'podcast_downloads_ui.dart';
 import '../widgets.dart';
 
 /// What this device is connected to, and the way to disconnect it.
@@ -90,6 +91,11 @@ class SettingsScreen extends StatelessWidget {
         // The offline mode: the switch, what waits for the server, what the server did not take.
         if (OfflineScope.maybeOf(context) case final offline? when creds != null) ...[
           OfflineCard(controller: offline, onSync: onSync == null ? null : () => onSync!()),
+          const SizedBox(height: 24),
+        ],
+        // The podcast episodes on this device: what they take, delete all, delete after listening, the largest download.
+        if (player?.podcastDownloads case final downloads?) ...[
+          PodcastDownloadsCard(downloads: downloads),
           const SizedBox(height: 24),
         ],
         // The own library: what this profile hid, and whether it is still listed.

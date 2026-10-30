@@ -427,10 +427,25 @@ class MiniPlayer extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Played and total time of the book.
-                  Text(
-                    p.track?.live == true ? l.radioLive : '${formatDuration(p.bookPosition)} / ${formatDuration(p.bookTotal)}',
-                    style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()]),
+                  // Played and total time: of the track, or (a tap switches) of the whole book (CD).
+                  Tooltip(
+                    message: p.showBookTime ? l.tooltipTimeBook : l.tooltipTimeTrack,
+                    child: GestureDetector(
+                      key: const ValueKey('time-scope'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: p.toggleTimeScope,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                        child: Text(
+                          p.track?.live == true
+                              ? l.radioLive
+                              : p.showBookTime
+                                  ? '${formatDuration(p.bookPosition)} / ${formatDuration(p.bookTotal)}'
+                                  : '${formatDuration(p.position)} / ${formatDuration(p.track!.length)}',
+                          style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()]),
+                        ),
+                      ),
+                    ),
                   ),
                   if (speedMenu)
                     PopupMenuButton<double>(
@@ -474,7 +489,7 @@ class MiniPlayer extends StatelessWidget {
                 ],
               ),
             ),
-            const SeekBar(compact: true, wholeBook: true),
+            SeekBar(compact: true, wholeBook: p.showBookTime),
           ],
         ),
       ),

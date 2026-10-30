@@ -82,7 +82,7 @@ class OfflineController extends ChangeNotifier {
     try {
       final result = await outbox.replay(api);
       // Only what the person did themselves is told; a position of the listening that the server does not know any more is of no interest.
-      final shown = [for (final r in result.rejected) if (r.change.kind != OutboxChange.progress) r];
+      final shown = [for (final r in result.rejected) if (r.change.kind != OutboxChange.progress && r.change.kind != OutboxChange.episode) r];
       if (shown.isNotEmpty) rejected = [...rejected, ...shown];
       return result;
     } finally {

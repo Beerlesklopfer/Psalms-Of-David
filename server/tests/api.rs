@@ -553,6 +553,27 @@ async fn podcasts_and_radio_are_the_accounts_and_a_childs_additions_wait_for_a_p
     assert_eq!(call(&a, "PUT", &format!("/api/v1/episodes/{ep}/state"), Some(&parent_phone), Some(json!({ "position_ms": -1 })), None).await.status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(call(&a, "PUT", &format!("/api/v1/episodes/{ep}/state"), Some(&kid), Some(json!({ "position_ms": 1 })), None).await.status, StatusCode::NOT_FOUND);
 
+    // A report that was sent late (`at`) never overwrites a newer state, and sending it twice changes nothing; a newer one wins.
+    let state = |position: i64, at: Option<i64>| {
+        let mut j = json!({ "position_ms": position, "finished": false });
+        if let Some(at) = at {
+            j["at"] = json!(at);
+        }
+        j
+    };
+    let path = format!("/api/v1/episodes/{ep}/state");
+    let put = |body: Value| call(&a, "PUT", &path, Some(&parent_phone), Some(body), None);
+    let read = || async {
+        let seen = call(&a, "GET", &format!("/api/v1/podcasts/{feed}/episodes"), Some(&parent_tablet), None, None).await.json();
+        seen["episodes"][0]["position_ms"].as_i64()
+    };
+    assert_eq!(put(state(5_000, Some(1_000))).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(read().await, Some(61_000), "an old report is taken but does not count");
+    assert_eq!(put(state(70_000, Some(4_000_000_000_000))).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(read().await, Some(70_000), "a time in the future counts as now: the newest state");
+    assert_eq!(put(state(70_000, Some(4_000_000_000_000))).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(read().await, Some(70_000), "twice is the same as once");
+
     // A parent gives the feed to the child at once; a child may not give anything, and a guest may not add.
     let r = call(&a, "POST", &format!("/api/v1/podcasts/{feed}/assign"), Some(&kid), Some(json!({ "profile_id": child })), None).await;
     assert_eq!(r.status, StatusCode::FORBIDDEN);

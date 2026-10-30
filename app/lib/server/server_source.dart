@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
-import 'package:crypto/crypto.dart';
-
 import '../m3u.dart';
 import '../models.dart';
+import '../podcast_downloads.dart';
 import 'api_client.dart';
 
 /// Where the passage of an audio Bible begins.
@@ -69,14 +67,20 @@ class ServerSource implements MediaSource {
 
   File _fileOf(Track track) => File('${cache.path}/${track.partId}.audio');
 
+  /// The file of a track: a part of the server by its id, an episode by its address (a radio stream has none).
+  File? _anyFileOf(Track track) {
+    final url = track.url;
+    if (url != null) return track.live ? null : episodeCacheFile(cache, url);
+    return track.partId == null ? null : _fileOf(track);
+  }
+
   @override
-  bool isDownloaded(Track track) => track.partId != null && _fileOf(track).existsSync();
+  bool isDownloaded(Track track) => _anyFileOf(track)?.existsSync() ?? false;
 
   @override
   Future<void> removeDownload(Track track) async {
-    if (track.partId == null) return;
-    final file = _fileOf(track);
-    if (file.existsSync()) await file.delete();
+    final file = _anyFileOf(track);
+    if (file != null && file.existsSync()) await file.delete();
   }
 
   @override
@@ -123,8 +127,12 @@ class ServerSource implements MediaSource {
     if (url != null) {
       // A radio stream is played from its address; an episode is fetched from the publisher once and kept.
       if (track.live) return url;
-      final file = File('${cache.path}/ep-${sha1.convert(utf8.encode(url))}.audio');
-      if (!file.existsSync()) await _downloadFrom(url, file);
+      final file = episodeCacheFile(cache, url);
+      if (!file.existsSync()) {
+        // An episode that is on the device (downloaded, or played before) is played from there, whether the server is reachable or not.
+        if (!isWebAddress(url)) throw HttpException('not an http or https address', uri: Uri.tryParse(url));
+        await _downloadFrom(url, file);
+      }
       return file.path;
     }
     final id = track.partId!;

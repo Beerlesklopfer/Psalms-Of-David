@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/l10n/app_localizations.dart';
 import 'package:psalm/player_controller.dart';
 import 'package:psalm/demo_data.dart';
+import 'package:psalm/format.dart';
 import 'package:psalm/widgets.dart';
 
 Widget _app(PlayerController p, Widget child) => PlayerScope(
@@ -68,7 +69,9 @@ void main() {
 
 void bookTests() {
   testWidgets('the bar of the mini player covers the whole book and jumps across tracks', (tester) async {
-    final p = PlayerController(demoBooks)..seek(Duration.zero);
+    final p = PlayerController(demoBooks)
+      ..seek(Duration.zero)
+      ..toggleTimeScope(); // the time of the whole CD (the default is the time of the track)
     final book = p.book!;
     await tester.pumpWidget(_app(p, const MiniPlayer()));
     expect(p.bookTotal, book.total);
@@ -84,6 +87,22 @@ void bookTests() {
     expect(p.trackIndex, greaterThan(0), reason: 'in a later track, not in the first');
     // The mini player shows the played and the total time.
     expect(find.textContaining(' / '), findsWidgets);
+    p.dispose();
+  });
+
+  testWidgets('a tap on the time of the mini player switches between the track and the whole CD', (tester) async {
+    final p = PlayerController(demoBooks)..seek(const Duration(seconds: 30));
+    await tester.pumpWidget(_app(p, const MiniPlayer()));
+    // The track is the default: its position and its length.
+    expect(p.showBookTime, isFalse);
+    expect(find.text('${formatDuration(p.position)} / ${formatDuration(p.track!.length)}'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('time-scope')));
+    await tester.pump();
+    expect(p.showBookTime, isTrue);
+    expect(find.text('${formatDuration(p.bookPosition)} / ${formatDuration(p.bookTotal)}'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('time-scope')));
+    await tester.pump();
+    expect(p.showBookTime, isFalse);
     p.dispose();
   });
 
