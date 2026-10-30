@@ -30,6 +30,13 @@
 				<string>INPlayMediaIntent</string>
 			</array>
 			<!-- Playing may be started from the lock screen. -->
+			<key>SupportedMediaCategories</key>
+			<array>
+				<string>INMediaCategoryMusic</string>
+				<string>INMediaCategoryAudiobooks</string>
+				<string>INMediaCategoryPodcasts</string>
+				<string>INMediaCategoryRadio</string>
+			</array>
 			<key>IntentsRestrictedWhileLocked</key>
 			<array/>
 		</dict>
