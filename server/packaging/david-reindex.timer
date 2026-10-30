@@ -1,0 +1,13 @@
+# Runs david-reindex.service every hour (and ten minutes after the machine started, and once after a time when it
+# was off). Change the interval with `systemctl edit david-reindex.timer`.
+[Unit]
+Description=David: read the import folders again and tidy up, every hour
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=1h
+RandomizedDelaySec=2min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

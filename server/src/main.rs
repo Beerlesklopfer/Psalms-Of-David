@@ -33,6 +33,8 @@ fn main() -> ExitCode {
         }
         Command::Init { data_dir, name } => init(&data_dir, &name),
         Command::ResetPin { data_dir, name } => reset_pin(&data_dir, &name),
+        Command::Reindex { data_dir } => reindex(&data_dir),
+        Command::Prune { data_dir, dry_run, force } => prune(&data_dir, dry_run, force),
         Command::RenewCert { data_dir, listen } => match david_server::tls::renew_certificate(&data_dir, listen) {
             Ok(m) => {
                 println!("New certificate in {}/tls, fingerprint {}", data_dir.display(), m.fingerprint);
@@ -109,6 +111,86 @@ fn reset_pin(data_dir: &std::path::Path, name: &str) -> u8 {
     match runtime.block_on(david_server::app::reset_pin(data_dir, name, &pin)) {
         Ok(()) => {
             println!("New PIN set for {name}; they are signed out everywhere and any lock is lifted.");
+            0
+        }
+        Err(e) => {
+            eprintln!("david: {e}");
+            1
+        }
+    }
+}
+
+/// The import, as the switch of the administration pages does it (the timer `david-reindex.timer` runs this).
+fn reindex(data_dir: &std::path::Path) -> u8 {
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("david: {e}");
+            return 1;
+        }
+    };
+    let db = data_dir.join("david.db");
+    if !db.is_file() {
+        eprintln!("david: there is no database in {}", data_dir.display());
+        return 1;
+    }
+    let result = runtime.block_on(async {
+        let store = david_server::Store::open(&db).await?;
+        store.run_import().await
+    });
+    match result {
+        Ok(r) => {
+            for p in &r.problems {
+                eprintln!("david: {p}");
+            }
+            println!(
+                "{} album(s) read: {} track(s) added, {} updated, {} removed; {} album(s) removed because their files are gone.",
+                r.books, r.tracks_added, r.tracks_updated, r.tracks_removed, r.books_removed
+            );
+            0
+        }
+        Err(david_server::Error::ImportLocked) => {
+            eprintln!("david: the import is locked: unlock it in the administration pages (Import)");
+            0
+        }
+        Err(e) => {
+            eprintln!("david: {e}");
+            1
+        }
+    }
+}
+
+/// Takes the albums out of the library whose files are gone (the timer `david-prune.timer` runs this).
+fn prune(data_dir: &std::path::Path, dry_run: bool, force: bool) -> u8 {
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("david: {e}");
+            return 1;
+        }
+    };
+    let db = data_dir.join("david.db");
+    if !db.is_file() {
+        eprintln!("david: there is no database in {}", data_dir.display());
+        return 1;
+    }
+    let result = runtime.block_on(async {
+        let store = david_server::Store::open(&db).await?;
+        store.prune_missing(dry_run, force).await
+    });
+    match result {
+        Ok(report) => {
+            let verb = if dry_run { "would be removed" } else { "removed" };
+            for g in &report.removed {
+                println!("{verb}: {} / {} ({})", g.author, g.title, g.folder);
+            }
+            for g in &report.held_back {
+                println!("left: {} / {} ({})", g.author, g.title, g.folder);
+            }
+            for p in &report.problems {
+                eprintln!("david: {p}");
+            }
+            println!("{} album(s) {verb}, {} left.", report.removed.len(), report.held_back.len());
             0
         }
         Err(e) => {

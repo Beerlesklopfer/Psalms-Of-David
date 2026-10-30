@@ -252,6 +252,16 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
   }
   final hiddenIds = {for (final i in items) if (i['hidden'] == true) i['id'] as int};
   final ownerOf = {for (final i in items) if (i['owner'] is String) i['id'] as int: i['owner'] as String};
+  final labelsOf = {
+    for (final i in items)
+      i['id'] as int: [for (final l in (i['labels'] as List? ?? const [])) l as String],
+  };
+  final trackLabelsOf = {
+    for (final i in items)
+      i['id'] as int: [for (final l in (i['track_labels'] as List? ?? const [])) l as String],
+  };
+  final canLabel = {for (final i in items) if (i['can_label'] == true) i['id'] as int};
+  final canShare = {for (final i in items) if (i['can_share'] == true) i['id'] as int};
   final details = await Future.wait(items.map((i) => api.item(i['id'] as int)));
   // The pictures come alongside; an item without one, or one that cannot be fetched, is drawn.
   final covers = await Future.wait(items.map((i) async {
@@ -282,6 +292,10 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
       lastPlayedAt: dateFromMs(d['last_played_at']),
       hidden: hiddenIds.contains(id),
       owner: ownerOf[id],
+      labels: labelsOf[id] ?? const [],
+      canLabel: canLabel.contains(id),
+      canShare: canShare.contains(id),
+      trackLabels: trackLabelsOf[id] ?? const [],
       tracks: [
         for (final p in parts)
           Track(
@@ -292,6 +306,7 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
             partId: p['id'] as int,
             plays: p['plays'] as int? ?? 0,
             lastPlayedAt: dateFromMs(p['last_played_at']),
+            labels: [for (final l in (p['labels'] as List? ?? const [])) l as String],
           ),
       ],
     ));

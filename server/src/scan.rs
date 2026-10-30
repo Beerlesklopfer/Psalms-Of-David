@@ -50,6 +50,8 @@ pub struct FoundBook {
     pub narrator: Option<String>,
     /// The genre as the tags of the first track write it (free text), `None` if they do not say.
     pub genre: Option<String>,
+    /// How many CDs the set has, as the tag of the first track says (`DiscTotal`); `None` if it does not say.
+    pub discs_total: Option<i64>,
     pub tracks: Vec<FoundTrack>,
 }
 
@@ -61,6 +63,8 @@ pub struct ScanReport {
     pub tracks_updated: usize,
     pub tracks_unchanged: usize,
     pub tracks_removed: usize,
+    /// Albums taken out of the library because their files are gone from the disk (`prune.rs`).
+    pub books_removed: usize,
     /// Books released by the rating rule "recommendation".
     pub books_released: usize,
     /// Albums that could not be imported (they are logged and skipped).
@@ -83,6 +87,7 @@ impl ScanReport {
         self.tracks_updated += other.tracks_updated;
         self.tracks_unchanged += other.tracks_unchanged;
         self.tracks_removed += other.tracks_removed;
+        self.books_removed += other.books_removed;
         self.books_released += other.books_released;
         self.books_failed += other.books_failed;
         self.problems.extend(other.problems.iter().cloned());
@@ -315,7 +320,7 @@ impl Store {
     /// move into the book `keep`, as disc folders `CD n`, and the other books go. What the family
     /// listened to stays: progress, favourites and releases of a CD move to the book that remains
     /// (unless the book has an entry of its own). All or nothing.
-    pub async fn merge_books(&self, keep: i64, discs: &[(i64, i64)], folder: &str, author: &str, title: &str) -> Result<()> {
+    pub async fn merge_books(&self, keep: i64, discs: &[(i64, i64)], folder: &str, author: &str, title: &str, kind: &str) -> Result<()> {
         let author_id = upsert_author(&self.db.writer, author).await?;
         let txn = self.db.writer.begin().await?;
         let run = |sql: &'static str, values: Vec<Value>| Statement::from_sql_and_values(DbBackend::Sqlite, sql, values);
@@ -336,8 +341,8 @@ impl Store {
             txn.execute_raw(run("DELETE FROM book WHERE id = ?", vec![id.into()])).await?;
         }
         txn.execute_raw(run(
-            "UPDATE book SET folder = ?, author_id = ?, title = ?, kind = 'audiobook' WHERE id = ?",
-            vec![folder.to_owned().into(), author_id.into(), title.to_owned().into(), keep.into()],
+            "UPDATE book SET folder = ?, author_id = ?, title = ?, kind = ? WHERE id = ?",
+            vec![folder.to_owned().into(), author_id.into(), title.to_owned().into(), kind.to_owned().into(), keep.into()],
         ))
         .await?;
         txn.commit().await?;
@@ -346,7 +351,7 @@ impl Store {
 }
 
 async fn upsert_book(conn: &impl ConnectionTrait, author_id: i64, b: &FoundBook) -> Result<i64> {
-    let values: [Value; 8] = [
+    let values: [Value; 9] = [
         b.narrator.clone().into(),
         b.title.clone().into(),
         author_id.into(),
@@ -355,13 +360,14 @@ async fn upsert_book(conn: &impl ConnectionTrait, author_id: i64, b: &FoundBook)
         b.recommended_age.into(),
         b.kind.clone().into(),
         b.genre.clone().into(),
+        b.discs_total.into(),
     ];
     let row = conn
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "INSERT INTO book (narrator, title, author_id, folder, added_at, recommended_age, kind, genre_tag) VALUES (?, ?, ?, ?, ?, ?, ?, ?) \
+            "INSERT INTO book (narrator, title, author_id, folder, added_at, recommended_age, kind, genre_tag, discs_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) \
              ON CONFLICT (folder) DO UPDATE SET title = excluded.title, author_id = excluded.author_id, kind = excluded.kind, narrator = excluded.narrator, \
-               genre_tag = excluded.genre_tag, \
+               genre_tag = excluded.genre_tag, discs_total = coalesce(excluded.discs_total, book.discs_total), \
                recommended_age = coalesce(excluded.recommended_age, book.recommended_age) \
              RETURNING id",
             values,
@@ -587,9 +593,10 @@ fn book_of(root: &Path, dir: &Path, parts: &[(PathBuf, Option<i64>)], kind: &str
     });
     let title = tag_title.unwrap_or_else(|| names.last().cloned().unwrap_or_default());
     let genre = first_tags.as_ref().and_then(|t| t.genre.clone());
+    let discs_total = first_tags.as_ref().and_then(|t| t.disc_total).map(i64::from).filter(|n| (1..=99).contains(n));
     // The composer tag is the narrator of an audiobook; on music it names the composer, who is nobody to listen to.
     let narrator = first_tags.and_then(|t| t.narrator).filter(|_| kind == "audiobook");
-    Ok(FoundBook { kind: kind.to_owned(), folder: names.join("/"), author, title, recommended_age, narrator, genre, tracks })
+    Ok(FoundBook { kind: kind.to_owned(), folder: names.join("/"), author, title, recommended_age, narrator, genre, discs_total, tracks })
 }
 
 /// The first audio file below `dir`, at most `depth` folders down; `None` if there is none (or it

@@ -880,5 +880,35 @@
   },
   "audiobooksOfNobody": "Other audiobooks",
   "groupExpand": "Expand",
-  "groupCollapse": "Collapse"
+  "groupCollapse": "Collapse",
+  "settingsWebsite": "Website of the server",
+  "settingsWebsiteHint": "Opens the start page of the server in the browser, with the way to the administration.",
+  "settingsWebsiteFailed": "The browser could not be opened.",
+  "shareTooltip": "Share",
+  "shareText": "{title} by {author}",
+  "@shareText": {"placeholders": {"title": {"type": "String"}, "author": {"type": "String"}}},
+  "labelsTitle": "Labels",
+  "labelsEdit": "Edit labels",
+  "labelsNone": "No labels yet.",
+  "trackLabelsEdit": "Labels of this title",
+  "labelsAdd": "Add",
+  "labelsNew": "New label",
+  "labelsSave": "Save",
+  "labelsFailed": "The labels could not be saved.",
+  "labelsBad": "That is not a usable label: 1 to 40 characters, no comma, semicolon or bar.",
+  "labelsFilterClear": "All labels",
+  "labelsRename": "Rename label",
+  "labelsDelete": "Delete label",
+  "labelsNoneInLibrary": "No labels in the library yet. The owner of a book sets them on its page.",
+  "labelsDeleteConfirm": "Take \"{name}\" off {count} books?",
+  "@labelsDeleteConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

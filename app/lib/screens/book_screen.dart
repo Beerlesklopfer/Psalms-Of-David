@@ -7,8 +7,10 @@ import '../l10n/app_localizations.dart';
 import '../models.dart';
 import '../player_controller.dart';
 import '../widgets.dart';
+import 'labels_ui.dart';
 import 'hide_menu.dart';
 import 'playlists_screen.dart';
+import 'share_button.dart';
 
 class BookScreen extends StatelessWidget {
   const BookScreen({super.key, required this.book});
@@ -31,6 +33,7 @@ class BookScreen extends StatelessWidget {
         actions: [
           // Books of the server only (an episode or a station is no item of the library).
           if (int.tryParse(book.id) != null) AddToPlaylistButton(bookId: int.parse(book.id)),
+          ShareButton(book: book),
           HideMenuButton(book: book),
         ],
       ),
@@ -64,6 +67,8 @@ class BookScreen extends StatelessWidget {
                   style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                 ),
               ],
+              // The labels (classic tagging): everybody who sees the book sees them; the owner and an administrator may change them.
+              LabelsLine(book: book),
               const SizedBox(height: 4),
               Text(
                 l.bookMeta(book.discs, book.tracks.length, formatTotal(l, book.total)),
@@ -169,10 +174,14 @@ class _TrackTile extends StatelessWidget {
             ? Icon(Icons.graphic_eq, color: cs.primary)
             : Text('${track.number}', textAlign: TextAlign.end),
       ),
-      title: Text(track.title),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [Text(track.title), TrackLabels(book: book, track: track)],
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          TrackLabelsButton(book: book, track: track),
           if (p.isTrackPlayed(book, index)) ...const [PlayedMark(), SizedBox(width: 8)],
           Text(formatDuration(track.length)),
           if (track.partId != null && int.tryParse(book.id) != null)

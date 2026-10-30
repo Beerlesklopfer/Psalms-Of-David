@@ -1394,4 +1394,70 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get groupCollapse => 'Zuklappen';
+
+  @override
+  String get settingsWebsite => 'Website des Servers';
+
+  @override
+  String get settingsWebsiteHint =>
+      'Öffnet die Startseite des Servers im Browser, mit dem Weg zur Verwaltung.';
+
+  @override
+  String get settingsWebsiteFailed =>
+      'Der Browser konnte nicht geöffnet werden.';
+
+  @override
+  String get shareTooltip => 'Teilen';
+
+  @override
+  String shareText(String title, String author) {
+    return '$title von $author';
+  }
+
+  @override
+  String get labelsTitle => 'Schlagwörter';
+
+  @override
+  String get labelsEdit => 'Schlagwörter bearbeiten';
+
+  @override
+  String get labelsNone => 'Noch keine Schlagwörter.';
+
+  @override
+  String get trackLabelsEdit => 'Schlagwörter dieses Titels';
+
+  @override
+  String get labelsAdd => 'Hinzufügen';
+
+  @override
+  String get labelsNew => 'Neues Schlagwort';
+
+  @override
+  String get labelsSave => 'Speichern';
+
+  @override
+  String get labelsFailed =>
+      'Die Schlagwörter konnten nicht gespeichert werden.';
+
+  @override
+  String get labelsBad =>
+      'Das ist kein brauchbares Schlagwort: 1 bis 40 Zeichen, kein Komma, Semikolon oder senkrechter Strich.';
+
+  @override
+  String get labelsFilterClear => 'Alle Schlagwörter';
+
+  @override
+  String get labelsRename => 'Schlagwort umbenennen';
+
+  @override
+  String get labelsDelete => 'Schlagwort löschen';
+
+  @override
+  String get labelsNoneInLibrary =>
+      'In der Bibliothek gibt es noch keine Schlagwörter. Der Besitzer eines Buchs setzt sie auf dessen Seite.';
+
+  @override
+  String labelsDeleteConfirm(String name, int count) {
+    return '\"$name\" bei $count Büchern entfernen?';
+  }
 }

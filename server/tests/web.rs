@@ -485,7 +485,7 @@ async fn books_are_released_with_an_age_rating_and_the_recommendation_is_guarded
     let id = id.to_string();
 
     let page = send(&a, get("/admin/books", &o)).await;
-    assert!(page.body.contains("Kinder der Freiheit") && page.body.contains("Not released"));
+    assert!(page.body.contains("Kinder der Freiheit"));
 
     // Below the recommendation needs the tick.
     let r = send(&a, post("/admin/rpc/book.release", &form(&[("id", &id), ("min_age", "6")]), &o)).await;
@@ -502,9 +502,9 @@ async fn books_are_released_with_an_age_rating_and_the_recommendation_is_guarded
     assert_eq!(send(&a, post("/admin/rpc/book.release", &form(&[("id", &id), ("min_age", "")]), &o)).await.status, StatusCode::UNPROCESSABLE_ENTITY);
 
     let r = send(&a, post("/admin/rpc/book.set_exempt", &form(&[("id", &id), ("exempt", "1")]), &o)).await;
-    assert!(r.body.contains("Learning content"));
+    assert!(r.body.contains("name=\"exempt\" value=\"1\" checked"));
     let r = send(&a, post("/admin/rpc/book.unrelease", &form(&[("id", &id)]), &o)).await;
-    assert!(r.body.contains("Not released"));
+    assert!(!r.body.contains("name=\"released\" value=\"1\" checked"));
 }
 
 #[tokio::test]
@@ -643,7 +643,7 @@ async fn an_import_from_the_page_shows_its_result_and_the_books_wait_for_release
 
     // The book is there, unreleased, with the recommendation of the medium as the starting value.
     let books = send(&a, get("/admin/books", &o)).await;
-    assert!(books.body.contains("Kinder der Freiheit") && books.body.contains("Not released"));
+    assert!(books.body.contains("Kinder der Freiheit") && !books.body.contains("name=\"released\" value=\"1\" checked"), "unreleased: the box of the release tab is not ticked");
     assert!(books.body.contains("value=\"14\""), "the release form starts with the recommendation");
 }
 
@@ -1581,13 +1581,130 @@ async fn the_audiobook_page_shows_cover_status_content_and_one_window_per_book()
     assert!(page.contains("<h1>Audiobooks</h1>") && page.contains("Audiobooks</span>"), "the page and the menu item are called Audiobooks");
     assert!(page.contains("<strong>Kinder der Freiheit</strong>") && page.contains("<small>Follett</small>"));
     assert!(page.contains(&format!("src=\"/admin/cover/{id}\"")), "a thumbnail from the cover route");
-    assert!(page.contains("Not released") && !page.contains("Released from"));
+    assert!(!page.contains("Not released") && !page.contains("<th>State</th>"), "the column State is gone: release is in the tab Release");
     assert!(page.contains("2 discs") && page.contains("3 tracks") && page.contains("0 h 12 min"), "three tracks of four minutes");
-    assert!(!page.contains("<th>Actions</th>") && page.contains("<span class=\"sr-only\">Actions</span>"), "the last column has no visible label, only one for screen readers");
-    assert!(page.contains(&format!("data-dialog=\"dlg-book-{id}\"")) && page.contains("form=\"book-form-") && page.contains("data-close>Cancel</button>"));
+    // One button, on the cover and on the title, opens one window; its tabs hold release, edit, tags and filing. There is no column of buttons.
+    assert!(!page.contains("<span class=\"sr-only\">Actions</span>") && !page.contains("class=\"row-actions\""), "no column of buttons");
+    assert!(page.contains(&format!("class=\"thumb book-open\" data-dialog=\"dlg-book-{id}\"")) && page.contains(&format!("class=\"book-open title-button\" data-dialog=\"dlg-book-{id}\"")), "the cover and the title open the window");
+    for tab in ["release", "edit", "tags", "filing"] {
+        assert!(page.contains(&format!("data-tab=\"{tab}\"")) && page.contains(&format!("data-panel=\"{tab}\"")), "tab {tab}: {page}");
+    }
+    assert!(page.contains("data-form=\"book-form-") && page.contains("data-form=\"book-edit-form-") && page.contains("data-form=\"tags-form-") && page.contains("data-close>Close</button>") && page.contains("data-save form=\"book-form-"), "one Save in the foot, for the form of the open tab");
     assert!(page.contains("class=\"form-error"), "errors are shown inside the window");
     let de = send(&a, get("/admin/books", &Opts { cookie: Some(&cookie), lang: Some("de"), ..Default::default() })).await.body;
-    assert!(de.contains("<h1>Hörbücher</h1>") && de.contains("Nicht freigegeben") && de.contains("2 CDs"));
+    assert!(de.contains("<h1>Hörbücher</h1>") && de.contains("2 CDs") && de.contains("Freigabe"));
+}
+
+#[tokio::test]
+async fn the_tab_filing_shows_the_place_and_the_metadata_of_the_database() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let hx = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, ..Default::default() };
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    a.store.import_books(vec![book("Follett", "Winter der Welt", &[2])]).await.unwrap();
+    let id = a.store.find_book("Follett/Winter der Welt").await.unwrap().unwrap().id;
+
+    // The window loads the tab when it is opened.
+    let page = send(&a, get("/admin/books", &plain)).await.body;
+    assert!(page.contains(&format!("hx-get=\"/admin/rpc/book.filing?id={id}\"")) && page.contains(&format!("id=\"filing-body-{id}\"")), "{page}");
+    let r = send(&a, get(&format!("/admin/rpc/book.filing?id={id}"), &hx)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    // The place in the library, the facts of the row, and the audit fields the triggers fill in (made, last changed, by whom).
+    for needle in ["Follett&#x2f;Winter der Welt", "Complete place on the disk", "not found", "Made in the database", "Last changed in the database", "Seen by the import", ">audiobook<", &format!("<dd>{id}</dd>")] {
+        assert!(r.body.contains(needle), "{needle}: {}", r.body);
+    }
+    // A date has the form of the other pages: year, month, day, hour, minute.
+    let stamps = r.body.matches("20").count();
+    assert!(stamps > 0 && r.body.contains("-"), "{}", r.body);
+    assert_eq!(send(&a, get("/admin/rpc/book.filing?id=99999", &hx)).await.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn each_tab_of_the_book_window_sends_only_its_own_part() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, ..Default::default() };
+    a.store.import_books(vec![book("A", "Story", &[1])]).await.unwrap();
+    let id = a.store.find_book("A/Story").await.unwrap().unwrap().id;
+    let sid = id.to_string();
+
+    // The release tab: released from 12, the recommendation set; the blurb of the other tab is not touched by it.
+    a.store.set_book_description(id, "Klappentext").await.unwrap();
+    let r = send(&a, post("/admin/rpc/book.update", &form(&[("id", &sid), ("section", "release"), ("released", "1"), ("min_age", "12"), ("recommended_age", "10")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let b = a.store.admin_book_row(id).await.unwrap().unwrap();
+    assert_eq!((b.released, b.min_age, b.recommended_age, b.description.as_deref()), (true, Some(12), Some(10), Some("Klappentext")));
+    // The edit tab sends no `released`: the release stays; only blurb and labels change.
+    let r = send(&a, post("/admin/rpc/book.update", &form(&[("id", &sid), ("section", "edit"), ("description", "Neu"), ("labels", "Gebet")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let b = a.store.admin_book_row(id).await.unwrap().unwrap();
+    assert_eq!((b.released, b.min_age, b.description.as_deref()), (true, Some(12), Some("Neu")), "an edit does not withdraw the release");
+    assert_eq!(a.store.labels_of(id).await.unwrap(), vec!["Gebet".to_owned()]);
+    // The recommendation can be taken away; one that is not a number is refused with the field named, and nothing changes.
+    send(&a, post("/admin/rpc/book.update", &form(&[("id", &sid), ("section", "release"), ("released", "1"), ("min_age", "12"), ("recommended_age", "")]), &o)).await;
+    assert_eq!(a.store.admin_book_row(id).await.unwrap().unwrap().recommended_age, None);
+    let bad = send(&a, post("/admin/rpc/book.update", &form(&[("id", &sid), ("section", "release"), ("released", "1"), ("min_age", "12"), ("recommended_age", "x")]), &o)).await;
+    assert_eq!((bad.status, bad.header("x-invalid-field")), (StatusCode::UNPROCESSABLE_ENTITY, Some("recommended_age")), "{}", bad.body);
+}
+
+#[tokio::test]
+async fn the_book_window_sets_labels_and_the_list_is_filtered_by_them() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, ..Default::default() };
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    for (author, title) in [("A", "Eins"), ("B", "Zwei"), ("C", "Drei")] {
+        a.store.import_books(vec![book(author, title, &[1])]).await.unwrap();
+    }
+    let (one_id, two_id) = (a.store.find_book("A/Eins").await.unwrap().unwrap().id, a.store.find_book("B/Zwei").await.unwrap().unwrap().id);
+    let (one, two) = (one_id.to_string(), two_id.to_string());
+
+    // The window has the field; the labels are written with commas; the row shows them.
+    let r = send(&a, post("/admin/rpc/book.update", &form(&[("id", &one), ("labels", "Gebet, Schule; gebet")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(r.body.contains("name=\"labels\"") && r.body.contains("<span class=\"badge label\">Gebet</span>") && r.body.contains("<span class=\"badge label\">Schule</span>"), "{}", r.body);
+    send(&a, post("/admin/rpc/book.update", &form(&[("id", &two), ("labels", "Schule")]), &o)).await;
+    // Absent leaves them alone; empty takes them all off.
+    send(&a, post("/admin/rpc/book.update", &form(&[("id", &two), ("min_age", "")]), &o)).await;
+    assert_eq!(a.store.labels_of(two_id).await.unwrap(), vec!["Schule".to_owned()]);
+    // A bad name is refused with the field named for the ring, and nothing changes.
+    let bad = send(&a, post("/admin/rpc/book.update", &form(&[("id", &one), ("labels", "ok, a|b")]), &o)).await;
+    assert_eq!((bad.status, bad.header("x-invalid-field")), (StatusCode::UNPROCESSABLE_ENTITY, Some("labels")), "{}", bad.body);
+    assert_eq!(a.store.labels_of(one_id).await.unwrap().len(), 2);
+
+    // The labels are a widget of chips (a script of its own, translated through attributes), the plain field stays without JavaScript.
+    let window = send(&a, get("/admin/books", &plain)).await.body;
+    assert!(window.contains("data-chips") && window.contains("data-add=\"Add\"") && window.contains("data-remove=\"Remove\"") && window.contains("/admin/static/chips.js"), "{window}");
+    let js = send(&a, get("/admin/static/chips.js", &plain)).await;
+    assert!(js.status == StatusCode::OK && js.body.contains("data-chips"));
+    // The entry suggests the labels in use: the ones that begin with the typed text first, the most used first; the list is fresh on every ask.
+    assert!(window.contains("data-suggest=\"/admin/rpc/label.suggest\""));
+    let all = send(&a, get("/admin/rpc/label.suggest", &plain)).await;
+    assert_eq!(all.status, StatusCode::OK);
+    let names: Vec<String> = serde_json::from_str(&all.body).unwrap();
+    assert_eq!(names, vec!["Schule".to_owned(), "Gebet".to_owned()], "Schule is on two books, Gebet on one: {}", all.body);
+    let typed: Vec<String> = serde_json::from_str(&send(&a, get("/admin/rpc/label.suggest?q=ge", &plain)).await.body).unwrap();
+    assert_eq!(typed, vec!["Gebet".to_owned()]);
+    let inside: Vec<String> = serde_json::from_str(&send(&a, get("/admin/rpc/label.suggest?q=ule", &plain)).await.body).unwrap();
+    assert_eq!(inside, vec!["Schule".to_owned()], "a label that holds the text is suggested too");
+    assert_ne!(send(&a, get("/admin/rpc/label.suggest", &Opts::default())).await.status, StatusCode::OK, "only for a signed-in administrator");
+    // The tab Tags of an album whose files are gone says so instead of staying empty.
+    let gone = send(&a, get(&format!("/admin/rpc/book.tags_form?id={one}"), &o)).await;
+    assert!(gone.status == StatusCode::OK && gone.body.contains("cannot be found"), "{}", gone.body);
+
+    // The list: a choice of the labels with their number, and the filter.
+    let page = send(&a, get("/admin/books", &plain)).await.body;
+    assert!(page.contains("name=\"label\"") && page.contains("Schule (2)") && page.contains("Gebet (1)"), "{page}");
+    let rows = |b: &str| b.matches("<tr id=\"book-").count();
+    assert_eq!(rows(&page), 3);
+    let schule = send(&a, get("/admin/books?label=schule", &plain)).await.body;
+    assert_eq!(rows(&schule), 2, "{schule}");
+    let gebet = send(&a, get("/admin/books?label=Gebet", &plain)).await.body;
+    assert_eq!(rows(&gebet), 1);
+    assert!(!gebet.contains("class=\"pager\""), "one entry, no pagination");
+    assert_eq!(rows(&send(&a, get("/admin/books?label=Gibt+es+nicht", &plain)).await.body), 0);
+    send(&a, post("/admin/rpc/book.update", &form(&[("id", &one), ("labels", "")]), &o)).await;
+    assert!(a.store.labels_of(one_id).await.unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -1601,7 +1718,7 @@ async fn the_book_window_releases_withdraws_and_marks_in_one_save() {
 
     let r = send(&a, post("/admin/rpc/book.update", &form(&[("id", &sid), ("released", "1"), ("min_age", "12"), ("exempt", "1")]), &o)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
-    assert!(r.body.starts_with(&format!("<tr id=\"book-{id}\"")) && r.body.contains("Released from 12") && r.body.contains("Learning content"));
+    assert!(r.body.starts_with(&format!("<tr id=\"book-{id}\"")) && r.body.contains("name=\"released\" value=\"1\" checked") && r.body.contains("name=\"exempt\" value=\"1\" checked"), "the tab Release shows what was saved: {}", r.body);
     let row = a.store.admin_book_row(id).await.unwrap().unwrap();
     assert_eq!((row.released, row.min_age, row.quota_exempt), (true, Some(12), true));
 
@@ -2804,27 +2921,21 @@ async fn a_copy_can_be_put_into_quarantine_from_the_list_and_the_last_copy_canno
 }
 
 #[tokio::test]
-async fn the_state_badge_of_a_book_is_a_button_that_releases_and_takes_back() {
+async fn the_release_and_withdrawal_of_a_book_still_work_by_their_own_procedures() {
     let a = app().await;
     let (cookie, csrf) = sign_in(&a).await;
     let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
-    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
     let mut known = book("Follett", "Winter der Welt", &[1]);
     known.recommended_age = Some(12);
-    a.store.import_books(vec![known, book("Tolkien", "Der Hobbit", &[1])]).await.unwrap();
-    let rows = a.store.admin_book_rows().await.unwrap();
-    let (winter, hobbit) = (rows.iter().find(|r| r.title == "Winter der Welt").unwrap().id, rows.iter().find(|r| r.title == "Der Hobbit").unwrap().id);
-
-    let page = send(&a, get("/admin/books", &plain)).await.body;
-    assert!(page.contains("action=\"/admin/rpc/book.release\"") && page.contains("name=\"min_age\" value=\"12\""), "a known age: one click releases");
-    assert!(page.contains(&format!("data-dialog=\"dlg-book-{hobbit}\" title=")), "no age known: the button opens the window");
+    a.store.import_books(vec![known]).await.unwrap();
+    let winter = a.store.admin_book_rows().await.unwrap().iter().find(|r| r.title == "Winter der Welt").unwrap().id;
 
     let r = send(&a, post("/admin/rpc/book.release", &form(&[("id", &winter.to_string()), ("min_age", "12")]), &o)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
-    assert!(r.body.contains("action=\"/admin/rpc/book.unrelease\"") && r.body.contains("aria-pressed=\"true\""), "{}", r.body);
+    assert!(r.body.contains("name=\"released\" value=\"1\" checked"), "{}", r.body);
     assert!(a.store.admin_book_row(winter).await.unwrap().unwrap().released);
     let r = send(&a, post("/admin/rpc/book.unrelease", &form(&[("id", &winter.to_string())]), &o)).await;
-    assert!(r.body.contains("aria-pressed=\"false\"") && !a.store.admin_book_row(winter).await.unwrap().unwrap().released, "{}", r.body);
+    assert!(!r.body.contains("name=\"released\" value=\"1\" checked") && !a.store.admin_book_row(winter).await.unwrap().unwrap().released, "{}", r.body);
 }
 
 #[tokio::test]
@@ -3826,4 +3937,51 @@ async fn the_media_lists_come_in_pages_with_links_a_size_and_a_search_over_all_p
     assert!(send(&a, get("/admin/books", &oj)).await.header("set-cookie").is_none(), "nothing is set when nothing was asked");
     // The size is a setting of the pages.
     assert!(send(&a, get("/admin/settings?tab=values", &o)).await.body.contains("name=\"list_page_size\""));
+}
+
+#[tokio::test]
+async fn the_book_window_sets_the_labels_of_single_titles_with_its_save_and_the_filter_finds_the_book() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, ..Default::default() };
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    a.store.import_books(vec![book("A", "Eins", &[3]), book("B", "Zwei", &[1])]).await.unwrap();
+    let id = a.store.find_book("A/Eins").await.unwrap().unwrap().id;
+    let other = a.store.find_book("B/Zwei").await.unwrap().unwrap().id;
+    let tracks: Vec<i64> = a.store.tracks_of(id).await.unwrap().iter().map(|t| t.id).collect();
+    let foreign = a.store.tracks_of(other).await.unwrap()[0].id;
+    let sid = id.to_string();
+
+    // The window has the section; it is loaded when it is opened: one entry of labels for each title, the field that the script fills.
+    let page = send(&a, get("/admin/books", &plain)).await.body;
+    assert!(page.contains("/admin/rpc/book.track_labels?id="), "{page}");
+    let frag = send(&a, get(&format!("/admin/rpc/book.track_labels?id={id}"), &plain)).await;
+    assert_eq!(frag.status, StatusCode::OK);
+    assert!(frag.body.contains("name=\"track_labels\"") && frag.body.matches("data-track=\"").count() == 3 && frag.body.contains(&format!("data-track=\"{}\"", tracks[1])), "{}", frag.body);
+    assert_eq!(send(&a, get("/admin/rpc/book.track_labels?id=999999", &plain)).await.status, StatusCode::NOT_FOUND);
+
+    // The save writes the titles that are listed (one line `id=labels`), and the others stay; the list of the titles shows them.
+    let lines = format!("{}=Gebet, Stille; gebet\n{}=\n", tracks[0], tracks[1]);
+    let r = send(&a, post("/admin/rpc/book.update", &form(&[("id", &sid), ("section", "edit"), ("track_labels", &lines)]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let own = a.store.track_labels().await.unwrap();
+    assert_eq!((own.get(&tracks[0]).cloned(), own.get(&tracks[1]).cloned(), own.get(&tracks[2]).cloned()), (Some(vec!["Gebet".to_owned(), "Stille".to_owned()]), None, None));
+    let list = send(&a, get(&format!("/admin/rpc/book.tracks?id={id}"), &plain)).await.body;
+    assert!(list.contains("<span class=\"badge label\">Gebet</span>"), "{list}");
+    let frag = send(&a, get(&format!("/admin/rpc/book.track_labels?id={id}"), &plain)).await.body;
+    assert!(frag.contains("value=\"Gebet, Stille\""), "{frag}");
+
+    // Nothing changes for a title of another book, a line that is no list, or a name that is not usable; a form without the field leaves them alone.
+    for bad in [format!("{foreign}=x"), "kein gleichheitszeichen".to_owned(), format!("{}=ok, a|b", tracks[2]), format!("x=y")] {
+        let r = send(&a, post("/admin/rpc/book.update", &form(&[("id", &sid), ("section", "edit"), ("track_labels", &bad)]), &o)).await;
+        assert!(r.status == StatusCode::UNPROCESSABLE_ENTITY || r.status == StatusCode::BAD_REQUEST, "{bad}: {} {}", r.status, r.body);
+    }
+    send(&a, post("/admin/rpc/book.update", &form(&[("id", &sid), ("section", "edit"), ("description", "Neu")]), &o)).await;
+    assert_eq!(a.store.track_labels().await.unwrap().get(&tracks[0]).map(Vec::len), Some(2));
+
+    // The filter of the list finds the album by the labels of its titles, and counts it once.
+    let page = send(&a, get("/admin/books", &plain)).await.body;
+    assert!(page.contains("Gebet (1)") && page.contains("Stille (1)"), "{page}");
+    let rows = |b: &str| b.matches("<tr id=\"book-").count();
+    assert_eq!(rows(&send(&a, get("/admin/books?label=stille", &plain)).await.body), 1);
 }

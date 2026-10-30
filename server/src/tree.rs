@@ -104,13 +104,42 @@ pub fn build(rows: Vec<AdminBookRow>, mode: &str) -> Vec<Item> {
     items
 }
 
+/// One page of the arranged list: the books `from..from + take` in the order of the tree, each with the nodes above it. The nodes keep the number of
+/// ALL books below them, so a group that goes over two pages says the same on both.
+pub fn page(items: Vec<Item>, from: usize, take: usize) -> Vec<Item> {
+    let wanted = |n: usize| n >= from && n < from + take;
+    // The ids of the nodes above the books of the page.
+    let mut open: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut n = 0;
+    for item in &items {
+        if let Item::Book { parents, .. } = item {
+            if wanted(n) {
+                open.extend(parents.split(' ').filter(|p| !p.is_empty()).map(str::to_owned));
+            }
+            n += 1;
+        }
+    }
+    let mut n = 0;
+    items
+        .into_iter()
+        .filter(|item| match item {
+            Item::Node { id, .. } => open.contains(&format!("n{id}")),
+            Item::Book { .. } => {
+                n += 1;
+                wanted(n - 1)
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn row(id: i64, folder: &str, title: &str, author: &str) -> AdminBookRow {
+    pub(super) fn row(id: i64, folder: &str, title: &str, author: &str) -> AdminBookRow {
         AdminBookRow {
             id,
+            discs_total: None,
             kind: "music".into(),
             folder: folder.into(),
             title: title.into(),
@@ -172,5 +201,23 @@ mod tests {
         let items = build(vec![row(1, "A/B/C/D", "D", "x")], "folder");
         let Item::Book { parents, depth, .. } = items.last().unwrap() else { panic!() };
         assert_eq!((parents.as_str(), *depth), ("n0 n1 n2", 3));
+    }
+}
+
+#[cfg(test)]
+mod page_tests {
+    use super::*;
+
+    #[test]
+    fn a_group_over_two_pages_keeps_its_full_count() {
+        let rows: Vec<AdminBookRow> = (0..5).map(|i| super::tests::row(i, &format!("A/Album {i}"), &format!("Album {i}"), "x")).collect();
+        let all = build(rows, "folder");
+        let first = page(all.clone(), 0, 3);
+        let second = page(all, 3, 3);
+        let count = |items: &[Item]| items.iter().find_map(|i| if let Item::Node { books, .. } = i { Some(*books) } else { None });
+        assert_eq!(count(&first), Some(5));
+        assert_eq!(count(&second), Some(5));
+        assert_eq!(first.iter().filter(|i| matches!(i, Item::Book { .. })).count(), 3);
+        assert_eq!(second.iter().filter(|i| matches!(i, Item::Book { .. })).count(), 2);
     }
 }

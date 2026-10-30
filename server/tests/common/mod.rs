@@ -37,6 +37,7 @@ pub fn book(author: &str, title: &str, per_disc: &[usize]) -> FoundBook {
         recommended_age: None,
         narrator: None,
         genre: None,
+        discs_total: None,
         tracks,
     }
 }

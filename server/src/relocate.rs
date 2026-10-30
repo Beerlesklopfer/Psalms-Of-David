@@ -40,6 +40,8 @@ pub struct Plan {
     pub keep: i64,
     /// Why it cannot be moved; the album stays where it is.
     pub problem: Option<String>,
+    /// The kind the book has afterwards when CDs are put together by hand (`merge_albums`); `None`: an audiobook, as `move_to_audiobooks` makes it.
+    pub kind: Option<String>,
 }
 
 /// A name that is safe as one folder name.
@@ -171,6 +173,7 @@ pub async fn plan(store: &Store, library: Option<&Path>, ids: Option<&[i64]>) ->
                 disc: together.then_some(disc).flatten(),
                 keep: if together { keep } else { c.id },
                 problem: None,
+                kind: None,
             };
             match (c.author.as_deref().and_then(folder_name), folder_name(&base)) {
                 (Some(a), Some(t)) => {
@@ -203,6 +206,89 @@ pub async fn plan(store: &Store, library: Option<&Path>, ids: Option<&[i64]>) ->
         plans.extend(group_plans);
     }
     plans.sort_by_key(|p| p.id);
+    Ok(plans)
+}
+
+/// The title of the first CD without the number at its end (`Die schönsten Heimatlieder 1` -> `Die schönsten Heimatlieder`).
+fn without_number(title: &str) -> String {
+    let t = title.trim();
+    let stripped = t.trim_end_matches(|c: char| c.is_ascii_digit()).trim_end();
+    if stripped.is_empty() || stripped.len() == t.len() { t.to_owned() } else { stripped.trim_end_matches(['-', ',', ':']).trim_end().to_owned() }
+}
+
+/// Puts albums together as the CDs of one work, **with the CD numbers the caller gives** (project owner, 2026-10-30: "we cannot set a CD number by hand").
+/// `discs` has one number for every album of `ids`, else they are 1, 2, 3 ... in the order of `ids`. The book of the first album remains (its id, its
+/// progress, its owner); the others go into it. The folders move to `<folder above the first album>/<Title>/CD n`. Author and title are the ones
+/// given, else the author of the first album and its title without the number. Nothing moves before `execute`.
+pub async fn plan_merge(store: &Store, library: Option<&Path>, ids: &[i64], discs: Option<&[i64]>, author: Option<&str>, title: Option<&str>) -> Result<Vec<Plan>, String> {
+    if ids.len() < 2 {
+        return Err("a work of several CDs needs at least two albums".into());
+    }
+    let mut sorted = ids.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    if sorted.len() != ids.len() {
+        return Err("an album is named twice".into());
+    }
+    if let Some(d) = discs {
+        let mut nums = d.to_vec();
+        nums.sort_unstable();
+        nums.dedup();
+        if d.len() != ids.len() || nums.len() != d.len() || d.iter().any(|n| !(1..=99).contains(n)) {
+            return Err("discs holds one number from 1 to 99 for every album, each number once".into());
+        }
+    }
+    let rows = store.admin_book_rows().await.map_err(|e| e.to_string())?;
+    let mut picked = Vec::new();
+    for id in ids {
+        picked.push(rows.iter().find(|r| r.id == *id).ok_or_else(|| format!("no album with the id {id}"))?);
+    }
+    let kind = picked[0].kind.clone();
+    if picked.iter().any(|r| r.kind != kind) {
+        return Err("the albums are of different kinds (audiobook and music)".into());
+    }
+    let state = store.import_state().await.map_err(|e| e.to_string())?;
+    let roots: Vec<PathBuf> = (if kind == "music" { &state.music_roots } else { &state.roots }).iter().filter_map(|r| std::fs::canonicalize(r).ok()).collect();
+    let author = author.map(str::trim).filter(|a| !a.is_empty()).map(str::to_owned).unwrap_or_else(|| picked[0].author.clone());
+    let title = title.map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned).unwrap_or_else(|| without_number(&picked[0].title));
+    let title_dir = folder_name(&title).ok_or("the title gives no usable folder name")?;
+    let first_folder = store.book_folder(ids[0]).await.map_err(|e| e.to_string())?.ok_or("no such album")?;
+    let parent_rel = first_folder.rsplit_once('/').map(|(p, _)| p.to_owned()).unwrap_or_default();
+    let new_folder = if parent_rel.is_empty() { title_dir.clone() } else { format!("{parent_rel}/{title_dir}") };
+    let mut plans: Vec<Plan> = Vec::new();
+    let mut base: Option<PathBuf> = None;
+    for (i, id) in ids.iter().enumerate() {
+        let Some((dir, _, flat)) = book_dir(store, library, *id).await else {
+            return Err(format!("the files of album {id} cannot be found on the disk"));
+        };
+        let base_dir = base.get_or_insert_with(|| dir.parent().map(|p| p.join(&title_dir)).unwrap_or_else(|| PathBuf::from(&title_dir))).clone();
+        let disc = discs.map_or(i as i64 + 1, |d| d[i]);
+        let mut plan = Plan {
+            id: *id,
+            genre: String::new(),
+            author: author.clone(),
+            title: title.clone(),
+            from: dir.clone(),
+            to: base_dir.join(format!("CD {disc}")),
+            new_folder: new_folder.clone(),
+            disc: Some(disc),
+            keep: ids[0],
+            problem: None,
+            kind: Some(kind.clone()),
+        };
+        if !flat {
+            plan.problem = Some("the album has folders or discs of its own, so it cannot be put together with other CDs".into());
+        } else {
+            plan.problem = blocked(&dir, &plan.to, &roots, &plans);
+        }
+        plans.push(plan);
+    }
+    // One blocked CD blocks the whole work: it is put together complete or not at all.
+    if let Some(why) = plans.iter().find_map(|p| p.problem.clone()) {
+        for p in plans.iter_mut().filter(|p| p.problem.is_none()) {
+            p.problem = Some(format!("another CD of this work is blocked: {why}"));
+        }
+    }
     Ok(plans)
 }
 
@@ -257,7 +343,7 @@ pub async fn execute(store: &Store, members: &[&Plan]) -> Result<(), String> {
         store.relocate_book(first.id, &first.new_folder, &first.author, &first.title).await
     } else {
         let discs: Vec<(i64, i64)> = members.iter().map(|p| (p.id, p.disc.unwrap_or(1))).collect();
-        store.merge_books(first.keep, &discs, &first.new_folder, &first.author, &first.title).await
+        store.merge_books(first.keep, &discs, &first.new_folder, &first.author, &first.title, first.kind.as_deref().unwrap_or("audiobook")).await
     };
     if let Err(e) = outcome {
         undo(&moved).await;

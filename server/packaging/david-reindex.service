@@ -1,0 +1,24 @@
+# The import, as the switch "Import now" of the administration pages does it: reads the import folders again and
+# takes the albums whose files are gone out of the library (the scan alone only adds). Started by
+# david-reindex.timer; by hand: systemctl start david-reindex, or `david reindex`.
+# The import has to be unlocked (administration pages, Import). The tidying stops by itself when an import folder
+# is missing or empty (a disk that is not mounted) or when more than a third of the albums of a kind would go;
+# `david prune --dry-run` shows what would be removed, `david prune --force` lifts the stop.
+[Unit]
+Description=David: read the import folders again and remove albums whose files are gone
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=david
+Group=david
+ExecStart=/usr/bin/david reindex
+Environment=DAVID_DATA_DIR=/var/lib/david
+StateDirectory=david
+# Tags are written into the library by the server, not here; this only reads the folders and the database.
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+NoNewPrivileges=yes
+Nice=10
+IOSchedulingClass=idle

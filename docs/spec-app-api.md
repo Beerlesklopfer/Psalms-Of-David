@@ -21,7 +21,10 @@ Status: **built and tested** for audiobooks (`server/src/api.rs`, `server/tests/
 | `POST /api/v1/pair` `{code, device_name, public_key}` | `{token, device_id, shared, user:{id,name,role}}`. `public_key` is a WireGuard key; until the tunnel exists the app sends a random one. |
 | `GET /api/v1/me`, `POST /api/v1/logout` | the user; `204` |
 | `GET /api/v1/items` | `[{id, kind, title, creator, min_age, recommended_age, part_count, discs, duration_ms}]` |
-| `GET /api/v1/items/{id}` | the same plus `parts:[{id,disc,number,title,duration_ms}]`, `progress`, `access:{state, next_start}` |
+| `GET /api/v1/items/{id}` | the same plus `parts:[{id,disc,number,title,duration_ms,labels}]` (`labels`: the labels of the title of its own; the ones of the album come with the item), `progress`, `access:{state, next_start}` |
+| `GET /api/v1/labels` | `{labels:[{name, books}], can_manage}`: the labels with the number of the books (of those the asker sees) that carry each; a book counts once, whether the book or one of its titles carries the label |
+| `PUT /api/v1/items/{id}/labels` `{labels:[..]}` | all labels of a book at once (the owner, a member, and an administrator) -> `{labels}`; `422 invalid_label` |
+| `PUT /api/v1/items/{id}/parts/{part}/labels` `{labels:[..]}` | **labels of a single title** (schema 0046), all of its own at once (same permission as for the book: its owner and an administrator; `part` is the id of the part as the item lists it, `404` for a part of another item); at most 10 of its own, `422 invalid_label` otherwise -> `{labels}` |
 | `GET /api/v1/continue` | `[{item_id, kind, title, creator, part_id, position_ms, updated_at}]` |
 | `GET /api/v1/parts/{id}/stream` | the file (`200`, or `206` for a range) |
 | `GET /api/v1/bible/resolve?q=` | passages of an audio Bible: part and position to start at; see `spec-bible.md` |
@@ -72,3 +75,13 @@ a download is something the user asked for and must not be emptied by a cleaner.
 `~/.config/psalm` and `~/.cache/psalm/parts` there at the first start. `PSALM_DATA_DIR` (and `PSALM_CONFIG_DIR`,
 `PSALM_CACHE_DIR` for single parts) override it for development and tests. Not done: on iOS the folder is part of the
 iCloud backup unless excluded (needs a small native call), and nothing was run on macOS, Windows, Android or iOS.
+
+## Labels of single titles (2026-10-30)
+
+Project owner: "the tagging of the titles in the catalog is missing". A label (classic tagging, schema 0044) hangs on a book; since schema 0046 it can hang on
+a **single title** (track) as well (`track_label`, dropped with the track or the label). The labels of a title are its own plus the ones of its album; only the
+own ones are stored per title (at most 10), so a change of the album's labels reaches all its titles. `GET /api/v1/items` has `track_labels` for each item: the labels
+its titles carry, without doubles. **The lists filter and search by `labels` and `track_labels` together** (the app: `Book.allLabels`), so an album with one
+hymn about prayer is found under "Prayer"; the app shows the labels of a title under its name and, for the owner and an administrator, a button that opens the editor
+(`LabelApi.setTrackLabels`). A label that only titles carry stays in the list; renaming merges the titles as well. The administrators' MCP tool `set_track_labels`
+(dry run by default) sets them for the titles of an album; `get_album` is not changed, `list_labels` counts `books` and `tracks`.

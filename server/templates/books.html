@@ -13,9 +13,16 @@
   <input type="search" id="book-search" name="q" value="{{ q }}" list="book-words" autocomplete="off" spellcheck="false" maxlength="100"
          placeholder="{{ t('books.search_hint') }}" title="{{ t('books.search_syntax') }}" aria-label="{{ t('books.search') }}">
   <datalist id="book-words">{% for w in words %}<option value="{{ w }}">{% endfor %}</datalist>
-  <label class="check-inline"><input type="checkbox" name="problems" value="1"{% if only_problems %} checked{% endif %}> <span class="problem-mark small" aria-hidden="true">!</span> {{ t("books.only_problems") }}{% if problem_count is defined %} ({{ problem_count }}){% endif %}</label>
   <button type="submit" class="btn">{{ t("books.search") }}</button>
   {% if searched %}<a class="btn outline" href="/admin/{{ 'music' if kind == 'music' else 'books' }}">{{ t("ui.cancel") }}</a>{% endif %}
+  <div class="search-filters">
+  <label class="check-inline{% if problem_count is defined and problem_count == 0 and not only_problems %} disabled{% endif %}"><input type="checkbox" name="problems" value="1"{% if only_problems %} checked{% endif %}{% if problem_count is defined and problem_count == 0 and not only_problems %} disabled{% endif %}> <span class="problem-mark small" aria-hidden="true">!</span> {{ t("books.only_problems") }}{% if problem_count is defined %} ({{ problem_count }}){% endif %}</label>
+  <input type="hidden" name="label" value="{{ label }}">
+  <details class="label-pick"><summary>{{ t("books.filter_label") }}{% if label %}: {{ label }}{% endif %}</summary>
+    <div class="label-pick-list">{% for l in label_names %}<label><input type="checkbox" data-label="{{ l.name }}"{% if l.name|lower in label_selected %} checked{% endif %}> {{ l.name }} ({{ l.books }})</label>{% endfor %}</div>
+  </details>
+  </div>
+  <datalist id="label-words">{% for l in label_names %}<option value="{{ l.name }}">{% endfor %}</datalist>
 </form>
 <div id="media-results">
 {% include "fragments/pager.html" %}

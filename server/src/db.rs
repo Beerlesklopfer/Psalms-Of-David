@@ -54,6 +54,9 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0041_profile_folder.sql"),
     include_str!("../migrations/0042_list_page_size.sql"),
     include_str!("../migrations/0043_profile_folder_ebook.sql"),
+    include_str!("../migrations/0044_labels.sql"),
+    include_str!("../migrations/0045_book_discs_total.sql"),
+    include_str!("../migrations/0046_track_label.sql"),
 ];
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);

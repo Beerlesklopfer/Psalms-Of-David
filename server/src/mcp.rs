@@ -189,6 +189,31 @@ fn tool_list() -> Value {
             "inputSchema": { "type": "object", "properties": { "id": id, "age": { "type": ["integer", "null"], "minimum": 0, "maximum": 21 } }, "required": ["id", "age"] }
         },
         {
+            "name": "merge_albums",
+            "description": "Puts albums together as the CDs of one work. The CD number of every album is what its tag `DiscNumber` says (`TPOS`, `2/4`); `discs` overrides it with numbers you give (one for every album of `ids`), and an album without a number counts by its place in `ids`. The number is then written into the tag of every file, so it stays. `discs_total` (else `DiscTotal` of the tags) says how many CDs the work has, also written into the files: the list then shows that a CD is missing. The first album remains (its id, listening progress, owner); the others go into it; the folders become `<folder above the first album>/<Title>/CD n`. Title and author default to the first album's, the title without the number at its end. Without dry_run=false it only lists what would happen (the default). Needs a token that may write.",
+            "inputSchema": { "type": "object", "properties": { "ids": { "type": "array", "items": { "type": "integer" }, "description": "The albums, first CD first" }, "discs": { "type": "array", "items": { "type": "integer" }, "description": "The CD number of each album of ids" }, "discs_total": { "type": "integer", "description": "How many CDs the work has" }, "title": { "type": "string" }, "author": { "type": "string" }, "dry_run": { "type": "boolean", "description": "true by default; false moves the folders and writes the tags" } }, "required": ["ids"] }
+        },
+        {
+            "name": "set_discs_total",
+            "description": "Says how many CDs a work has (1 to 99), or null for not said. The number is written into the tag `DiscTotal` of every file of the album and kept in the library; the list shows a red mark when the library holds fewer CDs than that. Needs a token that may write.",
+            "inputSchema": { "type": "object", "properties": { "id": id, "total": { "type": ["integer", "null"], "description": "How many CDs, or null" } }, "required": ["id", "total"] }
+        },
+        {
+            "name": "list_labels",
+            "description": "The labels (classic tagging: Gebet, Schule, Gemeinsame Urlaube ...) with the number of albums (`books`) and of single titles (`tracks`, see set_track_labels) that carry each. With ids it lists the labels of those albums instead. A label hangs on the album and everybody who sees the album sees it; the owner of an album sets its labels, an administrator may override. Labels are not the ID3 tags of the files (see get_tags).",
+            "inputSchema": { "type": "object", "properties": { "ids": { "type": "array", "items": { "type": "integer" }, "description": "Only the labels of these albums" } } }
+        },
+        {
+            "name": "set_labels",
+            "description": "Gives albums labels (classic tagging: Gebet, Schule, Gemeinsame Urlaube ...), as an administrator overriding the owner. `add` puts labels on every album of `ids`, `remove` takes them off, `set` replaces all labels of each album (an empty list takes them all off); give `set` or `add`/`remove`, not both. Names: 1 to 40 characters, no comma, semicolon or bar; case does not matter; a label that no album carries any more goes. Labels are kept in the library, the files are not touched. Without dry_run=false it only reports what would change (the default). Needs a token that may write.",
+            "inputSchema": { "type": "object", "properties": { "ids": { "type": "array", "items": { "type": "integer" } }, "add": { "type": "array", "items": { "type": "string" } }, "remove": { "type": "array", "items": { "type": "string" } }, "set": { "type": "array", "items": { "type": "string" } }, "dry_run": { "type": "boolean", "description": "true by default; false writes the labels" } }, "required": ["ids"] }
+        },
+        {
+            "name": "set_track_labels",
+            "description": "Gives single titles (tracks) of an album labels of their own (classic tagging, like set_labels, but for the title: a hymn of an album about prayer). The labels of the album stay and count for its titles as well. `tracks` are track ids of the album `id` (see get_album); without them all titles of the album. `add` puts labels on every title, `remove` takes them off, `set` replaces the own labels of each title (an empty list takes them all off); give `set` or `add`/`remove`, not both. Names as for set_labels; at most 10 own labels per title. Without dry_run=false it only reports what would change (the default). Needs a token that may write.",
+            "inputSchema": { "type": "object", "properties": { "id": id, "tracks": { "type": "array", "items": { "type": "integer" } }, "add": { "type": "array", "items": { "type": "string" } }, "remove": { "type": "array", "items": { "type": "string" } }, "set": { "type": "array", "items": { "type": "string" } }, "dry_run": { "type": "boolean", "description": "true by default; false writes the labels" } }, "required": ["id"] }
+        },
+        {
             "name": "set_owner",
             "description": "Says whom an album belongs to: a family member by nickname (\"Music of Anna\" in the apps); null removes the owner. The owner is not the release: who may see an album is set by release_albums, the age and the visibility boxes of the pages. Needs a token that may write.",
             "inputSchema": { "type": "object", "properties": { "id": id, "owner": { "type": ["string", "null"], "description": "The nickname of a profile (see check_access or the pages), or null" } }, "required": ["id", "owner"] }
@@ -367,7 +392,7 @@ async fn prompt_of(s: &McpState) -> String {
 }
 
 /// The tools that change files; a token that may only read cannot use them.
-const WRITING_TOOLS: [&str; 21] = ["move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
+const WRITING_TOOLS: [&str; 25] = ["merge_albums", "set_discs_total", "set_labels", "set_track_labels", "move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
 
 /// A sample call of a tool, for `help_for`.
 fn example_of(tool: &str) -> Value {
@@ -386,6 +411,11 @@ fn example_of(tool: &str) -> Value {
         "set_recommended_age" => json!({ "id": 12, "age": 8 }),
         "release_albums" => json!({ "kind": "audiobook", "dry_run": true }),
         "set_owner" => json!({ "id": 12, "owner": "Anna" }),
+        "list_labels" => json!({}),
+        "merge_albums" => json!({ "ids": [143, 144, 145], "discs_total": 4, "dry_run": true }),
+        "set_discs_total" => json!({ "id": 143, "total": 4 }),
+        "set_labels" => json!({ "ids": [12, 13], "add": ["Schule"], "dry_run": true }),
+        "set_track_labels" => json!({ "id": 12, "tracks": [301, 302], "add": ["Gebet"], "dry_run": true }),
         "assign_owners" => json!({ "kind": "music", "dry_run": true }),
         "ignore" => json!({ "id": 152, "scope": "work", "what": "duplicate", "note": "both copies are wanted: the school set and the family set" }),
         "unignore" => json!({ "rule": 3 }),
@@ -554,7 +584,8 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
         "get_album" => {
             let id = int("id").ok_or("id is required")?;
             let album = Album::load(s, id).await?;
-            let tracks: Vec<Value> = album.tracks.iter().map(|(t, _)| json!({ "track": t.id, "disc": t.disc, "number": t.number, "title": t.title, "file": t.file })).collect();
+            let own = s.store.track_labels().await.map_err(db)?;
+            let tracks: Vec<Value> = album.tracks.iter().map(|(t, _)| json!({ "track": t.id, "disc": t.disc, "number": t.number, "title": t.title, "file": t.file, "labels": own.get(&t.id).cloned().unwrap_or_default() })).collect();
             let picture = album.dir.as_deref().and_then(folder_picture);
             Ok(json!({
                 "id": id, "kind": album.row.kind, "title": album.row.title, "author": album.row.author,
@@ -736,6 +767,241 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             }
             let next = (offset + limit < total).then_some(offset + limit);
             Ok(json!({ "looked_at": limit.min(total.saturating_sub(offset)), "total": total, "next_offset": next, "albums_with_problems": found }))
+        }
+        "merge_albums" => {
+            let dry = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
+            if !dry && !token.can_write {
+                return Err("this token may only read".into());
+            }
+            let ids: Vec<i64> = args.get("ids").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_i64).collect()).ok_or("ids is required")?;
+            let given: Option<Vec<i64>> = args.get("discs").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_i64).collect());
+            // What the tags say: the number of each album's first file, and how many CDs the set has.
+            let mut from_tags: Vec<Option<i64>> = Vec::new();
+            let mut total_tag: Option<i64> = None;
+            for id in &ids {
+                let album = Album::load(s, *id).await?;
+                let first = album.tracks.first().map(|(_, p)| p.clone());
+                let fields = match first {
+                    Some(p) => tokio::task::spawn_blocking(move || crate::tags::read_fields(&p).unwrap_or_default()).await.map_err(|e| e.to_string())?,
+                    None => Vec::new(),
+                };
+                let number = |name: &str, part: usize| fields.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).and_then(|(_, v)| v.first()).and_then(|v| v.split('/').nth(part)).and_then(|n| n.trim().parse::<i64>().ok());
+                from_tags.push(number("DiscNumber", 0));
+                total_tag = total_tag.max(number("DiscTotal", 0).or_else(|| number("DiscNumber", 1)));
+            }
+            // The numbers: the ones given, else the ones of the tags when every album has one, each once, else the order of ids.
+            let tag_numbers: Option<Vec<i64>> = from_tags.iter().copied().collect::<Option<Vec<i64>>>().filter(|n| { let mut u = n.clone(); u.sort_unstable(); u.dedup(); u.len() == n.len() });
+            let discs = given.clone().or(tag_numbers);
+            let total = args.get("discs_total").and_then(Value::as_i64).or(total_tag).filter(|t| (1..=99).contains(t));
+            let plans = crate::relocate::plan_merge(&s.store, s.library.as_deref(), &ids, discs.as_deref(), text("author").as_deref(), text("title").as_deref()).await?;
+            let blocked = plans.iter().any(|p| p.problem.is_some());
+            let mut merged = false;
+            if !dry && !blocked {
+                // The numbers go into the files first (they stay there), then the folders move and the library follows.
+                for p in &plans {
+                    let album = Album::load(s, p.id).await?;
+                    let files: Vec<PathBuf> = album.tracks.iter().map(|(_, f)| f.clone()).collect();
+                    let disc = p.disc.unwrap_or(1);
+                    // Title and author go in too: the next import reads them from the files, and the work is called by its own title, not by the one of a CD.
+                    let mut changes: Vec<(String, Vec<String>)> = vec![("DiscNumber".to_owned(), vec![disc.to_string()]), ("AlbumTitle".to_owned(), vec![p.title.clone()]), ("AlbumArtist".to_owned(), vec![p.author.clone()])];
+                    if let Some(t) = total {
+                        changes.push(("DiscTotal".to_owned(), vec![t.to_string()]));
+                    }
+                    tokio::task::spawn_blocking(move || -> Result<(), String> {
+                        for f in &files {
+                            crate::tags::write_fields(f, &changes).map_err(|e| e.to_string())?;
+                        }
+                        Ok(())
+                    })
+                    .await
+                    .map_err(|e| e.to_string())??;
+                }
+                let members: Vec<&crate::relocate::Plan> = plans.iter().collect();
+                crate::relocate::execute(&s.store, &members).await?;
+                if let Some(t) = total {
+                    s.store.set_book_discs_total(ids[0], Some(t)).await.map_err(db)?;
+                }
+                s.store.log_tag_change(&token.name, ids[0], "", "Merged CDs", &ids.iter().map(i64::to_string).collect::<Vec<_>>().join(", "), &plans[0].new_folder).await.map_err(db)?;
+                tracing::info!(token = %token.name, album = ids[0], albums = ?ids, "CDs put together");
+                s.store.rescan_soon();
+                merged = true;
+            }
+            let albums: Vec<Value> = plans.iter().map(|p| json!({ "id": p.id, "disc": p.disc, "from": p.from, "to": p.to, "problem": p.problem })).collect();
+            Ok(json!({ "dry_run": dry, "merged": merged, "keep": ids[0], "author": plans[0].author, "title": plans[0].title, "folder": plans[0].new_folder, "discs_total": total, "from_tags": from_tags, "albums": albums }))
+        }
+        "set_discs_total" => {
+            if !token.can_write {
+                return Err("this token may only read".into());
+            }
+            let id = int("id").ok_or("id is required")?;
+            let total = match args.get("total") {
+                Some(Value::Null) => None,
+                Some(v) => Some(v.as_i64().filter(|t| (1..=99).contains(t)).ok_or("total is a whole number from 1 to 99, or null")?),
+                None => return Err("total is required (a number, or null)".into()),
+            };
+            let album = Album::load(s, id).await?;
+            let files: Vec<PathBuf> = album.tracks.iter().map(|(_, f)| f.clone()).collect();
+            if let Some(t) = total {
+                let changes = vec![("DiscTotal".to_owned(), vec![t.to_string()])];
+                tokio::task::spawn_blocking(move || -> Result<(), String> {
+                    for f in &files {
+                        crate::tags::write_fields(f, &changes).map_err(|e| e.to_string())?;
+                    }
+                    Ok(())
+                })
+                .await
+                .map_err(|e| e.to_string())??;
+            }
+            if !s.store.set_book_discs_total(id, total).await.map_err(db)? {
+                return Err("no such album".into());
+            }
+            Ok(json!({ "id": id, "discs_total": total }))
+        }
+        "list_labels" => {
+            let ids: Option<Vec<i64>> = args.get("ids").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_i64).collect());
+            match ids {
+                Some(ids) => {
+                    let all = s.store.book_labels().await.map_err(db)?;
+                    let albums: Vec<Value> = ids.iter().map(|id| json!({ "id": id, "labels": all.get(id).cloned().unwrap_or_default() })).collect();
+                    Ok(json!({ "albums": albums }))
+                }
+                None => {
+                    let labels = s.store.labels().await.map_err(db)?;
+                    Ok(json!({ "labels": labels }))
+                }
+            }
+        }
+        "set_labels" => {
+            let dry = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
+            if !dry && !token.can_write {
+                return Err("this token may only read".into());
+            }
+            let ids: Vec<i64> = args.get("ids").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_i64).collect()).ok_or("ids is required")?;
+            let names = |key: &str| -> Result<Option<Vec<String>>, String> {
+                match args.get(key) {
+                    None | Some(Value::Null) => Ok(None),
+                    Some(Value::Array(a)) => a.iter().map(|v| v.as_str().map(str::to_owned).ok_or_else(|| format!("{key} holds names, as text"))).collect::<Result<Vec<_>, _>>().map(Some),
+                    _ => Err(format!("{key} is a list of names")),
+                }
+            };
+            let (add, remove, set) = (names("add")?, names("remove")?, names("set")?);
+            if set.is_some() && (add.is_some() || remove.is_some()) {
+                return Err("give set, or add and remove, not both".into());
+            }
+            if set.is_none() && add.is_none() && remove.is_none() {
+                return Err("nothing to do: give add, remove or set".into());
+            }
+            for n in add.iter().chain(remove.iter()).chain(set.iter()).flatten() {
+                if crate::labels::clean_name(n).is_none() {
+                    return Err(format!("{n:?} is not a usable label (1 to 40 characters, no comma, semicolon or bar)"));
+                }
+            }
+            let rows = s.store.admin_book_rows().await.map_err(db)?;
+            let current = s.store.book_labels().await.map_err(db)?;
+            let (mut albums, mut changed) = (Vec::new(), 0usize);
+            for id in &ids {
+                let Some(row) = rows.iter().find(|r| r.id == *id) else {
+                    albums.push(json!({ "id": id, "problem": "no such album" }));
+                    continue;
+                };
+                let before = current.get(id).cloned().unwrap_or_default();
+                // What the album would have: `set` replaces, else add and remove (case ignored).
+                let after: Vec<String> = match &set {
+                    Some(set) => set.clone(),
+                    None => {
+                        let gone: Vec<String> = remove.iter().flatten().map(|r| r.trim().to_lowercase()).collect();
+                        before.iter().filter(|b| !gone.contains(&b.to_lowercase())).cloned().chain(add.iter().flatten().cloned()).collect()
+                    }
+                };
+                let result = if dry {
+                    let mut seen: Vec<String> = Vec::new();
+                    after.iter().filter_map(|n| crate::labels::clean_name(n)).filter(|n| { let low = n.to_lowercase(); if seen.contains(&low) { false } else { seen.push(low); true } }).collect::<Vec<_>>()
+                } else {
+                    s.store.set_book_labels(*id, &after).await.map_err(db)?.unwrap_or_default()
+                };
+                let differs = {
+                    let (mut a, mut b): (Vec<String>, Vec<String>) = (before.iter().map(|x| x.to_lowercase()).collect(), result.iter().map(|x| x.to_lowercase()).collect());
+                    a.sort();
+                    b.sort();
+                    a != b
+                };
+                if differs {
+                    changed += 1;
+                    if !dry {
+                        tracing::info!(token = %token.name, album = id, labels = ?result, "labels of an album changed");
+                        s.store.log_tag_change(&token.name, *id, "", "Labels", &before.join(", "), &result.join(", ")).await.map_err(db)?;
+                    }
+                }
+                albums.push(json!({ "id": id, "title": row.title, "author": row.author, "before": before, "after": result, "changed": differs }));
+            }
+            Ok(json!({ "dry_run": dry, "changed": changed, "albums": albums }))
+        }
+        "set_track_labels" => {
+            let dry = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
+            if !dry && !token.can_write {
+                return Err("this token may only read".into());
+            }
+            let id = int("id").ok_or("id is required")?;
+            let names = |key: &str| -> Result<Option<Vec<String>>, String> {
+                match args.get(key) {
+                    None | Some(Value::Null) => Ok(None),
+                    Some(Value::Array(a)) => a.iter().map(|v| v.as_str().map(str::to_owned).ok_or_else(|| format!("{key} holds names, as text"))).collect::<Result<Vec<_>, _>>().map(Some),
+                    _ => Err(format!("{key} is a list of names")),
+                }
+            };
+            let (add, remove, set) = (names("add")?, names("remove")?, names("set")?);
+            if set.is_some() && (add.is_some() || remove.is_some()) {
+                return Err("give set, or add and remove, not both".into());
+            }
+            if set.is_none() && add.is_none() && remove.is_none() {
+                return Err("nothing to do: give add, remove or set".into());
+            }
+            for n in add.iter().chain(remove.iter()).chain(set.iter()).flatten() {
+                if crate::labels::clean_name(n).is_none() {
+                    return Err(format!("{n:?} is not a usable label (1 to 40 characters, no comma, semicolon or bar)"));
+                }
+            }
+            // The labels live in the library; the files of the album are not needed.
+            s.store.admin_book_row(id).await.map_err(db)?.ok_or("no such album")?;
+            let all_tracks = s.store.tracks_of(id).await.map_err(db)?;
+            let wanted: Option<Vec<i64>> = args.get("tracks").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_i64).collect());
+            let current = s.store.track_labels().await.map_err(db)?;
+            let (mut titles, mut changed) = (Vec::new(), 0usize);
+            for track in wanted.clone().unwrap_or_else(|| all_tracks.iter().map(|t| t.id).collect()) {
+                let Some(t) = all_tracks.iter().find(|t| t.id == track) else {
+                    titles.push(json!({ "track": track, "problem": "no such track in this album" }));
+                    continue;
+                };
+                let before = current.get(&track).cloned().unwrap_or_default();
+                let after: Vec<String> = match &set {
+                    Some(set) => set.clone(),
+                    None => {
+                        let gone: Vec<String> = remove.iter().flatten().map(|r| r.trim().to_lowercase()).collect();
+                        before.iter().filter(|b| !gone.contains(&b.to_lowercase())).cloned().chain(add.iter().flatten().cloned()).collect()
+                    }
+                };
+                let result = if dry {
+                    let mut seen: Vec<String> = Vec::new();
+                    after.iter().filter_map(|n| crate::labels::clean_name(n)).filter(|n| { let low = n.to_lowercase(); if seen.contains(&low) { false } else { seen.push(low); true } }).collect::<Vec<_>>()
+                } else {
+                    s.store.set_track_labels(track, &after).await.map_err(|e| match e { crate::error::Error::InvalidName => "too many labels on one title (at most 10) or an unusable name".to_owned(), e => db(e) })?.unwrap_or_default()
+                };
+                let differs = {
+                    let (mut a, mut b): (Vec<String>, Vec<String>) = (before.iter().map(|x| x.to_lowercase()).collect(), result.iter().map(|x| x.to_lowercase()).collect());
+                    a.sort();
+                    b.sort();
+                    a != b
+                };
+                if differs {
+                    changed += 1;
+                    if !dry {
+                        tracing::info!(token = %token.name, album = id, track, labels = ?result, "labels of a title changed");
+                        s.store.log_tag_change(&token.name, id, &t.file, "Labels", &before.join(", "), &result.join(", ")).await.map_err(db)?;
+                    }
+                }
+                titles.push(json!({ "track": track, "title": t.title, "before": before, "after": result, "changed": differs }));
+            }
+            Ok(json!({ "dry_run": dry, "changed": changed, "tracks": titles }))
         }
         "set_owner" => {
             if !token.can_write {

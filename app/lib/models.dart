@@ -26,7 +26,11 @@ class Track {
     this.itemId,
     this.bookTitle,
     this.bookAuthor,
+    this.labels = const [],
   });
+
+  /// The labels of this title of its own (the ones of its album come on top, see [Book.labels]).
+  final List<String> labels;
 
   /// The id of the book (item) this part belongs to, when the track is in a playlist: progress goes to it. Null
   /// for a track of its own book.
@@ -78,7 +82,30 @@ class Book {
     this.lastPlayedAt,
     this.hidden = false,
     this.owner,
+    this.labels = const [],
+    this.canLabel = false,
+    this.canShare = false,
+    this.trackLabels = const [],
   });
+
+  /// The labels that single titles of the book carry; the book is found by them too (the lists filter by [allLabels]).
+  final List<String> trackLabels;
+
+  /// The labels of the book and of its titles, without doubles (case ignored).
+  List<String> get allLabels {
+    if (trackLabels.isEmpty) return labels;
+    final seen = {for (final l in labels) l.toLowerCase()};
+    return [...labels, for (final l in trackLabels) if (seen.add(l.toLowerCase())) l];
+  }
+
+  /// The labels of the book (classic tagging: prayer, school, holidays together), for everybody who sees it.
+  final List<String> labels;
+
+  /// This user may set the labels: the owner of the book, or an administrator.
+  final bool canLabel;
+
+  /// This user may pass the book on (share it): an administrator or a member; the server decides.
+  final bool canShare;
 
   /// The nickname of the family member the book belongs to ("Music of Anna"); null if it belongs to nobody in particular.
   final String? owner;

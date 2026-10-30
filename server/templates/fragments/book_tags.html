@@ -18,12 +18,13 @@
   {% if kind == "audiobook" %}<label class="field span-all"><input type="text" name="narrator" maxlength="200" placeholder=" " value="{{ narrator }}"><span>{{ t("tags.narrator") }}</span></label>{% endif %}
   <label class="field"><input type="text" name="year" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder=" " value="{{ year }}"><span>{{ t("tags.year") }}</span></label>
   <label class="field"><input type="text" name="genre" maxlength="200" placeholder=" " value="{{ genre }}"><span>{{ t("tags.genre") }}</span></label>
-  <details class="span-all more-fields">
-    <summary>{{ t("tags.more") }}</summary>
-    <textarea name="more" rows="5" spellcheck="false" placeholder="Composer=Name&#10;Lyricist=Name&#10;Comment=Text"></textarea>
+  <div class="span-all fields-editor" data-fields-editor data-catalog="{{ catalog }}" data-choose="{{ t('tags.field_choose') }}" data-remove="{{ t('tags.field_remove') }}" data-add="{{ t('tags.field_add') }}">
+    <span class="chips-label">{{ t("tags.more") }}</span>
+    <div class="fields-rows"></div>
+    <div class="fields-add"><select class="fields-choose" aria-label="{{ t('tags.field_choose') }}"></select><button type="button" class="btn outline fields-plus" title="{{ t('tags.field_add') }}" aria-label="{{ t('tags.field_add') }}">+</button></div>
+    <textarea name="more" rows="4" spellcheck="false" placeholder="Composer=Name&#10;DiscTotal=4"></textarea>
     <small>{{ t("tags.more_hint") }}</small>
-    <small class="field-names">{{ field_names }}</small>
-  </details>
+  </div>
   <small class="span-all">{{ t("tags.hint") }}</small>
   <div class="form-error span-all" role="alert"></div>
 </form>

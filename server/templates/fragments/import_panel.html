@@ -48,6 +48,7 @@
     <div class="stat"><dt>{{ t("import.report.updated") }}</dt><dd>{{ shown.tracks_updated }}</dd></div>
     <div class="stat"><dt>{{ t("import.report.unchanged") }}</dt><dd>{{ shown.tracks_unchanged }}</dd></div>
     <div class="stat"><dt>{{ t("import.report.removed") }}</dt><dd>{{ shown.tracks_removed }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.albums_removed") }}</dt><dd>{{ shown.books_removed }}</dd></div>
     <div class="stat"><dt>{{ t("import.report.released") }}</dt><dd>{{ shown.books_released }}</dd></div>
   </dl>
   {% if shown.problems %}<div class="message error"><strong>{{ t("import.report.problems") }}</strong><ul>{% for problem in shown.problems %}<li><code>{{ problem }}</code></li>{% endfor %}</ul></div>{% endif %}

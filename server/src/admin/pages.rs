@@ -37,6 +37,7 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("fragments/user_list.html", include_str!("../../templates/fragments/user_list.html")),
     ("fragments/user_row.html", include_str!("../../templates/fragments/user_row.html")),
     ("fragments/book_tracks.html", include_str!("../../templates/fragments/book_tracks.html")),
+    ("fragments/book_track_labels.html", include_str!("../../templates/fragments/book_track_labels.html")),
     ("fragments/book_list.html", include_str!("../../templates/fragments/book_list.html")),
     ("fragments/book_row.html", include_str!("../../templates/fragments/book_row.html")),
     ("fragments/pairing_result.html", include_str!("../../templates/fragments/pairing_result.html")),
@@ -58,6 +59,7 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("fragments/settings_roles.html", include_str!("../../templates/fragments/settings_roles.html")),
     ("fragments/import_settings.html", include_str!("../../templates/fragments/import_settings.html")),
     ("fragments/root_row.html", include_str!("../../templates/fragments/root_row.html")),
+    ("fragments/book_filing.html", include_str!("../../templates/fragments/book_filing.html")),
     ("profile.html", include_str!("../../templates/profile.html")),
     ("fragments/ui.html", include_str!("../../templates/fragments/ui.html")),
     ("fragments/avatar.html", include_str!("../../templates/fragments/avatar.html")),
@@ -630,7 +632,9 @@ pub fn export_templates(dir: &Path) -> std::io::Result<usize> {
     std::fs::write(dir.join("static/favicon.svg"), include_str!("../../static/favicon.svg"))?;
     std::fs::write(dir.join("static/ui.js"), include_str!("../../static/ui.js"))?;
     std::fs::write(dir.join("static/crop.js"), include_str!("../../static/crop.js"))?;
-    Ok(count + 5)
+    std::fs::write(dir.join("static/chips.js"), include_str!("../../static/chips.js"))?;
+    std::fs::write(dir.join("static/fields.js"), include_str!("../../static/fields.js"))?;
+    Ok(count + 7)
 }
 
 impl AdminUi {
@@ -730,7 +734,7 @@ impl AdminUi {
     }
 
     /// The list of albums of one kind: `audiobook` or `music`.
-    pub async fn books<'a>(&self, store: &Store, view: impl Into<View<'a>>, library: Option<&std::path::Path>, kind: &str, query: Option<&str>, only_problems: bool, page: Option<usize>, per: Option<usize>) -> Result<String> {
+    pub async fn books<'a>(&self, store: &Store, view: impl Into<View<'a>>, library: Option<&std::path::Path>, kind: &str, query: Option<&str>, only_problems: bool, label: Option<&str>, page: Option<usize>, per: Option<usize>) -> Result<String> {
         let all: Vec<_> = store.admin_book_rows().await?.into_iter().filter(|b| b.kind == kind).collect();
         // The completions: every title, author and narrator once, sorted.
         let mut words: Vec<String> = all.iter().flat_map(|b| [Some(b.title.clone()), Some(b.author.clone()), b.narrator.clone()]).flatten().filter(|w| !w.trim().is_empty()).collect();
@@ -764,17 +768,38 @@ impl AdminUi {
             Some(_) => all.into_iter().filter(|b| matcher.matches_book(&b.title, &b.author, b.narrator.as_deref())).collect(),
             None => all,
         };
+        // Labels: only the books with the chosen one, the names for the filter and the labels of every book for the rows.
+        let label_map = store.book_labels().await?;
+        // A book is found by the labels of its titles as well.
+        let mut found_by = label_map.clone();
+        for (id, names) in store.track_labels_by_book().await? {
+            found_by.entry(id).or_default().extend(names);
+        }
+        let books: Vec<_> = match label {
+            // Several labels (comma separated; a label has no comma): the books with any of them.
+            Some(l) => books.into_iter().filter(|b| found_by.get(&b.id).is_some_and(|names| names.iter().any(|n| l.split(',').any(|c| n.eq_ignore_ascii_case(c.trim()))))).collect(),
+            None => books,
+        };
+        let label_texts: std::collections::HashMap<String, Vec<String>> = label_map.iter().map(|(id, names)| (id.to_string(), names.clone())).collect();
+        // The names for the filter with the number of books (the book or one of its titles carries the label).
+        let mut label_names = store.labels().await?;
+        for row in &mut label_names {
+            row.books = found_by.values().filter(|names| names.iter().any(|n| n.eq_ignore_ascii_case(&row.name))).count() as i64;
+        }
         // The matrix: a column for every person (administrators see everything), a mark where the person sees the book, and the owner box.
         let (members, seen) = visibility_columns(store, None).await?;
         let mode = store.setting(if kind == "music" { "tree_music" } else { "tree_audiobook" }).await?.filter(|m| crate::tree::valid(m)).unwrap_or_else(|| (if kind == "music" { "folder" } else { "author" }).to_owned());
-        // Pages: the books of the list (after the search) in pages of `per`; the tree is built from the books of the page.
+        // Pages: the books of the list (after the search) in pages of `per`; the tree is built from all books and cut into the pages.
         let default_per = store.setting("list_page_size").await?.and_then(|v| v.trim().parse::<usize>().ok()).unwrap_or(50);
         let per = per.unwrap_or(default_per).clamp(10, 500);
         let total = books.len();
         let pages = total.div_ceil(per).max(1);
         let page = page.unwrap_or(1).clamp(1, pages);
         let (from, to) = ((page - 1) * per, (page * per).min(total));
-        let books: Vec<_> = books.into_iter().skip(from).take(per).collect();
+        // The tree is built from ALL books and then cut into pages, so a group (an author, a folder) is whole whichever page shows it.
+        let arranged = crate::tree::build(books.clone(), &mode);
+        let items = crate::tree::page(arranged, from, per);
+        let books: Vec<_> = items.iter().filter_map(|i| if let crate::tree::Item::Book { book, .. } = i { Some((**book).clone()) } else { None }).collect();
         let base = {
             let mut pairs: Vec<(&str, String)> = Vec::new();
             if let Some(q) = needle {
@@ -782,6 +807,9 @@ impl AdminUi {
             }
             if only_problems {
                 pairs.push(("problems", "1".to_owned()));
+            }
+            if let Some(l) = label {
+                pairs.push(("label", l.to_owned()));
             }
             if per != default_per {
                 pairs.push(("per", per.to_string()));
@@ -791,30 +819,83 @@ impl AdminUi {
         // The numbers of the pages to link: the first, the last and a few around the current one.
         let shown: Vec<usize> = (1..=pages).filter(|n| *n == 1 || *n == pages || n.abs_diff(page) <= 2).collect();
         let numbers: Vec<serde_json::Value> = shown.iter().enumerate().map(|(i, n)| serde_json::json!({ "n": n, "gap": i > 0 && n - shown[i - 1] > 1 })).collect();
-        let pager = serde_json::json!({ "page": page, "pages": pages, "per": per, "total": total, "from": if total == 0 { 0 } else { from + 1 }, "to": to, "base": base, "numbers": numbers, "prev": page.saturating_sub(1).max(1), "next": (page + 1).min(pages), "default_per": default_per, "sizes": [10, 25, 50, 100, 250, 500], "q": needle.unwrap_or(""), "problems": only_problems });
-        let items = crate::tree::build(books.clone(), &mode);
-        self.render("books.html", context! { books => Serde(books), items => Serde(items), tree => mode != "flat", kind => kind, words => words, q => query.unwrap_or_default(), searched => needle.is_some() || only_problems, search_error => search_error, only_problems => only_problems, problem_count => problem_count, pager => Serde(pager), members => Serde(members), seen => Serde(seen), owners => Serde(owners_list(store).await?), gaps => Serde(gaps), nocover => Serde(nocover), dupes => Serde(dupes), ignores => Serde(rules), access => crate::access::current(store).await.map(Serde), ..view.into().context() })
+        let pager = serde_json::json!({ "page": page, "pages": pages, "per": per, "total": total, "from": if total == 0 { 0 } else { from + 1 }, "to": to, "base": base, "numbers": numbers, "prev": page.saturating_sub(1).max(1), "next": (page + 1).min(pages), "default_per": default_per, "sizes": [10, 25, 50, 100, 250, 500], "q": needle.unwrap_or(""), "problems": only_problems, "label": label.unwrap_or("") });
+        self.render("books.html", context! { books => Serde(books), items => Serde(items), tree => mode != "flat", kind => kind, words => words, q => query.unwrap_or_default(), searched => needle.is_some() || only_problems || label.is_some(), label => label.unwrap_or_default(), label_selected => label.map(|l| l.split(',').map(|c| c.trim().to_lowercase()).collect::<Vec<_>>()).unwrap_or_default(), label_names => Serde(label_names), label_texts => Serde(label_texts), search_error => search_error, only_problems => only_problems, problem_count => problem_count, pager => Serde(pager), members => Serde(members), seen => Serde(seen), owners => Serde(owners_list(store).await?), gaps => Serde(gaps), nocover => Serde(nocover), dupes => Serde(dupes), ignores => Serde(rules), access => crate::access::current(store).await.map(Serde), ..view.into().context() })
     }
 
     /// The titles of one album, for the list that opens under it.
     pub async fn book_tracks_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>, id: i64) -> Result<String> {
         #[derive(serde::Serialize)]
         struct Line {
+            id: i64,
             disc: i64,
             number: i64,
             title: String,
             length: String,
+            /// The labels of its own.
+            labels: Vec<String>,
         }
+        let own = store.track_labels().await?;
         let lines: Vec<Line> = store
             .tracks_of(id)
             .await?
             .into_iter()
             .map(|t| {
                 let s = t.duration_ms / 1000;
-                Line { disc: t.disc, number: t.number, title: t.title, length: if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) } }
+                Line {
+                    id: t.id,
+                    disc: t.disc,
+                    number: t.number,
+                    title: t.title,
+                    length: if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) },
+                    labels: own.get(&t.id).cloned().unwrap_or_default(),
+                }
             })
             .collect();
         self.render("fragments/book_tracks.html", context! { tracks => Serde(lines), ..view.into().context() })
+    }
+
+    /// The titles of an album with an entry of labels for each (in the tab "Edit"); the form of the window sends them with its Save.
+    pub async fn book_track_labels_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>, id: i64) -> Result<String> {
+        #[derive(serde::Serialize)]
+        struct Line {
+            id: i64,
+            disc: i64,
+            number: i64,
+            title: String,
+            labels: String,
+        }
+        let own = store.track_labels().await?;
+        let lines: Vec<Line> = store
+            .tracks_of(id)
+            .await?
+            .into_iter()
+            .map(|t| Line { id: t.id, disc: t.disc, number: t.number, title: t.title, labels: own.get(&t.id).map(|l| l.join(", ")).unwrap_or_default() })
+            .collect();
+        self.render("fragments/book_track_labels.html", context! { tracks => Serde(lines), ..view.into().context() })
+    }
+
+    /// The tab "Filing" of a book: the complete place on the disk and what the database knows (also the fields the triggers fill in).
+    pub async fn book_filing_fragment<'a>(&self, store: &Store, library: Option<&std::path::Path>, view: impl Into<View<'a>>, id: i64) -> Result<Option<String>> {
+        let Some(book) = store.admin_book_row(id).await? else { return Ok(None) };
+        let Some(meta) = store.book_meta(id).await? else { return Ok(None) };
+        let zone = store.setting("time_zone").await?;
+        let when = |ms: i64| if ms > 0 { stamp(ms, zone.as_deref()) } else { String::new() };
+        let place = crate::relocate::book_dir(store, library, id).await.map(|(dir, _, _)| dir.display().to_string());
+        let megabytes = format!("{:.1}", meta.files_bytes as f64 / 1_048_576.0);
+        let info = serde_json::json!({
+            "place": place,
+            "added": when(meta.added_at),
+            "released": meta.released_at.map(&when).unwrap_or_default(),
+            "created": when(meta.created_at),
+            "created_by": meta.created_by,
+            "updated": when(meta.updated_at),
+            "updated_by": meta.updated_by,
+            "tracks_updated": meta.tracks_updated_at.map(&when).unwrap_or_default(),
+            "megabytes": megabytes,
+            "genre_tag": meta.genre_tag,
+        });
+        self.render("fragments/book_filing.html", context! { book => Serde(book), info => Serde(info), ..view.into().context() }).map(Some)
     }
 
     pub async fn book_row_fragment<'a>(&self, store: &Store, library: Option<&std::path::Path>, view: impl Into<View<'a>>, id: i64) -> Result<Option<String>> {
@@ -825,7 +906,7 @@ impl AdminUi {
         gaps.retain(|b, _| *b == id && !crate::ignore::ignored(&rules, &book, "track_number_gaps"));
         let nocover: Vec<String> = if crate::ignore::ignored(&rules, &book, "missing_cover") { Vec::new() } else if crate::api::find_cover(store, library, id).await.is_some() { Vec::new() } else { vec![id.to_string()] };
         let (members, seen) = visibility_columns(store, Some(id)).await?;
-        self.render("fragments/book_row.html", context! { book => Serde(book), gaps => Serde(gaps), nocover => Serde(nocover), members => Serde(members), seen => Serde(seen), owners => Serde(owners_list(store).await?), ..view.into().context() }).map(Some)
+        self.render("fragments/book_row.html", context! { book => Serde(book), gaps => Serde(gaps), nocover => Serde(nocover), members => Serde(members), seen => Serde(seen), owners => Serde(owners_list(store).await?), label_list => Serde(store.labels_of(id).await?), label_names => Serde(store.labels().await?), ..view.into().context() }).map(Some)
     }
 
     /// The upload queue of the import page: the newest jobs, with a timer while one is still open.
@@ -847,7 +928,7 @@ impl AdminUi {
                 artist => tags.artist.clone().unwrap_or_default(),
                 year => tags.year.clone().unwrap_or_default(),
                 genre => tags.genre.clone().unwrap_or_default(),
-                field_names => crate::tags::field_names().join(", "),
+                catalog => serde_json::to_string(&crate::tags::field_catalog().iter().map(|(n, k)| serde_json::json!({ "name": n, "kind": k })).collect::<Vec<_>>()).unwrap_or_else(|_| "[]".to_owned()),
                 ..view.into().context()
             },
         )

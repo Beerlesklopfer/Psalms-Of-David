@@ -101,6 +101,7 @@ mod tests {
     fn row(id: i64, folder: &str, title: &str, author: &str) -> AdminBookRow {
         AdminBookRow {
             id,
+            discs_total: None,
             kind: "audiobook".into(),
             folder: folder.into(),
             title: title.into(),

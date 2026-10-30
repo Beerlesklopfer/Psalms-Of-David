@@ -670,6 +670,93 @@ async fn folders_left_empty_by_a_move_are_removed_and_never_reported_by_the_impo
 }
 
 #[tokio::test]
+async fn labels_are_listed_and_set_by_a_token_that_may_write() {
+    let m = mcp().await;
+    m.store.import_books(vec![common::book("A", "Eins", &[1]), common::book("B", "Zwei", &[1])]).await.unwrap();
+    let one = m.store.find_book("A/Eins").await.unwrap().unwrap().id;
+    let two = m.store.find_book("B/Zwei").await.unwrap().unwrap().id;
+    let write = m.store.create_mcp_token("w", true, m.admin).await.unwrap();
+    let read = m.store.create_mcp_token("r", false, m.admin).await.unwrap();
+
+    // A look changes nothing; a reading token may not write; a bad name or an empty request is refused.
+    let (err, look) = tool(&m, &read, "set_labels", json!({ "ids": [one, two], "add": ["Gebet", "Schule"] })).await;
+    assert!(!err && look["dry_run"] == true && look["changed"] == 2 && m.store.labels().await.unwrap().is_empty(), "{look}");
+    assert!(tool(&m, &read, "set_labels", json!({ "ids": [one], "add": ["Gebet"], "dry_run": false })).await.0);
+    assert!(tool(&m, &write, "set_labels", json!({ "ids": [one], "add": ["a,b"], "dry_run": false })).await.0);
+    assert!(tool(&m, &write, "set_labels", json!({ "ids": [one] })).await.0);
+    assert!(tool(&m, &write, "set_labels", json!({ "ids": [one], "set": ["x"], "add": ["y"] })).await.0);
+
+    let (err, done) = tool(&m, &write, "set_labels", json!({ "ids": [one, two], "add": ["Gebet", "Schule"], "dry_run": false })).await;
+    assert!(!err && done["changed"] == 2, "{done}");
+    let (_, again) = tool(&m, &write, "set_labels", json!({ "ids": [one, two], "add": ["gebet"], "dry_run": false })).await;
+    assert_eq!(again["changed"], 0, "case is ignored: {again}");
+    let (_, removed) = tool(&m, &write, "set_labels", json!({ "ids": [two], "remove": ["GEBET"], "dry_run": false })).await;
+    assert_eq!(removed["albums"][0]["after"], json!(["Schule"]), "{removed}");
+    let (_, list) = tool(&m, &read, "list_labels", json!({})).await;
+    assert_eq!(list["labels"], json!([{ "name": "Gebet", "books": 1, "tracks": 0 }, { "name": "Schule", "books": 2, "tracks": 0 }]), "{list}");
+    let (_, of) = tool(&m, &read, "list_labels", json!({ "ids": [one, 99999] })).await;
+    assert_eq!(of["albums"][0]["labels"], json!(["Gebet", "Schule"]), "{of}");
+    // set replaces them all, an empty list takes them off; an unknown album is told.
+    let (_, set) = tool(&m, &write, "set_labels", json!({ "ids": [one, 99999], "set": [], "dry_run": false })).await;
+    assert_eq!((set["albums"][0]["after"].clone(), set["albums"][1]["problem"].as_str()), (json!([]), Some("no such album")), "{set}");
+    assert_eq!(m.store.labels().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn cds_are_put_together_by_the_numbers_of_their_tags_or_by_numbers_given_and_a_missing_cd_is_shown() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let m = mcp().await;
+    let music = tempfile::TempDir::new().unwrap();
+    m.store.save_music_roots(&[music.path().display().to_string()]).await.unwrap();
+    for n in [1, 2, 3] {
+        make_mp3(&music.path().join(format!("NORA/Heck/Heimatlieder {n}/01.mp3")), &[("album", &format!("Heimatlieder {n}")), ("artist", "Heck"), ("disc", &format!("{n}/4")), ("track", "1")]);
+    }
+    m.store.scan_kind(music.path(), "music").await.unwrap();
+    let write = m.store.create_mcp_token("w", true, m.admin).await.unwrap();
+    let read = m.store.create_mcp_token("r", false, m.admin).await.unwrap();
+    let id = |n: usize| { let store = m.store.clone(); async move { store.find_book(&format!("NORA/Heck/Heimatlieder {n}")).await.unwrap().unwrap().id } };
+    let (a, b, c) = (id(1).await, id(2).await, id(3).await);
+
+    // The look: the numbers come from the tags (given in the wrong order on purpose), the total too; nothing moves.
+    let (err, look) = tool(&m, &read, "merge_albums", json!({ "ids": [c, a, b] })).await;
+    assert!(!err && look["dry_run"] == true && look["merged"] == false && look["discs_total"] == 4, "{look}");
+    assert_eq!(look["albums"].as_array().unwrap().iter().map(|x| x["disc"].as_i64().unwrap()).collect::<Vec<_>>(), vec![3, 1, 2], "{look}");
+    assert_eq!((look["title"].as_str(), look["folder"].as_str()), (Some("Heimatlieder"), Some("NORA/Heck/Heimatlieder")), "{look}");
+    assert!(music.path().join("NORA/Heck/Heimatlieder 1/01.mp3").is_file());
+    assert!(tool(&m, &read, "merge_albums", json!({ "ids": [a, b], "dry_run": false })).await.0, "a reading token may not");
+    assert!(tool(&m, &write, "merge_albums", json!({ "ids": [a] })).await.0, "one album is no work of several CDs");
+    assert!(tool(&m, &write, "merge_albums", json!({ "ids": [a, b], "discs": [1, 1] })).await.0, "a number twice");
+
+    // The numbers are given: they win over the tags and go into the files.
+    let (err, done) = tool(&m, &write, "merge_albums", json!({ "ids": [a, b, c], "discs": [1, 2, 3], "dry_run": false })).await;
+    assert!(!err && done["merged"] == true, "{done}");
+    for n in [1, 2, 3] {
+        assert!(music.path().join(format!("NORA/Heck/Heimatlieder/CD {n}/01.mp3")).is_file(), "CD {n}");
+    }
+    assert!(!music.path().join("NORA/Heck/Heimatlieder 1").exists() && !music.path().join("NORA/Heck/Heimatlieder 2").exists());
+    let row = m.store.admin_book_row(a).await.unwrap().unwrap();
+    assert_eq!((row.kind.as_str(), row.title.as_str(), row.discs, row.discs_total), ("music", "Heimatlieder", 3, Some(4)), "one book of three CDs; music stays music");
+    assert!(m.store.admin_book_row(b).await.unwrap().is_none() && m.store.admin_book_row(c).await.unwrap().is_none(), "the others went into the first");
+    // The CD that is missing is shown like a missing track.
+    let gaps = m.store.track_gaps().await.unwrap();
+    assert!(gaps.get(&a).is_some_and(|g| g.contains("CD 4")), "{gaps:?}");
+    // The tags carry the numbers and the title: the next import changes nothing.
+    let fields = david_server::tags::read_fields(&music.path().join("NORA/Heck/Heimatlieder/CD 2/01.mp3")).unwrap();
+    let value = |n: &str| fields.iter().find(|(f, _)| f == n).map(|(_, v)| v.join("/")).unwrap_or_default();
+    assert_eq!((value("AlbumTitle").as_str(), value("DiscNumber").as_str(), value("DiscTotal").as_str()), ("Heimatlieder", "2", "4"), "{fields:?}");
+    m.store.scan_kind(music.path(), "music").await.unwrap();
+    let again = m.store.admin_book_row(a).await.unwrap().unwrap();
+    assert_eq!((again.title.as_str(), again.discs, again.discs_total), ("Heimatlieder", 3, Some(4)), "the import reads the same from the files");
+    // How many CDs a work has can be told afterwards, and taken away.
+    let (err, set) = tool(&m, &write, "set_discs_total", json!({ "id": a, "total": 3 })).await;
+    assert!(!err && set["discs_total"] == 3, "{set}");
+    assert!(!m.store.track_gaps().await.unwrap().contains_key(&a), "three of three: nothing is missing");
+    assert!(tool(&m, &write, "set_discs_total", json!({ "id": a, "total": 100 })).await.0);
+}
+
+#[tokio::test]
 async fn a_branch_of_the_filing_moves_up_with_ids_kept_and_a_place_that_exists_stays() {
     if !ffmpeg_available() {
         return;
@@ -1166,4 +1253,38 @@ async fn the_album_query_knows_wildcards_and_regular_expressions() {
     }
     let (err, out) = tool(&m, &write, "list_albums", json!({ "query": "/(open/" })).await;
     assert!(err && out.to_string().contains("query"), "{out}");
+}
+
+#[tokio::test]
+async fn labels_of_single_titles_are_set_by_a_token_that_may_write() {
+    let m = mcp().await;
+    m.store.import_books(vec![common::book("A", "Eins", &[3])]).await.unwrap();
+    let one = m.store.find_book("A/Eins").await.unwrap().unwrap().id;
+    let tracks: Vec<i64> = m.store.tracks_of(one).await.unwrap().iter().map(|t| t.id).collect();
+    let write = m.store.create_mcp_token("w", true, m.admin).await.unwrap();
+    let read = m.store.create_mcp_token("r", false, m.admin).await.unwrap();
+
+    // A look changes nothing; a reading token may not write; a bad name, an empty request and a track of another album are refused or told.
+    let (err, look) = tool(&m, &read, "set_track_labels", json!({ "id": one, "tracks": [tracks[0]], "add": ["Gebet"] })).await;
+    assert!(!err && look["dry_run"] == true && look["changed"] == 1 && m.store.labels().await.unwrap().is_empty(), "{look}");
+    assert!(tool(&m, &read, "set_track_labels", json!({ "id": one, "add": ["Gebet"], "dry_run": false })).await.0);
+    assert!(tool(&m, &write, "set_track_labels", json!({ "id": one, "add": ["a,b"], "dry_run": false })).await.0);
+    assert!(tool(&m, &write, "set_track_labels", json!({ "id": one })).await.0);
+    let (_, odd) = tool(&m, &write, "set_track_labels", json!({ "id": one, "tracks": [99999], "add": ["x"] })).await;
+    assert_eq!(odd["tracks"][0]["problem"], "no such track in this album", "{odd}");
+
+    // Without `tracks` all titles; the labels show in get_album and in the list; case is ignored; remove and set work.
+    let (err, done) = tool(&m, &write, "set_track_labels", json!({ "id": one, "add": ["Gebet"], "dry_run": false })).await;
+    assert!(!err && done["changed"] == 3, "{done}");
+    let (_, again) = tool(&m, &write, "set_track_labels", json!({ "id": one, "add": ["gebet"], "dry_run": false })).await;
+    assert_eq!(again["changed"], 0, "{again}");
+    let (_, removed) = tool(&m, &write, "set_track_labels", json!({ "id": one, "tracks": [tracks[2]], "remove": ["GEBET"], "dry_run": false })).await;
+    assert_eq!(removed["tracks"][0]["after"], json!([]), "{removed}");
+    let own = m.store.track_labels().await.unwrap();
+    assert_eq!((own.get(&tracks[0]).cloned(), own.get(&tracks[2]).cloned()), (Some(vec!["Gebet".to_owned()]), None));
+    let (_, list) = tool(&m, &read, "list_labels", json!({})).await;
+    assert_eq!(list["labels"], json!([{ "name": "Gebet", "books": 0, "tracks": 2 }]), "{list}");
+    let (_, set) = tool(&m, &write, "set_track_labels", json!({ "id": one, "set": [], "dry_run": false })).await;
+    assert_eq!(set["changed"], 2, "{set}");
+    assert!(m.store.labels().await.unwrap().is_empty());
 }

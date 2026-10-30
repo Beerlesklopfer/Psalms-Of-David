@@ -305,3 +305,14 @@ while a list is in pages the browser does not filter the rows while typing, beca
 **The size of a page is set per browser, by cookie:** the box (or `?per=`, 10 to 500) sets the cookie `david_page_size` (`/admin`, a year, `HttpOnly`, `SameSite=Lax`);
 without `?per=` the cookie decides, and without a valid cookie the setting `list_page_size` (default 50, 10 to 500) of the settings page.
 
+
+### Labels of single titles (schema 0046, 2026-10-30)
+
+A label hangs on a book (tab "Edit": chips) and, since schema 0046, on **single titles** (project owner: "the tagging of the titles in the catalog is missing").
+In the tab "Edit" of the book window the section "Labels of single titles" (a `<details>`) loads, when it is opened, one entry of chips per title
+(`/admin/rpc/book.track_labels?id=`; the same suggestions as for the book). The entries fill the hidden field `track_labels` (one line `track id=label, label`
+for each title, written by `static/ui.js` on every change); **the one Save of the window** (`book.update`, `section=edit`) writes them: only titles of this book,
+each list as usable as the book's (at most 10 per title), nothing changes when one line is wrong, and a form without the field leaves the titles alone.
+The list of titles below a book shows the own labels of a title as badges. **The filter of the list (several labels allowed, any of them) finds a book by the labels of its
+titles too**, and the numbers in the filter count books (the book or one of its titles carries the label). A title has the labels of its album besides; they are
+not repeated per title. The MCP tool `set_track_labels` and the API `PUT /api/v1/items/{id}/parts/{part}/labels` do the same (see `spec-app-api.md`).

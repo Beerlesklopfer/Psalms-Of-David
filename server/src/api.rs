@@ -71,6 +71,10 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/v1/items", get(items))
         .route("/api/v1/genres", get(genres))
         .route("/api/v1/items/{id}", get(item_detail))
+        .route("/api/v1/items/{id}/labels", get(item_labels).put(put_item_labels))
+        .route("/api/v1/items/{id}/parts/{part}/labels", put(put_part_labels))
+        .route("/api/v1/labels", get(all_labels))
+        .route("/api/v1/labels/{name}", put(rename_label).delete(delete_label))
         .route("/api/v1/new", get(new_items))
         .route("/api/v1/items/{id}/cover", get(item_cover))
         .route("/api/v1/continue", get(continue_listening))
@@ -217,6 +221,11 @@ async fn items(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
     let rows = s.store.visible_books(d.user_id).await?;
     let hidden = s.store.hidden_of(d.user_id).await?;
     let ids = hidden.ids_in(&rows);
+    let labels = s.store.book_labels().await?;
+    // The labels that single titles of an item carry: the item is found by them too ("Items list": `track_labels`).
+    let track_labels = s.store.track_labels_by_book().await?;
+    // Whether this user may set the labels of a book: its owner (a member) and an administrator, whoever owns it.
+    let me = s.store.profile_by_id(d.user_id).await?.map(|u| u.name);
     Ok(Json(Value::Array(
         rows.iter()
             .filter(|b| hidden.show_hidden || !ids.contains(&b.id))
@@ -224,6 +233,11 @@ async fn items(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
                 let mut j = item_json(b);
                 j["hidden"] = json!(ids.contains(&b.id));
                 j["owner"] = json!(b.owner);
+                j["labels"] = json!(labels.get(&b.id).cloned().unwrap_or_default());
+                j["track_labels"] = json!(track_labels.get(&b.id).cloned().unwrap_or_default());
+                // Only a parent (an administrator or a member) passes content on; a child or a guest does not.
+                j["can_share"] = json!(matches!(d.role, Role::Admin | Role::Member));
+                j["can_label"] = json!(d.role == Role::Admin || (d.role == Role::Member && me.is_some() && b.owner == me));
                 j
             })
             .collect(),
@@ -292,6 +306,107 @@ async fn genres(State(s): State<ApiState>, _d: Device) -> ApiResult<Json<Value>>
     Ok(Json(Value::Array(list.iter().filter(|g| g.visible).map(|g| json!({ "name": g.name })).collect())))
 }
 
+/// The labels of the library (classic tagging): `{ "labels": [{ "name": "Gebet", "books": 3 }], "can_manage": bool }`. Only the books this user sees count;
+/// an administrator may rename and delete labels (`can_manage`).
+async fn all_labels(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
+    let visible: std::collections::HashSet<i64> = s.store.visible_books(d.user_id).await?.iter().map(|b| b.id).collect();
+    let mut counts: std::collections::BTreeMap<String, (String, i64)> = std::collections::BTreeMap::new();
+    // A book counts once for a label, whether the book or one of its titles carries it.
+    let mut per_book = s.store.book_labels().await?;
+    for (id, names) in s.store.track_labels_by_book().await? {
+        per_book.entry(id).or_default().extend(names);
+    }
+    for (id, names) in per_book {
+        if visible.contains(&id) {
+            let mut seen = std::collections::HashSet::new();
+            for n in names {
+                if seen.insert(n.to_lowercase()) {
+                    counts.entry(n.to_lowercase()).or_insert((n, 0)).1 += 1;
+                }
+            }
+        }
+    }
+    let labels: Vec<Value> = counts.into_values().map(|(name, books)| json!({ "name": name, "books": books })).collect();
+    Ok(Json(json!({ "labels": labels, "can_manage": d.role == Role::Admin })))
+}
+
+#[derive(serde::Deserialize)]
+struct RenameRequest {
+    name: String,
+}
+
+/// Renames a label for every book that carries it; if the new name exists the two become one. Administrators only.
+async fn rename_label(State(s): State<ApiState>, d: Device, UrlPath(old): UrlPath<String>, Json(req): Json<RenameRequest>) -> ApiResult<Json<Value>> {
+    if d.role != Role::Admin {
+        return Err(ApiError(StatusCode::FORBIDDEN, "forbidden"));
+    }
+    match s.store.rename_label(&old, &req.name).await {
+        Ok(true) => Ok(Json(json!({ "name": crate::labels::clean_name(&req.name) }))),
+        Ok(false) => Err(ApiError(StatusCode::NOT_FOUND, "not_found")),
+        Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Takes a label off every book. Administrators only.
+async fn delete_label(State(s): State<ApiState>, d: Device, UrlPath(name): UrlPath<String>) -> ApiResult<StatusCode> {
+    if d.role != Role::Admin {
+        return Err(ApiError(StatusCode::FORBIDDEN, "forbidden"));
+    }
+    if s.store.delete_label(&name).await? { Ok(StatusCode::NO_CONTENT) } else { Err(ApiError(StatusCode::NOT_FOUND, "not_found")) }
+}
+
+/// The labels of a book this user sees.
+async fn item_labels(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>) -> ApiResult<Json<Value>> {
+    if !s.store.visible_books(d.user_id).await?.iter().any(|b| b.id == id) {
+        return Err(ApiError(StatusCode::NOT_FOUND, "not_found"));
+    }
+    Ok(Json(json!({ "labels": s.store.labels_of(id).await? })))
+}
+
+#[derive(serde::Deserialize)]
+struct LabelsRequest {
+    labels: Vec<String>,
+}
+
+/// Sets the labels of a book (all of them at once). The owner of the book may, and an administrator may always (project owner, 2026-10-30:
+/// "individual for one's own content, the administrator can override"). A child or a guest may not. Everybody who sees the book sees its labels.
+async fn put_item_labels(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, Json(req): Json<LabelsRequest>) -> ApiResult<Json<Value>> {
+    if !s.store.visible_books(d.user_id).await?.iter().any(|b| b.id == id) {
+        return Err(ApiError(StatusCode::NOT_FOUND, "not_found"));
+    }
+    let row = s.store.admin_book_row(id).await?.ok_or(ApiError(StatusCode::NOT_FOUND, "not_found"))?;
+    let allowed = d.role == Role::Admin || (d.role == Role::Member && row.owner_id == Some(d.user_id));
+    if !allowed {
+        return Err(ApiError(StatusCode::FORBIDDEN, "forbidden"));
+    }
+    match s.store.set_book_labels(id, &req.labels).await {
+        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+        Ok(None) => Err(ApiError(StatusCode::NOT_FOUND, "not_found")),
+        Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Sets the labels of one title (part) of a book, all of its own at once; the labels of the album stay as they are. Same permission as for the book:
+/// its owner and an administrator. `part` is the id of the part as the item lists it.
+async fn put_part_labels(State(s): State<ApiState>, d: Device, UrlPath((id, part)): UrlPath<(i64, i64)>, Json(req): Json<LabelsRequest>) -> ApiResult<Json<Value>> {
+    if !s.store.visible_books(d.user_id).await?.iter().any(|b| b.id == id) || s.store.book_of_track(part).await? != Some(id) {
+        return Err(ApiError(StatusCode::NOT_FOUND, "not_found"));
+    }
+    let row = s.store.admin_book_row(id).await?.ok_or(ApiError(StatusCode::NOT_FOUND, "not_found"))?;
+    let allowed = d.role == Role::Admin || (d.role == Role::Member && row.owner_id == Some(d.user_id));
+    if !allowed {
+        return Err(ApiError(StatusCode::FORBIDDEN, "forbidden"));
+    }
+    match s.store.set_track_labels(part, &req.labels).await {
+        Ok(Some(labels)) => Ok(Json(json!({ "labels": labels }))),
+        Ok(None) => Err(ApiError(StatusCode::NOT_FOUND, "not_found")),
+        Err(Error::InvalidName) => Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_label")),
+        Err(e) => Err(e.into()),
+    }
+}
+
 fn item_json(b: &crate::store::BookRow) -> Value {
     json!({
         "id": b.id, "kind": b.kind, "title": b.title, "creator": b.author, "narrator": b.narrator, "genre": b.genre, "min_age": b.min_age,
@@ -333,6 +448,8 @@ async fn item_detail(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<
         .ok_or(ApiError(StatusCode::NOT_FOUND, "not_found"))?;
     // What this user has heard to the end: per part, and for the whole item (complete plays, last played).
     let heard = s.store.part_plays(d.user_id, id).await?;
+    // The labels of its own of each title (the ones of the album come with the item).
+    let part_labels = s.store.track_labels().await?;
     let tracks: Vec<Value> = s
         .store
         .tracks_of(id)
@@ -340,7 +457,7 @@ async fn item_detail(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<
         .iter()
         .map(|t| {
             let h = heard.get(&t.id).copied().unwrap_or_default();
-            json!({ "id": t.id, "disc": t.disc, "number": t.number, "title": t.title, "duration_ms": t.duration_ms, "plays": h.plays, "last_played_at": h.last_played_at })
+            json!({ "id": t.id, "disc": t.disc, "number": t.number, "title": t.title, "duration_ms": t.duration_ms, "plays": h.plays, "last_played_at": h.last_played_at, "labels": part_labels.get(&t.id).cloned().unwrap_or_default() })
         })
         .collect();
     let all: Vec<crate::plays::TrackPlays> = heard.values().copied().collect();

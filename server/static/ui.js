@@ -29,6 +29,27 @@
     for (const p of open()) if (p !== t) p.open = false;
   }, true);
 
+  // The Save of a window sits in the foot, outside the form it saves: while the form is sent the button wears the class
+  // htmx puts on the form (the clock cursor and the dim look), and loses it when the answer is there, whatever the answer was.
+  const saveOf = (e) => e.target && e.target.closest ? e.target.closest('dialog')?.querySelector('[data-save]') : null;
+  document.body.addEventListener('htmx:beforeRequest', (e) => saveOf(e)?.classList.add('htmx-request'));
+  document.body.addEventListener('htmx:afterRequest', (e) => saveOf(e)?.classList.remove('htmx-request'));
+
+  // ---- Tabs of a window: <div class="tabs"> with buttons data-tab="x", and panels data-panel="x" in the window ----
+  const showTab = (dialog, name) => {
+    if (!dialog) return;
+    dialog.querySelectorAll('.tabs [data-tab]').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === name)));
+    dialog.querySelectorAll('[data-panel]').forEach((p) => { p.hidden = p.dataset.panel !== name; });
+    // The one Save of the window belongs to the form of the open tab; a tab without a form (filing) has none.
+    const save = dialog.querySelector('[data-save]');
+    const tab = dialog.querySelector('.tabs [data-tab="' + name + '"]');
+    if (save && tab) {
+      const form = tab.dataset.form || '';
+      save.hidden = form === '';
+      if (form) save.setAttribute('form', form);
+    }
+  };
+
   // ---- Windows (<dialog>) --------------------------------------------------------------
   // A button with data-dialog="<id>" opens that dialog as a window. A link with
   // data-planner loads the planner of a user into its window first, and empties the
@@ -66,12 +87,19 @@
       pick.closest('dialog')?.close();
       return;
     }
+    // The tabs of a window (the window of a book): a tab shows its panel and hides the others.
+    const tab = target.closest('.tabs [data-tab]');
+    if (tab) {
+      showTab(tab.closest('dialog'), tab.dataset.tab);
+      return;
+    }
     const opener = target.closest('[data-dialog]');
     if (opener) {
       const dialog = document.getElementById(opener.dataset.dialog);
       if (dialog && dialog.showModal) {
         dialog.querySelectorAll('.form-error').forEach((box) => { box.innerHTML = ''; });
         dialog.showModal();
+        if (opener.dataset.tab) showTab(dialog, opener.dataset.tab);
       }
       return;
     }
@@ -102,7 +130,7 @@
     const status = e.detail.xhr ? e.detail.xhr.status : 0;
     // A refusal is shown inside the window: the message area of the page lies behind it.
     if (status >= 400) {
-      const box = dialog.querySelector('.form-error');
+      const box = form.querySelector('.form-error') || dialog.querySelector('.form-error');
       if (box) {
         e.detail.shouldSwap = false;
         box.innerHTML = e.detail.serverResponse;
@@ -546,5 +574,18 @@
   document.addEventListener('submit', (e) => {
     const text = e.target.closest && e.target.closest('form[data-confirm]')?.dataset.confirm;
     if (text && !window.confirm(text)) e.preventDefault();
+  });
+  // The label filter: the ticked boxes become the comma separated value of the hidden field (before the form sends).
+  document.addEventListener('change', (e) => {
+    const box = e.target;
+    if (!box.matches || !box.matches('.label-pick input[data-label]')) return;
+    const form = box.closest('form');
+    form.elements.label.value = [...form.querySelectorAll('.label-pick input[data-label]:checked')].map((b) => b.dataset.label).join(',');
+  });
+  // The labels of the titles: every change of an entry rewrites the hidden field `track_labels` (one line `track id=labels` per title).
+  document.addEventListener('input', (e) => {
+    const box = e.target.closest && e.target.closest('[data-track-labels]');
+    if (!box || !e.target.matches('input[data-track]')) return;
+    box.querySelector('input[name="track_labels"]').value = [...box.querySelectorAll('input[data-track]')].map((i) => i.dataset.track + '=' + i.value).join('\n');
   });
 })();

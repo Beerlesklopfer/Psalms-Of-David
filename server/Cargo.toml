@@ -84,6 +84,8 @@ extended-description = "Self-hosted audiobook and music server for the family (D
 assets = [
     ["target/release/david", "usr/bin/david", "755"],
     ["packaging/david-deb.service", "usr/lib/systemd/system/david.service", "644"],
+    ["packaging/david-reindex.service", "usr/lib/systemd/system/david-reindex.service", "644"],
+    ["packaging/david-reindex.timer", "usr/lib/systemd/system/david-reindex.timer", "644"],
     ["packaging/david.toml", "etc/david.toml", "644"],
     ["packaging/david.sysusers", "usr/lib/sysusers.d/david.conf", "644"],
     ["packaging/udev/61-david-cdrom.rules", "usr/lib/udev/rules.d/61-david-cdrom.rules", "644"],
@@ -104,6 +106,8 @@ post_install_script = "packaging/scripts/postinst"
 assets = [
     { source = "target/release/david", dest = "/usr/bin/david", mode = "755" },
     { source = "packaging/david-deb.service", dest = "/usr/lib/systemd/system/david.service", mode = "644" },
+    { source = "packaging/david-reindex.service", dest = "/usr/lib/systemd/system/david-reindex.service", mode = "644" },
+    { source = "packaging/david-reindex.timer", dest = "/usr/lib/systemd/system/david-reindex.timer", mode = "644" },
     { source = "packaging/david.toml", dest = "/etc/david.toml", mode = "644", config = true },
     { source = "packaging/david.sysusers", dest = "/usr/lib/sysusers.d/david.conf", mode = "644" },
     { source = "packaging/udev/61-david-cdrom.rules", dest = "/usr/lib/udev/rules.d/61-david-cdrom.rules", mode = "644" },

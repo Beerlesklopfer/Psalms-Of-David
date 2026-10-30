@@ -126,6 +126,8 @@ pub struct AdminBookRow {
     pub owner_id: Option<i64>,
     /// Their nickname.
     pub owner: Option<String>,
+    /// How many CDs the work has when it is known (the family may own fewer of them); `None`: not said.
+    pub discs_total: Option<i64>,
 }
 
 /// One archive in the upload queue.
@@ -218,7 +220,7 @@ struct AccessRow {
 const ADMIN_BOOKS: &str = "SELECT b.id, b.kind, b.folder, b.title, a.name AS author, b.narrator, g.name AS genre, b.genre_id, b.genre_locked, b.genre_tag, b.released, b.min_age, b.recommended_age, \
     b.quota_exempt, b.description, (SELECT count(*) FROM track t WHERE t.book_id = b.id) AS tracks, \
     (SELECT count(DISTINCT t.disc) FROM track t WHERE t.book_id = b.id) AS discs, \
-    (SELECT coalesce(sum(t.duration_ms), 0) FROM track t WHERE t.book_id = b.id) AS duration_ms, b.owner_id, o.name AS owner \
+    (SELECT coalesce(sum(t.duration_ms), 0) FROM track t WHERE t.book_id = b.id) AS duration_ms, b.owner_id, o.name AS owner, b.discs_total \
     FROM book b JOIN author a ON a.id = b.author_id LEFT JOIN genre g ON g.id = b.genre_id LEFT JOIN profile o ON o.id = b.owner_id";
 
 /// The columns of one line of the user list; the callers add the ordering or the filter.
@@ -682,13 +684,15 @@ impl Store {
     /// anything an app would show changes, and an app that sees the same value need not reload.
     pub async fn library_version(&self) -> Result<String> {
         use sha2::{Digest, Sha256};
-        const QUERIES: [&str; 4] = [
+        const QUERIES: [&str; 6] = [
             "SELECT coalesce(group_concat(id || ':' || title || ':' || author_id || ':' || released || ':' || coalesce(min_age, '') || ':' || \
              quota_exempt || ':' || coalesce(description, '') || ':' || coalesce(genre_id, ''), '|'), '') FROM (SELECT * FROM book ORDER BY id)",
             "SELECT coalesce(group_concat(id || ':' || name || ':' || position || ':' || visible, '|'), '') FROM (SELECT * FROM genre ORDER BY id)",
             "SELECT coalesce(group_concat(id || ':' || book_id || ':' || disc || ':' || number || ':' || title || ':' || mtime || ':' || size_bytes, '|'), '') \
              FROM (SELECT * FROM track ORDER BY id)",
             "SELECT coalesce(group_concat(book_id || ':' || profile_id, '|'), '') FROM (SELECT * FROM book_release ORDER BY book_id, profile_id)",
+            "SELECT coalesce(group_concat(book_id || ':' || name, '|'), '') FROM (SELECT bl.book_id, l.name FROM book_label bl JOIN label l ON l.id = bl.label_id ORDER BY bl.book_id, l.name)",
+            "SELECT coalesce(group_concat(track_id || ':' || name, '|'), '') FROM (SELECT tl.track_id, l.name FROM track_label tl JOIN label l ON l.id = tl.label_id ORDER BY tl.track_id, l.name)",
         ];
         let mut hasher = Sha256::new();
         for q in QUERIES {
@@ -713,6 +717,8 @@ impl Store {
             .writer
             .execute_raw(Statement::from_string(DbBackend::Sqlite, "DELETE FROM author WHERE id NOT IN (SELECT author_id FROM book)"))
             .await?;
+        // A label that no book carries any more goes with the last one.
+        self.drop_unused_labels().await?;
         Ok(res.rows_affected() > 0)
     }
 
@@ -940,10 +946,11 @@ impl Store {
             books.entry(b).or_default().entry(d).or_default().push(n);
         }
         let mut out = HashMap::new();
-        for (book, discs) in books {
+        for (book, discs) in books.iter() {
+            let book = *book;
             let many = discs.len() > 1 || discs.keys().any(|d| *d > 1);
             let mut parts = Vec::new();
-            for (disc, numbers) in &discs {
+            for (disc, numbers) in discs {
                 let max = numbers.iter().copied().max().unwrap_or(0).min(999);
                 let missing: Vec<i64> = (1..=max).filter(|n| !numbers.contains(n)).collect();
                 let double = numbers.windows(2).any(|w| w[0] == w[1]);
@@ -964,7 +971,27 @@ impl Store {
                 out.insert(book, parts.join(" | "));
             }
         }
+        // CDs that are missing: the work says it has more of them than the books holds (`CD 4: -`).
+        let totals = self.db.reader.query_all_raw(Statement::from_string(DbBackend::Sqlite, "SELECT id, discs_total FROM book WHERE discs_total IS NOT NULL")).await?;
+        for r in totals {
+            let (book, total): (i64, i64) = (r.try_get_by_index(0)?, r.try_get_by_index(1)?);
+            let have: Vec<i64> = books.get(&book).map(|d| d.keys().copied().collect()).unwrap_or_default();
+            let lacking: Vec<String> = (1..=total).filter(|d| !have.contains(d)).map(|d| format!("CD {d}: -")).collect();
+            if !lacking.is_empty() {
+                let entry = out.entry(book).or_default();
+                if !entry.is_empty() {
+                    entry.push_str(" | ");
+                }
+                entry.push_str(&lacking.join(" | "));
+            }
+        }
         Ok(out)
+    }
+
+    /// Says how many CDs a work has (`None` takes it away). `false` if there is no such book.
+    pub async fn set_book_discs_total(&self, id: i64, total: Option<i64>) -> Result<bool> {
+        let res = self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE book SET discs_total = ? WHERE id = ?", [total.into(), id.into()])).await?;
+        Ok(res.rows_affected() > 0)
     }
 
     /// Tracks of a book in playing order.

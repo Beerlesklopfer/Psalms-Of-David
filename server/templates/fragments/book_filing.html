@@ -1,0 +1,15 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}<dl class="meta-list">
+  <div class="meta-wide"><dt>{{ t("filing.path") }}</dt><dd>{% if info.place %}<code>{{ info.place }}</code>{% else %}<span class="form-error">{{ t("filing.files_missing") }}</span> <code>{{ book.folder }}</code>{% endif %}</dd></div>
+  <div class="meta-wide"><dt>{{ t("filing.place") }}</dt><dd><code>{{ book.folder }}</code></dd></div>
+  <div><dt>ID</dt><dd>{{ book.id }}</dd></div>
+  <div><dt>{{ t("filing.kind") }}</dt><dd>{{ book.kind }}</dd></div>
+  <div><dt>{{ t("books.col_owner") }}</dt><dd>{% if book.owner %}{{ book.owner }}{% else %}&ndash;{% endif %}</dd></div>
+  <div><dt>{{ t("tags.genre") }}</dt><dd>{% if book.genre %}{{ book.genre }}{% else %}&ndash;{% endif %}{% if info.genre_tag %} <small>({{ info.genre_tag }})</small>{% endif %}</dd></div>
+  <div><dt>{{ t("books.content") }}</dt><dd>{{ book.discs }} {{ t("books.discs") }} &middot; {{ book.tracks }} {{ t("books.tracks") }} &middot; {{ book.duration_ms // 3600000 }} h {{ (book.duration_ms // 60000) % 60 }} min &middot; {{ info.megabytes }} MB</dd></div>
+  <div><dt>{{ t("filing.released") }}</dt><dd>{% if book.released %}{{ t("books.released_from") }} {{ book.min_age }}{% if info.released %} <small>({{ info.released }})</small>{% endif %}{% else %}&ndash;{% endif %}</dd></div>
+  <div><dt>{{ t("filing.added") }}</dt><dd>{{ info.added or "–" }}</dd></div>
+  <div><dt>{{ t("filing.created") }}</dt><dd>{{ info.created or "–" }}{% if info.created_by %} <small>{{ info.created_by }}</small>{% endif %}</dd></div>
+  <div><dt>{{ t("filing.updated") }}</dt><dd>{{ info.updated or "–" }}{% if info.updated_by %} <small>{{ info.updated_by }}</small>{% endif %}</dd></div>
+  <div><dt>{{ t("filing.tracks_updated") }}</dt><dd>{{ info.tracks_updated or "–" }}</dd></div>
+</dl>

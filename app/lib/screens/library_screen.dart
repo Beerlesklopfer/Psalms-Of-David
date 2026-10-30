@@ -6,12 +6,14 @@ import '../cd/cd_import_ui.dart';
 import '../cd/cd_kit.dart';
 import '../cd/cd_progress_bar.dart';
 import '../l10n/app_localizations.dart';
+import '../labels.dart';
 import '../library_folds.dart';
 import '../library_groups.dart';
 import '../library_hiding.dart';
 import '../models.dart';
 import '../podcasts.dart';
 import 'hidden_list.dart';
+import 'labels_ui.dart';
 import 'media_category.dart';
 import 'playlists_screen.dart';
 import 'podcasts_screen.dart';
@@ -49,6 +51,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
   );
 
   MediaCategory _category = MediaCategory.audiobooks;
+
+  /// The labels the list is narrowed to (a book must carry all of them).
+  Set<String> _labels = {};
 
   late final LibraryFolds _folds = widget.folds ?? LibraryFolds.standard();
 
@@ -173,7 +178,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (_category == MediaCategory.hidden && !showHidden) _category = MediaCategory.audiobooks;
     final cs = Theme.of(context).colorScheme;
     // The books of the chosen category; null for a category David does not manage yet.
-    final shown = _category.pick(p.library);
+    final base = _category.pick(p.library);
+    final labelRows = base == null ? const <(String, int)>[] : labelCounts(base);
+    // A label that no book carries any more (a reload took it) is dropped from the choice.
+    _labels.removeWhere((c) => !labelRows.any((r) => r.$1.toLowerCase() == c.toLowerCase()));
+    final shown = base == null ? null : filterByLabels(base, _labels);
     if (_category == MediaCategory.podcasts) _podcasts ??= PodcastsController(widget.api);
     if (_category == MediaCategory.radio) _radio ??= RadioController(widget.api);
     final playlists = PlaylistScope.maybeOf(context);
@@ -230,6 +239,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
             child: Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: _genreChips(l, groups),
+            ),
+          ),
+        if (labelRows.isNotEmpty &&
+            (_category == MediaCategory.music || _category == MediaCategory.audiobooks))
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: LabelFilter(
+                counts: labelRows,
+                chosen: _labels,
+                onChanged: (c) => setState(() => _labels = c),
+              ),
             ),
           ),
         if (_category == MediaCategory.podcasts)

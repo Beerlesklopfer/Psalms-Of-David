@@ -37,6 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     store
         .import_books(vec![FoundBook {
             kind: "audiobook".into(),
+            discs_total: None,
             narrator: None,
             genre: None,
             author: "Test".into(),

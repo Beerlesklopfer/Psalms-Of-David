@@ -398,6 +398,11 @@ impl Store {
                 .await?;
             total.books_released = res.rows_affected() as usize;
         }
+        // Tidy up: the albums whose files are gone leave the library (the scan above only adds). A place that cannot be read counts as "there"
+        // (see `prune.rs`), and an import folder that is missing or empty stops the tidying of its kind, so a small problem of the scan need not stop it.
+        let pruned = self.prune_missing(false, false).await?;
+        total.books_removed = pruned.removed.len();
+        total.problems.extend(pruned.problems);
         self.fill_library_counts(&mut total).await?;
         // The last result is kept, so the import page can show it later: the problems of a run (a folder
         // without permission) are then readable without the server log.

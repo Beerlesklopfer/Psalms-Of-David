@@ -27,7 +27,9 @@ label { display: inline-flex; gap: .35rem; align-items: center; }
 input, select, button { font: inherit; padding: .3rem .5rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg); }
 input[type=number] { width: 5.5rem; }
 button { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); cursor: pointer; }
-button[disabled] { opacity: .5; cursor: progress; }
+button[disabled] { opacity: .5; cursor: not-allowed; }
+/* The clock only while a request runs (htmx sets the class on the form and takes it off when the answer is there), not on every blocked button. */
+.htmx-request, .htmx-request button, .htmx-request input, .htmx-request label { cursor: progress; }
 .message { padding: .5rem .75rem; border-left: 4px solid var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
 .message.error { border-color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); }
 small { color: var(--muted); }
@@ -367,7 +369,7 @@ html:not(.js) .window-foot .btn.outline, html:not(.js) .panel-foot .only-window 
 .dialog-form .check input { width: 1.15rem; min-height: 0; padding: 0; accent-color: var(--accent); }
 
 /* The audiobook list */
-table.books td.cover-cell { width: 3.5rem; padding-right: 0; }
+table.books td.cover-cell { width: 6.5rem; padding-right: 0; }
 .thumb { position: relative; display: grid; place-items: center; width: 3rem; height: 3rem; border-radius: 4px; overflow: hidden;
          background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 35%, var(--bg)), color-mix(in srgb, var(--accent) 65%, #000));
          color: var(--accent-fg); }
@@ -671,3 +673,85 @@ td.actions form { display: inline-block; margin: 0 .25rem .25rem 0; }
   border-color: var(--err); outline: 2px solid var(--err); outline-offset: 1px; border-radius: 8px;
 }
 .dialog-form .field input.is-invalid ~ span { color: var(--err); }
+
+/* The one window of a book: tabs (Release, Edit, Tags, Filing); the cover and the title open it. */
+.book-open { all: unset; cursor: pointer; }
+.book-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.thumb.book-open { position: relative; display: inline-block; }
+.title-button strong { text-decoration: none; }
+.title-button:hover strong, .title-button:focus-visible strong { text-decoration: underline; }
+.book-window .window-head h3 small { display: block; font-weight: 400; color: var(--muted); font-size: .9rem; }
+.tabs { display: flex; gap: .25rem; padding: 0 1rem; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tabs .tab { appearance: none; background: none; border: 0; border-bottom: 3px solid transparent; padding: .6rem .9rem; font: inherit; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: .4rem; white-space: nowrap; }
+.tabs .tab:hover { color: var(--fg); }
+.tabs .tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.tab-panel[hidden] { display: none; }
+.panel-foot { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; margin-top: 1rem; }
+.panel-foot form { margin-right: auto; display: flex; align-items: center; gap: .75rem; }
+
+/* The cover in the list of books: large enough to recognise the CD. The button resets everything, so size and shape are set again. */
+table.books .thumb.book-open { display: block; width: 5.5rem; height: 5.5rem; overflow: hidden; border-radius: 6px; }
+
+/* One height for the window of a book, whatever tab is open: the body scrolls, head, tabs and foot stay. */
+dialog.book-window[open] { height: min(44rem, calc(100vh - 2rem)); }
+.book-window .window-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* The buttons of the cover in one row, below the picture. */
+.cover-edit { flex-direction: column; align-items: flex-start; }
+/* A block: the three buttons of the same width in one row, the hint below over the whole width. */
+.cover-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; align-items: stretch; flex: 0 0 auto; width: 100%; max-width: 44rem; }
+.cover-actions .btn { width: 100%; justify-content: center; text-align: center; margin: 0; }
+.cover-actions .cover-hint { grid-column: 1 / -1; }
+.book-window .window-body { overflow-x: hidden; }
+@media (max-width: 560px) { .cover-actions { grid-template-columns: 1fr; } }
+/* The labels as chips: each word with a cross, an entry with suggestions, the button "Add". */
+.chips-field { display: grid; gap: .35rem; }
+.chips-label { font-size: .85rem; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; padding: .5rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.chips-list { display: contents; }
+.chip { appearance: none; display: inline-flex; align-items: center; gap: .4rem; padding: .25rem .4rem .25rem .8rem; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--fg); font: inherit; cursor: pointer; }
+.chip:hover, .chip:focus-visible { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.chip-x { display: inline-grid; place-items: center; width: 1.3rem; height: 1.3rem; border-radius: 50%; line-height: 1; color: var(--accent); }
+.chips-entry { flex: 1 1 10rem; min-width: 8rem; border: 0; outline: none; background: transparent; padding: .4rem; font: inherit; color: var(--fg); }
+.chips-add { padding: .3rem .8rem; }
+
+/* The facts of a book in the tab Filing: a list of labels and values, the places over the whole width. */
+.meta-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem 1.25rem; margin: 0 0 1rem; }
+.meta-list > div { min-width: 0; }
+.meta-list .meta-wide { grid-column: 1 / -1; }
+.meta-list dt { font-size: .8rem; color: var(--muted); margin: 0; }
+.meta-list dd { margin: 0; overflow-wrap: anywhere; }
+.meta-list code { font-size: .9rem; }
+
+/* The suggestions under the entry of labels. */
+.chips { position: relative; }
+.chips-suggest { position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 5; margin: 0; padding: .25rem; list-style: none; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgb(0 0 0 / .18); max-height: 14rem; overflow: auto; }
+.chips-suggest[hidden] { display: none; }
+.chips-suggest li { padding: .4rem .7rem; border-radius: 6px; cursor: pointer; }
+.chips-suggest li:hover, .chips-suggest li[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+
+/* The fields of an album added by a "+": a row for each, the input has the kind of the field (text, number, date). */
+.fields-editor { display: grid; gap: .5rem; }
+.fields-rows { display: grid; gap: .5rem; }
+.field-row { display: grid; grid-template-columns: 1fr auto; gap: .5rem; align-items: center; }
+.field-name { display: grid; grid-template-columns: 11rem 1fr; gap: .75rem; align-items: center; color: var(--muted); font-size: .9rem; }
+.field-name input { width: 100%; }
+.field-x { padding: .35rem .7rem; }
+.fields-add { display: flex; gap: .5rem; align-items: center; }
+.fields-add select { flex: 1 1 auto; }
+.fields-plus { width: 2.6rem; justify-content: center; font-size: 1.2rem; padding: .3rem 0; }
+@media (max-width: 560px) { .field-name { grid-template-columns: 1fr; } }
+
+/* The filters under the search field: one tidy row; the labels as a drop-down of check boxes (several at once). */
+.search-bar .search-filters { flex: 0 0 100%; display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; align-items: center; }
+.check-inline.disabled { opacity: .5; }
+.label-pick { position: relative; }
+.label-pick > summary { cursor: pointer; list-style: none; padding: .45rem .75rem; border: 1px solid var(--line, #c9bfa8); border-radius: .4rem; background: var(--paper, #fff); }
+.label-pick > summary::after { content: " \25be"; }
+.label-pick-list { position: absolute; z-index: 20; top: calc(100% + .25rem); left: 0; min-width: 14rem; max-height: 18rem; overflow: auto; display: flex; flex-direction: column; gap: .25rem; padding: .5rem .75rem; border: 1px solid var(--line, #c9bfa8); border-radius: .4rem; background: var(--paper, #fff); box-shadow: 0 4px 14px rgba(0,0,0,.15); }
+.label-pick-list label { display: flex; align-items: center; gap: .4rem; white-space: nowrap; }
+
+/* The labels of single titles in the tab "Edit": one row per title, the entry of labels below its name. */
+.track-labels-details > summary { cursor: pointer; }
+.track-labels { display: flex; flex-direction: column; gap: .5rem; margin-top: .5rem; max-height: 22rem; overflow: auto; }
+.track-label-row { display: flex; flex-direction: column; gap: .15rem; }
+.track-label-title { font-size: .9rem; color: var(--muted, #6b6252); }

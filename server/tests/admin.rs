@@ -211,8 +211,8 @@ fn exported_templates_are_a_complete_starting_point() {
     assert!(dir.path().join("static/admin.css").is_file());
     // Loading the unchanged export gives the same pages as the built-in ones.
     let exported = AdminUi::with_override_dirs(vec![dir.path().to_owned()]).unwrap();
-    assert_eq!(exported.overrides.len(), n - 5, "every template, but not the five static files, is an override");
-    assert!(dir.path().join("static/logo.svg").is_file() && dir.path().join("static/favicon.svg").is_file() && dir.path().join("static/crop.js").is_file());
+    assert_eq!(exported.overrides.len(), n - 7, "every template, but not the seven static files, is an override");
+    assert!(dir.path().join("static/logo.svg").is_file() && dir.path().join("static/favicon.svg").is_file() && dir.path().join("static/crop.js").is_file() && dir.path().join("static/chips.js").is_file() && dir.path().join("static/fields.js").is_file());
     assert_eq!(exported.login(View::new(Lang::De)).unwrap(), AdminUi::new().unwrap().login(View::new(Lang::De)).unwrap());
     assert!(exported.static_file("admin.css").is_some());
     assert!(AdminUi::new().unwrap().static_file("admin.css").is_none());

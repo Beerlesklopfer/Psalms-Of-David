@@ -1,0 +1,12 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}<div class="track-labels" data-track-labels>
+  <input type="hidden" name="track_labels" value="">
+  {% for track in tracks %}
+  <div class="track-label-row">
+    <span class="track-label-title">{% if track.disc > 1 %}{{ track.disc }}.{% endif %}{{ track.number }} &nbsp;{{ track.title }}</span>
+    <div class="chips-field"><input type="text" data-track="{{ track.id }}" maxlength="400" list="label-words" autocomplete="off" value="{{ track.labels }}" data-chips data-suggest="/admin/rpc/label.suggest" data-add="{{ t('books.labels_add') }}" data-remove="{{ t('books.labels_remove') }}" data-placeholder="{{ t('books.labels_new') }}" aria-label="{{ track.title }}"></div>
+  </div>
+  {% else %}
+  <p>{{ t("books.no_tracks") }}</p>
+  {% endfor %}
+</div>

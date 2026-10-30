@@ -574,5 +574,34 @@
   },
   "audiobooksOfNobody": "Weitere Hörbücher",
   "groupExpand": "Aufklappen",
-  "groupCollapse": "Zuklappen"
+  "groupCollapse": "Zuklappen",
+  "settingsWebsite": "Website des Servers",
+  "settingsWebsiteHint": "Öffnet die Startseite des Servers im Browser, mit dem Weg zur Verwaltung.",
+  "settingsWebsiteFailed": "Der Browser konnte nicht geöffnet werden.",
+  "shareTooltip": "Teilen",
+  "shareText": "{title} von {author}",
+  "labelsTitle": "Schlagwörter",
+  "labelsEdit": "Schlagwörter bearbeiten",
+  "labelsNone": "Noch keine Schlagwörter.",
+  "trackLabelsEdit": "Schlagwörter dieses Titels",
+  "labelsAdd": "Hinzufügen",
+  "labelsNew": "Neues Schlagwort",
+  "labelsSave": "Speichern",
+  "labelsFailed": "Die Schlagwörter konnten nicht gespeichert werden.",
+  "labelsBad": "Das ist kein brauchbares Schlagwort: 1 bis 40 Zeichen, kein Komma, Semikolon oder senkrechter Strich.",
+  "labelsFilterClear": "Alle Schlagwörter",
+  "labelsRename": "Schlagwort umbenennen",
+  "labelsDelete": "Schlagwort löschen",
+  "labelsNoneInLibrary": "In der Bibliothek gibt es noch keine Schlagwörter. Der Besitzer eines Buchs setzt sie auf dessen Seite.",
+  "labelsDeleteConfirm": "\"{name}\" bei {count} Büchern entfernen?",
+  "@labelsDeleteConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

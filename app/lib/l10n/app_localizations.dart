@@ -2401,6 +2401,120 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Collapse'**
   String get groupCollapse;
+
+  /// No description provided for @settingsWebsite.
+  ///
+  /// In en, this message translates to:
+  /// **'Website of the server'**
+  String get settingsWebsite;
+
+  /// No description provided for @settingsWebsiteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Opens the start page of the server in the browser, with the way to the administration.'**
+  String get settingsWebsiteHint;
+
+  /// No description provided for @settingsWebsiteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The browser could not be opened.'**
+  String get settingsWebsiteFailed;
+
+  /// No description provided for @shareTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get shareTooltip;
+
+  /// No description provided for @shareText.
+  ///
+  /// In en, this message translates to:
+  /// **'{title} by {author}'**
+  String shareText(String title, String author);
+
+  /// No description provided for @labelsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Labels'**
+  String get labelsTitle;
+
+  /// No description provided for @labelsEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit labels'**
+  String get labelsEdit;
+
+  /// No description provided for @labelsNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No labels yet.'**
+  String get labelsNone;
+
+  /// No description provided for @trackLabelsEdit.
+  ///
+  /// In en, this message translates to:
+  /// **'Labels of this title'**
+  String get trackLabelsEdit;
+
+  /// No description provided for @labelsAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get labelsAdd;
+
+  /// No description provided for @labelsNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New label'**
+  String get labelsNew;
+
+  /// No description provided for @labelsSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get labelsSave;
+
+  /// No description provided for @labelsFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The labels could not be saved.'**
+  String get labelsFailed;
+
+  /// No description provided for @labelsBad.
+  ///
+  /// In en, this message translates to:
+  /// **'That is not a usable label: 1 to 40 characters, no comma, semicolon or bar.'**
+  String get labelsBad;
+
+  /// No description provided for @labelsFilterClear.
+  ///
+  /// In en, this message translates to:
+  /// **'All labels'**
+  String get labelsFilterClear;
+
+  /// No description provided for @labelsRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename label'**
+  String get labelsRename;
+
+  /// No description provided for @labelsDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete label'**
+  String get labelsDelete;
+
+  /// No description provided for @labelsNoneInLibrary.
+  ///
+  /// In en, this message translates to:
+  /// **'No labels in the library yet. The owner of a book sets them on its page.'**
+  String get labelsNoneInLibrary;
+
+  /// No description provided for @labelsDeleteConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Take \"{name}\" off {count} books?'**
+  String labelsDeleteConfirm(String name, int count);
 }
 
 class _AppLocalizationsDelegate

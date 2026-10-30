@@ -44,6 +44,8 @@ pub struct MediaTags {
     /// The narrator of an audiobook: the composer tag.
     pub narrator: Option<String>,
     pub disc: Option<u32>,
+    /// How many discs the set has (`TPOS` as `2/4`, or the field `DiscTotal`).
+    pub disc_total: Option<u32>,
     pub track: Option<u32>,
     /// The medium's own age recommendation (see `docs/spec-discovery-profiles-roles.md`).
     pub age_recommendation: Option<u32>,
@@ -102,6 +104,7 @@ pub fn read(path: &Path) -> Result<MediaTags, Error> {
         out.genre = non_empty(tag.genre().map(Cow::into_owned));
         out.narrator = non_empty(tag.get_string(ItemKey::Composer).map(str::to_owned));
         out.disc = tag.disk().or_else(|| number(tag.get_string(ItemKey::DiscNumber)));
+        out.disc_total = tag.disk_total().or_else(|| number(tag.get_string(ItemKey::DiscTotal)));
         // RIFF INFO keeps "5/17" as one string, which the shared view cannot split.
         out.track = tag.track().or_else(|| number(tag.get_string(ItemKey::TrackNumber)));
         out.tag_kind = Some(match tag.tag_type() {
@@ -404,6 +407,31 @@ fn all_keys() -> &'static [(String, ItemKey)] {
 /// The names of all fields that can be set.
 pub fn field_names() -> Vec<&'static str> {
     all_keys().iter().map(|(n, _)| n.as_str()).collect()
+}
+
+/// The fields a person may add to an album, with the kind of input each has: `string`, `integer` or `date`. The common ones come first, in this
+/// order; the rest follows by name. The fields that the form has an input of its own for (album, artist, genre) are not in it.
+pub fn field_catalog() -> Vec<(String, &'static str)> {
+    const COMMON: [&str; 20] = [
+        "DiscNumber", "DiscTotal", "TrackTotal", "RecordingDate", "ReleaseDate", "Composer", "Conductor", "Lyricist", "Publisher", "Label", "CatalogNumber",
+        "Comment", "Description", "Language", "Copyright", "ISRC", "Barcode", "Work", "MovementName", "Bpm",
+    ];
+    const OWN: [&str; 5] = ["AlbumTitle", "AlbumArtist", "TrackArtist", "Genre", "TrackNumber"];
+    let kind = |name: &str| -> &'static str {
+        match name {
+            "DiscNumber" | "DiscTotal" | "TrackNumber" | "TrackTotal" | "Bpm" | "MovementNumber" | "MovementTotal" | "Year" => "integer",
+            n if n.ends_with("Date") => "date",
+            _ => "string",
+        }
+    };
+    let all = field_names();
+    let mut out: Vec<(String, &'static str)> = COMMON.iter().filter(|n| all.contains(n)).map(|n| ((*n).to_owned(), kind(n))).collect();
+    for n in all {
+        if !COMMON.contains(&n) && !OWN.contains(&n) {
+            out.push((n.to_owned(), kind(n)));
+        }
+    }
+    out
 }
 
 fn key_of(name: &str) -> Option<ItemKey> {

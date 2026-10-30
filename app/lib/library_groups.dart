@@ -49,7 +49,10 @@ SearchGroups searchGroups(List<Book> pool, String query) {
     for (final b in pool)
       if (b.kind == 'audiobook' && has(b.narrator)) b.narrator!,
   }.toList()..sort();
-  final albums = pool.where((b) => has(b.title) || is_(b.author) || is_(b.narrator)).toList();
+  // A label is found too: a word typed that is (part of) a label of the book.
+  final albums = pool
+      .where((b) => has(b.title) || is_(b.author) || is_(b.narrator) || b.allLabels.any(has))
+      .toList();
   return SearchGroups(albums, creators, narrators);
 }
 

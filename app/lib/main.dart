@@ -14,9 +14,11 @@ import 'audio/pipewire_backend.dart';
 import 'demo_data.dart';
 import 'models.dart';
 import 'l10n/app_localizations.dart';
+import 'labels.dart';
 import 'library_hiding.dart';
 import 'player_controller.dart';
 import 'playlists.dart';
+import 'screens/share_button.dart';
 import 'screens/connect_screen.dart';
 import 'screens/home_screen.dart';
 import 'server/api_client.dart';
@@ -24,6 +26,7 @@ import 'server/app_paths.dart';
 import 'server/credentials.dart';
 import 'server/device_pairing.dart';
 import 'server/hiding_api.dart';
+import 'server/labels_api.dart';
 import 'server/playlist_api.dart';
 import 'server/discovery.dart';
 import 'audio/playback_settings.dart';
@@ -115,6 +118,9 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   );
   // The playlists of the profile, with the copy on this device (not in the demo).
   late final HidingController _hiding = HidingController(
+    onChanged: () => unawaited(_reloadLibrary(force: true)),
+  );
+  late final LabelsController _labels = LabelsController(
     onChanged: () => unawaited(_reloadLibrary(force: true)),
   );
   late final PlaylistController _playlists = PlaylistController(
@@ -252,6 +258,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _playlists.api = ServerPlaylistApi(api);
     unawaited(_playlists.load());
     _hiding.api = ServerHidingApi(api);
+    _labels.api = ServerLabelApi(api);
     unawaited(_hiding.load());
     api.libraryVersions().then((v) {
       _libraryVersion = v.version;
@@ -297,6 +304,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _player.refresher = null;
     _playlists.api = null;
     _hiding.api = null;
+    _labels.api = null;
     _api = null;
     if (_player.playing) _player.toggle();
     _credentials.clear();
@@ -315,6 +323,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _player.dispose();
     _playlists.dispose();
     _hiding.dispose();
+    _labels.dispose();
     super.dispose();
   }
 
@@ -326,7 +335,11 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
         controller: _playlists,
         child: HidingScope(
           controller: _hiding,
-          child: MaterialApp(
+          child: LabelsScope(
+            controller: _labels,
+            child: ServerAddressScope(
+            address: widget.demo ? null : _credentials.load()?.address,
+            child: MaterialApp(
             onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
             debugShowCheckedModeBanner: false,
             locale: widget.locale,
@@ -362,6 +375,8 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
                 api: widget.demo ? null : _api,
               ),
             },
+          ),
+          ),
           ),
         ),
       ),

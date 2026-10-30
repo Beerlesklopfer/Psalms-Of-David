@@ -120,6 +120,8 @@ pub struct PageQuery {
     q: Option<String>,
     /// Only the books with a problem (`1`).
     problems: Option<String>,
+    /// Only the books with this label.
+    label: Option<String>,
     /// The page of the list (from 1) and how many books it holds (10 to 500; the setting `list_page_size` when absent).
     page: Option<usize>,
     per: Option<usize>,
@@ -192,6 +194,16 @@ pub async fn ui_js(State(state): State<AppState>, headers: HeaderMap) -> Respons
 /// The cut and the zoom of a cover in the tags window.
 pub async fn crop_js(State(state): State<AppState>, headers: HeaderMap) -> Response {
     static_file(&state, &headers, "crop.js", "text/javascript; charset=utf-8", include_bytes!("../../static/crop.js"))
+}
+
+/// The chips of the labels of a book (a list of words as a row of chips).
+pub async fn chips_js(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    static_file(&state, &headers, "chips.js", "text/javascript; charset=utf-8", include_bytes!("../../static/chips.js"))
+}
+
+/// The rows for the fields of an album that are added by a "+" (in the tab Tags).
+pub async fn fields_js(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    static_file(&state, &headers, "fields.js", "text/javascript; charset=utf-8", include_bytes!("../../static/fields.js"))
 }
 
 pub async fn htmx(headers: HeaderMap) -> Response {
@@ -403,7 +415,7 @@ fn page_size_cookie(n: usize, secure: bool) -> HeaderValue {
 
 async fn media_page(state: &AppState, s: &AdminSession, q: &PageQuery, headers: &HeaderMap, kind: &str) -> Response {
     let (per, remember) = page_size(q, headers);
-    let mut res = render(state.ui.books(&state.store, view_for(s, q), state.library.as_deref(), kind, q.q.as_deref(), q.problems.as_deref() == Some("1"), q.page, per).await);
+    let mut res = render(state.ui.books(&state.store, view_for(s, q), state.library.as_deref(), kind, q.q.as_deref(), q.problems.as_deref() == Some("1"), q.label.as_deref().map(str::trim).filter(|l| !l.is_empty()), q.page, per).await);
     if let (true, Some(n)) = (remember, per) {
         res.headers_mut().append(header::SET_COOKIE, page_size_cookie(n, state.secure_cookie));
     }
@@ -1065,6 +1077,18 @@ pub struct BookUpdate {
     /// The owner (the id of a profile); absent leaves it alone, empty removes it.
     #[serde(default)]
     owner: Option<String>,
+    /// The labels, separated by commas; absent leaves them alone, empty removes them all.
+    #[serde(default)]
+    labels: Option<String>,
+    /// The labels of single titles, one line `track id=label, label` each; the titles that are not listed stay as they are.
+    #[serde(default)]
+    track_labels: Option<String>,
+    /// Which part of the window sent the form: `release` (release, ages, learning content) or `edit` (owner, labels, blurb). Absent: everything at once.
+    #[serde(default)]
+    section: Option<String>,
+    /// The age the medium recommends ("ab N Jahren"); absent leaves it alone, empty removes it.
+    #[serde(default)]
+    recommended_age: Option<String>,
 }
 
 /// The window of a book: released or not, from which age, learning content or not. All
@@ -1075,30 +1099,79 @@ pub async fn book_update(State(state): State<AppState>, s: AdminSession, Form(f)
         if f.description.as_deref().is_some_and(|t| t.trim().chars().count() > crate::store::MAX_DESCRIPTION_CHARS) {
             return Err(Failure::from(Error::DescriptionTooLong).at("description"));
         }
-        let release = f.released == "1";
-        let min_age = if release { Some(optional_number(&f.min_age, 0, 21).map_err(|e| e.at("min_age"))?.ok_or_else(|| Failure::from(Error::ReleaseRequiresAge).at("min_age"))?) } else { None };
-        // The family decides, but releasing below the recommendation needs a second look.
-        if let Some(age) = min_age
-            && book.recommended_age.is_some_and(|r| age < r)
-            && f.confirm != "1"
-        {
-            return Err(Failure::new(StatusCode::CONFLICT, "err.below_recommendation").at("confirm"));
+        // The labels are read first: nothing changes when one is not usable.
+        let labels = match f.labels.as_deref() {
+            Some(text) => Some(crate::labels::parse_list(text).filter(|l| l.len() <= crate::labels::MAX_PER_BOOK).ok_or_else(|| Failure::from(Error::InvalidName).at("labels"))?),
+            None => None,
+        };
+        // The labels of titles: only titles of this book, each list as good as the one of the book.
+        let track_labels: Vec<(i64, Vec<String>)> = match f.track_labels.as_deref() {
+            Some(text) => {
+                let ours: Vec<i64> = state.store.tracks_of(f.id).await?.iter().map(|t| t.id).collect();
+                let mut out = Vec::new();
+                for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+                    let (id, list) = line.split_once('=').ok_or_else(|| Failure::from(Error::InvalidName).at("track_labels"))?;
+                    let id: i64 = id.trim().parse().map_err(|_| Failure::input().at("track_labels"))?;
+                    if !ours.contains(&id) {
+                        return Err(Failure::input().at("track_labels"));
+                    }
+                    out.push((id, crate::labels::parse_list(list).filter(|l| l.len() <= crate::labels::MAX_PER_TRACK).ok_or_else(|| Failure::from(Error::InvalidName).at("track_labels"))?));
+                }
+                out
+            }
+            None => Vec::new(),
+        };
+        // The window has a form for the release and one for the rest; each sends only its own part.
+        let (do_release, do_edit) = match f.section.as_deref() {
+            Some("release") => (true, false),
+            Some("edit") => (false, true),
+            _ => (true, true),
+        };
+        let recommended = match (do_release, f.recommended_age.as_deref()) {
+            (true, Some(text)) => Some(optional_number(text, 0, 21).map_err(|e| e.at("recommended_age"))?),
+            _ => None,
+        };
+        if do_release {
+            let release = f.released == "1";
+            let min_age = if release { Some(optional_number(&f.min_age, 0, 21).map_err(|e| e.at("min_age"))?.ok_or_else(|| Failure::from(Error::ReleaseRequiresAge).at("min_age"))?) } else { None };
+            // The family decides, but releasing below the recommendation needs a second look (the recommendation that is typed counts).
+            let recommendation = match &recommended {
+                Some(r) => *r,
+                None => book.recommended_age,
+            };
+            if let Some(age) = min_age
+                && recommendation.is_some_and(|r| age < r)
+                && f.confirm != "1"
+            {
+                return Err(Failure::new(StatusCode::CONFLICT, "err.below_recommendation").at("confirm"));
+            }
+            if let Some(r) = recommended {
+                state.store.set_book_recommended_age(f.id, r).await?;
+            }
+            match min_age {
+                Some(age) => state.store.release_book(f.id, age).await?,
+                None if book.released => state.store.unrelease_book(f.id).await?,
+                None => {}
+            }
+            state.store.set_book_quota_exempt(f.id, f.exempt == "1").await?;
         }
-        match min_age {
-            Some(age) => state.store.release_book(f.id, age).await?,
-            None if book.released => state.store.unrelease_book(f.id).await?,
-            None => {}
-        }
-        state.store.set_book_quota_exempt(f.id, f.exempt == "1").await?;
-        if let Some(text) = &f.description {
-            state.store.set_book_description(f.id, text).await?;
-        }
-        // The owner is another thing than the release: whom the book belongs to.
-        if let Some(owner) = f.owner.as_deref() {
-            let owner = owner.trim();
-            let id = if owner.is_empty() { None } else { Some(owner.parse::<i64>().map_err(|_| Failure::input().at("owner"))?) };
-            if !state.store.set_book_owner(f.id, id).await? {
-                return Err(Failure::input().at("owner"));
+        if do_edit {
+            if let Some(text) = &f.description {
+                state.store.set_book_description(f.id, text).await?;
+            }
+            if let Some(names) = &labels {
+                state.store.set_book_labels(f.id, names).await.map_err(|e| Failure::from(e).at("labels"))?.ok_or_else(Failure::not_found)?;
+            }
+            for (track, names) in &track_labels {
+                state.store.set_track_labels(*track, names).await.map_err(|e| Failure::from(e).at("track_labels"))?;
+            }
+            // The owner is another thing than the release: whom the book belongs to.
+            if let Some(owner) = f.owner.as_deref() {
+                let owner = owner.trim();
+                let id = if owner.is_empty() { None } else { Some(owner.parse::<i64>().map_err(|_| Failure::input().at("owner"))?) };
+                if !state.store.set_book_owner(f.id, id).await? {
+                    return Err(Failure::input().at("owner"));
+                }
             }
         }
         book_row(&state, &s, f.id).await
@@ -1110,6 +1183,19 @@ pub async fn book_update(State(state): State<AppState>, s: AdminSession, Form(f)
 #[derive(Deserialize)]
 pub struct BookQuery {
     id: i64,
+}
+
+/// The titles of an album with an entry of labels each, loaded when the section in the tab "Edit" is opened.
+pub async fn book_track_labels(State(state): State<AppState>, s: AdminSession, Query(q): Query<BookQuery>) -> Response {
+    let outcome: Result<String, Failure> = async {
+        state.store.admin_book_row(q.id).await?.ok_or_else(Failure::not_found)?;
+        Ok(state.ui.book_track_labels_fragment(&state.store, view(&s), q.id).await?)
+    }
+    .await;
+    match outcome {
+        Ok(html) => Html(html).into_response(),
+        Err(f) => plain_failure(f.status, f.key, s.lang, true),
+    }
 }
 
 /// The titles of an album, loaded when its list is opened (an album can have hundreds, the page does not carry them).
@@ -1139,7 +1225,47 @@ pub async fn book_tags_form(State(state): State<AppState>, s: AdminSession, Quer
     .await;
     match outcome {
         Ok(html) => Html(html).into_response(),
+        // The files are gone (the import takes the album out soon): the tab says so instead of staying empty.
+        Err(f) if f.key == "err.files_missing" => Html(format!("<p class=\"message error\" role=\"alert\">{}</p>", escape(Catalog::new(s.lang).t("err.files_missing")))).into_response(),
         Err(f) => plain_failure(f.status, f.key, s.lang, true),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct SuggestQuery {
+    #[serde(default)]
+    q: String,
+}
+
+/// The labels that fit what is typed, for the suggestions of the entry of labels: the ones that begin with it first, then the ones that hold it,
+/// the most used first; at most eight. Without a text the most used ones.
+pub async fn label_suggest(State(state): State<AppState>, _s: AdminSession, Query(q): Query<SuggestQuery>) -> Response {
+    match state.store.labels().await {
+        Ok(mut all) => {
+            let needle = q.q.trim().to_lowercase();
+            all.retain(|l| needle.is_empty() || l.name.to_lowercase().contains(&needle));
+            all.sort_by(|a, b| {
+                let (pa, pb) = (a.name.to_lowercase().starts_with(&needle), b.name.to_lowercase().starts_with(&needle));
+                pb.cmp(&pa).then(b.books.cmp(&a.books)).then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            });
+            axum::Json(all.into_iter().take(8).map(|l| l.name).collect::<Vec<_>>()).into_response()
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "the suggestions of labels failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// The tab "Filing" of a book: the complete place and the metadata of the database, loaded when the tab is opened.
+pub async fn book_filing(State(state): State<AppState>, s: AdminSession, Query(q): Query<BookQuery>) -> Response {
+    match state.ui.book_filing_fragment(&state.store, state.library.as_deref(), view(&s), q.id).await {
+        Ok(Some(html)) => Html(html).into_response(),
+        Ok(None) => plain_failure(StatusCode::NOT_FOUND, "err.not_found", s.lang, true),
+        Err(e) => {
+            tracing::error!(error = %e, "the filing tab failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
     }
 }
 
@@ -2142,7 +2268,7 @@ pub struct UserQuery {
 }
 
 pub async fn schedule_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<UserQuery>) -> Response {
-    let page = PageQuery { msg: q.msg, next: None, tab: None, q: None, problems: None, page: None, per: None };
+    let page = PageQuery { msg: q.msg, next: None, tab: None, q: None, problems: None, label: None, page: None, per: None };
     match state.ui.schedule(&state.store, view_for(&s, &page), q.user).await {
         Ok(Some(html)) => Html(html).into_response(),
         Ok(None) => plain_failure(StatusCode::NOT_FOUND, "err.not_found", s.lang, s.htmx),

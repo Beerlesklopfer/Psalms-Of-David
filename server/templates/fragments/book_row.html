@@ -1,77 +1,78 @@
 {# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
    SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<tr id="book-{{ book.id }}"{% if parents is defined %} data-parents="{{ parents }}" class="depth-{{ depth }}"{% endif %} data-search="{{ (book.title ~ ' ' ~ book.author ~ ' ' ~ (book.narrator or ''))|lower }}">
-  <td class="cover-cell"><span class="thumb">{{ icon("books") }}<img src="/admin/cover/{{ book.id }}" alt="" loading="lazy"></span></td>
-  <td>{% set has_gap = gaps is defined and (book.id|string) in gaps %}{% set has_nocover = nocover is defined and (book.id|string) in nocover %}{% if has_gap or has_nocover %}{% set why %}{% if has_gap %}{{ t('books.missing_tracks') }} {{ gaps[book.id|string] }}{% endif %}{% if has_gap and has_nocover %}; {% endif %}{% if has_nocover %}{{ t('books.missing_cover') }}{% endif %}{% endset %}<span class="problem-mark" role="img" title="{{ why }}" aria-label="{{ why }}">!</span> {% endif %}<strong>{{ book.title }}</strong>{% if dupes is defined and (book.id|string) in dupes %} <a class="badge" href="#book-{{ dupes[book.id|string][0].id }}" title="{% for o in dupes[book.id|string] %}#{{ o.id }} {{ o.author }}, {{ o.discs }} {{ t('books.discs') }}, {{ o.duration_ms // 3600000 }} h {{ (o.duration_ms // 60000) % 60 }} min{% if not loop.last %}; {% endif %}{% endfor %}">{{ t("books.dupe") }}</a>
-    <details class="ignore-menu"><summary>{{ t("ignore.button") }}</summary>
-      <div class="ignore-options">
-        {% for scope in ["album", "title", "work"] %}
-        <form method="post" action="/admin/rpc/ignore.add"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}"><input type="hidden" name="scope" value="{{ scope }}"><input type="hidden" name="what" value="duplicate"><input type="hidden" name="back" value="{{ book.kind }}">
-          <button type="submit" class="btn outline">{{ t("ignore." ~ scope) }}</button></form>
-        {% endfor %}
-        <form method="post" action="/admin/rpc/quarantine.add" data-confirm="{{ t('quarantine.confirm') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}"><input type="hidden" name="back" value="{{ book.kind }}">
-          <button type="submit" class="btn outline danger-outline">{{ t("quarantine.button") }}</button></form>
-      </div>
-    </details>{% endif %}<br><small>{{ book.author }}{% if book.owner %} &middot; {{ t("books.owner_of") }} {{ book.owner }}{% endif %}{% if book.narrator %} &middot; {{ t("books.read_by") }} {{ book.narrator }}{% endif %}</small>
+  <td class="cover-cell"><button type="button" class="thumb book-open" data-dialog="dlg-book-{{ book.id }}" title="{{ t('books.open') }}" aria-label="{{ t('books.open') }}: {{ book.title }}">{{ icon("books") }}<img src="/admin/cover/{{ book.id }}" alt="" loading="lazy"></button></td>
+  <td>{% set has_gap = gaps is defined and (book.id|string) in gaps %}{% set has_nocover = nocover is defined and (book.id|string) in nocover %}{% if has_gap or has_nocover %}{% set why %}{% if has_gap %}{{ t('books.missing_tracks') }} {{ gaps[book.id|string] }}{% endif %}{% if has_gap and has_nocover %}; {% endif %}{% if has_nocover %}{{ t('books.missing_cover') }}{% endif %}{% endset %}<span class="problem-mark" role="img" title="{{ why }}" aria-label="{{ why }}">!</span> {% endif %}<button type="button" class="book-open title-button" data-dialog="dlg-book-{{ book.id }}" title="{{ t('books.open') }}"><strong>{{ book.title }}</strong></button>{% set lt = label_list if label_list is defined else (label_texts[book.id|string] if label_texts is defined and (book.id|string) in label_texts else []) %}{% for l in lt %} <span class="badge label">{{ l }}</span>{% endfor %}{% if dupes is defined and (book.id|string) in dupes %} <a class="badge" href="#book-{{ dupes[book.id|string][0].id }}" title="{% for o in dupes[book.id|string] %}#{{ o.id }} {{ o.author }}, {{ o.discs }} {{ t('books.discs') }}, {{ o.duration_ms // 3600000 }} h {{ (o.duration_ms // 60000) % 60 }} min{% if not loop.last %}; {% endif %}{% endfor %}">{{ t("books.dupe") }}</a>
+{% endif %}<br><small>{{ book.author }}{% if book.owner %} &middot; {{ t("books.owner_of") }} {{ book.owner }}{% endif %}{% if book.narrator %} &middot; {{ t("books.read_by") }} {{ book.narrator }}{% endif %}</small>
     <details class="track-details"><summary>{{ book.tracks }} {{ t("books.tracks") }}</summary>
       <div id="tracks-{{ book.id }}" hx-get="/admin/rpc/book.tracks?id={{ book.id }}" hx-trigger="toggle from:closest details once" hx-swap="innerHTML"></div>
     </details>
-  </td>
-  <td data-label="{{ t('books.state') }}">
-    {% if book.released %}
-    <form class="toggle-form" method="post" action="/admin/rpc/book.unrelease" hx-post="/admin/rpc/book.unrelease" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-disabled-elt="find button"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}">
-      <button type="submit" class="badge ok toggle" aria-pressed="true" title="{{ t('books.toggle_off') }}">{{ t("books.released_from") }} {{ book.min_age }}</button></form>
-    {% elif book.recommended_age is not none %}
-    <form class="toggle-form" method="post" action="/admin/rpc/book.release" hx-post="/admin/rpc/book.release" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-disabled-elt="find button"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}"><input type="hidden" name="min_age" value="{{ book.recommended_age }}">
-      <button type="submit" class="badge muted toggle" aria-pressed="false" title="{{ t('books.toggle_on') }}">{{ t("books.unreleased") }}</button></form>
-    {% else %}
-    <button type="button" class="badge muted toggle" aria-pressed="false" data-dialog="dlg-book-{{ book.id }}" title="{{ t('books.toggle_need_age') }}">{{ t("books.unreleased") }}</button>
-    {% endif %}
-    {% if book.quota_exempt %}<span class="badge">{{ t("books.learning") }}</span>{% endif %}
-  </td>
-  <td data-label="{{ t('books.content') }}">{{ book.discs }} {{ t("books.discs") }} &middot; {{ book.tracks }} {{ t("books.tracks") }} &middot; {{ book.duration_ms // 3600000 }} h {{ (book.duration_ms // 60000) % 60 }} min</td>
-  <td data-label="{{ t('books.recommended') }}">{% if book.recommended_age is none %}&ndash;{% else %}{{ book.recommended_age }}{% endif %}</td>
-  <td class="actions">
-    <div class="row-actions">
-      <button type="button" class="btn outline" data-dialog="dlg-book-{{ book.id }}">{{ icon("edit") }}<span>{{ t("users.edit") }}</span></button>
-      <button type="button" class="btn outline" data-dialog="dlg-tags-{{ book.id }}" hx-get="/admin/rpc/book.tags_form?id={{ book.id }}" hx-target="#tags-body-{{ book.id }}" hx-swap="innerHTML">{{ icon("tag") }}<span>{{ t("tags.button") }}</span></button>
-    </div>
-    <dialog id="dlg-tags-{{ book.id }}" class="window edit-window tags-window" aria-labelledby="dlg-tags-title-{{ book.id }}">
-      <div class="window-head"><h3 id="dlg-tags-title-{{ book.id }}">{{ t("tags.title") }}: {{ book.title }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
-      <div id="tags-body-{{ book.id }}" class="window-body"></div>
-      <div class="window-foot">
-        <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
-        <button type="submit" class="btn" form="tags-form-{{ book.id }}">{{ t("ui.save") }}</button>
+    <dialog id="dlg-book-{{ book.id }}" class="window edit-window book-window" aria-labelledby="dlg-book-title-{{ book.id }}">
+      <div class="window-head"><h3 id="dlg-book-title-{{ book.id }}">{{ book.title }}<small>{{ book.author }}</small></h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+      <div class="tabs" role="tablist" aria-label="{{ book.title }}">
+        <button type="button" role="tab" class="tab" data-tab="release" data-form="book-form-{{ book.id }}" aria-selected="true">{{ t("books.tab_release") }}</button>
+        <button type="button" role="tab" class="tab" data-tab="edit" data-form="book-edit-form-{{ book.id }}" aria-selected="false">{{ icon("edit") }}<span>{{ t("users.edit") }}</span></button>
+        <button type="button" role="tab" class="tab" data-tab="tags" data-form="tags-form-{{ book.id }}" aria-selected="false" hx-get="/admin/rpc/book.tags_form?id={{ book.id }}" hx-target="#tags-body-{{ book.id }}" hx-swap="innerHTML" hx-trigger="click once">{{ icon("tag") }}<span>{{ t("tags.button") }}</span></button>
+        <button type="button" role="tab" class="tab" data-tab="filing" aria-selected="false" hx-get="/admin/rpc/book.filing?id={{ book.id }}" hx-target="#filing-body-{{ book.id }}" hx-swap="innerHTML" hx-trigger="click once">{{ t("books.tab_filing") }}</button>
       </div>
-    </dialog>
-    <dialog id="dlg-book-{{ book.id }}" class="window edit-window" aria-labelledby="dlg-book-title-{{ book.id }}">
-      <div class="window-head"><h3 id="dlg-book-title-{{ book.id }}">{{ book.title }}</h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
       <div class="window-body">
-        <form id="book-form-{{ book.id }}" class="dialog-form" method="post" action="/admin/rpc/book.update" hx-post="/admin/rpc/book.update" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-disabled-elt="find button" data-close-window>
-          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}">
-          {% if owners is defined %}<label class="field span-all"><select name="owner"><option value=""{% if book.owner_id is none %} selected{% endif %}>&ndash;</option>{% for o in owners %}<option value="{{ o.id }}"{% if book.owner_id == o.id %} selected{% endif %}>{{ o.name }}</option>{% endfor %}</select><span>{{ t("books.owner") }}</span></label>
-          <small class="span-all">{{ t("books.owner_hint") }}</small>{% endif %}
-          <label class="check span-all"><input type="checkbox" name="released" value="1"{% if book.released %} checked{% endif %}> <span>{{ t("books.released") }}</span></label>
-          <label class="field"><input type="number" name="min_age" min="0" max="21" placeholder=" " value="{% if book.min_age is not none %}{{ book.min_age }}{% elif book.recommended_age is not none %}{{ book.recommended_age }}{% else %}0{% endif %}"><span>{{ t("books.age") }}</span></label>
-          <label class="field span-all"><textarea name="description" rows="6" maxlength="4000" placeholder=" ">{% if book.description %}{{ book.description }}{% endif %}</textarea><span>{{ t("books.description") }}</span></label>
-          <label class="check span-all"><input type="checkbox" name="exempt" value="1"{% if book.quota_exempt %} checked{% endif %}> <span>{{ t("books.learning_hint") }}</span></label>
-          {% if book.recommended_age is not none %}
-          <small class="span-all">{{ t("books.recommended_by_medium") }}: {{ book.recommended_age }}</small>
-          <label class="check span-all"><input type="checkbox" name="confirm" value="1"> <span>{{ t("books.confirm_below") }}</span></label>
-          {% endif %}
-          <div class="form-error span-all" role="alert"></div>
-        </form>
+        <section class="tab-panel" data-panel="release" role="tabpanel">
+          <form id="book-form-{{ book.id }}" class="dialog-form" method="post" action="/admin/rpc/book.update" hx-post="/admin/rpc/book.update" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-disabled-elt="find button" data-close-window>
+            <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}"><input type="hidden" name="section" value="release">
+            <label class="check span-all"><input type="checkbox" name="released" value="1"{% if book.released %} checked{% endif %}> <span>{{ t("books.released") }}</span></label>
+            <label class="field"><input type="number" name="min_age" min="0" max="21" placeholder=" " value="{% if book.min_age is not none %}{{ book.min_age }}{% elif book.recommended_age is not none %}{{ book.recommended_age }}{% else %}0{% endif %}"><span>{{ t("books.age") }}</span></label>
+            <label class="field"><input type="number" name="recommended_age" min="0" max="21" placeholder=" " value="{% if book.recommended_age is not none %}{{ book.recommended_age }}{% endif %}"><span>{{ t("books.recommended") }}</span></label>
+            <label class="check span-all"><input type="checkbox" name="exempt" value="1"{% if book.quota_exempt %} checked{% endif %}> <span>{{ t("books.learning_hint") }}</span></label>
+            {% if book.recommended_age is not none %}
+            <small class="span-all">{{ t("books.recommended_by_medium") }}: {{ book.recommended_age }}</small>
+            <label class="check span-all"><input type="checkbox" name="confirm" value="1"> <span>{{ t("books.confirm_below") }}</span></label>
+            {% endif %}
+            <div class="form-error span-all" role="alert"></div>
+          </form>
+        </section>
+        <section class="tab-panel" data-panel="edit" role="tabpanel" hidden>
+          <form id="book-edit-form-{{ book.id }}" class="dialog-form" method="post" action="/admin/rpc/book.update" hx-post="/admin/rpc/book.update" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-disabled-elt="find button" data-close-window>
+            <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}"><input type="hidden" name="section" value="edit">
+            {% if owners is defined %}<label class="field span-all"><select name="owner"><option value=""{% if book.owner_id is none %} selected{% endif %}>&ndash;</option>{% for o in owners %}<option value="{{ o.id }}"{% if book.owner_id == o.id %} selected{% endif %}>{{ o.name }}</option>{% endfor %}</select><span class="raised">{{ t("books.owner") }}</span></label>
+            <small class="span-all">{{ t("books.owner_hint") }}</small>{% endif %}
+            <div class="chips-field span-all"><span class="chips-label">{{ t("books.labels") }}</span><input type="text" name="labels" maxlength="500" list="label-words" autocomplete="off" value="{{ lt|join(', ') }}" data-chips data-suggest="/admin/rpc/label.suggest" data-add="{{ t('books.labels_add') }}" data-remove="{{ t('books.labels_remove') }}" data-placeholder="{{ t('books.labels_new') }}"></div>
+            <small class="span-all">{{ t("books.labels_hint") }}</small>
+            <details class="span-all track-labels-details"><summary>{{ t("books.track_labels") }}</summary>
+              <small>{{ t("books.track_labels_hint") }}</small>
+              <div hx-get="/admin/rpc/book.track_labels?id={{ book.id }}" hx-trigger="toggle from:closest details once" hx-swap="innerHTML"></div>
+            </details>
+            <label class="field span-all"><textarea name="description" rows="7" maxlength="4000" placeholder=" ">{% if book.description %}{{ book.description }}{% endif %}</textarea><span>{{ t("books.description") }}</span></label>
+            <div class="form-error span-all" role="alert"></div>
+          </form>
+        </section>
+        <section class="tab-panel" data-panel="tags" role="tabpanel" hidden>
+          <div id="tags-body-{{ book.id }}"></div>
+        </section>
+        <section class="tab-panel" data-panel="filing" role="tabpanel" hidden>
+          <div id="filing-body-{{ book.id }}"><p class="unit"><code>{{ book.folder }}</code></p></div>
+          {% if dupes is defined and (book.id|string) in dupes %}<details class="ignore-menu"><summary>{{ t("ignore.button") }}</summary>
+                <div class="ignore-options">
+                  {% for scope in ["album", "title", "work"] %}
+                  <form method="post" action="/admin/rpc/ignore.add"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}"><input type="hidden" name="scope" value="{{ scope }}"><input type="hidden" name="what" value="duplicate"><input type="hidden" name="back" value="{{ book.kind }}">
+                    <button type="submit" class="btn outline">{{ t("ignore." ~ scope) }}</button></form>
+                  {% endfor %}
+                  <form method="post" action="/admin/rpc/quarantine.add" data-confirm="{{ t('quarantine.confirm') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}"><input type="hidden" name="back" value="{{ book.kind }}">
+                    <button type="submit" class="btn outline danger-outline">{{ t("quarantine.button") }}</button></form>
+                </div>
+              </details>{% endif %}
+          <div class="panel-foot">
+            <form method="post" action="/admin/rpc/book.delete" hx-post="/admin/rpc/book.delete" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-confirm="{{ t('books.confirm_delete') }}">
+                      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}">
+                      <label class="check"><input type="checkbox" name="files" value="1" checked> <span>{{ t("books.delete_files") }}</span></label>
+                      <button type="submit" class="link-danger">{{ t("books.delete") }}</button>
+                    </form>
+          </div>
+        </section>
       </div>
-      <div class="window-foot">
-        <form method="post" action="/admin/rpc/book.delete" hx-post="/admin/rpc/book.delete" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-confirm="{{ t('books.confirm_delete') }}" class="foot-left">
-          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ book.id }}">
-          <label class="check"><input type="checkbox" name="files" value="1" checked> <span>{{ t("books.delete_files") }}</span></label>
-          <button type="submit" class="link-danger">{{ t("books.delete") }}</button>
-        </form>
-        <button type="button" class="btn outline" data-close>{{ t("ui.cancel") }}</button>
-        <button type="submit" class="btn" form="book-form-{{ book.id }}">{{ t("ui.save") }}</button>
-      </div>
+      <div class="window-foot"><button type="button" class="btn outline" data-close>{{ t("ui.close") }}</button><button type="submit" class="btn" data-save form="book-form-{{ book.id }}">{{ t("ui.save") }}</button></div>
     </dialog>
   </td>
+  <td data-label="{{ t('books.content') }}">{{ book.discs }}{% if book.discs_total and book.discs_total > book.discs %} / {{ book.discs_total }}{% endif %} {{ t("books.discs") }} &middot; {{ book.tracks }} {{ t("books.tracks") }} &middot; {{ book.duration_ms // 3600000 }} h {{ (book.duration_ms // 60000) % 60 }} min</td>
+  <td data-label="{{ t('books.recommended') }}">{% if book.recommended_age is none %}&ndash;{% else %}{{ book.recommended_age }}{% endif %}</td>
   {% if members is defined %}
   <td class="owner-cell" data-label="{{ t('books.col_owner') }}">
     <form method="post" action="/admin/rpc/book.owner" hx-post="/admin/rpc/book.owner" hx-trigger="change" hx-target="#book-{{ book.id }}" hx-swap="outerHTML" hx-disabled-elt="find select">

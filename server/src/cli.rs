@@ -14,6 +14,12 @@ Commands:
   init        Create the first administrator (reads the PIN; use before the first start)
   reset-pin   Set a new PIN or password for a user who forgot it (--name NAME is required);
               the user is signed out everywhere and any lock is lifted
+  reindex     Read the import folders again, like the switch 'Import now' of the administration pages: new and
+              changed files are read, albums whose files are gone are taken out (also: david --reindex). Run
+              by the timer david-reindex.timer. The import has to be unlocked.
+  prune       Only the tidying of reindex: take the albums out of the library whose files are gone from the disk;
+              --dry-run only lists them, --force lifts the stop for a run that
+              would remove more than a third of the albums.
   renew-cert  Make a new server certificate with the current addresses and host name of this
               machine (--data-dir, --listen). The old one is kept as cert.pem.old. Paired devices
               pin the certificate, so every device has to be paired again; stop the server first
@@ -44,6 +50,8 @@ Options:
                    check the name, not a fingerprint. A renewed certificate is loaded without a restart.
   --name NAME      Name of the administrator for `init` (default: Papa), or of the user for `reset-pin`
   --to DIR         Target folder of `export-templates`
+  --dry-run        `prune`: only say what would be removed
+  --force          `prune`: also when many albums are gone (a disk that is not mounted looks like that)
 
 Environment: DAVID_LOG = error | warn | info | debug | trace (like --log)
              DAVID_TEMPLATES_DIR = a folder with templates that replace the built-in ones
@@ -78,6 +86,11 @@ pub enum Command {
     Init { data_dir: PathBuf, name: String },
     /// Sets a new PIN or password for an existing user (a forgotten one).
     ResetPin { data_dir: PathBuf, name: String },
+    /// The import, as the switch "Import now" of the administration pages does it: new and changed files are read, albums whose files are gone are
+    /// taken out. What `david-reindex.timer` runs. The import has to be unlocked, as it has to be for the switch.
+    Reindex { data_dir: PathBuf },
+    /// Removes the albums whose files are gone from the disk, only that (`--dry-run` lists them first). `dry_run` only lists them; `force` lifts the stop for many.
+    Prune { data_dir: PathBuf, dry_run: bool, force: bool },
     /// Replaces the server certificate (devices have to be paired again).
     RenewCert { data_dir: PathBuf, listen: SocketAddr },
     Run(Config),
@@ -109,6 +122,8 @@ where
     let mut name: Option<String> = None;
     let mut to: Option<PathBuf> = None;
     let mut announce = true;
+    let mut dry_run = false;
+    let mut force = false;
     let mut mcp = env("DAVID_MCP").is_some_and(|v| v == "1");
     let mut log = env("DAVID_LOG");
     let mut tls_cert = env("DAVID_TLS_CERT").filter(|v| !v.is_empty()).map(PathBuf::from);
@@ -130,6 +145,8 @@ where
             "--name" => name = Some(args.next().ok_or("--name needs a value")?),
             "--to" => to = Some(args.next().ok_or("--to needs a value")?.into()),
             "--no-announce" => announce = false,
+            "--dry-run" => dry_run = true,
+            "--force" => force = true,
             "--mcp" => mcp = true,
             "--log" => log = Some(args.next().ok_or("--log needs a value")?),
             "--tls-cert" => tls_cert = Some(args.next().ok_or("--tls-cert needs a value")?.into()),
@@ -179,6 +196,8 @@ where
             data_dir: data_dir.clone().unwrap_or_else(Config::default_data_dir),
             name: name.clone().filter(|n| !n.trim().is_empty()).ok_or("--name is required for reset-pin")?,
         }),
+        "reindex" | "--reindex" => Ok(Command::Reindex { data_dir: data_dir.clone().unwrap_or_else(Config::default_data_dir) }),
+        "prune" => Ok(Command::Prune { data_dir: data_dir.clone().unwrap_or_else(Config::default_data_dir), dry_run, force }),
         "renew-cert" => Ok(Command::RenewCert {
             data_dir: data_dir.clone().unwrap_or_else(Config::default_data_dir),
             // Without an address the certificate names every interface of the machine.

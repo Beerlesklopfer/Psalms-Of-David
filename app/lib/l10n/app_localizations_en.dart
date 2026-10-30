@@ -1379,4 +1379,68 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get groupCollapse => 'Collapse';
+
+  @override
+  String get settingsWebsite => 'Website of the server';
+
+  @override
+  String get settingsWebsiteHint =>
+      'Opens the start page of the server in the browser, with the way to the administration.';
+
+  @override
+  String get settingsWebsiteFailed => 'The browser could not be opened.';
+
+  @override
+  String get shareTooltip => 'Share';
+
+  @override
+  String shareText(String title, String author) {
+    return '$title by $author';
+  }
+
+  @override
+  String get labelsTitle => 'Labels';
+
+  @override
+  String get labelsEdit => 'Edit labels';
+
+  @override
+  String get labelsNone => 'No labels yet.';
+
+  @override
+  String get trackLabelsEdit => 'Labels of this title';
+
+  @override
+  String get labelsAdd => 'Add';
+
+  @override
+  String get labelsNew => 'New label';
+
+  @override
+  String get labelsSave => 'Save';
+
+  @override
+  String get labelsFailed => 'The labels could not be saved.';
+
+  @override
+  String get labelsBad =>
+      'That is not a usable label: 1 to 40 characters, no comma, semicolon or bar.';
+
+  @override
+  String get labelsFilterClear => 'All labels';
+
+  @override
+  String get labelsRename => 'Rename label';
+
+  @override
+  String get labelsDelete => 'Delete label';
+
+  @override
+  String get labelsNoneInLibrary =>
+      'No labels in the library yet. The owner of a book sets them on its page.';
+
+  @override
+  String labelsDeleteConfirm(String name, int count) {
+    return 'Take \"$name\" off $count books?';
+  }
 }

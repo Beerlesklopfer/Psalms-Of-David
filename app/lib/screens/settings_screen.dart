@@ -1,19 +1,34 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../audio/audio_backend.dart';
 import '../l10n/app_localizations.dart';
+import '../labels.dart';
 import '../library_hiding.dart';
 import '../player_controller.dart';
 import '../server/credentials.dart';
 import '../server/device_pairing.dart';
 import 'connect_device.dart';
+import 'labels_ui.dart';
 import '../widgets.dart';
 
 /// What this device is connected to, and the way to disconnect it.
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, this.credentials, this.onDisconnect, this.devicePairing});
+  const SettingsScreen({
+    super.key,
+    this.credentials,
+    this.onDisconnect,
+    this.devicePairing,
+    this.openUrl = _launch,
+  });
+
+  /// Opens an address in the browser of the system; replaced in tests.
+  final Future<bool> Function(Uri url) openUrl;
+
+  static Future<bool> _launch(Uri url) =>
+      launchUrl(url, mode: LaunchMode.externalApplication);
 
   /// The stored pairing; null in demo mode.
   final Credentials? credentials;
@@ -37,23 +52,38 @@ class SettingsScreen extends StatelessWidget {
       children: [
         const SizedBox(height: 8),
         if (player != null && player.bufferAdjustable) ...[
-          Text(l.settingsPlayback, style: text.titleMedium?.copyWith(color: cs.primary)),
+          Text(
+            l.settingsPlayback,
+            style: text.titleMedium?.copyWith(color: cs.primary),
+          ),
           const SizedBox(height: 8),
           _BufferSlider(player: player),
           const SizedBox(height: 24),
         ],
         // The own library: what this profile hid, and whether it is still listed.
-        if (HidingScope.maybeOf(context) case final hiding? when hiding.available) ...[
+        if (HidingScope.maybeOf(context) case final hiding?
+            when hiding.available) ...[
           _HidingCard(controller: hiding),
+          const SizedBox(height: 24),
+        ],
+        // The labels of the library: everybody sees the list; an administrator renames and deletes.
+        if (LabelsScope.maybeOf(context) case final labels? when labels.available) ...[
+          LabelsCard(controller: labels),
           const SizedBox(height: 24),
         ],
         // Connecting a further device: a parent only, with a server (the card is empty for anybody else).
         if (devicePairing != null && creds != null)
           ConnectDeviceCard(api: devicePairing!, credentials: creds),
-        Text(l.settingsServer, style: text.titleMedium?.copyWith(color: cs.primary)),
+        Text(
+          l.settingsServer,
+          style: text.titleMedium?.copyWith(color: cs.primary),
+        ),
         const SizedBox(height: 8),
         if (creds == null)
-          Text(l.settingsDemo, style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant))
+          Text(
+            l.settingsDemo,
+            style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+          )
         else ...[
           Card(
             margin: EdgeInsets.zero,
@@ -69,7 +99,19 @@ class SettingsScreen extends StatelessWidget {
                 ListTile(
                   leading: Icon(Icons.devices_outlined, color: cs.primary),
                   title: Text(l.settingsDevice),
-                  subtitle: Text(creds.deviceName.isEmpty ? '-' : creds.deviceName),
+                  subtitle: Text(
+                    creds.deviceName.isEmpty ? '-' : creds.deviceName,
+                  ),
+                ),
+                const Divider(height: 1),
+                // The website of the server: its start page, which leads on to the administration.
+                ListTile(
+                  key: const Key('open-website'),
+                  leading: Icon(Icons.language, color: cs.primary),
+                  title: Text(l.settingsWebsite),
+                  subtitle: Text(l.settingsWebsiteHint),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: () => _openWebsite(context, l, creds),
                 ),
               ],
             ),
@@ -90,6 +132,19 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  /// The start page of the server in the browser (`https://<address>/`, the address is `host:port`).
+  Future<void> _openWebsite(
+    BuildContext context,
+    AppLocalizations l,
+    Credentials creds,
+  ) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final failed = l.settingsWebsiteFailed;
+    final url = Uri.tryParse('https://${creds.address}/');
+    final ok = url != null && await openUrl(url);
+    if (!ok) messenger?.showSnackBar(SnackBar(content: Text(failed)));
+  }
+
   Future<void> _confirm(BuildContext context, AppLocalizations l) async {
     final yes = await showDialog<bool>(
       context: context,
@@ -97,7 +152,10 @@ class SettingsScreen extends StatelessWidget {
         title: Text(l.settingsDisconnect),
         content: Text(l.settingsDisconnectHint),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(l.cancel)),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(l.cancel),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             child: Text(l.settingsDisconnect),
@@ -154,7 +212,10 @@ class _BufferSliderState extends State<_BufferSlider> {
               onChanged: (v) => setState(() => _value = v),
               onChangeEnd: (v) => widget.player.setBufferSeconds(v.round()),
             ),
-            Text(l.settingsBufferHint, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+            Text(
+              l.settingsBufferHint,
+              style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
           ],
         ),
       ),
@@ -180,13 +241,18 @@ class _HidingCard extends StatelessWidget {
         Future<void> run(Future<bool> Function() change) async {
           final messenger = ScaffoldMessenger.maybeOf(context);
           final failed = l.hidingFailed;
-          if (!await change()) messenger?.showSnackBar(SnackBar(content: Text(failed)));
+          if (!await change()) {
+            messenger?.showSnackBar(SnackBar(content: Text(failed)));
+          }
         }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(l.settingsMyLibrary, style: text.titleMedium?.copyWith(color: cs.primary)),
+            Text(
+              l.settingsMyLibrary,
+              style: text.titleMedium?.copyWith(color: cs.primary),
+            ),
             const SizedBox(height: 8),
             Card(
               margin: EdgeInsets.zero,

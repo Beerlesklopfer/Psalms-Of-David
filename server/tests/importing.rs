@@ -291,3 +291,89 @@ async fn one_file_without_sound_is_left_out_and_said_and_the_rest_of_the_album_i
     let again = store.scan(lib.path()).await.unwrap();
     assert_eq!((again.tracks_added, again.tracks_removed), (0, 0), "{again:?}");
 }
+
+#[tokio::test]
+async fn the_import_takes_albums_out_whose_files_are_gone_and_stops_for_a_disk_that_is_not_there() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let (_dir, store) = open().await;
+    let lib = tempfile::tempdir().unwrap();
+    for n in 1..=8 {
+        make_mp3(&lib.path().join(format!("Autor/Buch {n}/Autor_Buch_CD01_TR01.mp3")), &[]);
+    }
+    store.save_import_criteria(&[s(lib.path())], RatingRule::Manual).await.unwrap();
+    store.create_profile("Boss", true).await.unwrap();
+    store.unlock_import("Boss").await.unwrap();
+    assert_eq!(store.run_import().await.unwrap().books, 8);
+    let one = store.find_book("Autor/Buch 1").await.unwrap().unwrap().id;
+    let two = store.find_book("Autor/Buch 2").await.unwrap().unwrap().id;
+    store.set_book_labels(one, &["Schule".into()]).await.unwrap();
+
+    // One album gone from the disk: the next import takes it out, with what hung on it; the others stay and nothing is removed twice.
+    std::fs::remove_dir_all(lib.path().join("Autor/Buch 1")).unwrap();
+    let r = store.run_import().await.unwrap();
+    assert_eq!((r.books_removed, r.books), (1, 7), "{r:?}");
+    assert!(store.find_book("Autor/Buch 1").await.unwrap().is_none() && store.labels().await.unwrap().is_empty(), "labels go with the album");
+    assert!(store.find_book("Autor/Buch 2").await.unwrap().is_some());
+    assert_eq!(store.run_import().await.unwrap().books_removed, 0);
+
+    // A look first says what would go and changes nothing.
+    std::fs::remove_dir_all(lib.path().join("Autor/Buch 2")).unwrap();
+    let look = store.prune_missing(true, false).await.unwrap();
+    assert_eq!((look.removed.len(), look.removed[0].folder.as_str()), (1, "Autor/Buch 2"));
+    assert!(store.find_book("Autor/Buch 2").await.unwrap().is_some(), "a dry run removes nothing");
+    let _ = two;
+
+    // Many albums gone at once looks like a disk that is not mounted: nothing is removed by itself, with a force it is.
+    for n in 3..=8 {
+        std::fs::remove_dir_all(lib.path().join(format!("Autor/Buch {n}"))).unwrap();
+    }
+    std::fs::write(lib.path().join("Autor/lies-mich.txt"), b"x").unwrap();
+    let held = store.prune_missing(false, false).await.unwrap();
+    assert_eq!((held.removed.len(), held.held_back.len()), (0, 7), "{held:?}");
+    assert!(held.problems.iter().any(|p| p.contains("too many")), "{held:?}");
+    assert_eq!(store.prune_missing(false, true).await.unwrap().removed.len(), 7);
+
+    // An import folder that is empty (a disk that is not mounted) stops the tidying of its kind, even for one album.
+    make_mp3(&lib.path().join("Autor/Neu/Autor_Neu_CD01_TR01.mp3"), &[]);
+    store.run_import().await.unwrap();
+    for e in std::fs::read_dir(lib.path()).unwrap() {
+        std::fs::remove_dir_all(e.unwrap().path()).ok();
+    }
+    let r = store.prune_missing(false, true).await.unwrap();
+    assert!(r.removed.is_empty() && r.problems.iter().any(|p| p.contains("missing or empty")), "{r:?}");
+    assert!(store.find_book("Autor/Neu").await.unwrap().is_some());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_folder_that_cannot_be_read_keeps_its_albums_and_a_problem_of_the_scan_does_not_stop_the_tidying() {
+    use std::os::unix::fs::PermissionsExt;
+    if !ffmpeg_available() {
+        return;
+    }
+    let (_dir, store) = open().await;
+    let lib = tempfile::tempdir().unwrap();
+    for n in ["Offen", "Zu", "Weg"] {
+        make_mp3(&lib.path().join(format!("Autor/{n}/Autor_{n}_CD01_TR01.mp3")), &[]);
+    }
+    make_mp3(&lib.path().join("Anderer/Eins/Anderer_Eins_CD01_TR01.mp3"), &[]);
+    make_mp3(&lib.path().join("Anderer/Zwei/Anderer_Zwei_CD01_TR01.mp3"), &[]);
+    store.save_import_criteria(&[s(lib.path())], RatingRule::Manual).await.unwrap();
+    store.create_profile("Boss", true).await.unwrap();
+    store.unlock_import("Boss").await.unwrap();
+    store.run_import().await.unwrap();
+
+    std::fs::remove_dir_all(lib.path().join("Autor/Weg")).unwrap();
+    std::fs::set_permissions(lib.path().join("Autor/Zu"), std::fs::Permissions::from_mode(0o000)).unwrap();
+    let root_user = std::fs::metadata(lib.path()).map(|m| std::os::unix::fs::MetadataExt::uid(&m) == 0).unwrap_or(false);
+    let r = store.run_import().await.unwrap();
+    std::fs::set_permissions(lib.path().join("Autor/Zu"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(store.find_book("Autor/Weg").await.unwrap().is_none(), "what is not found is removed, although the scan had a problem: {r:?}");
+    assert!(store.find_book("Autor/Zu").await.unwrap().is_some(), "an album whose folder cannot be read stays");
+    assert!(store.find_book("Autor/Offen").await.unwrap().is_some());
+    if !root_user {
+        assert!(!r.problems.is_empty(), "the unreadable folder is a problem of the scan");
+    }
+}

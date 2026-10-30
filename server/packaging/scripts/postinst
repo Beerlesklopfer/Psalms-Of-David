@@ -36,4 +36,8 @@ if [ -d /run/systemd/system ]; then
         systemctl restart david || true
     fi
 fi
+# The timer that reads the import folders again and takes the albums whose files are gone out of the library.
+if [ -d /run/systemd/system ]; then
+    systemctl enable --now david-reindex.timer || true
+fi
 exit 0
