@@ -27,8 +27,8 @@ contents:
   - src: /opt/psalm/psalm
     dst: /usr/bin/psalm
     type: symlink
-  - src: linux/io.onesimus.psalm.desktop
-    dst: /usr/share/applications/io.onesimus.psalm.desktop
+  - src: linux/com.the-abraham-box.psalm.desktop
+    dst: /usr/share/applications/com.the-abraham-box.psalm.desktop
     file_info: { mode: 0644 }
   - src: linux/icons/
     dst: /usr/share/icons/

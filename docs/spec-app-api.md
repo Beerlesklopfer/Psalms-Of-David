@@ -69,7 +69,7 @@ Status: **built and checked against a real server** (`test/server_e2e_test.dart`
 ## Where the app keeps its files (2026-10-28)
 
 The folder is asked from the system (`path_provider`, `getApplicationSupportDirectory`), not guessed from
-`HOME`: Linux `~/.local/share/io.onesimus.psalm`, macOS `~/Library/Application Support/<bundle id>`, Windows
+`HOME`: Linux `~/.local/share/com.the-abraham-box.psalm`, macOS `~/Library/Application Support/<bundle id>`, Windows
 `%APPDATA%\<company>\<app>`, Android the app's internal files folder, iOS `Library/Application Support` of the app.
 It holds the pairing (`server.json`) and the downloaded parts (`parts/`). It is deliberately not the cache folder:
 a download is something the user asked for and must not be emptied by a cleaner. Version 1.0 on Linux moves its old

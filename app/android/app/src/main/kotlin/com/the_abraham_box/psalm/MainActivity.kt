@@ -1,4 +1,4 @@
-package io.onesimus.psalm
+package com.the_abraham_box.psalm
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -14,7 +14,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : AudioServiceActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "io.onesimus.psalm/notifications").setMethodCallHandler { call, result ->
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.the-abraham-box.psalm/notifications").setMethodCallHandler { call, result ->
             when (call.method) {
                 "request" -> {
                     if (Build.VERSION.SDK_INT >= 33 &&

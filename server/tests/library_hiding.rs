@@ -6,10 +6,10 @@ mod common;
 
 use axum::Router;
 use axum::body::{Body, to_bytes};
-use axum::http::{HeaderMap, Request, StatusCode, header};
+use axum::http::{Request, StatusCode, header};
 use common::{book, open};
 use david_server::api::{ApiState, router};
-use david_server::{NewProfile, Role, Schedule, Store};
+use david_server::{NewProfile, Role, Store};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
@@ -27,7 +27,6 @@ struct Api {
 
 struct Reply {
     status: StatusCode,
-    headers: HeaderMap,
     json: Value,
 }
 
@@ -53,7 +52,7 @@ async fn call_with(a: &Api, method: &str, uri: &str, token: &str, body: Option<V
     };
     let (parts, body) = a.router.clone().oneshot(req).await.unwrap().into_parts();
     let bytes = to_bytes(body, 8 * 1024 * 1024).await.unwrap();
-    Reply { status: parts.status, headers: parts.headers, json: serde_json::from_slice(&bytes).unwrap_or(Value::Null) }
+    Reply { status: parts.status, json: serde_json::from_slice(&bytes).unwrap_or(Value::Null) }
 }
 
 async fn pair(a: &Api, user: i64, n: u8) -> String {

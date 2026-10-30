@@ -7,7 +7,7 @@ mod common;
 
 use axum::Router;
 use axum::body::{Body, to_bytes};
-use axum::http::{HeaderMap, Request, StatusCode, header};
+use axum::http::{Request, StatusCode, header};
 use common::{book, open};
 use david_server::api::{ApiState, router};
 use david_server::{NewProfile, Role, Schedule, Store};
@@ -28,7 +28,6 @@ struct Api {
 
 struct Reply {
     status: StatusCode,
-    headers: HeaderMap,
     json: Value,
 }
 
@@ -55,7 +54,7 @@ async fn call_with(a: &Api, method: &str, uri: &str, token: &str, body: Option<V
     };
     let (parts, body) = a.router.clone().oneshot(req).await.unwrap().into_parts();
     let bytes = to_bytes(body, 8 * 1024 * 1024).await.unwrap();
-    Reply { status: parts.status, headers: parts.headers, json: serde_json::from_slice(&bytes).unwrap_or(Value::Null) }
+    Reply { status: parts.status, json: serde_json::from_slice(&bytes).unwrap_or(Value::Null) }
 }
 
 async fn pair(a: &Api, user: i64, n: u8) -> String {
@@ -420,7 +419,7 @@ async fn the_blacklist_looks_at_the_blurb_the_labels_the_titles_of_podcasts_and_
     let a = api().await;
     let (book_id, _) = add_book(&a, "Autor", "Harmlos", &[2]).await;
     let pod = a.store.save_feed("https://example.org/feed.xml", &david_server::podcast::parse(FEED).unwrap()).await.unwrap();
-    let station = a.store.save_station("https://stream.example.org/a", "Radio Äther", None, None).await.unwrap();
+    let _station = a.store.save_station("https://stream.example.org/a", "Radio Äther", None, None).await.unwrap();
     a.store.save_blacklist_words(&["blurbwort".to_owned(), "kinderfunk".to_owned(), "mit?ther".to_owned(), "labelwort".to_owned()]).await.unwrap();
     let marked = |k: Kind| { let s = a.store.clone(); async move { s.blacklist_marked(k).await.unwrap().len() } };
     assert_eq!((marked(Kind::Book).await, marked(Kind::Podcast).await, marked(Kind::Station).await), (0, 1, 0), "the title of the podcast hits");

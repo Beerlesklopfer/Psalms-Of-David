@@ -58,7 +58,7 @@ void main() {
     performPlayerMethod(p, 'SetPosition', [id, DBusInt64(90 * 1000 * 1000)]);
     expect(p.position, const Duration(seconds: 90));
     performPlayerMethod(p, 'SetPosition', [
-      DBusObjectPath('/io/onesimus/psalm/track/other'),
+      DBusObjectPath('/com/the_abraham_box/psalm/track/other'),
       DBusInt64(5 * 1000 * 1000),
     ]);
     expect(p.position, const Duration(seconds: 90));

@@ -15,7 +15,7 @@ val keyProperties = Properties().apply {
 }
 
 android {
-    namespace = "io.onesimus.psalm"
+    namespace = "com.the_abraham_box.psalm"
     compileSdk = flutter.compileSdkVersion
 
     compileOptions {
@@ -25,7 +25,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "io.onesimus.psalm"
+        applicationId = "com.the_abraham_box.psalm"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

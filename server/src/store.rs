@@ -587,10 +587,10 @@ impl Store {
 
     /// Gives a book an owner (a profile) or none. `false` if the book or the profile does not exist.
     pub async fn set_book_owner(&self, book_id: i64, owner: Option<i64>) -> Result<bool> {
-        if let Some(p) = owner {
-            if self.db.reader.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT 1 FROM profile WHERE id = ?", [p.into()])).await?.is_none() {
-                return Ok(false);
-            }
+        if let Some(p) = owner
+            && self.db.reader.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT 1 FROM profile WHERE id = ?", [p.into()])).await?.is_none()
+        {
+            return Ok(false);
         }
         let res = self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE book SET owner_id = ? WHERE id = ?", [owner.into(), book_id.into()])).await?;
         Ok(res.rows_affected() > 0)

@@ -64,7 +64,7 @@ impl Matcher {
 
     /// The text of a book that is searched: title, author and narrator, joined by spaces.
     pub fn matches_book(&self, title: &str, author: &str, narrator: Option<&str>) -> bool {
-        self.is_match(&format!("{title} {author} {}", narrator.unwrap_or("")).trim_end().to_owned())
+        self.is_match(format!("{title} {author} {}", narrator.unwrap_or("")).trim_end())
     }
 }
 

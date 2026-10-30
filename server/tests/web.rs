@@ -1647,7 +1647,7 @@ async fn the_tab_filing_and_the_track_list_show_the_file_formats_and_warn_about_
     for needle in ["File formats", "ogg&#x2f;vorbis 44.1 kHz stereo &times; 1", "mp3&#x2f;mpeg &times; 2", "not read yet", "class=\"badge warn\"", "An iPhone cannot play this format."] {
         assert!(r.body.contains(needle), "{needle}: {}", r.body);
     }
-    let de = send(&a, get(&format!("/admin/rpc/book.filing?id={id}"), &Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, lang: Some("de"), ..Default::default() })).await;
+    let de = send(&a, get(&format!("/admin/rpc/book.filing?id={id}"), &Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), htmx: true, lang: Some("de") })).await;
     assert!(de.body.contains("Dateiformate") && de.body.contains("noch nicht gelesen") && de.body.contains("Ein iPhone kann dieses Format nicht abspielen."), "{}", de.body);
 
     // The track list names the format of every file.
@@ -4033,7 +4033,7 @@ async fn the_book_window_sets_the_labels_of_single_titles_with_its_save_and_the_
     assert!(frag.contains("value=\"Gebet, Stille\""), "{frag}");
 
     // Nothing changes for a title of another book, a line that is no list, or a name that is not usable; a form without the field leaves them alone.
-    for bad in [format!("{foreign}=x"), "kein gleichheitszeichen".to_owned(), format!("{}=ok, a|b", tracks[2]), format!("x=y")] {
+    for bad in [format!("{foreign}=x"), "kein gleichheitszeichen".to_owned(), format!("{}=ok, a|b", tracks[2]), "x=y".to_owned()] {
         let r = send(&a, post("/admin/rpc/book.update", &form(&[("id", &sid), ("section", "edit"), ("track_labels", &bad)]), &o)).await;
         assert!(r.status == StatusCode::UNPROCESSABLE_ENTITY || r.status == StatusCode::BAD_REQUEST, "{bad}: {} {}", r.status, r.body);
     }

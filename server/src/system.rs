@@ -128,6 +128,8 @@ mod unix {
         if unsafe { libc::getrlimit(libc::RLIMIT_NICE, &mut now) } != 0 {
             return;
         }
+        // `rlim_t` is a `u64` here and a `u32` on other targets: the cast is needed there.
+        #[allow(clippy::unnecessary_cast)]
         let Some((soft, hard)) = super::nice_limits_for(crate::cd_settings::NICE_RANGE.0, now.rlim_cur as u64, now.rlim_max as u64) else {
             return;
         };

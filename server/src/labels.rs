@@ -24,7 +24,7 @@ pub const MAX_PER_TRACK: usize = 10;
 pub fn clean_name(raw: &str) -> Option<String> {
     let name = raw.split_whitespace().collect::<Vec<_>>().join(" ");
     let n = name.chars().count();
-    (n >= 1 && n <= MAX_NAME_CHARS && !name.chars().any(|c| c.is_control() || matches!(c, ',' | ';' | '|')) && !crate::blacklist::is_mark(&name)).then_some(name)
+    ((1..=MAX_NAME_CHARS).contains(&n) && !name.chars().any(|c| c.is_control() || matches!(c, ',' | ';' | '|')) && !crate::blacklist::is_mark(&name)).then_some(name)
 }
 
 /// The names of a list written with commas (`Gebet, Schule`), cleaned and without doubles (case ignored); `None` if one is not usable.

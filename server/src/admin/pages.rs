@@ -746,6 +746,7 @@ impl AdminUi {
     }
 
     /// The list of albums of one kind: `audiobook` or `music`.
+    #[allow(clippy::too_many_arguments)]
     pub async fn books<'a>(&self, store: &Store, view: impl Into<View<'a>>, library: Option<&std::path::Path>, kind: &str, query: Option<&str>, only_problems: bool, label: Option<&str>, page: Option<usize>, per: Option<usize>) -> Result<String> {
         let all: Vec<_> = store.admin_book_rows().await?.into_iter().filter(|b| b.kind == kind).collect();
         // The completions: every title, author and narrator once, sorted.
@@ -914,12 +915,12 @@ impl AdminUi {
         let info = serde_json::json!({
             "place": place,
             "added": when(meta.added_at),
-            "released": meta.released_at.map(&when).unwrap_or_default(),
+            "released": meta.released_at.map(when).unwrap_or_default(),
             "created": when(meta.created_at),
             "created_by": meta.created_by,
             "updated": when(meta.updated_at),
             "updated_by": meta.updated_by,
-            "tracks_updated": meta.tracks_updated_at.map(&when).unwrap_or_default(),
+            "tracks_updated": meta.tracks_updated_at.map(when).unwrap_or_default(),
             "megabytes": megabytes,
             "genre_tag": meta.genre_tag,
             "formats": formats,
@@ -933,7 +934,7 @@ impl AdminUi {
         let rules = store.ignore_rules().await?;
         let mut gaps = store.track_gaps().await?;
         gaps.retain(|b, _| *b == id && !crate::ignore::ignored(&rules, &book, "track_number_gaps"));
-        let nocover: Vec<String> = if crate::ignore::ignored(&rules, &book, "missing_cover") { Vec::new() } else if crate::api::find_cover(store, library, id).await.is_some() { Vec::new() } else { vec![id.to_string()] };
+        let nocover: Vec<String> = if crate::ignore::ignored(&rules, &book, "missing_cover") || crate::api::find_cover(store, library, id).await.is_some() { Vec::new() } else { vec![id.to_string()] };
         let (members, seen) = visibility_columns(store, Some(id)).await?;
         self.render("fragments/book_row.html", context! { book => Serde(book), gaps => Serde(gaps), nocover => Serde(nocover), members => Serde(members), seen => Serde(seen), owners => Serde(owners_list(store).await?), label_list => Serde(store.book_labels_with_mark().await?.remove(&id).unwrap_or_default()), label_names => Serde(store.labels_with_mark().await?), ..view.into().context() }).map(Some)
     }

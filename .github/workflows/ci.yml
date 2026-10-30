@@ -18,6 +18,13 @@ on:
     branches: [main, development]
     tags: ["v*"]
   pull_request:
+  # By hand (Actions -> ci -> Run workflow): builds everything and, for iOS, signs and uploads to TestFlight (with the secrets).
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload the iOS builds to TestFlight"
+        type: boolean
+        default: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -178,15 +185,15 @@ jobs:
           family=$(/usr/libexec/PlistBuddy -c 'Print :UIDeviceFamily' "$plist" | tr -d ' \n')
           echo "bundle id: $id, device family: $family"
           case "${{ matrix.product }}" in
-            iphone) [ "$id" = "io.onesimus.psalm" ] && echo "$family" | grep -q "1" && ! echo "$family" | grep -q "2" ;;
-            ipad) [ "$id" = "io.onesimus.psalm.ipad" ] && echo "$family" | grep -q "2" && ! echo "$family" | grep -q "1" ;;
+            iphone) [ "$id" = "com.the-abraham-box.psalm" ] && echo "$family" | grep -q "1" && ! echo "$family" | grep -q "2" ;;
+            ipad) [ "$id" = "com.the-abraham-box.psalm.ipad" ] && echo "$family" | grep -q "2" && ! echo "$family" | grep -q "1" ;;
           esac
 
   # Signed apps for iPhone and iPad; the upload to TestFlight when the App Store Connect key is set.
   package-ios:
     needs: [app, version, ios-build]
-    # Not on every push of development: a build in TestFlight is made for tags and for main only.
-    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main')
+    # Not on every push of development: a build in TestFlight is made for tags, for main and when somebody starts it by hand.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'))
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -225,7 +232,7 @@ jobs:
           uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/p.plist")
           name=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/p.plist")
           cp "$RUNNER_TEMP/p.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
-          case "${{ matrix.product }}" in iphone) bundle=io.onesimus.psalm ;; ipad) bundle=io.onesimus.psalm.ipad ;; esac
+          case "${{ matrix.product }}" in iphone) bundle=com.the-abraham-box.psalm ;; ipad) bundle=com.the-abraham-box.psalm.ipad ;; esac
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -248,7 +255,7 @@ jobs:
           mkdir -p ../dist
           cp build/ios/ipa/*.ipa "../dist/psalm-$VERSION-ios-${{ matrix.product }}.ipa"
       - name: Upload to TestFlight (only with the App Store Connect key)
-        if: steps.sign.outputs.ready == 'true' && env.ASC_KEY_ID != ''
+        if: steps.sign.outputs.ready == 'true' && env.ASC_KEY_ID != '' && github.event.inputs.upload != 'false'
         run: |
           mkdir -p "$HOME/.appstoreconnect/private_keys"
           echo "$ASC_KEY_BASE64" | base64 -d > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"

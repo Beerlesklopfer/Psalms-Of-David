@@ -2,7 +2,7 @@
 
 // The two products of the app (iPhone and iPad): the defaults, then what the chosen product says
 // (CI copies Product-iphone.xcconfig or Product-ipad.xcconfig to Product.xcconfig; without it: a universal build).
-PSALM_BUNDLE_ID = io.onesimus.psalm
+PSALM_BUNDLE_ID = com.the-abraham-box.psalm
 PSALM_DEVICE_FAMILY = 1,2
 PSALM_NAME = Psalm
 #include? "Product.xcconfig"

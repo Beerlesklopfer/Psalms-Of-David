@@ -17,7 +17,7 @@ import 'audio_backend.dart';
 /// return is what the player last said. A file that cannot be opened is reported by the state
 /// `failed` a moment later, not by an exception from [load].
 class JustAudioBackend implements AudioBackend, ExternalControl {
-  static const _notifications = MethodChannel('io.onesimus.psalm/notifications');
+  static const _notifications = MethodChannel('com.the-abraham-box.psalm/notifications');
 
   /// Asks once, at the first playback, for the permission to show the notification with the controls (Android 13 and later). Playback
   /// goes on without it, only the notification of the service stays hidden.

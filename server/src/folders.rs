@@ -237,7 +237,7 @@ mod tests {
         let inside = browse(musik.to_str().unwrap(), &[]).unwrap();
         assert_eq!(inside.parent.as_deref(), std::fs::canonicalize(root.path()).unwrap().to_str(), "the parent is usable, so the way up is offered");
         // A folder the server may not write is not shown and cannot be entered by its path either.
-        assert_eq!(browse("/proc", &[]).map(|b| b.choosable).unwrap_or(false), false);
+        assert!(!browse("/proc", &[]).map(|b| b.choosable).unwrap_or(false));
     }
 
     #[test]

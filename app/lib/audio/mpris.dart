@@ -8,10 +8,10 @@ import '../player_controller.dart';
 
 /// The name under which the desktop finds the player (MPRIS): the keyboard's media keys, the sound menu of
 /// the desktop and tools like `playerctl` talk to it. It follows the application id.
-const mprisName = 'org.mpris.MediaPlayer2.io.onesimus.psalm';
+const mprisName = 'org.mpris.MediaPlayer2.com.the-abraham-box.psalm';
 const _rootInterface = 'org.mpris.MediaPlayer2';
 const _playerInterface = 'org.mpris.MediaPlayer2.Player';
-const _desktopEntry = 'io.onesimus.psalm';
+const _desktopEntry = 'com.the-abraham-box.psalm';
 
 /// What the player tells the desktop (`org.mpris.MediaPlayer2.Player`), from the state of the controller.
 Map<String, DBusValue> playerProperties(PlayerController p) {
@@ -20,7 +20,7 @@ Map<String, DBusValue> playerProperties(PlayerController p) {
   final status = book == null ? 'Stopped' : (p.playing ? 'Playing' : 'Paused');
   final metadata = <String, DBusValue>{
     'mpris:trackid': DBusObjectPath(
-      '/io/onesimus/psalm/track/${book == null ? 'none' : '${book.id.hashCode.abs()}_${p.trackIndex}'}',
+      '/com/the_abraham_box/psalm/track/${book == null ? 'none' : '${book.id.hashCode.abs()}_${p.trackIndex}'}',
     ),
     if (track != null) 'mpris:length': DBusInt64(track.length.inMicroseconds),
     if (track != null) 'xesam:title': DBusString(p.nowPlaying ?? track.title),

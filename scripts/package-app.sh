@@ -27,7 +27,7 @@ else
     cp -r app/build/linux/x64/release/bundle "$stage/opt/psalm"
     rm -f "$stage/opt/psalm/install-desktop-entry.sh"
     ln -s /opt/psalm/psalm "$stage/usr/bin/psalm"
-    cp app/linux/io.onesimus.psalm.desktop "$stage/usr/share/applications/"
+    cp app/linux/com.the-abraham-box.psalm.desktop "$stage/usr/share/applications/"
     cp -r app/linux/icons "$stage/usr/share/icons"
     cp LICENSE "$stage/usr/share/doc/psalm/"
     size=$(du -sk "$stage" | cut -f1)

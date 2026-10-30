@@ -7,7 +7,7 @@ project(runner LANGUAGES CXX)
 set(BINARY_NAME "psalm")
 # The unique GTK application identifier for this application. See:
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
-set(APPLICATION_ID "io.onesimus.psalm")
+set(APPLICATION_ID "com.the-abraham-box.psalm")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -101,7 +101,7 @@ install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}
 # and `install-desktop-entry.sh` (or a package) puts them where the desktop looks.
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/icons/" DESTINATION "${CMAKE_INSTALL_PREFIX}/share/icons"
   COMPONENT Runtime)
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/io.onesimus.psalm.desktop" DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications"
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/com.the-abraham-box.psalm.desktop" DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications"
   COMPONENT Runtime)
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/install-desktop-entry.sh" DESTINATION "${CMAKE_INSTALL_PREFIX}"
   PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE

@@ -39,10 +39,10 @@ CI), which could not be tried on this machine.
 
 ## Psalm for iPhone and Psalm for iPad (iOS)
 
-Two products come out of one Xcode project: **Psalm** for iPhone (bundle id `io.onesimus.psalm`, device family iPhone) and **Psalm for iPad**
-(`io.onesimus.psalm.ipad`, device family iPad). They are two apps on the App Store with two listings, two builds and two profiles. The project
+Two products come out of one Xcode project: **Psalm** for iPhone (bundle id `com.the-abraham-box.psalm`, device family iPhone) and **Psalm for iPad**
+(`com.the-abraham-box.psalm.ipad`, device family iPad). They are two apps on the App Store with two listings, two builds and two profiles. The project
 reads three settings from `app/ios/Flutter/Product.xcconfig` (`PSALM_BUNDLE_ID`, `PSALM_DEVICE_FAMILY`, `PSALM_NAME`); CI copies
-`Product-iphone.xcconfig` or `Product-ipad.xcconfig` to it before the build. Without that file a build is universal (`io.onesimus.psalm`,
+`Product-iphone.xcconfig` or `Product-ipad.xcconfig` to it before the build. Without that file a build is universal (`com.the-abraham-box.psalm`,
 iPhone and iPad), for a quick try with Xcode.
 
 CI (`ios-build`, macOS runner, matrix iphone/ipad): `flutter build ios --release --no-codesign` on every push and pull request, and a check of the
@@ -59,7 +59,7 @@ public repository has them free.
 
 One-time setup (everything works from Linux, a Mac is not needed):
 1. Apple Developer Program (99 EUR a year, an individual or a company account). The free Apple ID is not enough for TestFlight, CarPlay or a profile that lasts.
-2. Developer portal: two App IDs (`io.onesimus.psalm`, `io.onesimus.psalm.ipad`).
+2. Developer portal: two App IDs (`com.the-abraham-box.psalm`, `com.the-abraham-box.psalm.ipad`).
 3. A certificate: make a key and a request with `openssl req -new -newkey rsa:2048 -nodes -keyout dist.key -out dist.csr -subj "/CN=Psalm"`,
    upload `dist.csr` as "Apple Distribution", download the `.cer`, then `openssl x509 -inform der -in dist.cer -out dist.pem` and
    `openssl pkcs12 -export -inkey dist.key -in dist.pem -out dist.p12`. Keep the key safe: whoever has it can sign as the team.
@@ -76,7 +76,7 @@ CarPlay needs more: the entitlement `com.apple.developer.carplay-audio` has to b
 weeks), then an entitlements file in the project and a profile that contains it. See `docs/spec-car.md`.
 
 Not verified here: the workflow has not run on GitHub (no Mac runner available), and the Xcode project was edited by hand on Linux. The first CI run
-will show if `flutter build ios` accepts the product settings. The CI runs on pushes to `main` and `development`, on tags and on pull requests; the signed iOS builds and the upload to TestFlight only for tags and `main` (the repository has no `main` yet: its default branch is `development`).
+will show if `flutter build ios` accepts the product settings. The CI runs on pushes to `main` and `development`, on tags and on pull requests; the signed iOS builds and the upload to TestFlight only for tags and `main` (the repository has no `main` yet: its default branch is `development`); the workflow can also be started by hand (Actions, ci, Run workflow), which signs and uploads the iOS builds too.
 
 ## The David service and its folders
 
@@ -144,7 +144,7 @@ a format that cannot keep a field refuses it, and then nothing is written to tha
 
 ## Desktop entries
 
-- `app/linux/io.onesimus.psalm.desktop`: the Psalm launcher; also registers the `david://` links. Shipped in the bundle
+- `app/linux/com.the-abraham-box.psalm.desktop`: the Psalm launcher; also registers the `david://` links. Shipped in the bundle
   and in the `.deb`; `install-desktop-entry.sh` registers it for the current user.
 - `server/packaging/io.onesimus.david-admin.desktop`: "David Administration", opens `http://127.0.0.1:8484/admin/` in
   the browser (change `Exec=` if the server listens elsewhere). Shipped in David's `.deb` and `.rpm` with its icons.

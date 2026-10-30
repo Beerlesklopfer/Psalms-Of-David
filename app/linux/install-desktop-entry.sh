@@ -8,7 +8,7 @@ set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 [ -x "$HERE/psalm" ] || { echo "run this from the folder that holds the program psalm" >&2; exit 1; }
 DATA=${XDG_DATA_HOME:-$HOME/.local/share}
-ID=io.onesimus.psalm
+ID=com.the-abraham-box.psalm
 
 mkdir -p "$DATA/applications" "$DATA/icons"
 cp -r "$HERE/share/icons/hicolor" "$DATA/icons/"

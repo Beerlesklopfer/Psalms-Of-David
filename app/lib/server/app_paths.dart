@@ -9,7 +9,7 @@ import 'package:path_provider/path_provider.dart';
 ///
 /// The place is different on every system, so it comes from the system and not from a
 /// guess: `path_provider` gives the private folder of the app (Linux
-/// `~/.local/share/io.onesimus.psalm`, macOS `~/Library/Application Support/<bundle id>`,
+/// `~/.local/share/com.the-abraham-box.psalm`, macOS `~/Library/Application Support/<bundle id>`,
 /// Windows `%APPDATA%\<company>\<app>`, Android the internal files folder of the app, iOS
 /// `Library/Application Support` of the app). It is the folder for data the app must not lose,
 /// not the cache folder that a cleaner or the system may empty: a download is something the user
@@ -28,7 +28,10 @@ class AppPaths {
     final env = Platform.environment['PSALM_DATA_DIR'];
     _base = env != null && env.isNotEmpty ? Directory(env) : await getApplicationSupportDirectory();
     await _base!.create(recursive: true);
-    if (Platform.isLinux) _moveLegacyLinux(_base!);
+    if (Platform.isLinux) {
+      _moveLegacyLinux(_base!);
+      _moveFromOldId(_base!);
+    }
   }
 
   /// The folder of the app. Before [init] (tests without it) the old Linux places are used.
@@ -47,6 +50,27 @@ class AppPaths {
   static Directory _legacyBase() {
     final env = Platform.environment;
     return Directory('${env['XDG_DATA_HOME'] ?? '${env['HOME'] ?? Directory.systemTemp.path}/.local/share'}/psalm');
+  }
+
+  /// The application id changed (`io.onesimus.psalm` is now `com.the-abraham-box.psalm`) and with it the folder of the app: what the old
+  /// folder holds (the pairing, the settings, the downloads) comes along once, and nothing that exists in the new one is replaced.
+  static void _moveFromOldId(Directory base) {
+    final env = Platform.environment;
+    final data = env['XDG_DATA_HOME'] ?? (env['HOME'] == null ? null : '${env['HOME']}/.local/share');
+    if (data == null) return;
+    final old = Directory('$data/io.onesimus.psalm');
+    if (!old.existsSync() || old.path == base.path) return;
+    try {
+      for (final entity in old.listSync()) {
+        final name = entity.uri.pathSegments.where((p) => p.isNotEmpty).last;
+        final target = '${base.path}/$name';
+        if (FileSystemEntity.typeSync(target) != FileSystemEntityType.notFound) continue;
+        entity.renameSync(target);
+      }
+      if (old.listSync().isEmpty) old.deleteSync();
+    } on FileSystemException {
+      // The old folder stays where it is; the app starts with what the new one has.
+    }
   }
 
   /// Version 1.0 kept the pairing in `~/.config/psalm` and the parts in `~/.cache/psalm/parts`.
