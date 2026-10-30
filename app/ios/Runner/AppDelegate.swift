@@ -16,8 +16,8 @@ import UIKit
   var voiceChannel: FlutterMethodChannel?
 
   /// INPlayMediaIntent answered with .handleInApp by the Intents extension, delivered to an app that plays audio in the background
-  /// (no `override`: FlutterAppDelegate does not implement it; the signature is from the UIApplicationDelegate documentation, unverified).
-  func application(
+  /// (`override`: the Flutter version on the CI runner declares it in FlutterAppDelegate; the local engine headers do not show it).
+  override func application(
     _ application: UIApplication,
     handle intent: INIntent,
     completionHandler: @escaping (INIntentResponse) -> Void
