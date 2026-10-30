@@ -2773,7 +2773,7 @@ async fn the_administration_and_mcp_answer_together_on_one_router() {
     let token = a.store.create_mcp_token("llm", true, admin).await.unwrap();
     a.store.import_books(vec![book("Follett", "Winter", &[1])]).await.unwrap();
     // The way `--mcp` puts it together: the interface of the administration plus /mcp.
-    let router = a.router.clone().merge(david_server::mcp::router(david_server::mcp::McpState { store: a.store.clone(), library: None }));
+    let router = a.router.clone().merge(david_server::mcp::router(david_server::mcp::McpState { store: a.store.clone(), library: None, cd: a.cd.clone() }));
 
     let mut jobs = tokio::task::JoinSet::new();
     for n in 0..60 {

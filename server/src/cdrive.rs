@@ -1003,17 +1003,43 @@ pub const STOP_GRACE: Duration = Duration::from_secs(10);
 pub const STOP_PATIENCE: Duration = Duration::from_secs(10);
 
 pub async fn start_rip(store: &Store, cd: &CdService, library: Option<PathBuf>, user_id: i64, req: RipRequest) -> Result<Started, RipRefusal> {
+    match rip_inner(store, cd, library, user_id, req, false).await? {
+        RipOutcome::Started(started) => Ok(*started),
+        RipOutcome::Preview(_) => Err(Refusal(500, "internal").into()),
+    }
+}
+
+/// The drive a rip uses: the one named (`wanted`, empty = any), the first with an audio CD in it and the tray shut, else the first.
+pub fn pick_drive(states: &[DriveState], wanted: &str) -> Option<DriveState> {
+    let candidates: Vec<&DriveState> = states.iter().filter(|s| wanted.is_empty() || s.device == wanted).collect();
+    candidates.iter().find(|s| s.medium == Medium::Audio && s.tray == Tray::Closed).or(candidates.first()).map(|s| (*s).clone())
+}
+
+/// What `start_rip` would do for this request, worked out by the same code and without starting anything: no job, no
+/// staging folder, no command to the drive. Refusals are the same as those of `start_rip`, except `disc_present` and
+/// `disc_exists`, which are reported inside the answer (`would_start: false`, `refusal`) together with what they are about.
+pub async fn preview_rip(store: &Store, cd: &CdService, library: Option<PathBuf>, req: RipRequest) -> Result<serde_json::Value, RipRefusal> {
+    match rip_inner(store, cd, library, 0, req, true).await? {
+        RipOutcome::Preview(plan) => Ok(plan),
+        RipOutcome::Started(_) => Err(Refusal(500, "internal").into()),
+    }
+}
+
+/// The result of `rip_inner`: a rip that runs, or (dry run) the plan of one.
+enum RipOutcome {
+    Started(Box<Started>),
+    Preview(serde_json::Value),
+}
+
+/// The one code path behind the web form, the API and the MCP tool. With `dry` it stops before anything is created.
+async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user_id: i64, req: RipRequest, dry: bool) -> Result<RipOutcome, RipRefusal> {
     let set = CdSettings::load(store).await.map_err(|_| Refusal(500, "internal"))?;
     let kind = req.kind.clone().unwrap_or_else(|| set.target_kind.clone());
     let wanted = req.device.clone().filter(|d| !d.is_empty()).unwrap_or_else(|| set.device.clone());
     // Look at the drives now, not at the last look: the disc may have been changed a second ago.
     cd.refresh_drives(&wanted, true).await;
     let (states, _) = cd.drives.snapshot();
-    let candidates: Vec<&DriveState> = states.iter().filter(|s| wanted.is_empty() || s.device == wanted).collect();
-    if candidates.is_empty() {
-        return Err(Refusal(409, "no_drive").into());
-    }
-    let chosen = candidates.iter().find(|s| s.medium == Medium::Audio && s.tray == Tray::Closed).or(candidates.first()).copied().ok_or(Refusal(409, "no_drive"))?.clone();
+    let chosen = pick_drive(&states, &wanted).ok_or(Refusal(409, "no_drive"))?;
     if chosen.denied {
         return Err(Refusal(503, "drive_denied").into());
     }
@@ -1024,6 +1050,10 @@ pub async fn start_rip(store: &Store, cd: &CdService, library: Option<PathBuf>, 
         return Err(Refusal(409, "no_disc").into());
     }
     let toc = chosen.table.clone().ok_or(Refusal(409, "no_disc"))?;
+    // One rip per drive: said before anything is worked out (the claim at the end stays as the guard against a race).
+    if cd.drives.lock().running.contains_key(&chosen.device) {
+        return Err(Refusal(409, "busy").into());
+    }
     // The choice of tracks: numbers on the disc, all of them if none is named.
     let on_disc: Vec<u32> = chosen.track_list.iter().map(|t| t.number).collect();
     let selected: Vec<u32> = match &req.only {
@@ -1067,7 +1097,7 @@ pub async fn start_rip(store: &Store, cd: &CdService, library: Option<PathBuf>, 
         }
         (p.author.clone(), p.book.clone(), p.disc, req.discs_total.or(p.discs_total.filter(|n| *n >= p.disc)), p.kind.clone(), targets)
     } else {
-        if present.is_some() && !req.force && !req.auto {
+        if present.is_some() && !req.force && !req.auto && !dry {
             let p = present.as_ref().ok_or(Refusal(500, "internal"))?;
             return Err(RipRefusal { refusal: Refusal(409, "disc_present"), taken: Vec::new(), present: Some(present_json(p)) });
         }
@@ -1102,6 +1132,9 @@ pub async fn start_rip(store: &Store, cd: &CdService, library: Option<PathBuf>, 
     let root = cdimport::import_root(store, library.as_deref(), &kind).await?;
     // Nothing is overwritten: the tracks that are in the library already are named before the disc is read.
     let taken = if healing { Vec::new() } else { cdimport::taken_numbers(&meta, &set, &root) };
+    if dry {
+        return Ok(RipOutcome::Preview(rip_plan_json(&RipPlanView { req: &req, set: &set, meta: &meta, root: &root, chosen: &chosen, kind: &kind, taken: &taken, present: present.as_ref(), healing, eject: req.eject.unwrap_or(set.eject_after), staging: &cd.staging })));
+    }
     if !taken.is_empty() {
         let list = taken.iter().map(u32::to_string).collect::<Vec<_>>().join(", ");
         let job = store
@@ -1312,7 +1345,89 @@ pub async fn start_rip(store: &Store, cd: &CdService, library: Option<PathBuf>, 
         }
         cd2.publish_drive();
     });
-    Ok(Started { job, resume: mode })
+    Ok(RipOutcome::Started(Box::new(Started { job, resume: mode })))
+}
+
+/// What `rip_plan_json` describes.
+struct RipPlanView<'a> {
+    req: &'a RipRequest,
+    set: &'a CdSettings,
+    meta: &'a Meta,
+    root: &'a Path,
+    chosen: &'a DriveState,
+    kind: &'a str,
+    taken: &'a [u32],
+    present: Option<&'a crate::cdpresent::Present>,
+    healing: bool,
+    eject: bool,
+    staging: &'a Path,
+}
+
+/// The plan of a rip for a dry run: the folder, the file names, the tags and the warnings. Built from the same naming
+/// functions that `finalize` uses when it places the files, so it says what the rip will really do.
+fn rip_plan_json(v: &RipPlanView) -> serde_json::Value {
+    let (m, set) = (v.meta, v.set);
+    let (book, dest) = cdimport::layout(m, set, v.root);
+    let lengths: HashMap<u32, u32> = v.chosen.track_list.iter().map(|t| (t.number, t.seconds)).collect();
+    let genre = if v.kind == "audiobook" { Some(set.genre.clone()) } else { m.genre.clone().filter(|g| !g.trim().is_empty()) };
+    let files: Vec<serde_json::Value> = m
+        .tracks
+        .iter()
+        .map(|t| {
+            let title = t.title.clone().unwrap_or_default();
+            let file = cdimport::file_name_of(m, set, &StagedTrack { number: t.number, title: title.clone(), path: PathBuf::new() });
+            let stem = file.strip_suffix(&format!(".{}", set.extension)).unwrap_or(&file).to_owned();
+            let title_tag = cdimport::tag_title(set, &title, t.number, &stem);
+            serde_json::json!({
+                "number": t.number, "title": title, "file": file, "seconds": lengths.get(&t.number).copied().unwrap_or(0),
+                "tag_title": title_tag, "tag_track": set.tag_track(m.disc, t.number), "exists": v.taken.contains(&t.number),
+            })
+        })
+        .collect();
+    let mut warnings: Vec<String> = Vec::new();
+    let mut refusal: Option<&str> = None;
+    if let Some(p) = v.present
+        && !v.healing
+    {
+        warnings.push(format!("an album with this author and title (or this disc) is in the library already: \"{}\" by {}, CD {}, {} of {} tracks{}", p.book, p.author, p.disc, p.tracks_in_library, p.tracks_on_disc, if !p.needs_healing() { ", complete" } else { "" }));
+        if !v.req.force {
+            refusal = Some("disc_present");
+        }
+    }
+    if !v.taken.is_empty() {
+        warnings.push(format!("files of these tracks exist already and are never overwritten: {}", v.taken.iter().map(u32::to_string).collect::<Vec<_>>().join(", ")));
+        refusal = Some("disc_exists");
+    }
+    if book.exists() && v.taken.is_empty() && v.present.is_none() {
+        warnings.push(format!("the folder {} exists already; the new files are added to it", book.display()));
+    }
+    if v.chosen.disc_id.as_deref().is_some_and(|id| cdresume::dir_of(v.staging, id).exists()) {
+        warnings.push("an interrupted rip of this disc is waiting; its finished tracks are taken over".to_owned());
+    }
+    if m.mbid.is_some() && !set.lookup_ready {
+        warnings.push("the cover cannot be fetched: no MusicBrainz contact address is set".to_owned());
+    }
+    if m.mbid.is_none() {
+        warnings.push("no mbid: the files get no cover".to_owned());
+    }
+    serde_json::json!({
+        "would_start": refusal.is_none(),
+        "refusal": refusal,
+        "device": v.chosen.device,
+        "disc_id": v.chosen.disc_id,
+        "kind": v.kind,
+        "folder": dest.display().to_string(),
+        "book_folder": book.display().to_string(),
+        "files": files,
+        "tags": {
+            "artist": m.author.trim(), "album_artist": m.author.trim(), "album": m.album.trim(), "narrator": m.narrator, "year": m.year,
+            "disc": m.disc, "discs_total": m.discs_total.unwrap_or(1), "genre": genre, "tag_version": set.id3_version,
+        },
+        "format": { "format": set.format, "bitrate_kbps": set.bitrate_kbps, "sample_rate_hz": set.sample_rate_hz, "channel_mode": set.channel_mode },
+        "eject": v.eject,
+        "present": v.present.map(present_json),
+        "warnings": warnings,
+    })
 }
 
 /// What a rip needs to keep its folder and manifest.

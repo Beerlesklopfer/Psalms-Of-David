@@ -477,8 +477,8 @@ fn fallback(key: &str) -> &'static str {
         "cd_file_pattern" => "{author}_{title}_CD{disc:02}_TR{track:02}",
         "cd_folder_pattern" => "{author}/{title}",
         "cd_disc_folder_pattern" => "CD {disc}",
-        "cd_title_pattern" => "file_name",
-        "cd_track_scheme" => "disc_times_100",
+        "cd_title_pattern" => "track_title",
+        "cd_track_scheme" => "plain",
         "cd_genre" => "Audiobook",
         "cd_cover_px" => "500",
         "cd_eject_after" => "1",
@@ -628,9 +628,9 @@ mod tests {
             m.insert(k, fallback(k).to_owned());
         }
         let mut s = CdSettings::from_map(&m);
+        assert_eq!(s.tag_track(2, 5), 5, "the default is the plain track number");
+        s.track_scheme = "disc_times_100".into();
         assert_eq!(s.tag_track(2, 5), 205);
-        s.track_scheme = "plain".into();
-        assert_eq!(s.tag_track(2, 5), 5);
         assert_eq!((s.bitrate_kbps, s.sample_rate_hz, s.quality, s.extension.as_str()), (64, 24000, 3, "mp3"));
     }
 

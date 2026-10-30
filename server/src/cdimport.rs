@@ -934,6 +934,16 @@ pub struct Placed {
     pub files: Vec<String>,
 }
 
+/// The title tag of a track: the file name (without the ending) when the setting `cd_title_pattern` is `file_name`; with `track_title` the title of the
+/// track, or "Track 01" when there is none, so that a file name never ends up as the title of a track.
+pub fn tag_title(s: &CdSettings, title: &str, number: u32, stem: &str) -> String {
+    if s.title_pattern != "track_title" {
+        return stem.to_owned();
+    }
+    let t = title.trim();
+    if t.is_empty() { format!("Track {number:02}") } else { t.to_owned() }
+}
+
 /// The file name (with the ending) of a track, by the file scheme.
 pub fn file_name_of(m: &Meta, s: &CdSettings, t: &StagedTrack) -> String {
     let stem = cd_settings::clean(&cd_settings::render(&s.file_pattern, &values_for(m, t, None, true)));
@@ -1043,8 +1053,8 @@ pub fn place(job: &PlaceJob) -> std::result::Result<Placed, Refusal> {
     }
     for (t, file) in &named {
         let stem = file.strip_suffix(&format!(".{}", s.extension)).unwrap_or(file);
-        // The title tag is the file name, or the title of the track when the setting says so (and the app knows it).
-        let title = if s.title_pattern == "track_title" && !t.title.trim().is_empty() { t.title.trim().to_owned() } else { stem.to_owned() };
+        // The title tag is the file name, or the title of the track when the setting says so (a track without a title is "Track 01", never the file name).
+        let title = tag_title(s, &t.title, t.number, stem);
         write_tags(&t.path, m, s, t, &title, genre.as_deref(), job.cover.as_ref())?;
     }
     // 3. Where they go.

@@ -225,6 +225,11 @@ new, number of files), not one line per file. Every changed value is logged with
 and in the server log). Fields have the same names for every file format (`TrackTitle`, `AlbumArtist`, `Genre`, ...);
 a format that cannot keep a field refuses it, and then nothing is written to that file.
 
+The CD drive of the server can be driven through MCP as well (`cd_drive`, `cd_rip`, `cd_progress`; see "MCP tools for the CD
+drive" in `docs/spec-cd-import-api.md`): an assistant that has read the cover and the back of a CD from photos looks at the drive,
+plans the import with `cd_rip` (`dry_run` is true by default) and starts it with `dry_run=false`. Only tokens made by an
+administrator may use them; starting also needs a token that may write. The start goes into the change log (field `CdRip`).
+
 ## Desktop entries
 
 - `app/linux/com.the-abraham-box.psalm.desktop`: the Psalms launcher; also registers the `david://` links. Shipped in the bundle

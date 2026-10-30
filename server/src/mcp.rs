@@ -27,6 +27,8 @@ const PAGE_MAX: usize = 200;
 pub struct McpState {
     pub store: Store,
     pub library: Option<PathBuf>,
+    /// The CD import of the server (drive, jobs): the same service the web form and the API use.
+    pub cd: crate::cdimport::CdService,
 }
 
 pub fn router(state: McpState) -> Router {
@@ -158,6 +160,33 @@ fn tool_list() -> Value {
             "name": "set_cover_from_url",
             "description": "Fetches a picture from an https:// address (only public hosts, at most 8 MiB, JPEG or PNG), makes it the cover of the album folder (cover.jpg or cover.png, replacing other cover files) and embeds it in every track. Needs a token that may write.",
             "inputSchema": { "type": "object", "properties": { "id": id, "url": { "type": "string", "description": "https:// address of the picture" } }, "required": ["id", "url"] }
+        },
+        {
+            "name": "cd_drive",
+            "description": "The CD drives of the server: device, tray, medium, Disc ID, the tracks with their length in seconds, the total minutes, whether a rip runs, whether the CD is in the library already or an interrupted rip waits, and the MusicBrainz releases for the disc (title, author, tracks, release id) with the status of the lookup (ok, no_contact, no_match, lookup_failed). Read only. Needs a token made by an administrator.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "cd_rip",
+            "description": "Imports the audio CD that is in the drive of the server, with the details read from its cover photos: author, title, one title per track. The same code as the CD page of the administration. dry_run is true by default and then only reports what would be started (folder, file names, tags, warnings such as an album of that name in the library already) and starts nothing; with dry_run=false the rip starts in the background and the job id is returned (follow it with cd_progress). The number of tracks must equal the number of the selected tracks (all of the disc, or only_tracks). Refused while a rip runs, with no disc or an open tray. Needs a token made by an administrator; starting needs a token that may write.",
+            "inputSchema": { "type": "object", "properties": {
+                "author": { "type": "string", "description": "Author of the book or artist of the album" },
+                "title": { "type": "string", "description": "Title of the book or album" },
+                "disc": { "type": "integer", "description": "Number of this CD within the work (default 1)" },
+                "discs_total": { "type": "integer", "description": "How many CDs the work has (default 1)" },
+                "tracks": { "type": "array", "items": { "type": "string" }, "description": "One title per track, in disc order; as many as tracks are selected" },
+                "narrator": { "type": "string", "description": "Narrator (audiobooks)" },
+                "kind": { "type": "string", "enum": ["audiobook", "music"], "description": "Default: the setting of the CD import" },
+                "mbid": { "type": "string", "description": "MusicBrainz release id (from cd_drive), for the cover" },
+                "eject": { "type": "boolean", "description": "Open the tray when done (default: the setting)" },
+                "only_tracks": { "type": "array", "items": { "type": "integer" }, "description": "Track numbers on the disc to read; default all" },
+                "dry_run": { "type": "boolean", "description": "Default true: only report" }
+            }, "required": ["author", "title", "tracks"] }
+        },
+        {
+            "name": "cd_progress",
+            "description": "The state of the running or the last rip of the server: state (none, running, done, done_with_warnings, failed, cancelled), percent, the job, the state of each track (waiting, reading, verifying, encoding, done, failed) with its percent and error, and the error code. Read only. Needs a token made by an administrator.",
+            "inputSchema": { "type": "object", "properties": { "job": { "type": "integer", "description": "A job id from cd_rip; default the newest rip of the server" } } }
         },
         {
             "name": "list_formats",
@@ -420,7 +449,7 @@ async fn prompt_of(s: &McpState) -> String {
 }
 
 /// The tools that change files; a token that may only read cannot use them.
-const WRITING_TOOLS: [&str; 28] = ["hide_albums", "edit_blacklist", "merge_albums", "set_discs_total", "set_labels", "set_track_labels", "set_feed_labels", "move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
+const WRITING_TOOLS: [&str; 29] = ["cd_rip", "hide_albums", "edit_blacklist", "merge_albums", "set_discs_total", "set_labels", "set_track_labels", "set_feed_labels", "move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
 
 /// A sample call of a tool, for `help_for`.
 fn example_of(tool: &str) -> Value {
@@ -429,6 +458,7 @@ fn example_of(tool: &str) -> Value {
         "get_album" | "get_tags" | "set_cover_from_folder" => json!({ "id": 12 }),
         "set_tags" => json!({ "id": 12, "dry_run": true, "fields": { "AlbumTitle": "Back to the Street" } }),
         "set_cover_from_url" => json!({ "id": 12, "url": "https://example.org/cover.jpg" }),
+        "cd_rip" => json!({ "author": "Ken Follett", "title": "Sturz der Titanen", "disc": 1, "discs_total": 12, "tracks": ["Teil 1", "Teil 2", "Teil 3"], "narrator": "Johannes Steck", "kind": "audiobook", "mbid": "b0ee0bdb-d1c0-4a39-8d8a-4b7d1b2d6e11", "dry_run": true }),
         "find_problems" => json!({ "offset": 0, "limit": 100 }),
         "list_formats" => json!({ "format": "ogg" }),
         "change_log" => json!({ "id": 12, "limit": 20 }),
@@ -471,6 +501,58 @@ fn example_of(tool: &str) -> Value {
         "move_to_audiobooks" => json!({ "dry_run": true }),
         _ => json!({}),
     }
+}
+
+/// Who may use the tools for the CD drive: a token made by an administrator (the role is looked at now, not when the token
+/// was made). Returns the profile whose account the jobs belong to.
+async fn cd_admin(s: &McpState, token: &McpToken) -> Result<i64, String> {
+    let creator = token.created_by.ok_or("this token has no owner; the CD tools need a token made by an administrator")?;
+    let user = s.store.user_row(creator).await.map_err(|e| format!("database error: {e}"))?;
+    match user {
+        Some(u) if u.role == "admin" => Ok(u.id),
+        _ => Err("the CD tools are for administrators only; this token was not made by an administrator".into()),
+    }
+}
+
+/// The state of a rip job in one word. `running` while it works; a job that ended without an error is `done`, one that ended
+/// with a hint about single tracks (`unreadable_track`, `unverified_track`) is `done_with_warnings`; the rest is `failed`
+/// or `cancelled`.
+fn progress_state(job: &crate::cdimport::Job) -> &'static str {
+    match (job.active, job.state, job.error.as_str()) {
+        (true, _, _) => "running",
+        (false, "done", "") => "done",
+        (false, "done", _) => "done_with_warnings",
+        (false, _, "cancelled") => "cancelled",
+        (false, _, _) => "failed",
+    }
+}
+
+/// A refusal of the rip in words for the assistant, with the code in brackets.
+fn rip_message(code: &str) -> String {
+    let text = match code {
+        "busy" => "a rip is already running on the drive; follow it with cd_progress",
+        "no_drive" => "the server has no CD drive",
+        "no_disc" => "there is no audio CD in the drive",
+        "tray_open" => "the tray is open",
+        "drive_denied" => "the service may not use the drive (its group is missing)",
+        "invalid_meta" => "author, title or the numbers are not valid (texts 1 to 200 characters without control characters, disc 1 to 99, discs_total not below disc, mbid a MusicBrainz id)",
+        "invalid_selection" | "empty_selection" => "only_tracks is not a valid choice of tracks of this disc",
+        "disc_present" => "this CD is in the library already",
+        "disc_exists" => "files of this CD exist in the library; nothing is overwritten",
+        "no_import_folder" => "there is no import folder the server may write to",
+        "no_space" => "not enough free space",
+        "internal" => "internal error, see the server log",
+        _ => "refused",
+    };
+    format!("{text} [{code}]")
+}
+
+fn rip_failure(r: &crate::cdrive::RipRefusal) -> String {
+    let mut message = rip_message(r.refusal.1);
+    if !r.taken.is_empty() {
+        message.push_str(&format!("; tracks already there: {}", r.taken.iter().map(u32::to_string).collect::<Vec<_>>().join(", ")));
+    }
+    message
 }
 
 /// A profile by its name (any case); the id and the name as it is written.
@@ -775,6 +857,154 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             s.store.log_tag_change(&token.name, id, "(all files)", "Picture", "", "folder picture").await.map_err(db)?;
             s.store.rescan_soon();
             Ok(json!({ "embedded_in": count }))
+        }
+        "cd_drive" => {
+            cd_admin(s, token).await?;
+            let set = crate::cd_settings::CdSettings::load(&s.store).await.map_err(db)?;
+            s.cd.apply_settings(&set);
+            s.cd.refresh_drives(&set.device, true).await;
+            let drives = s.cd.drives_json_full(&s.store, s.library.as_deref(), &set).await;
+            let (states, mode) = s.cd.drives.snapshot();
+            // The releases of MusicBrainz for the disc that will be ripped (the same drive `cd_rip` takes).
+            let chosen = crate::cdrive::pick_drive(&states, &set.device).filter(|d| d.medium == crate::cdrive::Medium::Audio && d.tray == crate::cdrive::Tray::Closed);
+            let (status, candidates) = match chosen.as_ref().and_then(|d| d.table.as_ref()) {
+                None => ("no_disc", Vec::new()),
+                Some(_) if !set.lookup_ready => ("no_contact", Vec::new()),
+                Some(toc) => match crate::cdimport::lookup(&s.store, &s.cd, &set, toc).await {
+                    Ok((_, found)) if found.is_empty() => ("no_match", Vec::new()),
+                    Ok((_, found)) => ("ok", found.iter().map(crate::api_cd::candidate_json).collect()),
+                    Err(r) => {
+                        tracing::info!(code = r.1, "MCP cd_drive: lookup failed");
+                        ("lookup_failed", Vec::new())
+                    }
+                },
+            };
+            let minutes = chosen.as_ref().map(|d| (f64::from(d.seconds) / 60.0 * 10.0).round() / 10.0);
+            Ok(json!({
+                "mode": mode, "rip_running": s.cd.drives.is_ripping(), "drives": drives,
+                "disc": chosen.as_ref().map(|d| json!({ "device": d.device, "disc_id": d.disc_id, "tracks": d.track_list.iter().map(|t| json!({ "number": t.number, "seconds": t.seconds })).collect::<Vec<_>>(), "total_minutes": minutes })),
+                "lookup": { "status": status, "contact_set": set.lookup_ready, "candidates": candidates },
+            }))
+        }
+        "cd_rip" => {
+            let user = cd_admin(s, token).await?;
+            let dry = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
+            if !dry && !token.can_write {
+                return Err("this token may only read; ask for dry_run=true, or use a token that may write".into());
+            }
+            let (author, title) = (text("author").unwrap_or_default().trim().to_owned(), text("title").unwrap_or_default().trim().to_owned());
+            if author.is_empty() || title.is_empty() {
+                return Err("author and title are required".into());
+            }
+            let number = |key: &str| -> Result<Option<u32>, String> {
+                match args.get(key) {
+                    None | Some(Value::Null) => Ok(None),
+                    Some(v) => v.as_u64().and_then(|n| u32::try_from(n).ok()).map(Some).ok_or(format!("{key} must be a whole number")),
+                }
+            };
+            let titles: Vec<String> = match args.get("tracks") {
+                Some(Value::Array(a)) => a.iter().map(|v| v.as_str().map(|t| t.trim().to_owned()).ok_or("tracks must be a list of texts")).collect::<Result<_, _>>()?,
+                _ => return Err("tracks is required: a list with one title per track".into()),
+            };
+            if let Some(i) = titles.iter().position(String::is_empty) {
+                return Err(format!("track title {} is empty", i + 1));
+            }
+            let only: Option<Vec<u32>> = match args.get("only_tracks") {
+                None | Some(Value::Null) => None,
+                Some(Value::Array(a)) => Some(a.iter().map(|v| v.as_u64().and_then(|n| u32::try_from(n).ok()).ok_or("only_tracks must be a list of track numbers")).collect::<Result<_, _>>()?),
+                Some(_) => return Err("only_tracks must be a list of track numbers".into()),
+            };
+            // How many tracks are selected: the same drive `start_rip` takes, looked at now.
+            let set = crate::cd_settings::CdSettings::load(&s.store).await.map_err(db)?;
+            s.cd.apply_settings(&set);
+            s.cd.refresh_drives(&set.device, true).await;
+            let (states, _) = s.cd.drives.snapshot();
+            let drive = crate::cdrive::pick_drive(&states, &set.device).ok_or_else(|| rip_message("no_drive"))?;
+            if drive.medium != crate::cdrive::Medium::Audio {
+                return Err(rip_message("no_disc"));
+            }
+            let on_disc: Vec<u32> = drive.track_list.iter().map(|t| t.number).collect();
+            let mut selected = on_disc.clone();
+            if let Some(list) = &only {
+                let mut sorted = list.clone();
+                sorted.sort_unstable();
+                if sorted.is_empty() {
+                    return Err("only_tracks is empty; leave it out to read the whole disc".into());
+                }
+                if let Some(n) = sorted.windows(2).find(|w| w[0] == w[1]).map(|w| w[0]) {
+                    return Err(format!("only_tracks names track {n} twice"));
+                }
+                if let Some(n) = sorted.iter().find(|n| !on_disc.contains(n)) {
+                    return Err(format!("only_tracks names track {n}, which is not on the disc (it has {} tracks)", on_disc.len()));
+                }
+                selected = sorted;
+            }
+            if titles.len() != selected.len() {
+                return Err(format!("{} track titles were given but {} tracks are selected{}; give exactly one title per selected track", titles.len(), selected.len(), if only.is_some() { " by only_tracks" } else { " (the disc has that many)" }));
+            }
+            // The titles come in the order of the selected tracks; the rip wants them by position on the disc.
+            let mut by_position = vec![String::new(); on_disc.len()];
+            for (number, title) in selected.iter().zip(&titles) {
+                if let Some(i) = on_disc.iter().position(|n| n == number) {
+                    by_position[i] = title.clone();
+                }
+            }
+            let kind = text("kind");
+            if kind.as_deref().is_some_and(|k| !crate::cd_settings::KINDS.contains(&k)) {
+                return Err("kind must be audiobook or music".into());
+            }
+            let req = crate::cdrive::RipRequest {
+                kind,
+                author: author.clone(),
+                title: title.clone(),
+                disc: number("disc")?,
+                discs_total: number("discs_total")?,
+                narrator: text("narrator").map(|n| n.trim().to_owned()).filter(|n| !n.is_empty()),
+                year: None,
+                mbid: text("mbid").map(|n| n.trim().to_owned()).filter(|n| !n.is_empty()),
+                tracks: by_position,
+                eject: args.get("eject").and_then(Value::as_bool),
+                device: None,
+                only,
+                resume: None,
+                mode: None,
+                force: false,
+                auto: false,
+            };
+            if dry {
+                let mut plan = crate::cdrive::preview_rip(&s.store, &s.cd, s.library.clone(), req).await.map_err(|r| rip_failure(&r))?;
+                plan["dry_run"] = json!(true);
+                plan["started"] = json!(false);
+                plan["tracks_checked"] = json!({ "given": titles.len(), "selected": selected.len() });
+                return Ok(plan);
+            }
+            let (disc, discs_total) = (req.disc.unwrap_or(1), req.discs_total.unwrap_or(1));
+            let started = crate::cdrive::start_rip(&s.store, &s.cd, s.library.clone(), user, req).await.map_err(|r| rip_failure(&r))?;
+            let mut job = started.job;
+            s.cd.decorate(&mut job);
+            tracing::info!(token = %token.name, job = job.id, %author, %title, disc, "CD rip started through MCP");
+            s.store.log_tag_change(&token.name, 0, "", "CdRip", "", &format!("job {}: {author} / {title}, CD {disc} of {discs_total}, {} tracks", job.id, selected.len())).await.map_err(db)?;
+            Ok(json!({ "dry_run": false, "started": true, "job_id": job.id, "resume": started.resume, "job": job, "next": "follow it with cd_progress" }))
+        }
+        "cd_progress" => {
+            cd_admin(s, token).await?;
+            let log = s.store.cd_log(100).await.map_err(db)?;
+            let found = match int("job") {
+                Some(id) => Some(log.into_iter().find(|j| j.id == id).ok_or_else(|| format!("no CD job with the number {id}"))?),
+                None => log.into_iter().find(|j| j.device == "server" || j.device == "auto"),
+            };
+            let Some(mut job) = found else {
+                return Ok(json!({ "state": "none", "rip_running": s.cd.drives.is_ripping(), "message": "no rip of the server so far" }));
+            };
+            s.cd.decorate(&mut job);
+            let percent = match progress_state(&job) {
+                "running" => (job.fraction.unwrap_or(0.0) * 100.0).round() as i64,
+                "failed" | "cancelled" => (job.fraction.unwrap_or(0.0) * 100.0).round() as i64,
+                _ => 100,
+            };
+            let tracks: Vec<Value> = job.track_states.iter().map(|t| json!({ "number": t.number, "title": t.title, "seconds": t.seconds, "state": t.state, "percent": (t.fraction.clamp(0.0, 1.0) * 100.0).round() as i64, "error": t.error })).collect();
+            let track_errors: Vec<Value> = job.track_states.iter().filter(|t| !t.error.is_empty()).map(|t| json!({ "number": t.number, "error": t.error })).collect();
+            Ok(json!({ "state": progress_state(&job), "percent": percent, "rip_running": s.cd.drives.is_ripping(), "error": job.error, "track_errors": track_errors, "tracks": tracks, "job": job }))
         }
         "set_cover_from_url" => {
             if !token.can_write {

@@ -25,7 +25,7 @@ async fn mcp() -> Mcp {
     let (dir, store) = open().await;
     let admin = store.create_profile("Boss", true).await.unwrap();
     let library = tempfile::TempDir::new().unwrap();
-    let router = router(McpState { store: store.clone(), library: Some(library.path().to_owned()) });
+    let router = router(McpState { store: store.clone(), library: Some(library.path().to_owned()), cd: david_server::cdimport::CdService::new(dir.path()) });
     Mcp { router, store, library, admin, _dir: dir }
 }
 

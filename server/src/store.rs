@@ -214,6 +214,8 @@ pub struct McpToken {
     pub id: i64,
     pub name: String,
     pub can_write: bool,
+    /// The profile that made the token (its role decides who may use the tools for the CD drive).
+    pub created_by: Option<i64>,
     pub created_at: i64,
     pub last_used_at: Option<i64>,
 }
@@ -941,7 +943,7 @@ impl Store {
     }
 
     pub async fn mcp_tokens(&self) -> Result<Vec<McpToken>> {
-        let stmt = Statement::from_string(DbBackend::Sqlite, "SELECT id, name, can_write, created_at, last_used_at FROM mcp_token ORDER BY id");
+        let stmt = Statement::from_string(DbBackend::Sqlite, "SELECT id, name, can_write, created_by, created_at, last_used_at FROM mcp_token ORDER BY id");
         Ok(McpToken::find_by_statement(stmt).all(&self.db.reader).await?)
     }
 
@@ -984,7 +986,7 @@ impl Store {
         let hash = crate::auth::sha256_hex(secret);
         let stmt = Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "SELECT id, name, can_write, created_at, last_used_at FROM mcp_token WHERE token_hash = ?",
+            "SELECT id, name, can_write, created_by, created_at, last_used_at FROM mcp_token WHERE token_hash = ?",
             [Value::from(hash)],
         );
         let Some(token) = McpToken::find_by_statement(stmt).one(&self.db.reader).await? else { return Ok(None) };

@@ -113,7 +113,7 @@ struct LookupRequest {
 }
 
 /// A candidate in the words of the apps: `tracks` are the titles, `cover` is the reference for `GET /cd/cover`.
-fn candidate_json(c: &musicbrainz::Candidate) -> Value {
+pub(crate) fn candidate_json(c: &musicbrainz::Candidate) -> Value {
     json!({
         "release_id": c.release_id, "title": c.title, "author": c.author, "narrators": c.narrators, "credits": c.credits,
         "barcode": c.barcode, "date": c.date, "year": c.year, "language": c.language,

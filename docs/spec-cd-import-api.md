@@ -198,6 +198,20 @@ Off by default (migration 0032; needs `cd_udev` on). A disc that is put in (a ne
 | `udev_off` | `cd_auto_import` is on but `cd_udev` is off (once at the start and at a change of the setting) |
 | `start_failed` | the start was refused (detail: the code) |
 
+## MCP tools for the CD drive (2026-10-30)
+
+For an assistant on `/mcp` (`david run --mcp`, see `docs/releasing.md`) that reads a CD from photos of its cover and back: it asks the drive, fills in author, title and track titles and starts the rip. Code: `server/src/mcp.rs` (the tools), `server/src/cdrive.rs` (`rip_inner`, shared with the web form and `POST /cd/rip`: there is one code path, `preview_rip` stops it before anything is created). Tests: `server/tests/mcp_cd.rs`.
+
+**Who.** All three tools need a token that an **administrator made** (`mcp_token.created_by`; the role of that profile is read at every call, so a demoted or deleted administrator loses the tools at once). Others get an error that says so. `cd_rip` with `dry_run=false` needs a token that may write too.
+
+| Tool | Does |
+|---|---|
+| `cd_drive` | Read only. `drives` (as `GET /cd/drive`, with `present` and `resume`), `rip_running`, `disc` (`device`, `disc_id`, `tracks` with `number` and `seconds`, `total_minutes`) and `lookup`: `status` (`ok`, `no_disc`, `no_contact`, `no_match`, `lookup_failed`), `contact_set` and `candidates` (as in `POST /cd/lookup`: title, author, tracks, `release_id`). |
+| `cd_rip` | Parameters `author`, `title`, `tracks` (one title per **selected** track, in disc order), `disc` (1), `discs_total` (1), `narrator`, `kind` (`audiobook`/`music`, default the setting `cd_target_kind`), `mbid`, `eject` (default the setting), `only_tracks` (numbers on the disc), `dry_run` (**default true**). A wrong number of titles is refused with both counts ("2 track titles were given but 3 tracks are selected"), before anything else. With `dry_run` the answer is the plan: `would_start`, `refusal` (`disc_present`, `disc_exists`: reported, not an error), `folder`, `files` (`number`, `title`, `file`, `seconds`, `tag_title`, `tag_track`, `exists`), `tags`, `format`, `eject`, `present`, `warnings` (an album of that name or this disc is in the library already, files that exist, a folder that exists, an interrupted rip waits, no `mbid` so no cover, no contact address for the cover); nothing is created: no job, no staging folder, no log entry. With `dry_run=false`: `{"started":true,"job_id","resume","job"}` and an entry in the change log (`CdRip`, token, job, author, title, CD n of m). Refused as the API refuses: `busy` (also for the plan), `no_disc`, `tray_open`, `no_drive`, `drive_denied`, `invalid_meta`, and `disc_present` / `disc_exists` for the start. A hand-filled rip needs no MusicBrainz contact address; it matters for lookups and the cover only. |
+| `cd_progress` | Read only. `state`: `none`, `running`, `done`, `done_with_warnings` (the job ended with `unreadable_track` or `unverified_track`), `failed`, `cancelled`; `percent`, `error`, `tracks` (`number`, `title`, `seconds`, `state`, `percent`, `error`), `track_errors`, `job`. `job` selects a job, default the newest rip of the server. |
+
+Not built: `set_cover_from_image` (a cover as base64). The server has no image decoder in its production build (see "Not done" above), so the data could not be checked by decoding; the existing `set_cover_from_url` and `set_cover_from_folder` stay the ways to set a cover.
+
 ## Rules the server keeps
 
 * Nothing is built in: formats, ranges, names, genre, addresses and the contact address are settings; the program only has the named defaults of the two public services and the fallbacks for a missing or damaged value (the values of migration 0026).

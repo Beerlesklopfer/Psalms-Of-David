@@ -235,6 +235,7 @@ pub async fn run(
     on_ready(addr);
 
     let cd_stop = cd.clone();
+    let cd_for_mcp = cd.clone();
     let mut router = web::router(state).merge(crate::api::router(crate::api::ApiState {
         store: store.clone(),
         library: config.library.clone(),
@@ -242,7 +243,7 @@ pub async fn run(
     }));
     if config.mcp {
         tracing::info!("MCP endpoint on /mcp (tokens are made in the settings)");
-        router = router.merge(crate::mcp::router(crate::mcp::McpState { store: store.clone(), library: config.library.clone() }));
+        router = router.merge(crate::mcp::router(crate::mcp::McpState { store: store.clone(), library: config.library.clone(), cd: cd_for_mcp }));
     }
     match tls {
         None => {
