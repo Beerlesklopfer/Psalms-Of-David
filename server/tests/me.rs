@@ -185,17 +185,20 @@ async fn the_pin_changes_only_with_the_right_current_one() {
     let a = api().await;
     let (id, anna) = member(&a, "Anna", 1).await;
     a.store.set_pin(id, "Start1234").await.unwrap();
+    // a = 10 s, so the wait cannot run out between the requests, however slow the machine.
+    a.store.save_settings(&[("pin_backoff_s".to_owned(), "10".to_owned())]).await.unwrap();
     let wrong = json_call(&a, "PUT", "/api/v1/me/pin", &anna, json!({ "current": "Nope12345", "new": "Neu123456" })).await;
     assert_eq!((wrong.status, wrong.json()["error"].as_str()), (StatusCode::FORBIDDEN, Some("wrong_pin")));
-    // The answer says how long the next try waits (a * 2^1 seconds, a = 1 by default), for the countdown of the app.
-    // (Seconds begun count; a slow machine may have used one of them before the answer is made.)
-    assert!(matches!(wrong.json()["retry_after_s"].as_i64(), Some(1..=2)), "{}", wrong.json());
+    // The answer says how long the next try waits (a * 2^1 = 20 seconds), for the countdown of the app.
+    // (Seconds begun count; a slow machine may have used a few of them before the answer is made.)
+    assert!(matches!(wrong.json()["retry_after_s"].as_i64(), Some(15..=20)), "{}", wrong.json());
     assert_eq!(wrong.headers.get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<i64>().ok()), wrong.json()["retry_after_s"].as_i64());
     // Right away the next try has to wait and is refused unchecked, with the time that is left.
     let at_once = json_call(&a, "PUT", "/api/v1/me/pin", &anna, json!({ "current": "Start1234", "new": "Neu123456" })).await;
     assert_eq!((at_once.status, at_once.json()["error"].as_str()), (StatusCode::TOO_MANY_REQUESTS, Some("locked")));
-    assert!(matches!(at_once.json()["retry_after_s"].as_i64(), Some(1..=2)), "{}", at_once.json());
-    tokio::time::sleep(std::time::Duration::from_millis(2_100)).await;
+    assert!(matches!(at_once.json()["retry_after_s"].as_i64(), Some(10..=20)), "{}", at_once.json());
+    // An administrator's reset ends the wait (here with the same PIN).
+    a.store.set_pin(id, "Start1234").await.unwrap();
     let weak = json_call(&a, "PUT", "/api/v1/me/pin", &anna, json!({ "current": "Start1234", "new": "abc" })).await;
     assert_eq!((weak.status, weak.json()["error"].as_str()), (StatusCode::UNPROCESSABLE_ENTITY, Some("invalid_pin")));
     let ok = json_call(&a, "PUT", "/api/v1/me/pin", &anna, json!({ "current": "Start1234", "new": "Neu123456" })).await;
