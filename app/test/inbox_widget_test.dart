@@ -274,6 +274,43 @@ void main() {
     });
   });
 
+  group('the icon of a task follows its state', () {
+    IconData? iconOf(WidgetTester tester, int id) => tester
+        .widget<Icon>(find.descendant(of: find.byKey(ValueKey('inbox-item-$id')), matching: find.byType(Icon)).first)
+        .icon;
+
+    InboxItem decided(String? resolution) =>
+        inboxTask(3, canDecide: true).copyWith(resolved: true, resolution: resolution, by: 'Beerchen');
+
+    testWidgets('an open task keeps the hourglass, full strength, with its buttons', (tester) async {
+      await pump(tester, page, items: [inboxTask(3)]);
+      expect(iconOf(tester, 3), Icons.hourglass_top);
+      expect(tester.widget<Opacity>(find.byKey(const ValueKey('inbox-opacity-3'))).opacity, 1);
+      expect(find.byKey(const ValueKey('inbox-approve-3')), findsOneWidget);
+    });
+
+    for (final (res, icon) in [
+      ('approved', Icons.check_circle_outline),
+      ('rejected', Icons.cancel_outlined),
+      ('expired', Icons.timer_off_outlined),
+      ('something_new', Icons.info_outline),
+      (null, Icons.info_outline),
+    ]) {
+      testWidgets('a task decided as $res shows $icon, dimmed, without buttons', (tester) async {
+        await pump(tester, page, items: [decided(res)]);
+        expect(iconOf(tester, 3), icon);
+        expect(tester.widget<Opacity>(find.byKey(const ValueKey('inbox-opacity-3'))).opacity, lessThan(1));
+        expect(find.byKey(const ValueKey('inbox-approve-3')), findsNothing);
+        expect(find.byKey(const ValueKey('inbox-reject-3')), findsNothing);
+      });
+    }
+
+    testWidgets('the line "Imported by" stays for an approval', (tester) async {
+      await pump(tester, page, items: [decided('approved')]);
+      expect(find.text('Imported by Beerchen'), findsOneWidget);
+    });
+  });
+
   group('the page', () {
     testWidgets('lists newest first', (tester) async {
       await pump(

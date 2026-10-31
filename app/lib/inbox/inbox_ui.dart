@@ -427,7 +427,18 @@ class _ItemCard extends StatelessWidget {
   final VoidCallback onRetry;
   final VoidCallback onAlbum;
 
-  IconData get _icon => switch (item.code) {
+  /// A decided task no longer waits: the icon follows the resolution (the hourglass only while the task is open). An unknown resolution
+  /// gets the neutral mark.
+  IconData get _resolvedIcon => switch (item.resolution) {
+    'approved' => Icons.check_circle_outline,
+    'rejected' => Icons.cancel_outlined,
+    'expired' => Icons.timer_off_outlined,
+    _ => Icons.info_outline,
+  };
+
+  IconData get _icon => item.isTask && item.resolved ? _resolvedIcon : _iconByCode;
+
+  IconData get _iconByCode => switch (item.code) {
     'cd_awaiting_approval' => Icons.hourglass_top,
     'cd_imported' || 'cd_present' => Icons.library_music_outlined,
     'cd_decided' => Icons.how_to_vote_outlined,
@@ -456,7 +467,11 @@ class _ItemCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onOpen,
-        child: Padding(
+        // A decided task is quieter but stays readable.
+        child: Opacity(
+          key: ValueKey('inbox-opacity-${item.id}'),
+          opacity: item.isTask && item.resolved ? 0.7 : 1,
+          child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -549,6 +564,7 @@ class _ItemCard extends StatelessWidget {
             ],
           ),
         ),
+          ),
       ),
     );
   }
