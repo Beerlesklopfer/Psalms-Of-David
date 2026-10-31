@@ -836,7 +836,8 @@ async fn interrupted_rip(e: &mut Env, token: &str) -> i64 {
     // The service is stopped: the track in hand is finished (nothing is running here), the rest is asked to end.
     e.cd.drives.stop_gracefully(Duration::from_millis(200), Duration::from_secs(3)).await;
     let job = wait_job(e, token, id).await;
-    assert_eq!((job["phase"].as_str(), job["error"].as_str()), (Some("failed"), Some("interrupted")), "{job}");
+    // A stop of the server is no failure: the CD waits for a new try, and what was read is in the resume folder.
+    assert_eq!((job["phase"].as_str(), job["cd_state"].as_str(), job["error"].as_str()), (Some("retry_wait"), Some("retry_wait"), Some("interrupted")), "{job}");
     id
 }
 
@@ -1015,7 +1016,12 @@ async fn a_restart_closes_the_open_jobs_as_interrupted_keeps_the_folder_and_the_
     // The service starts again.
     e.cd.start(&e.store).await;
     let closed = e.store.cd_job(e.admin, job.id).await.unwrap().unwrap();
-    assert_eq!((closed.phase.as_str(), closed.error.as_str()), ("failed", "interrupted"));
+    // A rip of the server waits for a new try (its CD is still in the drive); an upload of an app cannot be read again here and fails.
+    assert_eq!((closed.cd_state.as_str(), closed.phase.as_str(), closed.error.as_str()), ("retry_wait", "retry_wait", "interrupted"));
+    let upload = e.store.create_cd_job(e.admin, "dev", &david_server::cdimport::JobPatch { phase: Some("uploading".into()), ..Default::default() }).await.unwrap();
+    e.cd.start(&e.store).await;
+    let upload = e.store.cd_job(e.admin, upload.id).await.unwrap().unwrap();
+    assert_eq!((upload.cd_state.as_str(), upload.phase.as_str(), upload.error.as_str()), ("failed", "failed", "interrupted"));
     assert!(dir.join("manifest.json").is_file() && dir.join("01.mp3").is_file(), "the finished tracks are kept");
     // Within the hours: kept. After them: removed. Other things in the staging area go after a day only.
     let mut m = cdresume::read(&dir).unwrap();

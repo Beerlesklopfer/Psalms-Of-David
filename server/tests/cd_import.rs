@@ -204,6 +204,7 @@ async fn only_administrators_and_members_may_use_it() {
     let mut e = env().await;
     let kid = e.store.create_user(NewProfile::child("Kid", 10, Schedule::always())).await.unwrap();
     let anna = e.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    e.store.set_cd_rights(anna, david_server::cdrights::CdRightsChange { may_insert: Some(true), ..Default::default() }).await.unwrap();
     let kid_token = pair(&mut e, kid).await;
     let anna_token = pair(&mut e, anna).await;
     for (method, uri, body) in [
@@ -525,6 +526,7 @@ async fn an_unlocked_import_runs_and_the_book_arrives_in_the_library() {
 async fn jobs_are_the_accounts_and_show_whether_another_device_is_ripping() {
     let mut e = env().await;
     let anna = e.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    e.store.set_cd_rights(anna, david_server::cdrights::CdRightsChange { may_insert: Some(true), ..Default::default() }).await.unwrap();
     let a = pair_admin(&mut e).await;
     let b = pair_admin(&mut e).await;
     let stranger = pair(&mut e, anna).await;
@@ -570,7 +572,7 @@ async fn a_job_nobody_has_heard_of_for_long_is_given_up() {
     let r = call(&e, "POST", "/api/v1/cd/jobs", Some(&a), Some(json!({}))).await;
     let id = r.json()["job"]["id"].as_i64().unwrap();
     // The server restarted: jobs under way are closed.
-    assert_eq!(e.store.fail_active_cd_jobs("the server was restarted").await.unwrap(), 1);
+    assert_eq!(david_server::cdflow::recover(&e.store, &CdService::with_lookup(e.dir.path(), e.fake.clone())).await, 1);
     let job = call(&e, "GET", &format!("/api/v1/cd/import/{id}"), Some(&a), None).await.json()["job"].clone();
     assert_eq!((job["phase"].as_str(), job["error"].as_str()), (Some("failed"), Some("interrupted")));
 }
@@ -659,6 +661,7 @@ async fn ws_send(s: &mut TcpStream, opcode: u8, payload: &[u8]) {
 async fn changes_of_a_job_are_pushed_to_every_device_of_the_account_and_to_nobody_else() {
     let mut e = env_with(Some(Duration::from_secs(30))).await;
     let anna = e.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    e.store.set_cd_rights(anna, david_server::cdrights::CdRightsChange { may_insert: Some(true), ..Default::default() }).await.unwrap();
     let a = pair_admin(&mut e).await;
     let b = pair_admin(&mut e).await;
     let stranger = pair(&mut e, anna).await;

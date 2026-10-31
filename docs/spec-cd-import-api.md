@@ -4,7 +4,7 @@ Status: **built** in `server/src/api_cd.rs` (routes), `server/src/cdimport.rs` (
 
 **The CD drive is at the server** (decision of the project owner, 2026-10-28), so the server reads, encodes, tags and files the disc (section "The drive of the server"). The upload path below stays for files that are ready (another source, an app that rips by itself): the app encodes, names and tags the files **as the settings say** and hands them over; the server checks them again, renames and re-tags them by the same settings (the server is the authority), puts them into the import folder and starts the import.
 
-All paths are under `/api/v1/cd`, with `Authorization: Bearer <device token>`. **Only the roles Admin and Member**; Child and Guest get `403 {"error":"forbidden"}`, no token `401`. Errors are always `{"error":"<code>"}`.
+All paths are under `/api/v1/cd`, with `Authorization: Bearer <device token>`. **Only the roles Admin and Member whose profile has the right `cd_may_insert`** (since 2026-10-31, migration 0058, `docs/spec-cd-inbox.md`); everybody else, Child and Guest included, gets `403 {"error":"forbidden"}`, no token `401`. `GET /cd/jobs`, `GET /cd/jobs/{id}` and the event channel are also open to a profile that only has `cd_may_approve` (it decides the CDs of others; the event channel is open to every Admin and Member as before). Errors are always `{"error":"<code>"}`.
 
 ## Settings (`GET /cd/settings`)
 
@@ -99,6 +99,70 @@ A job is one CD on its way in. It is made by `POST /cd/import` (and, optionally 
 | `GET /cd/jobs` | `{"jobs":[the open ones and the last finished, newest first],"busy":bool,"busy_elsewhere":bool,"device":"..."}`; `busy_elsewhere` = a job under way belongs to another device of the account |
 | `GET /cd/jobs/{id}` and `GET /cd/import/{id}` | `{"job":{...}}` (the fallback when the event channel is down); `404 not_found` |
 | `GET /cd/import` | `{"jobs":[only the open ones]}` |
+
+## States of a job (2026-10-31, phase 2 of `spec-cd-inbox.md`)
+
+Every job has a **state** that is stored (`cd_job.cd_state`, migration 0059) and changed by **one function only**, `Store::cd_move` in `server/src/cdflow.rs`: it checks that the move leads out of the state the job is in, who may make it, and that nobody decided first. The pages and the apps only show the state. The JSON of a job has these members besides the ones above:
+
+| Member | Meaning |
+|---|---|
+| `cd_state` | `ripping`, `retry_wait`, `ripped`, `awaiting_approval`, `imported`, `rejected`, `present`, `cancelled`, `failed`, `skipped` (see below) |
+| `reason` | for `rejected`: `declined` (a person said no) or `expired`; else `""` |
+| `decided_by`, `decided_ms` | the nickname and time of the person who approved, rejected or gave up; `""` and `0` for the server's own moves |
+| `user_id`, `starter` | the account that started the job and its nickname; `0` and `"auto"` for a CD put in at the server (the automatic import) |
+| `held_ms` | since when the files wait for approval (ms), else absent |
+
+`phase` stays and says what goes on inside `ripping` (and the old words `phase` and `state` of the table above stay for the apps that know them; `state` also takes `retry_wait`, `awaiting_approval`, `rejected`, `present`). `active` is true while the server or an app works on the job (`ripping`, `encoding`, `uploading`, `placing`, `importing`), so it is false in `retry_wait` and `awaiting_approval`.
+
+```
+ ripping --read/verify error--> retry_wait --retry--> ripping
+    |                               +--give up / eject--> cancelled
+    +--present--> present          (a CD whole in the library: nothing is read, ejected when asked)
+    +--ripped--> ripped --(starter has cd_no_approval / cd_auto_approval = now)--> imported
+                   +--hold--> awaiting_approval --approve--> ripped --> imported
+                                     +--reject / expire--> rejected  (files deleted)
+```
+
+`failed` is a failure that a new try cannot mend (`no_space`, `disc_exists`, `import_failed`, `drive_gone`, `stale`, ...); `skipped` is an entry of the log of the automatic import (never a move). `imported` means the files are placed; `import_ran` says the library import has run. `ripped` is short: the files are in the job folder and the decision about approval is made; an approved CD is `ripped` again until its files are placed.
+
+**Moves and who makes them** (a move that is not allowed answers `409 invalid_move` with `"state":"<where it is>"`, a missing right `403 forbidden`, an unknown job `404 not_found`):
+
+| Move | From | To | By |
+|---|---|---|---|
+| retry | `retry_wait` | `ripping` | the starter, or a profile with `cd_may_approve` |
+| give up | `retry_wait` | `cancelled` | the same (the eject of the app does it too) |
+| approve | `awaiting_approval` | `ripped`, then `imported` | `cd_may_approve` only |
+| reject | `awaiting_approval` | `rejected` | `cd_may_approve` only |
+| the server's own | read error (`read`, `verify`, all chosen tracks unreadable) or a stop of the server | `retry_wait` | the server |
+| | the CD is in the library | `present` | the server |
+| | read; placed; failed; cancelled; expired | `ripped`; `imported`; `failed`; `cancelled`; `rejected` (reason `expired`) | the server |
+
+**Who decides `ripped`:** the starter's `cd_no_approval` for a rip from an app or the web (and for an upload with `POST /cd/import`); the setting `cd_auto_approval` (`wait`, the default, or `now`) for a CD put in at the server (`user_id` 0). A repair (`mode: "heal"`) never waits: the CD is in the library already.
+
+**Two deciders:** of two decisions on the same CD the first wins; the other gets `409 {"error":"decided","by":"<nickname>","resolution":"approved"|"rejected"|"expired"}` (`by` is empty for `expired`). If an approved CD cannot be placed (the same files exist now, no room) it waits for approval again with the reason in `message`, and the answer is `500`.
+
+**The held folder** (`awaiting_approval`): the files are read and encoded at once, then moved to `<held folder>/held-<job id>/` with a record in `cd_held` (what is needed to place them: details, titles, cover, Disc ID). The held folder is the setting `cd_held_folder`; empty means below the staging folder of the CD import (`<data dir>/cd-import`). A folder that lies inside a library folder is **not used** (a warning is logged and the staging folder is taken), so the files of a held CD are in no list, search, stream, MCP answer or feed: they are not in the library. They survive a restart; folders `held-<id>` without a record are removed at the start. After `cd_held_keep_days` (setting, default 60, 1 to 365) a held CD is `rejected` with the reason `expired` by the background task (every ten minutes and at the start; `cdflow::expire_held` takes the time as an argument) and its files are deleted; a decision deletes them too.
+
+**A read error** (`read`, `verify`, or every chosen track unreadable, `error: "unreadable_track"`) no longer ends in `failed`: the job is `retry_wait`, the CD **stays in the drive**, and what was read stays in the resume folder (`disc-<Disc ID>`, `cd_resume_keep_hours`). `retry` starts the same request again on the same job (it is stored in `cd_job.request`) and takes over what checks out. A single track that cannot be read while others can still leaves the rest imported as before (`done` with `unreadable_track`).
+
+**A restart** brings every open state to one that can go on: `ripping` of a rip of the server (`device` `server` or `auto`) becomes `retry_wait` with `error: "interrupted"`; other jobs that were under way (an upload, placing, importing) become `failed` with `interrupted`; `ripped` becomes `retry_wait` (files in the resume folder) or, if it was approved with held files, `awaiting_approval` again; `awaiting_approval` and `retry_wait` stay. The log of the page (`cd_log_keep`) never drops a job in `retry_wait` or `awaiting_approval`.
+
+**A CD that is whole in the library** (`present`): `POST /cd/rip` answers `409 disc_present` as before (with `"ejected": true|false`) and writes a job in the state `present` (message "already in the library: author: book, CD n"); nothing is read. With `"eject": true` in the request the tray is opened at once (only when the CD is whole; one that needs a repair stays in the drive for a person to decide). The automatic path (`cd_auto_import`) always ejects and writes the job `present` (device `auto`) instead of the old `skipped` entry `disc_present`; `heal_needed` and the other reasons stay `skipped`.
+
+| Request | Answer |
+|---|---|
+| `POST /cd/jobs/{id}/approve` | `200 {"job"}` (the job is `ripped` / `imported`, `decided_by` is the caller). `403 forbidden` without `cd_may_approve`, `409 invalid_move` (not `awaiting_approval`), `409 decided`, `404 not_found`, `500 internal` |
+| `POST /cd/jobs/{id}/reject` | `200 {"job"}` (`rejected`, `reason: "declined"`, files deleted). Same errors |
+| `POST /cd/jobs/{id}/retry` | `202 {"job","resume"}` (the same job, `ripping`; `resume` as in `POST /cd/rip`). `403 forbidden`, `409 invalid_move` (not `retry_wait`, or a job without the request of a rip of the server), and the refusals of a start with the job still in `retry_wait`: `409 busy`, `no_disc`, `tray_open`, `no_drive`, `503 drive_denied` |
+| `POST /cd/jobs/{id}/give_up` | `200 {"job"}` (`cancelled`, `decided_by` is the caller). `403`, `409 invalid_move` |
+| `GET /cd/jobs`, `GET /cd/jobs/{id}` | as before; a profile with `cd_may_approve` also gets the jobs of others in `awaiting_approval` and `retry_wait`; the starter sees their own held CD (as an entry of the job; the files are no album). Another member sees nothing of it (`404`) |
+| `POST /cd/rip/{id}/cancel` | as before, but only the starter or a profile with `cd_may_approve` (`403 forbidden`) |
+| `POST /cd/eject` | as before; when the tray was opened, jobs in `retry_wait` that the caller may give up are given up |
+| `POST /cd/import` | answers `201` with `"import":"held"`, `"placed":null` and the job in `awaiting_approval` when the starter needs approval |
+
+Settings added: `cd_auto_approval` (0058; `wait` or `now`), `cd_held_keep_days` and `cd_held_folder` (0059); all in the tab "CD import". Migrations: 0058 (the rights `cd_may_insert`, `cd_no_approval`, `cd_may_approve` on `profile`, with triggers that refuse a right for a child or guest and taking the last `cd_may_approve`), 0059 (the state columns of `cd_job` and the table `cd_held`).
+
+**MCP.** `cd_drive`, `cd_rip` and `cd_progress` need a token made by a profile with `cd_may_insert` (an administrator has it unless it was taken away; the right is read at every call). `cd_progress` lists the held CDs (`held`) and reports `retry_wait`, `awaiting_approval`, `rejected`, `present` as `state`. There is no tool that approves or rejects: people decide, not an LLM. `list_profiles` (read only) shows the rights of the profiles. The rights themselves are changed on the users page only.
 
 ## Event channel (`GET /cd/events`, WebSocket, `wss` behind the server's TLS)
 
@@ -230,7 +294,7 @@ The codes are English and stay the same; they are in `{"error":"<code>"}` of the
 
 | Code | Meaning | HTTP |
 |---|---|---|
-| `forbidden` | the role is not Admin or Member | 403 |
+| `forbidden` | the role is not Admin or Member, the profile lacks the right (`cd_may_insert`; for decisions `cd_may_approve`), or the caller is neither the starter nor an approver | 403 |
 | `unauthorized` | no or an invalid token | 401 |
 | `no_contact` | no `musicbrainz_contact` in the settings, so no lookup | 409 |
 | `invalid_toc` | the table of contents is not valid | 422 |
@@ -256,7 +320,9 @@ The codes are English and stay the same; they are in `{"error":"<code>"}` of the
 | `bad_upgrade` | not a valid WebSocket request | 400 |
 | `internal` | internal error, see the server log | 500 |
 | `import_failed` | files placed, the import of the library failed (job) | - |
-| `interrupted` | the server restarted while the job ran (job) | - |
+| `interrupted` | the server restarted while the job ran (job; a rip of the server waits in `retry_wait` with it) | - |
+| `invalid_move` | the move does not lead out of the state the job is in | 409 |
+| `decided` | somebody else approved or rejected the CD first (`by`, `resolution`) | 409 |
 | `stale` | no news of the job for 15 minutes (job) | - |
 | `busy` | the drive already rips a CD (or a rip/eject was refused for it) | 409 |
 | `no_drive` | the server has no CD drive (or `cd_device` names one that is not there) | 409 / 404 |

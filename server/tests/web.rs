@@ -4869,3 +4869,155 @@ async fn the_tags_window_keeps_the_barcode_in_the_library_and_refuses_a_wrong_on
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
     assert!(a.store.book_barcode(id).await.unwrap().is_none());
 }
+
+// CDs in the family (docs/spec-cd-inbox.md, phases 1 and 2)
+
+#[tokio::test]
+async fn the_edit_window_has_the_three_cd_rights_and_says_why_the_last_approver_cannot_give_it_up() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let de = Opts { cookie: Some(&cookie), lang: Some("de"), ..Default::default() };
+    let boss = a.store.list_profiles().await.unwrap().iter().find(|p| p.name == "Boss").unwrap().id;
+    let anna = a.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    let kid = a.store.create_user(NewProfile::child("Kid", 9, david_server::Schedule::always())).await.unwrap();
+
+    // Three tick boxes in the edit window of an adult, in English and in German; none for a child.
+    let page = send(&a, get("/admin/users", &plain)).await.body;
+    for text in ["May put in CDs", "Needs no approval", "May approve CDs of others"] {
+        assert!(page.contains(text), "{text}");
+    }
+    assert!(page.contains(&format!("id=\"user-form-{anna}\"")) && page.matches("name=\"cd_may_approve\"").count() >= 2);
+    assert!(send(&a, get("/admin/users", &de)).await.body.contains("CDs einlegen") && send(&a, get("/admin/users", &de)).await.body.contains("ohne Freigabe") && send(&a, get("/admin/users", &de)).await.body.contains("CDs anderer freigeben"));
+    assert_eq!(page.matches("name=\"cd_may_insert\"").count(), 2, "the boxes are for Boss and Anna, not for the child {kid}");
+
+    // Ticked boxes are saved; an unticked box takes the right away.
+    let base = |extra: &[(&'static str, &'static str)]| {
+        let mut f = vec![("id", anna.to_string()), ("name", "Anna".to_owned()), ("role", "member".to_owned()), ("cd_form", "1".to_owned())];
+        f.extend(extra.iter().map(|(k, v)| (*k, (*v).to_owned())));
+        f
+    };
+    let send_form = |f: Vec<(&'static str, String)>| {
+        let pairs: Vec<(&str, &str)> = f.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        form(&pairs)
+    };
+    let r = send(&a, post("/admin/rpc/user.update", &send_form(base(&[("cd_may_insert", "on"), ("cd_may_approve", "on")])), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let rights = a.store.cd_rights(anna).await.unwrap();
+    assert_eq!((rights.may_insert, rights.no_approval, rights.may_approve), (true, false, true));
+    let r = send(&a, post("/admin/rpc/user.update", &send_form(base(&[])), &o)).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(a.store.cd_rights(anna).await.unwrap(), david_server::cdrights::CdRights::none());
+
+    // Two approvers: the administrator may give it up. The last approver may not; the page says so.
+    a.store.set_cd_rights(anna, david_server::cdrights::CdRightsChange { may_approve: Some(true), ..Default::default() }).await.unwrap();
+    let boss_form = |extra: &[(&'static str, &'static str)]| {
+        let mut f = vec![("id", boss.to_string()), ("name", "Boss".to_owned()), ("role", "admin".to_owned()), ("cd_form", "1".to_owned()), ("cd_may_insert", "on".to_owned())];
+        f.extend(extra.iter().map(|(k, v)| (*k, (*v).to_owned())));
+        send_form(f)
+    };
+    assert_eq!(send(&a, post("/admin/rpc/user.update", &boss_form(&[]), &o)).await.status, StatusCode::OK);
+    assert!(!a.store.cd_rights(boss).await.unwrap().may_approve);
+    a.store.set_cd_rights(boss, david_server::cdrights::CdRightsChange { may_approve: Some(true), ..Default::default() }).await.unwrap();
+    a.store.set_cd_rights(anna, david_server::cdrights::CdRightsChange { may_approve: Some(false), ..Default::default() }).await.unwrap();
+    let r = send(&a, post("/admin/rpc/user.update", &boss_form(&[]), &o)).await;
+    assert_eq!(r.status, StatusCode::CONFLICT);
+    assert!(r.body.contains("At least one profile must keep the right to approve CDs"), "{}", r.body);
+    assert!(a.store.cd_rights(boss).await.unwrap().may_approve, "nothing changed");
+    let r = send(&a, post("/admin/rpc/user.update", &boss_form(&[]), &Opts { lang: Some("de"), ..o })).await;
+    assert!(r.body.contains("Mindestens ein Profil muss das Recht behalten"), "{}", r.body);
+}
+
+#[tokio::test]
+async fn the_cd_settings_have_the_approval_and_the_waiting_time_with_a_hint() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let tab = send(&a, get("/admin/settings?tab=cdimport", &Opts { cookie: Some(&cookie), ..Default::default() })).await.body;
+    assert!(tab.contains("name=\"cd_auto_approval\"") && tab.contains("Wait for approval") && tab.contains("Import at once") && tab.contains("the careful choice for a family with children"), "{tab}");
+    assert!(tab.contains("name=\"cd_held_keep_days\"") && tab.contains("expires after"), "{tab}");
+    let r = send(&a, post("/admin/rpc/settings.cd", &form(&[("cd_auto_approval", "now"), ("cd_held_keep_days", "30")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let s = david_server::cd_settings::CdSettings::load(&a.store).await.unwrap();
+    assert_eq!((s.auto_approval.as_str(), s.held_keep_days), ("now", 30));
+    let r = send(&a, post("/admin/rpc/settings.cd", &form(&[("cd_held_keep_days", "400")]), &o)).await;
+    assert!(r.body.contains("outside the allowed range"), "{}", r.body);
+    let s = david_server::cd_settings::CdSettings::load(&a.store).await.unwrap();
+    assert_eq!(s.held_keep_days, 30, "a refused value is not saved");
+}
+
+#[tokio::test]
+async fn the_page_shows_a_held_cd_with_buttons_only_for_somebody_who_may_approve_and_the_log_shows_the_decision() {
+    if !david_server_test_ffmpeg() {
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let htmx = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let boss = a.store.list_profiles().await.unwrap().iter().find(|p| p.name == "Boss").unwrap().id;
+    let work = tempfile::TempDir::new().unwrap();
+    let path = work.path().join("t.mp3");
+    common::audio::make(&path, &["-c:a", "libmp3lame", "-b:a", "64k", "-ar", "24000", "-ac", "2"], &[("title", "Teil"), ("artist", "Somebody")]);
+    *a.drive.mp3.lock().unwrap() = std::fs::read(path).unwrap();
+    // The administrator's own CD waits too, when the right to skip the approval is taken away.
+    a.store.set_cd_rights(boss, david_server::cdrights::CdRightsChange { no_approval: Some(false), ..Default::default() }).await.unwrap();
+    let lib = tempfile::TempDir::new().unwrap();
+    let root = lib.path().canonicalize().unwrap().to_string_lossy().into_owned();
+    a.store.save_import_criteria(&[root], david_server::RatingRule::Manual).await.unwrap();
+    a.store.unlock_import("test").await.unwrap();
+    a.store.save_settings(&[("min_free_gb".to_owned(), "0".to_owned())]).await.unwrap();
+    a.drive.edit("/dev/fake0", |u| {
+        u.disc = Some(david_server::cdrive::fake::disc(2));
+        u.changed = true;
+    });
+    a.cd.refresh_drives("", true).await;
+    let r = send(&a, post("/admin/rpc/cd.rip", &form(&[("author", "Ken Follett"), ("title", "Wartet"), ("disc", "1")]), &htmx)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let mut job = None;
+    for _ in 0..200 {
+        job = a.store.cd_log(5).await.unwrap().into_iter().find(|j| j.cd_state == "awaiting_approval");
+        if job.is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let job = job.expect("the CD waits for approval");
+    let page = send(&a, get("/admin/cd", &plain)).await.body;
+    assert!(page.contains("CDs that wait") && page.contains("Wartet") && page.contains("/admin/rpc/cd.job/approve") && page.contains("/admin/rpc/cd.job/reject") && page.contains("Waiting for approval"), "{page}");
+    // Without the right to approve the buttons are not offered.
+    assert!(matches!(a.store.set_cd_rights(boss, david_server::cdrights::CdRightsChange { may_approve: Some(false), ..Default::default() }).await, Err(david_server::Error::LastCdApprover)));
+    let second = a.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    a.store.set_cd_rights(second, david_server::cdrights::CdRightsChange { may_approve: Some(true), ..Default::default() }).await.unwrap();
+    a.store.set_cd_rights(boss, david_server::cdrights::CdRightsChange { may_approve: Some(false), ..Default::default() }).await.unwrap();
+    let page = send(&a, get("/admin/cd", &plain)).await.body;
+    assert!(page.contains("Wartet") && !page.contains("/admin/rpc/cd.job/approve") && page.contains("Waits for somebody who may approve CDs"), "{page}");
+    a.store.set_cd_rights(boss, david_server::cdrights::CdRightsChange { may_approve: Some(true), ..Default::default() }).await.unwrap();
+    // Approve through the page: the panel comes back, the job is placed, and the log names who decided.
+    let r = send(&a, post("/admin/rpc/cd.job/approve", &form(&[("id", &job.id.to_string()), ("csrf", &csrf)]), &htmx)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let mut state = String::new();
+    for _ in 0..200 {
+        let j = a.store.cd_job_any(job.id).await.unwrap().unwrap();
+        state = j.cd_state.clone();
+        if state == "imported" && !j.active {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    assert_eq!(state, "imported");
+    let page = send(&a, get("/admin/cd", &plain)).await.body;
+    assert!(page.contains("decided by Boss"), "{page}");
+    // A second decision is told as an error code in the panel.
+    let r = send(&a, post("/admin/rpc/cd.job/reject", &form(&[("id", &job.id.to_string()), ("csrf", &csrf)]), &htmx)).await;
+    assert!(r.body.contains("(decided)"), "{}", r.body);
+}
+
+fn david_server_test_ffmpeg() -> bool {
+    let ok = common::audio::ffmpeg_available();
+    if !ok {
+        eprintln!("ffmpeg is not installed: test skipped");
+    }
+    ok
+}

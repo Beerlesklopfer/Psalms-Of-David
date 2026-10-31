@@ -253,6 +253,7 @@ impl SettingView {
             "cd_buffer_max_mb" => ("cdimport", "unit.mb", s.value.clone()),
             "cd_resume_keep_hours" => ("cdimport", "unit.hours", s.value.clone()),
             "cd_heal_tolerance_s" => ("cdimport", "unit.seconds", s.value.clone()),
+            "cd_held_keep_days" => ("cdimport", "unit.days", s.value.clone()),
             k if crate::cd_settings::is_cd_key(k) => ("cdimport", "", s.value.clone()),
             "tls_cert" | "tls_key" | "tls_host" => ("tls", "", s.value.clone()),
             "tls_reload_s" => ("tls", "unit.seconds", s.value.clone()),
@@ -299,9 +300,16 @@ pub struct PanelQuery {
     /// Show the form for a new import although the CD is in the library.
     pub force: bool,
     pub fields: HashMap<String, String>,
+    /// The profile that looks at the panel (its rights decide which buttons are shown); 0 = nobody known.
+    pub viewer: i64,
 }
 
 impl PanelQuery {
+    pub fn with_viewer(mut self, viewer: i64) -> PanelQuery {
+        self.viewer = viewer;
+        self
+    }
+
     /// From the pairs of a query string or a form (`only` may repeat).
     pub fn from_pairs(pairs: Vec<(String, String)>) -> PanelQuery {
         let mut q = PanelQuery::default();
@@ -486,6 +494,31 @@ struct DrivePanel {
     rip: Option<RipPanel>,
     /// The form for a new import is shown (no CD in the library, or the person asked for it anyway).
     show_import: bool,
+    /// CDs that wait for approval or for a new try, and what the viewer may do with them.
+    waiting: Vec<WaitingView>,
+    can_insert: bool,
+}
+
+/// A CD that waits for a decision or for a new try, in the drive panel.
+#[derive(Serialize)]
+struct WaitingView {
+    id: i64,
+    /// `awaiting_approval` or `retry_wait`.
+    state: String,
+    book: String,
+    author: String,
+    disc: i64,
+    discs_total: i64,
+    tracks: i64,
+    starter: String,
+    since: String,
+    /// The code of the failure that made it wait, and the catalog key of its text.
+    error: String,
+    error_key: Option<String>,
+    /// The viewer may approve or reject it (shown as buttons); else only the fact is shown.
+    can_decide: bool,
+    /// The viewer may read it again or give it up.
+    can_retry: bool,
 }
 
 /// One line of the import log on the tab "CD import".
@@ -496,6 +529,10 @@ struct CdJobView {
     disc: i64,
     discs_total: i64,
     phase: String,
+    /// The state of the job in the state machine, and the decision (who) and the reason it was rejected.
+    cd_state: String,
+    decided_by: String,
+    reason: String,
     when: String,
     /// The code of the failure, and the catalog key of its text.
     error: String,
@@ -1033,7 +1070,7 @@ impl AdminUi {
         let settings = self.setting_views(store).await?;
         let state = store.import_state().await?;
         // The tab holds the values of the CD import; the import itself (drive, choice, progress, log) is the page "CD import".
-        let cd = self.cd_context(store, cd, false, &HashMap::new()).await?;
+        let cd = self.cd_context(store, cd, false, &HashMap::new(), 0).await?;
         let ctx = context! { tab => tab, saved => false, zones => Self::zone_names(), kinds => Self::root_kinds(&state), state => Serde(state), policies => Serde(policies), settings => Serde(settings), ..view.into().context() };
         let ctx = context! { ..ctx, ..llm, ..cd };
         self.render("settings.html", ctx)
@@ -1253,8 +1290,10 @@ impl AdminUi {
     /// The page "CD import" (a menu item of its own): what keeps the import from working, the drive of the server with the choice of tracks and the
     /// progress, and the log. The values (format, names, tags) stay in the settings, tab "CD import".
     pub async fn cd_page<'a>(&self, store: &Store, cd: &crate::cdimport::CdService, view: impl Into<View<'a>>) -> Result<String> {
-        let cd = self.cd_context(store, cd, true, &HashMap::new()).await?;
-        self.render("cd.html", context! { ..view.into().context(), ..cd })
+        let view: View<'a> = view.into();
+        let viewer = view.me.map_or(0, |m| m.id);
+        let cd = self.cd_context(store, cd, true, &HashMap::new(), viewer).await?;
+        self.render("cd.html", context! { ..view.context(), ..cd })
     }
 
     /// The import page.
@@ -1343,14 +1382,14 @@ impl AdminUi {
                 v.shown = value.clone();
             }
         }
-        let cd = self.cd_context(store, cd, false, &errors).await?;
+        let cd = self.cd_context(store, cd, false, &errors, 0).await?;
         let ctx = context! { settings => Serde(settings), saved => saved, ..view.context() };
         self.render("fragments/settings_cdimport.html", context! { ..ctx, ..cd })
     }
 
     /// What the tab "CD import" shows besides the values: what keeps the import from working, the last entries
     /// of the log, and the reasons a save was refused.
-    async fn cd_context(&self, store: &Store, cd: &crate::cdimport::CdService, wanted: bool, errors: &HashMap<String, String>) -> Result<minijinja::Value> {
+    async fn cd_context(&self, store: &Store, cd: &crate::cdimport::CdService, wanted: bool, errors: &HashMap<String, String>, viewer: i64) -> Result<minijinja::Value> {
         let (problems, jobs) = if wanted {
             let zone = store.setting("time_zone").await?;
             let keep = crate::cd_settings::CdSettings::load(store).await?.log_keep;
@@ -1369,6 +1408,9 @@ impl AdminUi {
                     disc: j.disc,
                     discs_total: j.discs_total,
                     phase: j.phase,
+                    cd_state: j.cd_state,
+                    decided_by: j.decided_by,
+                    reason: j.reason,
                     error: j.error,
                 })
                 .collect();
@@ -1376,7 +1418,7 @@ impl AdminUi {
         } else {
             (Vec::new(), Vec::new())
         };
-        let drive = if wanted { Some(self.cd_drive_panel(store, cd, &PanelQuery::default(), None, &[]).await?) } else { None };
+        let drive = if wanted { Some(self.cd_drive_panel(store, cd, &PanelQuery::default().with_viewer(viewer), None, &[]).await?) } else { None };
         Ok(context! { cd_problems => Serde(problems), cd_jobs => Serde(jobs), errors => Serde(errors.clone()), drive => Serde(drive) })
     }
 
@@ -1407,6 +1449,30 @@ impl AdminUi {
             .iter()
             .filter(|j| live.as_ref().is_none_or(|l| l.job_id != j.id))
             .map(|j| ActiveJob { id: j.id, book: j.album.clone(), author: j.author.clone(), disc: j.disc, discs_total: j.discs_total, phase: j.phase.clone(), track: j.track, tracks_total: j.tracks_total, percent: (j.fraction.unwrap_or(0.0) * 100.0).round() as i64, by_server: j.device == "server" })
+            .collect();
+        let rights = store.cd_rights(q.viewer).await.unwrap_or_default();
+        let zone_for_waiting = store.setting("time_zone").await?;
+        let waiting: Vec<WaitingView> = store
+            .cd_jobs_waiting()
+            .await?
+            .into_iter()
+            // Somebody who may approve sees every CD that waits; the starter sees their own (without the buttons for a decision).
+            .filter(|j| rights.may_approve || (j.user_id == q.viewer && q.viewer != 0))
+            .map(|j| WaitingView {
+                can_decide: rights.may_approve && j.cd_state == "awaiting_approval",
+                can_retry: j.cd_state == "retry_wait" && (rights.may_approve || (j.user_id == q.viewer && q.viewer != 0)),
+                since: stamp(j.held_ms.unwrap_or(j.updated_ms), zone_for_waiting.as_deref()),
+                error_key: (!j.error.is_empty()).then(|| crate::cdimport::error_key(&j.error)),
+                id: j.id,
+                state: j.cd_state,
+                book: j.album,
+                author: j.author,
+                disc: j.disc,
+                discs_total: j.discs_total,
+                tracks: j.tracks_total,
+                starter: j.starter,
+                error: j.error,
+            })
             .collect();
         let rip = match &live {
             Some(l) => {
@@ -1475,6 +1541,9 @@ impl AdminUi {
         let mut sig_text = serde_json::to_string(&drives).unwrap_or_default();
         for j in &jobs {
             sig_text.push_str(&format!("|{}:{}:{}:{}", j.id, j.phase, j.track, j.percent));
+        }
+        for w in &waiting {
+            sig_text.push_str(&format!("|wait:{}:{}:{}:{}", w.id, w.state, w.can_decide, w.can_retry));
         }
         sig_text.push_str(&format!("|{}", set.lookup_ready));
         if let Some(r) = &rip {
@@ -1659,6 +1728,8 @@ impl AdminUi {
         let busy = running || drives.iter().any(|d| d.ripping);
         Ok(DrivePanel {
             rip,
+            waiting,
+            can_insert: rights.may_insert,
             present,
             show_import,
             resume,

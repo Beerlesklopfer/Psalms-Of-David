@@ -73,6 +73,39 @@
   </div>
   {% endfor %}
 
+  {% if drive.waiting %}
+  <div class="cd-waiting">
+    <h3>{{ t("cd.waiting.title") }}</h3>
+    {% for w in drive.waiting %}
+    <div class="cd-job cd-waiting-job" data-job="{{ w.id }}" data-state="{{ w.state }}">
+      <p><strong>{{ w.book }}</strong>{% if w.author %} ({{ w.author }}){% endif %}, {{ t("cd.col.disc") }} {{ w.disc }} / {{ w.discs_total }}, {{ w.tracks }} {{ t("cd.waiting.tracks") }}</p>
+      <p class="unit">{{ t("cd.job." ~ w.state) }}, {{ t("cd.waiting.since") }} {{ w.since }}{% if w.starter %}, {{ t("cd.waiting.by") }} {{ w.starter }}{% endif %}{% if w.error_key %} ({{ t(w.error_key) }} [{{ w.error }}]){% endif %}</p>
+      {% if w.state == "awaiting_approval" %}<p class="unit">{{ t("cd.waiting.hint_approval") }}</p>{% else %}<p class="unit">{{ t("cd.waiting.hint_retry") }}</p>{% endif %}
+      {% if w.can_decide %}
+      <form method="post" action="/admin/rpc/cd.job/approve" hx-post="/admin/rpc/cd.job/approve" hx-target="#cd-drive" hx-swap="outerHTML" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ w.id }}">
+        <button type="submit" class="btn">{{ t("cd.waiting.approve") }}</button>
+      </form>
+      <form method="post" action="/admin/rpc/cd.job/reject" hx-post="/admin/rpc/cd.job/reject" hx-target="#cd-drive" hx-swap="outerHTML" hx-confirm="{{ t('cd.waiting.confirm_reject') }}" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ w.id }}">
+        <button type="submit" class="btn outline">{{ t("cd.waiting.reject") }}</button>
+      </form>
+      {% elif w.state == "awaiting_approval" %}<p class="unit">{{ t("cd.waiting.no_buttons") }}</p>{% endif %}
+      {% if w.can_retry %}
+      <form method="post" action="/admin/rpc/cd.job/retry" hx-post="/admin/rpc/cd.job/retry" hx-target="#cd-drive" hx-swap="outerHTML" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ w.id }}">
+        <button type="submit" class="btn">{{ t("cd.waiting.retry") }}</button>
+      </form>
+      <form method="post" action="/admin/rpc/cd.job/give_up" hx-post="/admin/rpc/cd.job/give_up" hx-target="#cd-drive" hx-swap="outerHTML" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ w.id }}">
+        <button type="submit" class="btn outline">{{ t("cd.waiting.give_up") }}</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% if drive.can_rip and drive.present %}
   <div class="cd-present" role="status">
     <h3>{{ t("cd.present.title") }}</h3>

@@ -40,6 +40,10 @@ pub const NICE_RANGE: (i32, i32) = (-20, 19);
 pub const VERIFY_SHIFT_RANGE: (u32, u32) = (0, 26);
 pub const RESUME_HOURS_RANGE: (u32, u32) = (1, 720);
 pub const HEAL_TOLERANCE_RANGE: (u32, u32) = (1, 60);
+/// How many days a CD waits for approval before it expires.
+pub const HELD_DAYS_RANGE: (u32, u32) = (1, 365);
+/// What a CD put in at the server needs: `wait` (wait for approval) or `now` (import at once).
+pub const AUTO_APPROVALS: &[&str] = &["wait", "now"];
 
 /// The keys of the group, in the order the page shows them.
 pub const KEYS: &[&str] = &[
@@ -70,6 +74,9 @@ pub const KEYS: &[&str] = &[
     "cd_encoder_nice",
     "cd_resume_keep_hours",
     "cd_auto_import",
+    "cd_auto_approval",
+    "cd_held_keep_days",
+    "cd_held_folder",
     "cd_heal_tolerance_s",
     "cd_log_keep",
     "musicbrainz_contact",
@@ -200,6 +207,15 @@ pub struct CdSettings {
     /// A CD that is put in is imported by itself (needs `udev`).
     #[serde(skip)]
     pub auto_import: bool,
+    /// What a CD put in at the server needs (`cd_auto_approval`): `wait` for approval, or `now` (import at once).
+    #[serde(skip)]
+    pub auto_approval: String,
+    /// How many days a CD waits for approval before it expires.
+    #[serde(skip)]
+    pub held_keep_days: u32,
+    /// Where the folders of the held CDs are made; empty = below the staging folder.
+    #[serde(skip)]
+    pub held_folder: String,
     /// A file in the library may differ from the length by the table of contents by this many seconds.
     #[serde(skip)]
     pub heal_tolerance_s: u32,
@@ -269,6 +285,9 @@ pub fn check(key: &str, raw: &str) -> std::result::Result<String, &'static str> 
         "cd_encoder_nice" => v.parse::<i32>().ok().filter(|n| (NICE_RANGE.0..=NICE_RANGE.1).contains(n)).map(|n| n.to_string()).ok_or("out_of_range"),
         "cd_resume_keep_hours" => number(RESUME_HOURS_RANGE.0, RESUME_HOURS_RANGE.1),
         "cd_heal_tolerance_s" => number(HEAL_TOLERANCE_RANGE.0, HEAL_TOLERANCE_RANGE.1),
+        "cd_auto_approval" => one_of(AUTO_APPROVALS),
+        "cd_held_keep_days" => number(HELD_DAYS_RANGE.0, HELD_DAYS_RANGE.1),
+        "cd_held_folder" => text(v.is_empty() || (v.starts_with('/') && plain(v, 300) && !v.contains(".."))),
         "cd_device" => text(v.is_empty() || (v.starts_with('/') && plain(v, 100) && !v.contains("..") && !v.contains(' '))),
         "cd_target_kind" => one_of(KINDS),
         "cd_log_keep" => number(LOG_KEEP_RANGE.0, LOG_KEEP_RANGE.1),
@@ -448,6 +467,9 @@ impl CdSettings {
             encoder_nice: get("cd_encoder_nice").parse().unwrap_or(-20),
             resume_keep_hours: get("cd_resume_keep_hours").parse().unwrap_or(48),
             auto_import: get("cd_auto_import") == "1",
+            auto_approval: get("cd_auto_approval"),
+            held_keep_days: get("cd_held_keep_days").parse().unwrap_or(60),
+            held_folder: get("cd_held_folder"),
             heal_tolerance_s: get("cd_heal_tolerance_s").parse().unwrap_or(3),
             log_keep: get("cd_log_keep").parse().unwrap_or(50),
             eject_after: get("cd_eject_after") == "1",
@@ -494,6 +516,8 @@ fn fallback(key: &str) -> &'static str {
         "cd_resume_keep_hours" => "48",
         "cd_auto_import" => "0",
         "cd_heal_tolerance_s" => "3",
+        "cd_auto_approval" => "wait",
+        "cd_held_keep_days" => "60",
         "cd_log_keep" => "50",
         "cd_target_kind" => "audiobook",
         _ => "",

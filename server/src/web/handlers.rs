@@ -50,6 +50,8 @@ impl From<Error> for Failure {
     fn from(e: Error) -> Failure {
         match e {
             Error::LastAdmin => Failure::new(StatusCode::CONFLICT, "err.last_admin"),
+            Error::LastCdApprover => Failure::new(StatusCode::CONFLICT, "err.last_cd_approver"),
+            Error::CdRightsRole => Failure::new(StatusCode::UNPROCESSABLE_ENTITY, "err.cd_rights_role"),
             Error::DeviceLimitReached => Failure::new(StatusCode::CONFLICT, "err.device_limit"),
             Error::DeviceStillActive => Failure::new(StatusCode::CONFLICT, "err.device_active"),
             Error::CodeStillOpen => Failure::new(StatusCode::CONFLICT, "err.code_open"),
@@ -921,6 +923,15 @@ pub struct UserUpdate {
     /// "on" when the person may hide their listening from the family.
     #[serde(default)]
     may_hide_listening: Option<String>,
+    /// The form says it carries the three rights for CDs (an unticked box sends nothing).
+    #[serde(default)]
+    cd_form: Option<String>,
+    #[serde(default)]
+    cd_may_insert: Option<String>,
+    #[serde(default)]
+    cd_no_approval: Option<String>,
+    #[serde(default)]
+    cd_may_approve: Option<String>,
     #[serde(default)]
     hours_from: String,
     #[serde(default)]
@@ -975,6 +986,11 @@ pub async fn user_update(State(state): State<AppState>, s: AdminSession, Form(f)
             state.store.set_profile_folder(f.id, kind, path.as_deref()).await?;
         }
         state.store.change_role(f.id, role, max_age, schedule.as_ref()).await?;
+        if f.cd_form.is_some() && matches!(role, Role::Admin | Role::Member) {
+            // After the role: somebody who becomes an administrator starts with all three, and the ticks then decide.
+            let change = crate::cdrights::CdRightsChange { may_insert: Some(f.cd_may_insert.is_some()), no_approval: Some(f.cd_no_approval.is_some()), may_approve: Some(f.cd_may_approve.is_some()) };
+            state.store.set_cd_rights(f.id, change).await.map_err(|e| Failure::from(e).at("cd_may_approve"))?;
+        }
         if !birth.is_empty() {
             state.store.set_birth_date(f.id, Some(birth)).await.map_err(|e| Failure::from(e).at("birth_date"))?;
         } else if typed_age.is_some() {
@@ -1847,7 +1863,7 @@ pub async fn cd_settings_save(State(state): State<AppState>, s: AdminSession, Fo
 pub async fn cd_drive_panel(State(state): State<AppState>, s: AdminSession, RawQuery(query): RawQuery) -> Response {
     let pairs: Vec<(String, String)> = serde_urlencoded::from_str(query.as_deref().unwrap_or("")).unwrap_or_default();
     let sig = pairs.iter().find(|(k, _)| k == "sig").map(|(_, v)| v.clone());
-    let q = crate::admin::pages::PanelQuery::from_pairs(pairs);
+    let q = crate::admin::pages::PanelQuery::from_pairs(pairs).with_viewer(s.user_id);
     match state.ui.cd_drive_fragment(&state.store, &state.cd, view(&s), &q, sig.as_deref(), None).await {
         Ok(Some(html)) => Html(html).into_response(),
         Ok(None) => StatusCode::NO_CONTENT.into_response(),
@@ -1871,7 +1887,7 @@ async fn cd_panel_after(state: &AppState, s: &AdminSession, q: &crate::admin::pa
 
 /// Starts the rip of the disc in the drive of the server.
 pub async fn cd_rip(State(state): State<AppState>, s: AdminSession, Form(pairs): Form<Vec<(String, String)>>) -> Response {
-    let q = crate::admin::pages::PanelQuery::from_pairs(pairs);
+    let q = crate::admin::pages::PanelQuery::from_pairs(pairs).with_viewer(s.user_id);
     let text = |k: &str| q.fields.get(k).map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
     let number = |k: &str| text(k).and_then(|v| v.parse::<u32>().ok());
     let req = crate::cdrive::RipRequest {
@@ -1893,9 +1909,13 @@ pub async fn cd_rip(State(state): State<AppState>, s: AdminSession, Form(pairs):
         force: q.fields.get("force").is_some_and(|v| v == "1"),
         auto: false,
     };
+    // Starting needs the right to put in CDs (an administrator has it unless somebody took it away).
+    if !state.store.cd_rights(s.user_id).await.map(|r| r.may_insert).unwrap_or(false) {
+        return cd_panel_after(&state, &s, &q, Some("forbidden"), &[]).await;
+    }
     match crate::cdrive::start_rip(&state.store, &state.cd, state.library.clone(), s.user_id, req).await {
         // The settings or the choice changed since the interrupted rip: it is read again, and the page says so.
-        Ok(st) => cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default(), (st.resume == "mismatch").then_some("resume_mismatch"), &[]).await,
+        Ok(st) => cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default().with_viewer(s.user_id), (st.resume == "mismatch").then_some("resume_mismatch"), &[]).await,
         // A refusal keeps what was typed and ticked.
         Err(r) => cd_panel_after(&state, &s, &q, Some(r.refusal.1), &r.taken).await,
     }
@@ -1914,7 +1934,7 @@ pub async fn cd_preview(State(state): State<AppState>, s: AdminSession, RawQuery
 pub async fn cd_cancel(State(state): State<AppState>, s: AdminSession, Form(f): Form<HashMap<String, String>>) -> Response {
     let id = f.get("id").and_then(|v| v.parse::<i64>().ok());
     let found = id.is_some_and(|id| state.cd.drives.cancel(id));
-    cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default(), (!found).then_some("not_found"), &[]).await
+    cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default().with_viewer(s.user_id), (!found).then_some("not_found"), &[]).await
 }
 
 /// Closes the list of tracks of a rip that has ended.
@@ -1926,10 +1946,36 @@ pub async fn cd_dismiss(State(state): State<AppState>, s: AdminSession, Form(f):
     for d in devices {
         state.cd.drives.dismiss(&d);
     }
-    cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default(), None, &[]).await
+    cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default().with_viewer(s.user_id), None, &[]).await
 }
 
 /// Empties the log of the imports on the tab "CD import" (the page asks first); what runs stays.
+/// The decisions on the page of the CD import: `what` is `approve`, `reject`, `retry` or `give_up`; the answer is the panel, with the reason when it was refused.
+pub async fn cd_decide(State(state): State<AppState>, s: AdminSession, axum::extract::Path(what): axum::extract::Path<String>, Form(f): Form<HashMap<String, String>>) -> Response {
+    use crate::cdflow::{Actor, Move};
+    let Some(id) = f.get("id").and_then(|v| v.parse::<i64>().ok()) else { return cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default().with_viewer(s.user_id), Some("not_found"), &[]).await };
+    let error: Option<&'static str> = match Actor::person(&state.store, s.user_id).await {
+        Err(_) => Some("internal"),
+        Ok(actor) => match what.as_str() {
+            "approve" => crate::cdflow::approve(&state.store, &state.cd, state.library.as_deref(), id, &actor).await.err().map(|e| e.code()),
+            "reject" => crate::cdflow::reject(&state.store, &state.cd, id, &actor).await.err().map(|e| e.code()),
+            "give_up" => match state.store.cd_move(id, Move::GiveUp, &actor).await {
+                Ok(m) => {
+                    state.cd.publish(m.job.user_id, "failed", &m.job);
+                    None
+                }
+                Err(e) => Some(e.code()),
+            },
+            "retry" => match state.store.cd_check(id, &Move::Retry, &actor).await {
+                Err(e) => Some(e.code()),
+                Ok(_) => crate::cdrive::retry_rip(&state.store, &state.cd, state.library.clone(), id, actor).await.err().map(|r| r.refusal.1),
+            },
+            _ => Some("not_found"),
+        },
+    };
+    cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default().with_viewer(s.user_id), error, &[]).await
+}
+
 pub async fn cd_log_clear(State(state): State<AppState>, s: AdminSession) -> Response {
     match state.store.clear_cd_log().await {
         Ok(n) => {
@@ -1944,8 +1990,19 @@ pub async fn cd_log_clear(State(state): State<AppState>, s: AdminSession) -> Res
 }
 
 pub async fn cd_eject(State(state): State<AppState>, s: AdminSession) -> Response {
-    let error = crate::cdrive::eject(&state.store, &state.cd, None).await.err().map(|r| r.1);
-    cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default(), error, &[]).await
+    let outcome = crate::cdrive::eject(&state.store, &state.cd, None).await;
+    // Taking out a disc that could not be read gives that job up (for whoever may: its starter, or somebody who may approve).
+    if matches!(outcome, Ok(crate::cdrive::EjectResult::Ejected))
+        && let Ok(actor) = crate::cdflow::Actor::person(&state.store, s.user_id).await
+    {
+        for id in state.store.cd_ids_in(crate::cdflow::CdState::RetryWait).await.unwrap_or_default() {
+            if let Ok(moved) = state.store.cd_move(id, crate::cdflow::Move::GiveUp, &actor).await {
+                state.cd.publish(moved.job.user_id, "failed", &moved.job);
+            }
+        }
+    }
+    let error = outcome.err().map(|r| r.1);
+    cd_panel_after(&state, &s, &crate::admin::pages::PanelQuery::default().with_viewer(s.user_id), error, &[]).await
 }
 
 pub async fn policies_save(State(state): State<AppState>, s: AdminSession, Form(f): Form<HashMap<String, String>>) -> Response {

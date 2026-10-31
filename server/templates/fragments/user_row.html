@@ -35,6 +35,13 @@
           <label class="field"><input type="number" name="max_devices" min="0" max="50"{% if user.max_devices is not none %} value="{{ user.max_devices }}"{% endif %} placeholder=" "><span>{{ t("users.device_limit") }}</span></label>
           <label class="check span-all"><input type="hidden" name="listening_form" value="1"><input type="checkbox" name="may_hide_listening" value="on"{% if user.may_hide_listening %} checked{% endif %}><span>{{ t("users.may_hide_listening") }}</span></label>
           <small class="span-all">{{ t("users.may_hide_listening_hint") }}</small>
+          {% if user.role in ["admin", "member"] %}
+          <input type="hidden" name="cd_form" value="1">
+          <label class="check span-all"><input type="checkbox" name="cd_may_insert" value="on"{% if user.cd_may_insert %} checked{% endif %}><span>{{ t("users.cd_may_insert") }}</span></label>
+          <label class="check span-all"><input type="checkbox" name="cd_no_approval" value="on"{% if user.cd_no_approval %} checked{% endif %}><span>{{ t("users.cd_no_approval") }}</span></label>
+          <label class="check span-all"><input type="checkbox" name="cd_may_approve" value="on"{% if user.cd_may_approve %} checked{% endif %}><span>{{ t("users.cd_may_approve") }}</span></label>
+          <small class="span-all">{{ t("users.cd_rights_hint") }}</small>
+          {% endif %}
           <label class="field"><input type="password" name="pin" maxlength="64" autocomplete="new-password" placeholder=" "><span>{{ t("users.new_pin") }}</span></label>
           {# A folder for every kind of medium of this person; the button behind the line opens the dialog that lists what the server can read, write and enter. #}
           {% for kind in ["audiobook", "music", "photo"] %}

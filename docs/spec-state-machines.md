@@ -123,3 +123,7 @@ stateDiagram-v2
 | OfflineChanged(false) | ignored | ignored | ignored | `under` |
 
 Effect: `ListFetch`. Precedence in the widget is the one of the old `build`: offline view, no server, error, loading, empty, list.
+
+## 4. CD job (server, `server/src/cdflow.rs`; 2026-10-31)
+
+Not an app machine: the state of a CD job is stored in the database (`cd_job.cd_state`) and the apps and pages only show it. One function, `Store::cd_move(job, move, actor)`, checks that the move leads out of the state, who may make it and that nobody decided first (`invalid_move`, `forbidden`, `decided`). The table of moves and the states: `spec-cd-import-api.md` ("States of a job"); the rights: `spec-cd-inbox.md`. A test (`cdflow::tests::the_table_of_moves_is_exactly_the_flow_of_the_spec`) checks every state against every move.

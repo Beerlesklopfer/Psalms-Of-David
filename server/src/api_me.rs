@@ -58,7 +58,13 @@ pub(crate) async fn me_json(s: &ApiState, d: &Device) -> ApiResult<Value> {
     let avatar = s.store.avatar_version(d.user_id).await?;
     let (used, max) = s.store.device_usage(d.user_id).await?;
     let (share, may_hide) = s.store.listening_sharing(d.user_id).await?;
+    // What the person may do with CDs. The effective role counts too: a session on a shared device of a child holds none.
+    let mut cd = s.store.cd_rights(d.user_id).await?;
+    if !matches!(d.role, crate::roles::Role::Admin | crate::roles::Role::Member) {
+        cd = crate::cdrights::CdRights::none();
+    }
     let mut me = json!({
+        "cd_rights": { "may_insert": cd.may_insert, "no_approval": cd.no_approval, "may_approve": cd.may_approve },
         "share_listening": share || !may_hide, "may_hide_listening": may_hide,
         "id": user.id, "name": user.name, "nickname": user.name, "first_name": user.first_name, "last_name": user.last_name,
         "role": d.role.as_str(), "max_age": user.max_age, "language": user.language,

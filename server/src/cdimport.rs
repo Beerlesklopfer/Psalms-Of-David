@@ -98,11 +98,13 @@ pub const ERROR_CODES: &[&str] = &[
     "encode",
     "io",
     "unsupported",
+    "invalid_move",
+    "decided",
     "other",
 ];
 
 /// The phases a job can be in, with texts `cd.phase.<phase>`.
-pub const PHASES: &[&str] = &["ripping", "verifying", "encoding", "uploading", "placing", "importing", "done", "failed", "skipped"];
+pub const PHASES: &[&str] = &["ripping", "verifying", "encoding", "uploading", "placing", "importing", "done", "failed", "skipped", "retry_wait", "awaiting_approval", "rejected", "present"];
 
 /// The states of a track in the list of a rip, with texts `cd.state.<state>`.
 pub const TRACK_STATES: &[&str] = &["waiting", "reading", "verifying", "encoding", "done", "failed"];
@@ -259,12 +261,12 @@ impl CdService {
         if let Ok(set) = CdSettings::load(store).await {
             self.apply_settings(&set);
         }
-        match store.fail_active_cd_jobs("the server was restarted").await {
-            Ok(n) if n > 0 => tracing::info!(jobs = n, "CD imports interrupted by a restart were closed; their finished tracks are kept for a resume"),
-            Ok(_) => {}
-            Err(e) => tracing::warn!(error = %e, "could not close old CD imports"),
+        let n = crate::cdflow::recover(store, self).await;
+        if n > 0 {
+            tracing::info!(jobs = n, "CD jobs that were under way when the server stopped were brought back to a state; what was read is kept for a new try");
         }
         self.sweep_staging();
+        crate::cdflow::sweep_held(store, self).await;
     }
 
     /// Takes over the settings that the drive service needs to know without asking the database.
@@ -314,6 +316,19 @@ pub struct Job {
     pub fraction: Option<f64>,
     /// The title of the book or album (the same as `album`).
     pub title: String,
+    /// The state in the state machine of a CD job (`cdflow`): `ripping`, `retry_wait`, `ripped`, `awaiting_approval`, `imported`,
+    /// `rejected`, `present`, `cancelled`, `failed` or `skipped`. This is what the apps and pages show; `phase` says what is going on inside `ripping`.
+    pub cd_state: String,
+    /// Why a job is `rejected`: `declined` (a person said no) or `expired`; empty otherwise.
+    pub reason: String,
+    /// The nickname of the person who decided (approve, reject, give up), empty for the server's own moves, and the time.
+    pub decided_by: String,
+    pub decided_ms: i64,
+    /// The account that started the job (0: started by the server, a CD put in at the drive) and its nickname (`auto` then).
+    pub user_id: i64,
+    pub starter: String,
+    /// Since when the files wait for approval (milliseconds), while they do.
+    pub held_ms: Option<i64>,
     /// The state of each track while the server rips this job (and after it, until the list is closed).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub track_states: Vec<crate::cdrive::TrackState>,
@@ -350,19 +365,36 @@ pub struct JobPatch {
     pub import_ran: Option<bool>,
 }
 
-const JOB_COLUMNS: &str = "id, device, phase, track, tracks_total, author, album, disc, discs_total, error, message, import_ran, created_ms, updated_ms";
+pub(crate) const JOB_COLUMNS: &str = "id, device, phase, track, tracks_total, author, album, disc, discs_total, error, message, import_ran, created_ms, updated_ms, \
+     cd_state, reason, decided_name, decided_ms, user_id, coalesce((SELECT name FROM profile p WHERE p.id = cd_job.user_id), ''), (SELECT held_ms FROM cd_held h WHERE h.job_id = cd_job.id)";
 
-fn job_from_row(r: &sea_orm::QueryResult) -> Result<Job> {
+pub(crate) fn job_from_row(r: &sea_orm::QueryResult) -> Result<Job> {
     let phase: String = r.try_get_by_index(2)?;
     let (track, total): (i64, i64) = (r.try_get_by_index(3)?, r.try_get_by_index(4)?);
     let album: String = r.try_get_by_index(6)?;
+    let cd_state: String = r.try_get_by_index(14)?;
+    let user_id: i64 = r.try_get_by_index(18)?;
+    let starter: String = r.try_get_by_index(19)?;
     Ok(Job {
-        state: match phase.as_str() {
-            "done" => "done",
-            "failed" => "failed",
+        // The old word for the state (kept for the apps that know it); the new states say themselves.
+        state: match cd_state.as_str() {
+            "imported" if ACTIVE.contains(&phase.as_str()) => "working",
+            "imported" => "done",
+            "failed" | "cancelled" => "failed",
             "skipped" => "skipped",
+            "retry_wait" => "retry_wait",
+            "awaiting_approval" => "awaiting_approval",
+            "rejected" => "rejected",
+            "present" => "present",
             _ => "working",
         },
+        reason: r.try_get_by_index(15)?,
+        decided_by: r.try_get_by_index(16)?,
+        decided_ms: r.try_get_by_index(17)?,
+        starter: if starter.is_empty() && user_id == SYSTEM_USER { "auto".to_owned() } else { starter },
+        user_id,
+        held_ms: r.try_get_by_index(20)?,
+        cd_state,
         fraction: (total > 0).then(|| (track as f64 / total as f64).clamp(0.0, 1.0)),
         title: album.clone(),
         track_states: Vec::new(),
@@ -398,8 +430,8 @@ impl Store {
             .writer
             .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
-                "INSERT INTO cd_job (user_id, device, phase, track, tracks_total, author, album, disc, discs_total, created_ms, updated_ms) \
-                 VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO cd_job (user_id, device, phase, track, tracks_total, author, album, disc, discs_total, created_ms, updated_ms, cd_state) \
+                 VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     user_id.into(),
                     device.to_owned().into(),
@@ -411,6 +443,14 @@ impl Store {
                     patch.discs_total.unwrap_or(1).into(),
                     now.into(),
                     now.into(),
+                    // A new job starts the flow; an entry of the log of the automatic import is no job of the flow, and a refusal is a failure.
+                    match patch.phase.as_deref() {
+                        Some("skipped") => "skipped",
+                        Some("failed") => "failed",
+                        Some("done") => "imported",
+                        _ => "ripping",
+                    }
+                    .into(),
                 ],
             ))
             .await?;
@@ -421,7 +461,8 @@ impl Store {
             .writer
             .execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
-                "DELETE FROM cd_job WHERE id NOT IN (SELECT id FROM cd_job ORDER BY id DESC LIMIT ?)",
+                // A job that still waits (for a new try, for a decision) is not log: it stays whatever its age.
+                "DELETE FROM cd_job WHERE id NOT IN (SELECT id FROM cd_job ORDER BY id DESC LIMIT ?) AND cd_state NOT IN ('retry_wait', 'awaiting_approval')",
                 [i64::from(keep).into()],
             ))
             .await?;
@@ -516,41 +557,32 @@ impl Store {
     pub async fn clear_cd_log(&self) -> Result<u64> {
         let marks = ACTIVE.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
         let values: Vec<Value> = ACTIVE.iter().map(|p| Value::from((*p).to_owned())).collect();
-        let done = self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, format!("DELETE FROM cd_job WHERE phase NOT IN ({marks})"), values)).await?;
+        let done = self
+            .db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, format!("DELETE FROM cd_job WHERE phase NOT IN ({marks}) AND cd_state NOT IN ('retry_wait', 'awaiting_approval')"), values))
+            .await?;
         Ok(done.rows_affected())
     }
 
+    /// Gives up jobs that have not moved for `STALE` (a move of the state machine: `failed` with the code `stale`).
     pub async fn expire_cd_jobs(&self) -> Result<()> {
         let limit = now_ms() - STALE.as_millis() as i64;
         let marks = ACTIVE.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        let mut values: Vec<Value> = vec![now_ms().into()];
-        values.extend(ACTIVE.iter().map(|p| Value::from((*p).to_owned())));
+        let mut values: Vec<Value> = ACTIVE.iter().map(|p| Value::from((*p).to_owned())).collect();
         values.push(limit.into());
-        self.db
-            .writer
-            .execute_raw(Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                format!("UPDATE cd_job SET phase = 'failed', error = 'stale', message = 'nothing was heard of this job for a long time', updated_ms = ? WHERE phase IN ({marks}) AND updated_ms < ?"),
-                values,
-            ))
-            .await?;
+        let rows = self.db.writer.query_all_raw(Statement::from_sql_and_values(DbBackend::Sqlite, format!("SELECT id, cd_state FROM cd_job WHERE phase IN ({marks}) AND updated_ms < ?"), values)).await?;
+        for row in rows {
+            let (id, state): (i64, String) = (row.try_get_by_index(0)?, row.try_get_by_index(1)?);
+            let mv = if state == "imported" { crate::cdflow::Move::ImportFailed } else { crate::cdflow::Move::Fail("stale".into()) };
+            if self.cd_move(id, mv, &crate::cdflow::Actor::Server).await.is_ok() {
+                self.db
+                    .writer
+                    .execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE cd_job SET message = 'nothing was heard of this job for a long time' WHERE id = ?", [id.into()]))
+                    .await?;
+            }
+        }
         Ok(())
-    }
-
-    pub async fn fail_active_cd_jobs(&self, why: &str) -> Result<u64> {
-        let marks = ACTIVE.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        let mut values: Vec<Value> = vec![why.to_owned().into(), now_ms().into()];
-        values.extend(ACTIVE.iter().map(|p| Value::from((*p).to_owned())));
-        let res = self
-            .db
-            .writer
-            .execute_raw(Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                format!("UPDATE cd_job SET phase = 'failed', error = 'interrupted', message = ?, updated_ms = ? WHERE phase IN ({marks})"),
-                values,
-            ))
-            .await?;
-        Ok(res.rows_affected())
     }
 
     /// An answer of a lookup that is still fresh: `Some(None)` is a remembered "not there".
@@ -593,7 +625,7 @@ impl Store {
 // Checking, naming, tagging and placing the files of one CD.
 
 /// What the app says about the CD (the JSON field `meta` of the upload).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Meta {
     pub author: String,
     #[serde(alias = "title")]
@@ -632,7 +664,7 @@ fn one() -> u32 {
     1
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetaTrack {
     pub number: u32,
     #[serde(default)]
@@ -841,6 +873,10 @@ pub async fn finalize(
     .await
     .map_err(|_| Refusal(500, "internal"))??;
 
+    // The files are in the library folder: the job is `imported` (the import of the library follows).
+    if let Err(e) = store.cd_move(job_id, crate::cdflow::Move::Place, &crate::cdflow::Actor::Server).await {
+        tracing::warn!(job = job_id, error = e.code(), "CD: the files are placed but the job could not be moved to `imported`");
+    }
     // The disc is written down, so that it is known to be in the library (and healing finds its files).
     if let Some(mut row) = extra.record.clone() {
         let mut numbers: Vec<u32> = meta.tracks.iter().map(|t| t.number).collect();
@@ -890,7 +926,8 @@ pub async fn finalize(
                 ),
                 Err(e) => {
                     tracing::warn!(error = %e, "CD import: the library import failed");
-                    (JobPatch { phase: Some("failed".into()), error: Some("import_failed".into()), message: Some(format!("{summary}; the import failed")), ..JobPatch::default() }, "failed")
+                    let _ = store.cd_move(job_id, crate::cdflow::Move::ImportFailed, &crate::cdflow::Actor::Server).await;
+                    (JobPatch { message: Some(format!("{summary}; the import failed")), ..JobPatch::default() }, "failed")
                 }
             };
             if let Ok(Some(job)) = store.update_cd_job(user_id, job_id, &patch).await {
@@ -1141,7 +1178,7 @@ fn dir_has_audio(dir: &Path) -> bool {
     })
 }
 
-fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
+pub(crate) fn move_file(from: &Path, to: &Path) -> std::io::Result<()> {
     if std::fs::rename(from, to).is_ok() {
         return Ok(());
     }

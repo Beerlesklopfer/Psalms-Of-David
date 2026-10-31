@@ -2,7 +2,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # CDs in the family: rights, approval, inbox, spoken messages
 
-Status 2026-10-31: **draft, nothing built.** Decided by the project owner in a conversation on 2026-10-31 (quotes in German are his).
+Status 2026-10-31: **phases 1 and 2 built** (rights, `cd_auto_approval`, the state machine, the held folder, approve / reject, `retry_wait`, `present`, expiry; `server/src/cdrights.rs`, `server/src/cdflow.rs`, migrations 0058 and 0059, tests `server/tests/cd_inbox.rs`, `tests/web.rs`, `tests/mcp_cd.rs`); phases 3 to 6 are not built. Decided by the project owner in a conversation on 2026-10-31 (quotes in German are his).
 Builds on `spec-cd-import-api.md` (jobs, the drive of the server, automatic import) and `spec-state-machines.md`.
 
 ## Why
@@ -175,8 +175,8 @@ Which device speaks:
 
 ## Phases
 
-1. Rights (columns, users page, API checks) and `cd_auto_approval`.
-2. State machine with `awaiting_approval`, held folder, approve / reject, `retry_wait` / retry, present → eject.
+1. **Done (2026-10-31).** Rights (columns, users page, API checks) and `cd_auto_approval`.
+2. **Done (2026-10-31).** State machine with `awaiting_approval`, held folder, approve / reject, `retry_wait` / retry, present → eject.
 3. Inbox (tables, API, WebSocket types), notices from the automatic import.
 4. App: inbox card, badge, notifications with buttons, decide and retry.
 5. Spoken messages.
@@ -188,6 +188,19 @@ Which device speaks:
   `rejected` with the reason `expired`, and the approvers and the starter get the notice `cd_expired` (owner, 2026-10-31).
 - The starter sees their own held CD in the app as "waits for approval", without the buttons (owner, 2026-10-31).
 
+## What phases 1 and 2 built, and what they leave for phase 3
+
+Specified in `spec-cd-import-api.md` ("States of a job"), `spec-admin-ui.md` and `spec-app-api.md` (the interface of the app). Decisions taken while building, where the draft was silent:
+
+- The state is a column of the job (`cd_job.cd_state`) besides the old `phase`; `failed` (a failure no new try mends) and `skipped` (a log entry of the automatic import) exist besides the states of the draft. Only `cdflow::Store::cd_move` changes it.
+- **Approve** moves `awaiting_approval` -> `ripped` (the decision is stored: who, when) and the placing then moves it to `imported`; two deciders cannot both succeed (`409 decided`). A CD that could not be placed after an approval waits again.
+- A CD from `POST /cd/import` (an upload by an app) is held like a rip of the server when its starter needs approval.
+- `retry` needs the request of the rip, which is stored with the job (`cd_job.request`); a job of an upload cannot be retried.
+- The rights are columns of the profile with triggers (a child or guest never holds one; the last `cd_may_approve` cannot be taken or deleted); a profile that becomes an administrator gets all three.
+- No MCP tool changes the rights or decides a CD; `list_profiles` only shows the rights.
+
+**Hooks for phase 3** (all in `server/src/cdflow.rs`): `pub enum CdEvent { Present, Imported, ReadError { tracks }, AwaitingApproval, Decided { approved, by }, Expired, NotStarted { reason } }` and `pub fn notify(event: &CdEvent)`, which does nothing yet. Every place that makes one of these events already calls it: `finish_present` (`Present`, also for the automatic path), `conclude` (`Imported`), the end of a rip (`ReadError` for `retry_wait`), `hold` (`AwaitingApproval`), `approve` / `reject` (`Decided`), `expire_held` (`Expired`), `log_skipped` (`NotStarted` for `no_match` and `ambiguous_match`). `Store::cd_approvers()` lists the profiles a task goes to; `Store::cd_rights(profile)` the recipients by right; the starter is `Job::user_id` (0 = the drive). `cdflow::recover` and `expire_held(store, cd, now_ms)` are the entry points of restart and expiry. The WebSocket types `inbox` / `inbox_resolved` and the tables of the inbox are not built.
+
 ## Open
 
-Nothing at the moment.
+Nothing at the moment. (OPDS feeds are named in the draft's tests; the server has no OPDS feed yet, so there is nothing to hide from.)

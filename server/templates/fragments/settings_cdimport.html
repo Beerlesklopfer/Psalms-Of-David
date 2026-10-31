@@ -14,9 +14,9 @@
       <span class="line-label">{{ t("setting." ~ setting.key) }}</span>
       <span class="line-field">
         {% if false %}
-        {% elif setting.key in ["cd_format", "cd_channel_mode", "cd_id3_version", "cd_track_scheme", "cd_target_kind", "cd_eject_after", "cd_udev", "cd_verify_read", "cd_auto_import", "cd_accept_unverified", "cd_title_pattern"] %}
-        <select name="{{ setting.key }}">{% if setting.key == "cd_format" %}{% set opts = ["mp3"] %}{% elif setting.key == "cd_channel_mode" %}{% set opts = ["joint_stereo", "stereo", "mono"] %}{% elif setting.key == "cd_id3_version" %}{% set opts = ["2.4", "2.3"] %}{% elif setting.key == "cd_track_scheme" %}{% set opts = ["disc_times_100", "plain"] %}{% elif setting.key == "cd_target_kind" %}{% set opts = ["audiobook", "music"] %}{% elif setting.key == "cd_title_pattern" %}{% set opts = ["file_name", "track_title"] %}{% else %}{% set opts = ["1", "0"] %}{% endif %}{% for o in opts %}<option value="{{ o }}"{% if o == setting.value %} selected{% endif %}>{% if setting.key in ["cd_eject_after", "cd_udev", "cd_verify_read", "cd_auto_import", "cd_accept_unverified"] %}{{ t("cd.opt." ~ ("yes" if o == "1" else "no")) }}{% else %}{{ t("cd.opt." ~ o) }}{% endif %}</option>{% endfor %}</select>
-        {% elif setting.key in ["cd_file_pattern", "cd_folder_pattern", "cd_disc_folder_pattern", "cd_genre", "cd_device", "musicbrainz_contact", "cd_musicbrainz_url", "cd_coverart_url"] %}
+        {% elif setting.key in ["cd_format", "cd_channel_mode", "cd_id3_version", "cd_track_scheme", "cd_target_kind", "cd_eject_after", "cd_udev", "cd_verify_read", "cd_auto_import", "cd_accept_unverified", "cd_title_pattern", "cd_auto_approval"] %}
+        <select name="{{ setting.key }}">{% if setting.key == "cd_format" %}{% set opts = ["mp3"] %}{% elif setting.key == "cd_channel_mode" %}{% set opts = ["joint_stereo", "stereo", "mono"] %}{% elif setting.key == "cd_id3_version" %}{% set opts = ["2.4", "2.3"] %}{% elif setting.key == "cd_track_scheme" %}{% set opts = ["disc_times_100", "plain"] %}{% elif setting.key == "cd_target_kind" %}{% set opts = ["audiobook", "music"] %}{% elif setting.key == "cd_title_pattern" %}{% set opts = ["file_name", "track_title"] %}{% elif setting.key == "cd_auto_approval" %}{% set opts = ["wait", "now"] %}{% else %}{% set opts = ["1", "0"] %}{% endif %}{% for o in opts %}<option value="{{ o }}"{% if o == setting.value %} selected{% endif %}>{% if setting.key in ["cd_eject_after", "cd_udev", "cd_verify_read", "cd_auto_import", "cd_accept_unverified"] %}{{ t("cd.opt." ~ ("yes" if o == "1" else "no")) }}{% else %}{{ t("cd.opt." ~ o) }}{% endif %}</option>{% endfor %}</select>
+        {% elif setting.key in ["cd_file_pattern", "cd_folder_pattern", "cd_disc_folder_pattern", "cd_genre", "cd_device", "cd_held_folder", "musicbrainz_contact", "cd_musicbrainz_url", "cd_coverart_url"] %}
         <input type="text" name="{{ setting.key }}" value="{{ setting.value }}" size="48" maxlength="300" autocomplete="off" spellcheck="false" placeholder="{{ t('setting.ph.' ~ setting.key) }}"{% if setting.vars %} hx-get="/admin/rpc/cd.preview?field={{ setting.key }}" hx-trigger="input changed delay:400ms, load" hx-target="#cd-preview-{{ setting.key }}" hx-swap="innerHTML" hx-include="this" hx-disabled-elt="unset"{% endif %}>
         {% elif setting.key == "cd_encoder_nice" %}
         {# A priority can be negative (-20 is the highest): a minus sign is allowed, and the keyboard of a phone shows it. #}
@@ -24,7 +24,7 @@
         {% else %}
         <input name="{{ setting.key }}" value="{{ setting.shown }}" required inputmode="numeric" pattern="[0-9]+" size="6">
         {% endif %}
-        {% if setting.unit %}<span class="unit">{{ t(setting.unit) }}</span>{% elif setting.value is defined and setting.key not in ["cd_format", "cd_channel_mode", "cd_id3_version", "cd_track_scheme", "cd_target_kind", "cd_eject_after", "cd_udev", "cd_verify_read", "cd_auto_import", "cd_accept_unverified", "cd_title_pattern", "cd_file_pattern", "cd_folder_pattern", "cd_disc_folder_pattern", "cd_genre", "cd_device", "musicbrainz_contact", "cd_musicbrainz_url", "cd_coverart_url"] %}<span class="unit"></span>{% endif %}
+        {% if setting.unit %}<span class="unit">{{ t(setting.unit) }}</span>{% elif setting.value is defined and setting.key not in ["cd_format", "cd_channel_mode", "cd_id3_version", "cd_track_scheme", "cd_target_kind", "cd_eject_after", "cd_udev", "cd_verify_read", "cd_auto_import", "cd_accept_unverified", "cd_title_pattern", "cd_file_pattern", "cd_folder_pattern", "cd_disc_folder_pattern", "cd_genre", "cd_device", "cd_held_folder", "musicbrainz_contact", "cd_musicbrainz_url", "cd_coverart_url"] %}<span class="unit"></span>{% endif %}
         {% if setting.key in errors %}<span class="form-error" role="alert">{{ errors[setting.key] }}</span>{% endif %}
       </span>
     </label>
@@ -48,6 +48,8 @@
     {% if setting.key == "cd_verify_shift" %}<p class="unit">{{ t("settings.cd_verify_hint") }}</p>{% endif %}
     {% if setting.key == "cd_encoder_nice" %}<p class="unit">{{ t("settings.cd_encoder_hint") }}</p>{% endif %}
     {% if setting.key == "cd_auto_import" %}<p class="unit">{{ t("settings.cd_auto_import_hint") }}</p>{% endif %}
+    {% if setting.key == "cd_auto_approval" %}<p class="unit">{{ t("settings.cd_auto_approval_hint") }}</p>{% endif %}
+    {% if setting.key == "cd_held_keep_days" %}<p class="unit">{{ t("settings.cd_held_hint") }}</p>{% endif %}
     {% endfor %}
   </fieldset>
   <div class="form-error" role="alert"></div>

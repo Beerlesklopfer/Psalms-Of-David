@@ -172,6 +172,10 @@ pub fn sweep(staging: &Path, keep_hours: u64, now_ms: i64) {
     let Ok(entries) = std::fs::read_dir(staging) else { return };
     for e in entries.flatten() {
         let path = e.path();
+        // The folders of CDs that wait for approval are not leftovers: they are removed on a decision or on expiry (`cdflow`).
+        if e.file_name().to_string_lossy().starts_with(crate::cdflow::HELD_PREFIX) {
+            continue;
+        }
         let is_rip = e.file_name().to_string_lossy().starts_with(DIR_PREFIX);
         let remove = match (is_rip, if is_rip { read(&path) } else { None }) {
             (true, Some(m)) => now_ms - m.updated_ms > (keep_hours * 3600 * 1000) as i64,

@@ -199,7 +199,7 @@ Implemented in `server/src/api_me.rs`.
 
 | Request | Answer |
 |---|---|
-| `GET /me` | `{id, name, nickname, first_name, last_name, role, max_age, language, has_avatar, avatar_version, device_count, device_limit}`, plus `downloads: true` **only** when the hidden feature `download` is on (see below); the field is absent, never `false`, when it is off |
+| `GET /me` | `{id, name, nickname, first_name, last_name, role, max_age, language, has_avatar, avatar_version, device_count, device_limit, cd_rights}` (`cd_rights` is `{may_insert, no_approval, may_approve}`, all `false` for a child, a guest and a session on a shared device of one; it decides which CD symbols and buttons the app shows), plus `downloads: true` **only** when the hidden feature `download` is on (see below); the field is absent, never `false`, when it is off |
 | `PUT /me` `{nickname?, first_name?, last_name?, language?}` | changes what is given and answers like `GET /me`. `language`: `en`, `de` or `""` (follow the device). `409 exists` (nickname taken, no regard to case), `422 invalid_name`, `422 invalid_language`. Other fields (`role`, `max_age` ...) are ignored. |
 | `PUT /me/pin` `{current, new}` | `204`; `403 wrong_pin` (counts like a wrong sign-in), `429 locked` (still waiting; the PIN was not checked), `422 invalid_pin`. With `wrong_pin` and `locked` the answer carries `retry_after_s` (seconds until the next try, a × 2ⁿ, see `spec-admin-ui.md`) and the header `Retry-After`; the app counts it down. The sessions of the browser end, the paired devices keep theirs. |
 | `GET /me/devices` | `[{id, name, shared, last_seen, this}]` (not revoked) |
@@ -254,3 +254,38 @@ Albums carry their EAN in the library (schema `0056`: `book.barcode` = the digit
 server that has not got the feature says nothing about it, and an app must treat a missing field as "no". The field is the same for every role: it says what the
 server offers, not who may use it (today only administrators, in the web interface; there is no download route for the apps). No app uses it yet.
 
+
+## CDs: jobs, approval and a new try (for the app of phase 4; server built 2026-10-31)
+
+The full description of the routes, the states and the errors is `docs/spec-cd-import-api.md` ("States of a job"); this is what the app is built against. All requests under `/api/v1/cd`, bearer token, JSON. The app learns what the person may do from `GET /me` -> `cd_rights`:
+
+| Right | The app shows |
+|---|---|
+| `may_insert` | the import and eject symbols, `POST /cd/rip` (with `"eject": true`), the entry of the own CD while it waits ("waits for approval", no buttons) |
+| `may_approve` | the tasks of CDs that wait, with the buttons Approve / Reject; Try again / Give up for CDs of others that could not be read |
+| neither | nothing of the CD import (every `/cd` route answers `403 forbidden`; `GET /cd/jobs` and the event channel stay open to somebody with `may_approve` only) |
+
+**A job** (`GET /cd/jobs` -> `{"jobs":[...],"busy","busy_elsewhere","device"}`, `GET /cd/jobs/{id}` -> `{"job":{...}}`, the events `job`, `progress`, `done`, `failed` and the `snapshot` of the event channel): besides the members already described there are `cd_state`, `reason`, `decided_by`, `decided_ms`, `user_id`, `starter`, `held_ms`. The app shows the job by `cd_state`:
+
+| `cd_state` | The app shows | Buttons |
+|---|---|---|
+| `ripping` | progress (`fraction`, `track` of `tracks_total`, `track_states`) | stop (`POST /cd/rip/{id}/cancel`, starter or approver) |
+| `retry_wait` | "track could not be read, the CD is still in the drive", `error` (`unreadable_track`, `read`, `verify`, `interrupted`) | Try again (`POST /cd/jobs/{id}/retry`), Give up (`POST /cd/jobs/{id}/give_up`) for the starter and `may_approve`; the eject button also gives up |
+| `ripped` | short; "being filed" | none |
+| `awaiting_approval` | author, `album`, `tracks_total`, `held_ms` ("since"), `starter`; the files are no album and no track yet | Approve / Reject (`POST /cd/jobs/{id}/approve`, `.../reject`) only with `may_approve`; the starter without it sees no buttons |
+| `imported` | "n tracks imported"; `import_ran`; the album is in the library once the import has run | none |
+| `rejected` | `reason` `declined` or `expired`; `decided_by` | none |
+| `present` | "already in the library", `message` names the book | none |
+| `cancelled`, `failed` | `error`, `message` | none |
+
+**Requests and answers** (all errors `{"error":"<code>"}`):
+
+| Request | Success | Errors |
+|---|---|---|
+| `POST /cd/rip` `{author, title, disc, discs_total?, tracks?, only?, mbid?, kind?, eject?, ...}` | `201 {"id","job","resume"}`; the job is `ripping` (a CD of a profile that needs approval is read at once and then waits) | `403 forbidden` (no `may_insert`), `409 busy` / `no_disc` / `tray_open` / `no_drive` / `disc_exists` (+`taken`), `503 drive_denied`, `422 ...`; `409 disc_present` with `present`, `missing`, `damaged` and **`ejected`** (true when the request said `"eject": true` and the CD is whole in the library: nothing was read, the tray is open) |
+| `POST /cd/jobs/{id}/approve` | `200 {"job"}` | `403 forbidden` (no `may_approve`), `409 invalid_move` (+`state`), `409 decided` (+`by`, `resolution` = `approved`/`rejected`/`expired`; show "Papa approved the CD" instead of the buttons), `404 not_found`, `500 internal` (the files could not be placed; the CD waits again) |
+| `POST /cd/jobs/{id}/reject` | `200 {"job"}` | as approve |
+| `POST /cd/jobs/{id}/retry` | `202 {"job","resume"}` | `403 forbidden` (neither starter nor `may_approve`), `409 invalid_move`, `409 busy` / `no_disc` / `tray_open` / `no_drive`, `503 drive_denied`; the job stays `retry_wait` after a refusal |
+| `POST /cd/jobs/{id}/give_up` | `200 {"job"}` | `403 forbidden`, `409 invalid_move` |
+
+An upload (`POST /cd/import`) of somebody who needs approval answers `201` with `"import":"held"`, `"placed":null` and `job.cd_state` `awaiting_approval`; the app may eject (`eject`), the CD is read. The app tells the cases apart by `cd_state` and the codes, not by the text; the texts are the app's own (en first, de second). The inbox, its notices and the spoken messages are phases 3 to 5 and not in this interface yet.
