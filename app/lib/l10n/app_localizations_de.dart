@@ -1535,6 +1535,11 @@ class AppLocalizationsDe extends AppLocalizations {
   String get musicOfNobody => 'Weitere Musik';
 
   @override
+  String releasedLabel(int year) {
+    return 'Erschienen: $year';
+  }
+
+  @override
   String ownerLabel(String name) {
     return 'Besitzer: $name';
   }

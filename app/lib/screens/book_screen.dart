@@ -68,6 +68,14 @@ class BookScreen extends StatelessWidget {
                   style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                 ),
               ],
+              if (book.year != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  l.releasedLabel(book.year!),
+                  key: const ValueKey('year-line'),
+                  style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              ],
               // The labels (classic tagging): everybody who sees the book sees them; the owner and an administrator may change them.
               LabelsLine(book: book),
               const SizedBox(height: 4),

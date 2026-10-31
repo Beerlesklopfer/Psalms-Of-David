@@ -919,6 +919,14 @@
     }
   },
   "musicOfNobody": "Other music",
+  "releasedLabel": "Released: {year}",
+  "@releasedLabel": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
   "ownerLabel": "Owner: {name}",
   "@ownerLabel": {
     "placeholders": {

@@ -2636,6 +2636,12 @@ abstract class AppLocalizations {
   /// **'Other music'**
   String get musicOfNobody;
 
+  /// No description provided for @releasedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Released: {year}'**
+  String releasedLabel(int year);
+
   /// No description provided for @ownerLabel.
   ///
   /// In en, this message translates to:

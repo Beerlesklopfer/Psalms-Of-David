@@ -579,12 +579,25 @@ async fn item_detail(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<
     let mut out = item_json(&row);
     out["description"] = description.map_or(Value::Null, Value::String);
     out["barcode"] = s.store.book_barcode(id).await?.map_or(Value::Null, Value::String);
+    // The year of the release: what the tags of the first file say (they are the truth; nothing is copied into the database).
+    out["year"] = release_year(&s, id).await.map_or(Value::Null, Value::from);
     out["parts"] = Value::Array(tracks);
     out["plays"] = json!(book_heard.plays);
     out["last_played_at"] = json!(book_heard.last_played_at);
     out["progress"] = progress.unwrap_or(Value::Null);
     out["access"] = access_json(&access);
     Ok(Json(out))
+}
+
+/// The year of the release as the tags of the first file of the album say; `None` if there is no file, no tag or no year.
+async fn release_year(s: &ApiState, id: i64) -> Option<u32> {
+    let folder = s.store.book_folder(id).await.ok()??;
+    let first = s.store.tracks_of(id).await.ok()?.into_iter().next()?;
+    let path = resolve(&s.store, s.library.as_deref(), &folder, &first.file).await?;
+    let tags = tokio::task::spawn_blocking(move || crate::tags::read_album(&path)).await.ok()?;
+    // `RecordingDate` may be a whole date ("1991-05-03"): the year is the four digits in front.
+    let digits: String = tags.year?.trim().chars().take_while(char::is_ascii_digit).collect();
+    if digits.len() == 4 { digits.parse().ok().filter(|y| *y > 0) } else { None }
 }
 
 /// Is the album with this barcode in the library? The app scans an EAN/UPC and asks. The match is by GTIN-14, so the UPC-A and the EAN-13 with a leading 0

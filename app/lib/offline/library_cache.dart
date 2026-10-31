@@ -107,6 +107,7 @@ Map<String, Object?> bookToJson(Book b) => {
   'can_label': b.canLabel,
   'can_share': b.canShare,
   'barcode': b.barcode,
+  'year': b.year,
   'tracks': [for (final t in b.tracks) _trackToJson(t)],
 };
 
@@ -128,6 +129,7 @@ Book bookFromJson(Map<String, dynamic> j, {List<int>? cover}) => Book(
   canLabel: j['can_label'] == true,
   canShare: j['can_share'] == true,
   barcode: j['barcode'] as String?,
+  year: j['year'] as int?,
   cover: cover == null ? null : (cover is Uint8List ? cover : Uint8List.fromList(cover)),
   tracks: [for (final t in (j['tracks'] as List)) _trackFromJson(t as Map<String, dynamic>)],
 );

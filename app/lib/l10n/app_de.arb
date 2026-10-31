@@ -606,6 +606,14 @@
     }
   },
   "musicOfNobody": "Weitere Musik",
+  "releasedLabel": "Erschienen: {year}",
+  "@releasedLabel": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
   "ownerLabel": "Besitzer: {name}",
   "@ownerLabel": {
     "placeholders": {

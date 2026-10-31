@@ -115,10 +115,14 @@ class Book {
     this.canShare = false,
     this.trackLabels = const [],
     this.barcode,
+    this.year,
   });
 
   /// The barcode (EAN/UPC digits) of the CD or book as the server holds it; null if none is known. Looked up by [booksWithBarcode].
   final String? barcode;
+
+  /// The year of the release as the tags of the files say; null if they do not say.
+  final int? year;
 
   /// The labels that single titles of the book carry; the book is found by them too (the lists filter by [allLabels]).
   final List<String> trackLabels;
@@ -207,5 +211,6 @@ class Book {
     canShare: canShare,
     trackLabels: trackLabels ?? this.trackLabels,
     barcode: barcode,
+    year: year,
   );
 }
