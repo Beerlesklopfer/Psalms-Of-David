@@ -1109,7 +1109,7 @@
   "inboxCardUnread": "{count, plural, =1{1 unread} other{{count} unread}}",
   "@inboxCardUnread": {"placeholders": {"count": {"type": "int"}}},
   "inboxOpen": "Open the inbox",
-  "inboxEmpty": "Nothing new about your CDs.",
+  "inboxEmpty": "No messages about your CDs.",
   "inboxMarkAllRead": "Mark all as read",
   "inboxImport": "Import",
   "inboxReject": "Reject",

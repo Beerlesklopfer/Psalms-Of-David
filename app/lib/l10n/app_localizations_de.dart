@@ -2076,7 +2076,7 @@ class AppLocalizationsDe extends AppLocalizations {
   String get inboxOpen => 'Eingang öffnen';
 
   @override
-  String get inboxEmpty => 'Nichts Neues zu deinen CDs.';
+  String get inboxEmpty => 'Keine Meldungen zu deinen CDs.';
 
   @override
   String get inboxMarkAllRead => 'Alle als gelesen markieren';

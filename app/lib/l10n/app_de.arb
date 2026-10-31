@@ -785,7 +785,7 @@
   "inboxCardWaiting": "{count, plural, =1{1 CD wartet auf Freigabe} other{{count} CDs warten auf Freigabe}}",
   "inboxCardUnread": "{count, plural, =1{1 ungelesen} other{{count} ungelesen}}",
   "inboxOpen": "Eingang öffnen",
-  "inboxEmpty": "Nichts Neues zu deinen CDs.",
+  "inboxEmpty": "Keine Meldungen zu deinen CDs.",
   "inboxMarkAllRead": "Alle als gelesen markieren",
   "inboxImport": "Übernehmen",
   "inboxReject": "Ablehnen",

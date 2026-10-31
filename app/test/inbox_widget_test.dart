@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/inbox/inbox_controller.dart';
 import 'package:psalm/inbox/inbox_demo.dart';
@@ -208,6 +209,69 @@ void main() {
         expect(find.byKey(const ValueKey('open-inbox')), findsNothing);
       },
     );
+  });
+
+  group('the badge on the avatar is a button to the inbox', () {
+    Widget avatar(InboxController _) => InboxBadgeOverlay(
+      child: IconButton(
+        key: const ValueKey('avatar'),
+        onPressed: () {},
+        icon: const Icon(Icons.person),
+      ),
+    );
+
+    testWidgets('a tap opens the inbox; the avatar keeps its own action', (tester) async {
+      await pump(tester, avatar, items: [inboxNotice(2), inboxNotice(1)]);
+      expect(find.text('2'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('inbox-badge-button')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('inbox-item-2')), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('avatar')), findsOneWidget, reason: 'back to where we were');
+    });
+
+    testWidgets('the hit area is at least 40 by 40 and has a label', (tester) async {
+      await pump(tester, avatar, items: [inboxNotice(2), inboxNotice(1)]);
+      final size = tester.getSize(find.byKey(const ValueKey('inbox-badge-button')));
+      expect(size.width, greaterThanOrEqualTo(40));
+      expect(size.height, greaterThanOrEqualTo(40));
+      expect(find.bySemanticsLabel('CD inbox, 2 unread'), findsOneWidget);
+    });
+
+    testWidgets('Enter on the focused badge opens the inbox, in German too', (tester) async {
+      await pump(tester, avatar, items: [inboxNotice(2)], locale: const Locale('de'));
+      expect(find.bySemanticsLabel('CD-Eingang, 1 ungelesen'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('inbox-item-2')), findsOneWidget);
+    });
+
+    testWidgets('nothing unread: no badge, just the avatar', (tester) async {
+      await pump(tester, avatar, items: [inboxNotice(2, read: true)]);
+      expect(find.byKey(const ValueKey('inbox-badge-button')), findsNothing);
+      expect(find.byKey(const ValueKey('avatar')), findsOneWidget);
+    });
+
+    testWidgets('no CD right: no badge', (tester) async {
+      await pump(tester, avatar, items: [inboxNotice(2)], rights: const CdRights(), role: 'guest');
+      expect(find.byKey(const ValueKey('inbox-badge-button')), findsNothing);
+    });
+
+    testWidgets('the entry stays with 0 unread, and the empty page says so', (tester) async {
+      await pump(tester, (_) => const InboxTile(), items: const []);
+      expect(find.byKey(const ValueKey('open-inbox')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('open-inbox')));
+      await tester.pumpAndSettle();
+      expect(find.text('No messages about your CDs.'), findsOneWidget);
+    });
+
+    testWidgets('the entry shows the unread count', (tester) async {
+      await pump(tester, (_) => const InboxTile(), items: [inboxNotice(2)]);
+      expect(find.text('1 unread'), findsOneWidget);
+    });
   });
 
   group('the page', () {

@@ -3509,7 +3509,7 @@ abstract class AppLocalizations {
   /// No description provided for @inboxEmpty.
   ///
   /// In en, this message translates to:
-  /// **'Nothing new about your CDs.'**
+  /// **'No messages about your CDs.'**
   String get inboxEmpty;
 
   /// No description provided for @inboxMarkAllRead.

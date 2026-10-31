@@ -51,6 +51,72 @@ class InboxBadge extends StatelessWidget {
   }
 }
 
+/// The side of the tap target around the badge (at least 40 dp, so a finger or a mouse hits it).
+const double kInboxBadgeTarget = 40;
+
+/// True when the unread badge shows: the person has an inbox and something unread.
+bool inboxBadgeShown(BuildContext context) {
+  final c = InboxScope.maybeOf(context);
+  return c != null && inboxAllowed(context, c) && c.state.unread > 0;
+}
+
+/// How much wider than its child [InboxBadgeOverlay] is when the badge shows (for a bar that reserves the room).
+const double kInboxBadgeExtraWidth = 24;
+
+/// [child] (an avatar the size of [childSize]) with the unread count at its corner; the badge is a button of its own that opens the inbox,
+/// while the child keeps its own action. With no badge it is just [child]. The button is focusable (Enter, Space), shows the click cursor and
+/// has a label for screen readers.
+class InboxBadgeOverlay extends StatelessWidget {
+  const InboxBadgeOverlay({super.key, required this.child, this.childSize = 48});
+
+  final Widget child;
+  final double childSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = InboxScope.maybeOf(context);
+    if (c == null || !inboxBadgeShown(context)) return child;
+    final l = AppLocalizations.of(context);
+    final label = '${l.inboxTitle}, ${l.inboxCardUnread(c.state.unread)}';
+    return SizedBox(
+      width: childSize + kInboxBadgeExtraWidth,
+      height: childSize + 8,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(left: 0, bottom: 0, width: childSize, height: childSize, child: child),
+          Positioned(
+            right: 0,
+            top: 0,
+            width: kInboxBadgeTarget,
+            height: kInboxBadgeTarget,
+            child: Semantics(
+              button: true,
+              label: label,
+              excludeSemantics: true,
+              child: Tooltip(
+                message: label,
+                child: InkResponse(
+                  key: const ValueKey('inbox-badge-button'),
+                  radius: kInboxBadgeTarget / 2,
+                  mouseCursor: SystemMouseCursors.click,
+                  onTap: () => openInbox(context, c),
+                  child: Center(
+                    child: Badge(
+                      key: const ValueKey('inbox-badge'),
+                      label: Text('${c.state.unread}'),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// "2 CDs wait for approval · 3 unread" at the top of the library; opens the inbox. Hidden when there is nothing or no right.
 class InboxCard extends StatelessWidget {
   const InboxCard({super.key});
@@ -107,8 +173,9 @@ class InboxTile extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: ListTile(
           key: const ValueKey('open-inbox'),
-          leading: const InboxBadge(child: Icon(Icons.inbox_outlined)),
+          leading: const Icon(Icons.inbox_outlined),
           title: Text(l.inboxTitle),
+          subtitle: c.state.unread > 0 ? Text(l.inboxCardUnread(c.state.unread)) : null,
           trailing: const Icon(Icons.chevron_right),
           onTap: () => openInbox(context, c),
         ),

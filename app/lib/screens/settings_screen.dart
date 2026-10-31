@@ -76,7 +76,7 @@ class SettingsScreen extends StatelessWidget {
               clipBehavior: Clip.antiAlias,
               child: ListTile(
                 key: const ValueKey('open-profile'),
-                leading: const InboxBadge(child: OwnAvatar()),
+                leading: const InboxBadgeOverlay(childSize: 40, child: OwnAvatar()),
                 title: Text(profile.profile?.name ?? l.profileTitle),
                 subtitle: Text(l.profileSettingsHint),
                 trailing: const Icon(Icons.chevron_right),
