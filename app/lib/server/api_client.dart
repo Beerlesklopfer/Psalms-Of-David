@@ -307,7 +307,7 @@ class ApiClient implements FeedApi, BarcodeApi {
     final res = await _send('GET', _uri('/api/v1/parts/$partId/stream', asMp3 ? {'as': 'mp3'} : null));
     if (res.statusCode != 200) await _fail(res);
     await dest.parent.create(recursive: true);
-    final partial = File('${dest.path}.part');
+    final partial = partialFileFor(dest);
     final sink = partial.openWrite();
     try {
       await res.pipe(sink);
@@ -356,3 +356,9 @@ class ApiClient implements FeedApi, BarcodeApi {
     }
   }
 }
+
+/// The file a download of [dest] is written to until it is complete: `<dest>.<unique>.part`. Each download has its own,
+/// so two downloads of the same file that run at the same time cannot write into one file and leave a broken one behind.
+File partialFileFor(File dest) => File('${dest.path}.${DateTime.now().microsecondsSinceEpoch}-${_partialCounter++}.part');
+
+int _partialCounter = 0;

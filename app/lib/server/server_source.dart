@@ -137,6 +137,20 @@ class ServerSource implements MediaSource {
     }
   }
 
+  /// The downloads that are running, by the path of their file. The player loads a part, fetches the next one ahead and
+  /// downloads a whole book for listening offline, and these can ask for the same file at the same time: the second one
+  /// waits for the first instead of writing the same file again. Static, because every source writes into the same cache.
+  static final Map<String, Future<void>> _running = {};
+
+  /// Runs [download] for [file] unless the same file is being downloaded already; then it waits for that one.
+  static Future<void> _once(File file, Future<void> Function() download) {
+    final running = _running[file.path];
+    if (running != null) return running;
+    final future = download().whenComplete(() => _running.remove(file.path));
+    _running[file.path] = future;
+    return future;
+  }
+
   @override
   Future<String> fetchPart(Track track) async {
     final url = track.url;
@@ -147,13 +161,13 @@ class ServerSource implements MediaSource {
       if (!file.existsSync()) {
         // An episode that is on the device (downloaded, or played before) is played from there, whether the server is reachable or not.
         if (!isWebAddress(url)) throw HttpException('not an http or https address', uri: Uri.tryParse(url));
-        await _downloadFrom(url, file);
+        await _once(file, () => _downloadFrom(url, file));
       }
       return file.path;
     }
     final id = track.partId!;
     final file = _fileOf(track);
-    if (!file.existsSync()) await api.downloadPart(id, file, asMp3: needsTranscode(track.format, track.transcode));
+    if (!file.existsSync()) await _once(file, () => api.downloadPart(id, file, asMp3: needsTranscode(track.format, track.transcode)));
     return file.path;
   }
 
@@ -167,7 +181,7 @@ class ServerSource implements MediaSource {
       final res = await req.close();
       if (res.statusCode >= 400) throw HttpException('HTTP ${res.statusCode}', uri: Uri.parse(url));
       await file.parent.create(recursive: true);
-      final part = File('${file.path}.part');
+      final part = partialFileFor(file);
       final sink = part.openWrite();
       try {
         await res.pipe(sink);

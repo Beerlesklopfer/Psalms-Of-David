@@ -208,6 +208,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     final api = _api;
     if (api == null || _offline.manual) return false;
     final r = await _offline.sync(ServerOutboxApi(api));
+    if (!identical(api, _api)) return false;
     return r != null && (r.sent > 0 || r.rejected.isNotEmpty);
   }
 
@@ -428,14 +429,19 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     final api = _api;
     // The offline mode (the person's switch) does not ask the server at all.
     if (api == null || !mounted || _offline.manual) return;
+    // The pairing can be forgotten while this waits for the server: what comes back for the old one is dropped then,
+    // or it would put the old account's library back into the player and the cache that `_disconnect` just cleared.
+    bool stale() => !mounted || !identical(api, _api);
     try {
       final v = await api.libraryVersions();
+      if (stale()) return;
       // The server answers again: what waits is sent first, so that the library that is loaded has it, and everything is loaded again.
       if (_offline.unreachable) {
         _offline.setUnreachable(false);
         force = true;
       }
       if (await _syncOutbox()) force = true;
+      if (stale()) return;
       // The playlists of this profile have their own fingerprint: a change of another profile's lists is not seen here.
       final playlistsChanged = v.playlists != _playlistsVersion;
       _playlistsVersion = v.playlists;
@@ -445,7 +451,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
       if (hiddenChanged) unawaited(_hiding.load());
       if (force || hiddenChanged || v.version != _libraryVersion) {
         final loaded = await loadLibrary(api);
-        if (!mounted) return;
+        if (stale()) return;
         _libraryVersion = v.version;
         _player.updateLibrary(loaded);
         unawaited(_cache.write(loaded));
@@ -456,7 +462,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
       }
     } on ApiException catch (e) {
       // The server is not reachable right now; the next look tries again. The lists show what is downloaded meanwhile.
-      if (e.code == 'network') _offline.setUnreachable(true);
+      if (e.code == 'network' && !stale()) _offline.setUnreachable(true);
     }
   }
 

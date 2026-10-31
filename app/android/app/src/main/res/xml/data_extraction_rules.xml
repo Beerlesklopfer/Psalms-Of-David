@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Android 12 and later (android:dataExtractionRules): the pairing (server.json, with the token of the device) goes
+     neither into the cloud backup nor to a new phone; the new phone pairs on its own. See backup_rules.xml. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="app_flutter/server.json" />
+        <exclude domain="root" path="app_flutter/server.json.new" />
+        <exclude domain="file" path="server.json" />
+        <exclude domain="file" path="server.json.new" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="app_flutter/server.json" />
+        <exclude domain="root" path="app_flutter/server.json.new" />
+        <exclude domain="file" path="server.json" />
+        <exclude domain="file" path="server.json.new" />
+    </device-transfer>
+</data-extraction-rules>
