@@ -19,6 +19,12 @@ Things the project owner has decided to do **later**. Each line says where the c
   `PsalmsIntents.entitlements`, the app writes the pairing into the group, the CI checks that the profiles contain the group (like it does for Siri).
   Do not push the entitlements before the new profiles are in the secrets (signing fails).
   Open point on the server side: whether the way "ask Eliezer" (David to MultiGPT to Eliezer) exists; the spec says David passes the text on.
+- **Voice loop on a Raspberry Pi** (a microphone and a speaker as a thin client of Eliezer, raw PCM in both directions): the speech output exists
+  (`eliezer speak --format pcm | aplay -t raw -f S16_LE -r 24000 -c 1`); the speech **input** as a stream is specified in the Eliezer repository
+  (`docs/Specification.md`, section 5.3, `POST /v1/audio/transcriptions/stream` and the command `eliezer listen`, 2026-10-31) and not built.
+  The loop is `arecord ... | eliezer listen | <assistant> | eliezer speak --format pcm | aplay ...`; the assistant (the language model and the MCP
+  tools of David) is the part of `docs/spec-voice.md`. The models stay on the GPU machine: a Pi with 1 GB RAM cannot hold Whisper large or Chatterbox
+  (estimates, not measured on a Pi).
 - **Read-aloud books in the parents' voices** (synthetic audiobooks): `docs/spec-read-aloud.md`. First step is a listening test with 30 seconds of a parent.
 - **More Siri commands** (radio, podcasts, next title, "what is playing"): `docs/spec-voice.md`, phase 2; no new profiles needed.
 - **Android voice** (Google Assistant / Gemini App Actions): `docs/spec-voice.md`.
