@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -100,7 +101,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _filled = false;
   String? _pinError;
 
+  /// Ticks once a second while the PIN has to wait after a wrong one, for the countdown.
+  Timer? _waitTicker;
+
   ProfileController? get _c => ProfileScope.maybeOf(context);
+
+  /// The time left until the PIN can be changed again; null when there is no wait.
+  Duration? get _waitLeft {
+    final until = _c?.pinWaitUntil;
+    if (until == null) return null;
+    final left = until.difference(DateTime.now());
+    return left > Duration.zero ? left : null;
+  }
+
+  void _startWaitTicker() {
+    _waitTicker?.cancel();
+    if (_waitLeft == null) return;
+    _waitTicker = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() {});
+      if (_waitLeft == null) t.cancel();
+    });
+  }
 
   @override
   void initState() {
@@ -118,6 +143,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
+    _waitTicker?.cancel();
     for (final t in [_nick, _first, _last, _current, _new, _repeat]) {
       t.dispose();
     }
@@ -189,6 +215,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _say(l.profilePinChanged);
     } else {
       setState(() => _pinError = _errorText(l, c.error ?? 'error'));
+      _startWaitTicker();
     }
   }
 
@@ -323,12 +350,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           obscureText: true,
                           decoration: InputDecoration(labelText: l.profilePinRepeat, errorText: _pinError),
                         ),
+                        if (_waitLeft case final left?) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            l.profilePinWait(countdownText(left)),
+                            key: const ValueKey('pin-wait'),
+                            style: text.bodyMedium?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+                          ),
+                        ],
                         const SizedBox(height: 8),
                         Align(
                           alignment: Alignment.centerRight,
                           child: FilledButton.tonal(
                             key: const ValueKey('pin-save'),
-                            onPressed: canEdit && _current.text.isNotEmpty && _new.text.isNotEmpty ? _changePin : null,
+                            onPressed: canEdit && _waitLeft == null && _current.text.isNotEmpty && _new.text.isNotEmpty ? _changePin : null,
                             child: Text(l.profileSave),
                           ),
                         ),
@@ -357,4 +392,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
     );
   }
+}
+
+/// A wait as the countdown shows it: `0:08`, `16:40`, `9:06:08`, or with days `2 d 03:15:00` (as the web pages of David).
+String countdownText(Duration left) {
+  final total = (left.inMilliseconds + 999) ~/ 1000;
+  final d = total ~/ 86400, h = total ~/ 3600 % 24, m = total ~/ 60 % 60, s = total % 60;
+  String two(int n) => n.toString().padLeft(2, '0');
+  if (d > 0) return '$d d ${two(h)}:${two(m)}:${two(s)}';
+  if (h > 0) return '$h:${two(m)}:${two(s)}';
+  return '$m:${two(s)}';
 }

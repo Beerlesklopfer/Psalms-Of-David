@@ -57,18 +57,24 @@ class CredentialStore {
     }
   }
 
+  /// Writes the pairing (with its token) into a new file next to the old one and renames it over it, so a crash in
+  /// between leaves the old pairing and never half a file. On Linux and Android the new file is made private (`chmod
+  /// 600`) while it is still empty, so the token is never readable for other users of the machine, not even for a moment.
   void save(Credentials c) {
     file.parent.createSync(recursive: true);
-    file.writeAsStringSync(jsonEncode(c.toJson()));
+    final temp = File('${file.path}.new');
+    temp.writeAsStringSync('');
     // Only where a program can be started and the folder is not private anyway: not on iOS and not on macOS, whose app sandbox keeps the
     // folder of the app to the app.
     if (Platform.isLinux || Platform.isAndroid) {
       try {
-        Process.runSync('chmod', ['600', file.path]);
+        Process.runSync('chmod', ['600', temp.path]);
       } on ProcessException {
         // No chmod: the pairing is still saved.
       }
     }
+    temp.writeAsStringSync(jsonEncode(c.toJson()), flush: true);
+    temp.renameSync(file.path);
   }
 
   void clear() {

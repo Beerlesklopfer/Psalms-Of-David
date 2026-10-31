@@ -1009,6 +1009,8 @@
   "profileErrPinInvalid": "The new PIN or password cannot be used.",
   "profileErrPinMismatch": "The two new entries differ.",
   "profileErrLocked": "Too many wrong tries. Try again later.",
+  "profilePinWait": "The PIN can be changed again in {time}",
+  "@profilePinWait": {"placeholders": {"time": {"type": "String"}}},
   "profileErrAvatarType": "This file is not a picture.",
   "profileErrAvatarSize": "The picture is too large.",
   "profileErrCameraDenied": "The camera or the photos may not be used. Allow it in the settings of the system.",

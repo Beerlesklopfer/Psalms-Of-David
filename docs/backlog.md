@@ -25,3 +25,9 @@ Things the project owner has decided to do **later**. Each line says where the c
 - **Real chapter titles for the Follett audiobooks**: none exist for these editions (MusicBrainz has only "Teil NNN", "Part N", "Titel N"); the albums carry
   "Teil N" counted over all CDs as the publisher counts. Revisit if a source with printed titles turns up.
 - **Genre and year for imported CDs that MusicBrainz does not know** (for example *Keine halben Sachen*, Duo Camillo): by hand in the tags window.
+
+## Drafts (2026-10-31, not yet decided)
+
+- **E-books** (host, read, read aloud, PDF to EPUB with a labelling language model): `docs/spec-ebooks.md`. First step: sample PDFs from the owner.
+- **Abraham Box** (David on an RK3588, night jobs, publisher edition): `docs/spec-abraham-box.md`. First step: the benchmark on the board.
+- **Read aloud through Eliezer** (push one chapter per request, voices, night window, rule 6): `docs/spec-read-aloud.md`, section "Update 2026-10-31".

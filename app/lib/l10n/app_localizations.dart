@@ -3050,6 +3050,12 @@ abstract class AppLocalizations {
   /// **'Too many wrong tries. Try again later.'**
   String get profileErrLocked;
 
+  /// No description provided for @profilePinWait.
+  ///
+  /// In en, this message translates to:
+  /// **'The PIN can be changed again in {time}'**
+  String profilePinWait(String time);
+
   /// No description provided for @profileErrAvatarType.
   ///
   /// In en, this message translates to:

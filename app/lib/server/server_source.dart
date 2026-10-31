@@ -137,6 +137,38 @@ class ServerSource implements MediaSource {
     }
   }
 
+  /// The downloads of this source that are running, by the path of their file. The player loads a part, fetches the next
+  /// one ahead and downloads a whole book for listening offline, all through the one source of the player, and these can
+  /// ask for the same file at the same time: the second one waits for the first instead of writing the same file again.
+  final Map<String, Future<void>> _running = {};
+
+  /// Deletes the half-loaded files (`*.part`) that a run left behind when it was closed during a download. Every download
+  /// writes a file of its own (see [partialFileFor]), so a later one does not reuse them; called once at the start, before
+  /// anything is downloaded.
+  static void dropPartials(Directory cache) {
+    try {
+      if (!cache.existsSync()) return;
+      for (final e in cache.listSync()) {
+        if (e is File && e.path.endsWith('.part')) e.deleteSync();
+      }
+    } on FileSystemException {
+      // Left for the next start.
+    }
+  }
+
+  /// Runs [download] for [file] unless the same file is being downloaded already; then it waits for that one.
+  Future<void> _once(File file, Future<void> Function() download) {
+    final running = _running[file.path];
+    if (running != null) return running;
+    // A block, not an arrow: `remove` returns the removed future, and a future returned to `whenComplete` is waited
+    // for, so the download would wait for itself and never end.
+    final future = download().whenComplete(() {
+      _running.remove(file.path);
+    });
+    _running[file.path] = future;
+    return future;
+  }
+
   @override
   Future<String> fetchPart(Track track) async {
     final url = track.url;
@@ -147,13 +179,13 @@ class ServerSource implements MediaSource {
       if (!file.existsSync()) {
         // An episode that is on the device (downloaded, or played before) is played from there, whether the server is reachable or not.
         if (!isWebAddress(url)) throw HttpException('not an http or https address', uri: Uri.tryParse(url));
-        await _downloadFrom(url, file);
+        await _once(file, () => _downloadFrom(url, file));
       }
       return file.path;
     }
     final id = track.partId!;
     final file = _fileOf(track);
-    if (!file.existsSync()) await api.downloadPart(id, file, asMp3: needsTranscode(track.format, track.transcode));
+    if (!file.existsSync()) await _once(file, () => api.downloadPart(id, file, asMp3: needsTranscode(track.format, track.transcode)));
     return file.path;
   }
 
@@ -167,7 +199,7 @@ class ServerSource implements MediaSource {
       final res = await req.close();
       if (res.statusCode >= 400) throw HttpException('HTTP ${res.statusCode}', uri: Uri.parse(url));
       await file.parent.create(recursive: true);
-      final part = File('${file.path}.part');
+      final part = partialFileFor(file);
       final sink = part.openWrite();
       try {
         await res.pipe(sink);

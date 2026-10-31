@@ -1751,6 +1751,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileErrLocked => 'Too many wrong tries. Try again later.';
 
   @override
+  String profilePinWait(String time) {
+    return 'The PIN can be changed again in $time';
+  }
+
+  @override
   String get profileErrAvatarType => 'This file is not a picture.';
 
   @override

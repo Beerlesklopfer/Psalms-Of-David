@@ -315,13 +315,18 @@ fn home_of(role: Role) -> &'static str {
 /// The sign-in page again, with a message. It carries a token for the next try:
 /// the one of the request if it had a good one, else a new one (with its cookie).
 fn login_failure(state: &AppState, headers: &HeaderMap, status: StatusCode, key: &str) -> Response {
+    login_failure_waiting(state, headers, status, key, None)
+}
+
+/// The sign-in page again, with a message and the countdown until the next try is checked.
+fn login_failure_waiting(state: &AppState, headers: &HeaderMap, status: StatusCode, key: &str, wait_s: Option<i64>) -> Response {
     let lang = lang_of(headers);
     let (token, fresh) = match login_token(headers) {
         Some(t) => (t, false),
         None => (crate::auth::new_token(), true),
     };
     let csrf = csrf_token(&token);
-    let mut res = match state.ui.login(View::new(lang).csrf(&csrf).message(MessageKind::Error, key)) {
+    let mut res = match state.ui.login(View::new(lang).csrf(&csrf).message(MessageKind::Error, key).wait(wait_s)) {
         Ok(html) => (status, Html(html)).into_response(),
         Err(_) => plain_failure(status, key, lang, false),
     };
@@ -346,8 +351,19 @@ pub async fn login_submit(State(state): State<AppState>, headers: HeaderMap, For
         }
     };
     match outcome {
-        Login::WrongCredentials => login_failure(&state, &headers, StatusCode::UNAUTHORIZED, "err.login"),
-        Login::Locked { .. } => login_failure(&state, &headers, StatusCode::TOO_MANY_REQUESTS, "err.locked"),
+        // A lock gets the same answer as a wrong name: only names that exist can be locked, so a different answer
+        // would tell which names exist. The message says that signing in pauses after wrong PINs.
+        Login::WrongCredentials | Login::Locked { .. } => {
+            // The countdown until the next try is checked; a name that is no user has one too (project owner, 2026-10-31).
+            let wait_s = match state.store.sign_in_wait(form.name.trim()).await {
+                Ok(until) => until.map(|u| (u - crate::store::now_ms() + 999) / 1000),
+                Err(e) => {
+                    tracing::warn!(error = %e, "the wait of a sign-in could not be read");
+                    None
+                }
+            };
+            login_failure_waiting(&state, &headers, StatusCode::UNAUTHORIZED, "err.login", wait_s)
+        }
         Login::Ok { user_id, role } => {
             crate::actor::set(crate::actor::profile(user_id));
             let remember = form.remember == "1";
@@ -1020,7 +1036,9 @@ pub struct UserPin {
 
 pub async fn user_set_pin(State(state): State<AppState>, s: AdminSession, Form(f): Form<UserPin>) -> Response {
     let outcome = async {
-        state.store.set_pin(f.id, f.pin.trim()).await?;
+        // A PIN is reset because it is forgotten or known to someone else: the browser sessions signed in with the old
+        // one end (like `david reset-pin`, but paired devices stay signed in, as when the user changes it themself).
+        state.store.replace_pin(f.id, f.pin.trim(), &s.token).await?;
         user_row(&state, &s, f.id).await
     }
     .await;
@@ -1682,7 +1700,7 @@ pub async fn book_set_exempt(State(state): State<AppState>, s: AdminSession, For
 }
 
 /// The values of the settings page. Each is a number in the unit the page shows, except the time zone.
-const SETTING_RULES: [(&str, i64, i64, i64); 14] = [
+const SETTING_RULES: [(&str, i64, i64, i64); 13] = [
     ("transcode_kbps", 32, 320, 1),
     ("transcode_cache_mb", 64, 1_000_000, 1),
     ("transcode_parallel", 1, 8, 1),
@@ -1693,8 +1711,7 @@ const SETTING_RULES: [(&str, i64, i64, i64); 14] = [
     ("import_interval_min", 0, 1440, 1),
     ("min_free_gb", 0, 100_000, 1),
     // key, smallest, largest, factor to the stored unit
-    ("pin_max_failures", 1, 20, 1),
-    ("pin_lock_s", 1, 1440, 60),
+    ("pin_backoff_s", 1, 3600, 1),
     ("enrollment_code_ttl_s", 1, 1440, 60),
     ("device_inactive_days", 1, 3650, 1),
     ("guest_expire_days", 1, 365, 1),
@@ -2523,7 +2540,12 @@ pub async fn device_delete(State(state): State<AppState>, s: AdminSession, Form(
 // The user's own page: picture and PIN
 
 pub async fn profile_page(State(state): State<AppState>, s: Session, Query(q): Query<PageQuery>) -> Response {
-    render(state.ui.profile(&state.store, view_for(&s, &q), s.user_id).await)
+    // After a wrong current PIN the page counts down until the PIN can be changed again.
+    let wait_s = match state.store.profile_by_id(s.user_id).await {
+        Ok(Some(p)) => state.store.sign_in_wait(&p.name).await.ok().flatten().map(|u| (u - crate::store::now_ms() + 999) / 1000),
+        _ => None,
+    };
+    render(state.ui.profile(&state.store, view_for(&s, &q).wait(wait_s), s.user_id).await)
 }
 
 fn back_to_profile(key: &str) -> Response {

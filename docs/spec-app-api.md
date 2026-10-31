@@ -201,7 +201,7 @@ Implemented in `server/src/api_me.rs`.
 |---|---|
 | `GET /me` | `{id, name, nickname, first_name, last_name, role, max_age, language, has_avatar, avatar_version, device_count, device_limit}`, plus `downloads: true` **only** when the hidden feature `download` is on (see below); the field is absent, never `false`, when it is off |
 | `PUT /me` `{nickname?, first_name?, last_name?, language?}` | changes what is given and answers like `GET /me`. `language`: `en`, `de` or `""` (follow the device). `409 exists` (nickname taken, no regard to case), `422 invalid_name`, `422 invalid_language`. Other fields (`role`, `max_age` ...) are ignored. |
-| `PUT /me/pin` `{current, new}` | `204`; `403 wrong_pin` (counts like a wrong sign-in), `429 locked`, `422 invalid_pin`. The sessions of the browser end, the paired devices keep theirs. |
+| `PUT /me/pin` `{current, new}` | `204`; `403 wrong_pin` (counts like a wrong sign-in), `429 locked` (still waiting; the PIN was not checked), `422 invalid_pin`. With `wrong_pin` and `locked` the answer carries `retry_after_s` (seconds until the next try, a × 2ⁿ, see `spec-admin-ui.md`) and the header `Retry-After`; the app counts it down. The sessions of the browser end, the paired devices keep theirs. |
 | `GET /me/devices` | `[{id, name, shared, last_seen, this}]` (not revoked) |
 | `GET /me/avatar` | the picture (`ETag` = `avatar_version`, `304` for a repeated request), `404` without one |
 | `PUT /me/avatar` | the picture as the body; type from the first bytes (JPEG, PNG, WebP; SVG and GIF are refused), at most 256 KiB: `415 avatar_type`, `413 avatar_size`, `422 avatar_none`. Answers like `GET /me`. |

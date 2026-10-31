@@ -229,7 +229,21 @@ class ProfileController extends ChangeNotifier {
         unawaited(store?.write(profile!, avatarBytes));
       });
 
-  Future<bool> changePin(String current, String next) => _change((a) => a.changePin(current, next));
+  /// Until when the next try to change the PIN has to wait, after a wrong current PIN (the server says how long); null: no wait.
+  DateTime? pinWaitUntil;
+
+  Future<bool> changePin(String current, String next) {
+    pinWaitUntil = null;
+    return _change((a) async {
+      try {
+        await a.changePin(current, next);
+      } on ApiException catch (e) {
+        final s = e.retryAfterS;
+        if (s != null) pinWaitUntil = DateTime.now().add(Duration(seconds: s));
+        rethrow;
+      }
+    });
+  }
 
   /// Sends a picture that [prepareAvatar] made.
   Future<bool> setAvatar(Uint8List jpeg) => _change((a) async {

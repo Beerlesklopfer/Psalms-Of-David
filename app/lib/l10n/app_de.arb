@@ -699,6 +699,7 @@
   "profileErrPinInvalid": "Die neue PIN oder das neue Passwort geht nicht.",
   "profileErrPinMismatch": "Die beiden neuen Eingaben unterscheiden sich.",
   "profileErrLocked": "Zu viele falsche Versuche. Versuche es später erneut.",
+  "profilePinWait": "Die PIN lässt sich wieder ändern in {time}",
   "profileErrAvatarType": "Diese Datei ist kein Bild.",
   "profileErrAvatarSize": "Das Bild ist zu groß.",
   "profileErrCameraDenied": "Die Kamera oder die Fotos dürfen nicht benutzt werden. Erlaube es in den Einstellungen des Systems.",

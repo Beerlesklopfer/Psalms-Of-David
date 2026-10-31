@@ -175,6 +175,32 @@ void main() {
       expect((c.profile, c.avatarBytes, ProfileStore(dir).read()), (null, null, null));
     });
 
+    test('a wrong current PIN keeps until when the next try has to wait, for the countdown', () async {
+      final api = FakeProfileApi()..refuse = ApiException(403, 'wrong_pin', {'error': 'wrong_pin', 'retry_after_s': 4});
+      final c = _controller(api);
+      await c.load();
+      final before = DateTime.now();
+      expect(await c.changePin('0000', '445566'), isFalse);
+      expect(c.error, 'wrong_pin');
+      final left = c.pinWaitUntil!.difference(before);
+      expect(left >= const Duration(seconds: 4) && left < const Duration(seconds: 5), isTrue, reason: '$left');
+      // A refusal without a wait (or a change that works) leaves no countdown.
+      api.refuse = ApiException(422, 'invalid_pin');
+      expect(await c.changePin('1234', 'x'), isFalse);
+      expect(c.pinWaitUntil, isNull);
+      api.refuse = null;
+      expect(await c.changePin('1234', '445566'), isTrue);
+      expect(c.pinWaitUntil, isNull);
+    });
+
+    test('the countdown reads like a clock, as on the web pages', () {
+      expect(countdownText(const Duration(seconds: 2)), '0:02');
+      expect(countdownText(const Duration(milliseconds: 1500)), '0:02', reason: 'a second begun counts');
+      expect(countdownText(const Duration(seconds: 1024)), '17:04');
+      expect(countdownText(const Duration(seconds: 32768)), '9:06:08');
+      expect(countdownText(const Duration(days: 2, hours: 3, minutes: 15)), '2 d 03:15:00');
+    });
+
     test('a refusal of the server is kept as its code and changes nothing', () async {
       final api = FakeProfileApi();
       final c = _controller(api);

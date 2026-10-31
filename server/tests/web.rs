@@ -135,6 +135,11 @@ async fn sign_in(app: &App) -> (String, String) {
     (pair, csrf_token(&token))
 }
 
+/// Lets the wait after one wrong PIN run out (a * 2^1 seconds with the default a = 1), so the next try is checked.
+async fn after_the_wait() {
+    tokio::time::sleep(std::time::Duration::from_millis(2_100)).await;
+}
+
 fn form(fields: &[(&str, &str)]) -> String {
     serde_urlencoded::to_string(fields).unwrap()
 }
@@ -181,28 +186,43 @@ async fn a_right_pin_opens_a_session_with_a_careful_cookie() {
 #[tokio::test]
 async fn a_wrong_name_and_a_wrong_pin_get_the_same_answer() {
     let a = app().await;
+    // a = 10 s, so the wait is still running when the page is made (Argon2 is slow in a debug build).
+    a.store.save_settings(&[("pin_backoff_s".to_owned(), "10".to_owned())]).await.unwrap();
     let wrong_pin = login(&a, "name=Boss&pin=000000").await;
     let wrong_name = login(&a, &format!("name=Nobody&pin={PIN}")).await;
     assert_eq!(wrong_pin.status, StatusCode::UNAUTHORIZED);
-    // The pages differ only in the sign-in token, which every visit makes anew.
-    let without_token = |body: &str| body.split('"').map(|p| if p.len() == 64 && p.bytes().all(|b| b.is_ascii_hexdigit()) { "TOKEN" } else { p }).collect::<Vec<_>>().join("\"");
+    // The pages differ only in the sign-in token, which every visit makes anew, and in the seconds the countdown has left.
+    let without_token = |body: &str| {
+        let body = body.split('"').map(|p| if p.len() == 64 && p.bytes().all(|b| b.is_ascii_hexdigit()) { "TOKEN" } else { p }).collect::<Vec<_>>().join("\"");
+        body.chars().map(|c| if c.is_ascii_digit() { '0' } else { c }).collect::<String>()
+    };
     assert_eq!((wrong_name.status, without_token(&wrong_name.body)), (wrong_pin.status, without_token(&wrong_pin.body)));
     assert!(wrong_pin.body.contains("Wrong name or PIN."));
     assert!(wrong_pin.header("set-cookie").is_none());
 }
 
 #[tokio::test]
-async fn five_wrong_pins_lock_the_account() {
+async fn a_wrong_pin_makes_the_next_try_wait() {
     let a = app().await;
-    for _ in 0..4 {
-        assert_eq!(login(&a, "name=Boss&pin=000000").await.status, StatusCode::UNAUTHORIZED);
-    }
-    let fifth = login(&a, "name=Boss&pin=000000").await;
-    assert_eq!(fifth.status, StatusCode::TOO_MANY_REQUESTS);
-    // Even the right PIN is refused while locked.
+    // a = 10 s, so the wait is still running when the page is made (Argon2 is slow in a debug build).
+    a.store.save_settings(&[("pin_backoff_s".to_owned(), "10".to_owned())]).await.unwrap();
+    assert_eq!(login(&a, "name=Boss&pin=000000").await.status, StatusCode::UNAUTHORIZED);
+    // Right after it, even the right PIN is refused: the wait (a * 2^n seconds) has not run out.
     let right = login(&a, &format!("name=Boss&pin={PIN}")).await;
-    assert_eq!(right.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(right.status, StatusCode::UNAUTHORIZED);
     assert!(right.header("set-cookie").is_none());
+    // A waiting name gets the same page as a name that does not exist, countdown included, so the wait does not tell
+    // which names exist. (Only the token and the seconds left differ.)
+    let same = |body: &str| {
+        let body: String = body.split('"').map(|p| if p.len() == 64 && p.bytes().all(|b| b.is_ascii_hexdigit()) { "TOKEN" } else { p }).collect::<Vec<_>>().join("\"");
+        body.chars().map(|c| if c.is_ascii_digit() { '0' } else { c }).collect::<String>()
+    };
+    let nobody = login(&a, &format!("name=Nobody&pin={PIN}")).await;
+    assert_eq!((right.status, same(&right.body)), (nobody.status, same(&nobody.body)));
+    assert!(right.body.contains("the next try has to wait"));
+    for page in [&right.body, &nobody.body] {
+        assert!(page.contains("data-countdown=\"") && page.contains("Next try in <time datetime=\"PT") && page.contains("data-wait-button"), "{page}");
+    }
 }
 
 #[tokio::test]
@@ -518,27 +538,27 @@ async fn every_setting_is_a_line_edit_and_one_save_decides_them() {
     // Three tabs; the values are inputs with their unit, and nothing speaks of proposals any more.
     let page = send(&a, get("/admin/settings?tab=values", &Opts { cookie: Some(&cookie), ..Default::default() })).await.body;
     assert!(page.contains("class=\"tab\"") && page.contains("aria-current=\"page\""), "{page}");
-    assert!(page.contains("name=\"import_interval_min\"") && page.contains("name=\"pin_lock_s\"") && page.contains("name=\"time_zone\"") && page.contains("<span class=\"unit\">min</span>"));
+    assert!(page.contains("name=\"import_interval_min\"") && page.contains("name=\"pin_backoff_s\"") && page.contains("name=\"time_zone\"") && page.contains("<span class=\"unit\">min</span>"));
     assert!(!page.contains("Proposal") && !page.contains("Accepted") && !page.contains("import_roots"));
     assert!(page.contains("form=") || page.contains("type=\"submit\" class=\"btn\">Save"));
 
     // Minutes and days are stored as the engine reads them.
-    let ok = form(&[("pin_max_failures", "7"), ("pin_lock_s", "30"), ("enrollment_code_ttl_s", "10"), ("device_inactive_days", "90"), ("guest_expire_days", "3"), ("import_interval_min", "0"), ("time_zone", "Europe/Berlin")]);
+    let ok = form(&[("pin_backoff_s", "3"), ("enrollment_code_ttl_s", "10"), ("device_inactive_days", "90"), ("guest_expire_days", "3"), ("import_interval_min", "0"), ("time_zone", "Europe/Berlin")]);
     let r = send(&a, post("/admin/rpc/settings.save", &ok, &o)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
     assert!(r.body.starts_with("<form id=\"values-form\"") && r.body.contains("Saved."));
-    assert_eq!(a.store.setting("pin_lock_s").await.unwrap().as_deref(), Some("1800"));
+    assert_eq!(a.store.setting("pin_backoff_s").await.unwrap().as_deref(), Some("3"), "seconds are stored as they are");
     assert_eq!(a.store.setting("enrollment_code_ttl_s").await.unwrap().as_deref(), Some("600"));
-    assert_eq!(a.store.setting("pin_max_failures").await.unwrap().as_deref(), Some("7"));
     assert_eq!(a.store.setting("import_interval_min").await.unwrap().as_deref(), Some("0"), "0 turns the automatic look off");
     assert!(a.store.unconfirmed_defaults().await.unwrap() < before, "saving decides the values");
 
     // Wrong input changes nothing.
-    for (key, value) in [("pin_max_failures", "0"), ("pin_lock_s", "abc"), ("guest_expire_days", "999"), ("time_zone", "Mars/Olympus")] {
-        let r = send(&a, post("/admin/rpc/settings.save", &form(&[("pin_max_failures", "9"), (key, value)]), &o)).await;
+    for (key, value) in [("pin_backoff_s", "0"), ("pin_backoff_s", "abc"), ("guest_expire_days", "999"), ("time_zone", "Mars/Olympus")] {
+        let r = send(&a, post("/admin/rpc/settings.save", &form(&[("enrollment_code_ttl_s", "20"), (key, value)]), &o)).await;
         assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY, "{key}={value}");
     }
-    assert_eq!(a.store.setting("pin_max_failures").await.unwrap().as_deref(), Some("7"));
+    assert_eq!(a.store.setting("pin_backoff_s").await.unwrap().as_deref(), Some("3"));
+    assert_eq!(a.store.setting("enrollment_code_ttl_s").await.unwrap().as_deref(), Some("600"));
 
     // Roles: devices and days; a session that is not whole days stays when its shown number is left alone.
     let guest_before = a.store.role_policies().await.unwrap().into_iter().find(|p| p.role == "guest").unwrap();
@@ -1142,6 +1162,7 @@ async fn the_pin_changes_only_with_the_current_one() {
 
     let r = send(&a, post("/profile/pin", &change("000000", "445566", "445566"), &o)).await;
     assert_eq!(r.header("location"), Some("/profile?msg=err.pin_wrong"));
+    after_the_wait().await;
     let r = send(&a, post("/profile/pin", &change("112233", "445566", "445567"), &o)).await;
     assert_eq!(r.header("location"), Some("/profile?msg=err.pin_mismatch"));
     let r = send(&a, post("/profile/pin", &change("112233", "12ab", "12ab"), &o)).await;
@@ -1150,12 +1171,38 @@ async fn the_pin_changes_only_with_the_current_one() {
     let r = send(&a, post("/profile/pin", &change("112233", "445566", "445566"), &o)).await;
     assert_eq!(r.header("location"), Some("/profile?msg=ok.pin_changed"));
     assert_eq!(login(&a, "name=Anna&pin=112233").await.status, StatusCode::UNAUTHORIZED, "the old PIN no longer works");
+    after_the_wait().await;
     assert_eq!(login(&a, "name=Anna&pin=445566").await.status, StatusCode::SEE_OTHER);
 
     // Other browsers are signed out; this one and the paired device stay.
     assert!(a.store.session_for_token(&other).await.unwrap().is_none());
     assert!(a.store.session_for_token(&device_session).await.unwrap().is_some());
     assert_eq!(send(&a, get("/profile", &o)).await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_pin_reset_by_an_administrator_signs_out_the_browsers_but_not_the_devices() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let anna = a.store.create_profile("Anna", false).await.unwrap();
+    a.store.set_pin(anna, "112233").await.unwrap();
+    let browser = a.store.create_session(anna, Role::Member, None).await.unwrap();
+    let device = a.store.add_device(david_server::NewDevice { user_id: anna, name: "Phone".into(), wg_pubkey: "K".repeat(43) + "=", tunnel_ip: "10.77.0.2".into(), shared: false, created_by: None }).await.unwrap();
+    let device_session = a.store.create_session(anna, Role::Member, Some(device)).await.unwrap();
+
+    let r = send(&a, post("/admin/rpc/user.set_pin", &form(&[("id", &anna.to_string()), ("pin", "9876")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(a.store.session_for_token(&browser).await.unwrap().is_none(), "whoever knew the old PIN is signed out");
+    assert!(a.store.session_for_token(&device_session).await.unwrap().is_some(), "the phone stays paired and signed in");
+
+    // An administrator who resets their own PIN keeps the session they do it from; their other browsers end.
+    let boss = a.store.list_profiles().await.unwrap().into_iter().find(|p| p.name == "Boss").unwrap().id;
+    let other = a.store.create_session(boss, Role::Admin, None).await.unwrap();
+    let r = send(&a, post("/admin/rpc/user.set_pin", &form(&[("id", &boss.to_string()), ("pin", "556677")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(a.store.session_for_token(&other).await.unwrap().is_none());
+    assert_eq!(send(&a, get("/admin/users", &Opts { cookie: Some(&cookie), ..Default::default() })).await.status, StatusCode::OK);
 }
 
 #[tokio::test]
@@ -1951,6 +1998,7 @@ async fn the_profile_has_one_form_and_one_save_for_everything() {
     assert!(a.store.has_avatar(anna).await.unwrap());
     assert_eq!(login(&a, "name=Annchen&pin=Sommer2026").await.status, StatusCode::SEE_OTHER, "the new password works");
     assert_eq!(login(&a, "name=Annchen&pin=112233").await.status, StatusCode::UNAUTHORIZED);
+    after_the_wait().await;
 
     // Saving with the secret fields empty keeps it; the picture box removes the picture.
     let r = send(&a, profile_form(&csrf, &cookie, &[("nickname", "Annchen"), ("language", ""), ("remove_avatar", "1")], None)).await;
@@ -1981,6 +2029,7 @@ async fn a_refused_save_changes_nothing() {
         let p = a.store.profile_by_id(anna).await.unwrap().unwrap();
         assert_eq!((p.name.as_str(), p.first_name, p.language), ("Anna", None, None), "{what}: nothing changed");
     }
+    after_the_wait().await;
     assert_eq!(login(&a, "name=Anna&pin=112233").await.status, StatusCode::SEE_OTHER, "the secret is still the old one");
     // No token, no save.
     assert_eq!(send(&a, profile_form("wrong", &cookie, &[("nickname", "X")], None)).await.status, StatusCode::FORBIDDEN);

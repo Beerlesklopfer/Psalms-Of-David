@@ -324,7 +324,7 @@ async fn proposed_values_are_marked_and_the_import_is_locked_by_default() {
     assert!(policies.iter().all(|p| !p.confirmed));
 
     // 4 role policies + 7 proposed settings. The decided settings are confirmed.
-    assert_eq!(store.unconfirmed_defaults().await.unwrap(), 11);
+    assert_eq!(store.unconfirmed_defaults().await.unwrap(), 9, "the two proposals of the PIN lock gave way to the owner's pin_backoff_s (0057)");
 }
 
 #[tokio::test]
