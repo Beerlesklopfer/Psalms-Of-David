@@ -181,6 +181,25 @@ async fn a_dry_run_starts_nothing_and_says_what_would_happen() {
 }
 
 #[tokio::test]
+async fn the_year_goes_into_the_tags_and_a_wrong_one_is_refused() {
+    let e = env().await;
+    insert(&e, 3).await;
+    let mut args = rip_args(true);
+    args["year"] = json!(1991);
+    let (err, plan) = tool(&e, &e.admin_token, "cd_rip", args.clone()).await;
+    assert!(!err, "{plan}");
+    assert_eq!(plan["tags"]["year"], "1991", "{plan}");
+    // A text of four digits is the same; three digits or letters are refused and nothing starts.
+    args["year"] = json!("2000");
+    assert_eq!(tool(&e, &e.admin_token, "cd_rip", args.clone()).await.1["tags"]["year"], "2000");
+    for bad in [json!(91), json!("nineteen"), json!(true)] {
+        args["year"] = bad;
+        assert!(tool(&e, &e.admin_token, "cd_rip", args.clone()).await.0, "{args}");
+    }
+    assert!(e.store.cd_log(10).await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn a_wrong_number_of_titles_is_refused_with_both_counts() {
     let e = env().await;
     insert(&e, 3).await;

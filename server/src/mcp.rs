@@ -178,6 +178,7 @@ fn tool_list() -> Value {
                 "narrator": { "type": "string", "description": "Narrator (audiobooks)" },
                 "kind": { "type": "string", "enum": ["audiobook", "music"], "description": "Default: the setting of the CD import" },
                 "mbid": { "type": "string", "description": "MusicBrainz release id (from cd_drive), for the cover" },
+                "year": { "type": "integer", "description": "Year of the release (four digits, from the cover or from cd_drive), written into the tags of every file" },
                 "eject": { "type": "boolean", "description": "Open the tray when done (default: the setting)" },
                 "only_tracks": { "type": "array", "items": { "type": "integer" }, "description": "Track numbers on the disc to read; default all" },
                 "dry_run": { "type": "boolean", "description": "Default true: only report" }
@@ -963,6 +964,13 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                     by_position[i] = title.clone();
                 }
             }
+            // A whole number or a text of four digits; the rest is the check of the metadata (`invalid_meta`).
+            let year = match args.get("year") {
+                None | Some(Value::Null) => None,
+                Some(Value::Number(n)) => Some(n.to_string()),
+                Some(Value::String(t)) => Some(t.trim().to_owned()).filter(|t| !t.is_empty()),
+                Some(_) => return Err("year must be a whole number of four digits".into()),
+            };
             let kind = text("kind");
             if kind.as_deref().is_some_and(|k| !crate::cd_settings::KINDS.contains(&k)) {
                 return Err("kind must be audiobook or music".into());
@@ -974,7 +982,7 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 disc: number("disc")?,
                 discs_total: number("discs_total")?,
                 narrator: text("narrator").map(|n| n.trim().to_owned()).filter(|n| !n.is_empty()),
-                year: None,
+                year,
                 mbid: text("mbid").map(|n| n.trim().to_owned()).filter(|n| !n.is_empty()),
                 tracks: by_position,
                 eject: args.get("eject").and_then(Value::as_bool),
