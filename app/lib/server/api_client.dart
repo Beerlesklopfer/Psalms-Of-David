@@ -22,6 +22,9 @@ class ApiException implements Exception {
   /// The whole JSON answer, when it had more than the code (for instance `taken` of `disc_exists`).
   final Map<String, dynamic>? body;
 
+  /// Seconds until the next try, when the server says so (`retry_after_s`, after a wrong PIN).
+  int? get retryAfterS => switch (body?['retry_after_s']) { final int s when s > 0 => s, _ => null };
+
   @override
   String toString() => 'ApiException($status, $code)';
 }

@@ -186,11 +186,16 @@ async fn a_right_pin_opens_a_session_with_a_careful_cookie() {
 #[tokio::test]
 async fn a_wrong_name_and_a_wrong_pin_get_the_same_answer() {
     let a = app().await;
+    // a = 10 s, so the wait is still running when the page is made (Argon2 is slow in a debug build).
+    a.store.save_settings(&[("pin_backoff_s".to_owned(), "10".to_owned())]).await.unwrap();
     let wrong_pin = login(&a, "name=Boss&pin=000000").await;
     let wrong_name = login(&a, &format!("name=Nobody&pin={PIN}")).await;
     assert_eq!(wrong_pin.status, StatusCode::UNAUTHORIZED);
-    // The pages differ only in the sign-in token, which every visit makes anew.
-    let without_token = |body: &str| body.split('"').map(|p| if p.len() == 64 && p.bytes().all(|b| b.is_ascii_hexdigit()) { "TOKEN" } else { p }).collect::<Vec<_>>().join("\"");
+    // The pages differ only in the sign-in token, which every visit makes anew, and in the seconds the countdown has left.
+    let without_token = |body: &str| {
+        let body = body.split('"').map(|p| if p.len() == 64 && p.bytes().all(|b| b.is_ascii_hexdigit()) { "TOKEN" } else { p }).collect::<Vec<_>>().join("\"");
+        body.chars().map(|c| if c.is_ascii_digit() { '0' } else { c }).collect::<String>()
+    };
     assert_eq!((wrong_name.status, without_token(&wrong_name.body)), (wrong_pin.status, without_token(&wrong_pin.body)));
     assert!(wrong_pin.body.contains("Wrong name or PIN."));
     assert!(wrong_pin.header("set-cookie").is_none());
@@ -199,16 +204,25 @@ async fn a_wrong_name_and_a_wrong_pin_get_the_same_answer() {
 #[tokio::test]
 async fn a_wrong_pin_makes_the_next_try_wait() {
     let a = app().await;
+    // a = 10 s, so the wait is still running when the page is made (Argon2 is slow in a debug build).
+    a.store.save_settings(&[("pin_backoff_s".to_owned(), "10".to_owned())]).await.unwrap();
     assert_eq!(login(&a, "name=Boss&pin=000000").await.status, StatusCode::UNAUTHORIZED);
     // Right after it, even the right PIN is refused: the wait (a * 2^n seconds) has not run out.
     let right = login(&a, &format!("name=Boss&pin={PIN}")).await;
     assert_eq!(right.status, StatusCode::UNAUTHORIZED);
     assert!(right.header("set-cookie").is_none());
-    // A locked name gets the same page as a name that does not exist, so the lock does not tell which names exist.
-    let without_token = |body: &str| body.split('"').map(|p| if p.len() == 64 && p.bytes().all(|b| b.is_ascii_hexdigit()) { "TOKEN" } else { p }).collect::<Vec<_>>().join("\"");
+    // A waiting name gets the same page as a name that does not exist, countdown included, so the wait does not tell
+    // which names exist. (Only the token and the seconds left differ.)
+    let same = |body: &str| {
+        let body: String = body.split('"').map(|p| if p.len() == 64 && p.bytes().all(|b| b.is_ascii_hexdigit()) { "TOKEN" } else { p }).collect::<Vec<_>>().join("\"");
+        body.chars().map(|c| if c.is_ascii_digit() { '0' } else { c }).collect::<String>()
+    };
     let nobody = login(&a, &format!("name=Nobody&pin={PIN}")).await;
-    assert_eq!((right.status, without_token(&right.body)), (nobody.status, without_token(&nobody.body)));
+    assert_eq!((right.status, same(&right.body)), (nobody.status, same(&nobody.body)));
     assert!(right.body.contains("the next try has to wait"));
+    for page in [&right.body, &nobody.body] {
+        assert!(page.contains("data-countdown=\"") && page.contains("Next try in <time datetime=\"PT") && page.contains("data-wait-button"), "{page}");
+    }
 }
 
 #[tokio::test]

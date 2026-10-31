@@ -109,6 +109,31 @@ async fn a_new_pin_lifts_the_wait_and_starts_the_count_again() {
     assert!(matches!(store.verify_login("Anna", "715204").await.unwrap(), Login::Ok { .. }), "an administrator's reset lets the user in at once");
 }
 
+#[tokio::test]
+async fn a_name_that_is_no_user_waits_like_a_user() {
+    // The countdown of the sign-in page shows for every name (project owner, 2026-10-31), so it cannot tell which exist.
+    let (dir, store) = open().await;
+    let id = with_user(&store, "Anna", Role::Member, "483920").await;
+    // a = 10 s, so the waits are still running when they are read (Argon2 is slow in a debug build).
+    store.save_settings(&[("pin_backoff_s".to_owned(), "10".to_owned())]).await.unwrap();
+    assert_eq!(store.verify_login("Anna", "111111").await.unwrap(), Login::WrongCredentials);
+    assert_eq!(store.verify_login("Nobody", "111111").await.unwrap(), Login::WrongCredentials);
+    let now = david_server::now_ms();
+    let (anna, nobody) = (store.sign_in_wait("Anna").await.unwrap().unwrap() - now, store.sign_in_wait("nobody ").await.unwrap().unwrap() - now);
+    assert!((10_000..=20_000).contains(&anna) && (10_000..=20_000).contains(&nobody), "{anna} {nobody}");
+    // During the wait both are refused; afterwards both wait twice as long after the next wrong try.
+    assert!(matches!(store.verify_login("Anna", "111111").await.unwrap(), Login::Locked { .. }));
+    assert!(matches!(store.verify_login("Nobody", "111111").await.unwrap(), Login::Locked { .. }));
+    wait_over(&dir, id).await;
+    raw(&dir).await.execute_unprepared("UPDATE sign_in_wait SET wait_until = 1").await.unwrap();
+    store.verify_login("Anna", "111111").await.unwrap();
+    store.verify_login("Nobody", "111111").await.unwrap();
+    let now = david_server::now_ms();
+    let (anna, nobody) = (store.sign_in_wait("Anna").await.unwrap().unwrap() - now, store.sign_in_wait("Nobody").await.unwrap().unwrap() - now);
+    assert!((30_000..=40_000).contains(&anna) && (30_000..=40_000).contains(&nobody), "{anna} {nobody}");
+    assert_eq!(store.sign_in_wait("Somebody else").await.unwrap(), None);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_burst_of_parallel_guesses_gets_one_try() {
     // The lock used to be read before the PIN was checked and written after: parallel attempts all passed the read,

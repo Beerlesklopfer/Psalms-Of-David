@@ -47,6 +47,7 @@
     <label class="field"><input type="password" name="new" maxlength="64" placeholder=" " autocomplete="new-password"><span>{{ t("profile.pin_new") }}</span></label>
     <label class="field"><input type="password" name="repeat" maxlength="64" placeholder=" " autocomplete="new-password"><span>{{ t("profile.pin_repeat") }}</span></label>
     <small class="span-all">{{ t("profile.pin_hint") }}</small>
+    {% if wait_s %}<p class="countdown span-all" role="timer" aria-live="polite" data-countdown="{{ wait_s }}" data-over="{{ t('login.wait_over') }}">{{ t("profile.pin_wait") }} <time datetime="PT{{ wait_s }}S">{{ wait_shown }}</time></p>{% endif %}
   </div>
 
   <div class="form-foot">

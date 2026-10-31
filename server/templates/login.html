@@ -10,6 +10,7 @@
   <label class="field"><span>{{ t("login.name") }}</span> <input type="text" name="name" required maxlength="80" autofocus autocomplete="username" autocapitalize="words" spellcheck="false"></label>
   <label class="field"><span>{{ t("login.pin") }}</span> <input type="password" name="pin" required maxlength="64" autocomplete="current-password"></label>
   <label class="check"><input type="checkbox" name="remember" value="1"> <span>{{ t("login.remember") }}</span></label>
-  <button type="submit">{{ t("login.submit") }}</button>
+  {% if wait_s %}<p class="countdown" role="timer" aria-live="polite" data-countdown="{{ wait_s }}" data-over="{{ t('login.wait_over') }}">{{ t("login.wait") }} <time datetime="PT{{ wait_s }}S">{{ wait_shown }}</time></p>{% endif %}
+  <button type="submit"{% if wait_s %} data-wait-button{% endif %}>{{ t("login.submit") }}</button>
 </form>
 {% endblock %}

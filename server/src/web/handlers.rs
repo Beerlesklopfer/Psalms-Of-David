@@ -315,13 +315,18 @@ fn home_of(role: Role) -> &'static str {
 /// The sign-in page again, with a message. It carries a token for the next try:
 /// the one of the request if it had a good one, else a new one (with its cookie).
 fn login_failure(state: &AppState, headers: &HeaderMap, status: StatusCode, key: &str) -> Response {
+    login_failure_waiting(state, headers, status, key, None)
+}
+
+/// The sign-in page again, with a message and the countdown until the next try is checked.
+fn login_failure_waiting(state: &AppState, headers: &HeaderMap, status: StatusCode, key: &str, wait_s: Option<i64>) -> Response {
     let lang = lang_of(headers);
     let (token, fresh) = match login_token(headers) {
         Some(t) => (t, false),
         None => (crate::auth::new_token(), true),
     };
     let csrf = csrf_token(&token);
-    let mut res = match state.ui.login(View::new(lang).csrf(&csrf).message(MessageKind::Error, key)) {
+    let mut res = match state.ui.login(View::new(lang).csrf(&csrf).message(MessageKind::Error, key).wait(wait_s)) {
         Ok(html) => (status, Html(html)).into_response(),
         Err(_) => plain_failure(status, key, lang, false),
     };
@@ -348,7 +353,17 @@ pub async fn login_submit(State(state): State<AppState>, headers: HeaderMap, For
     match outcome {
         // A lock gets the same answer as a wrong name: only names that exist can be locked, so a different answer
         // would tell which names exist. The message says that signing in pauses after wrong PINs.
-        Login::WrongCredentials | Login::Locked { .. } => login_failure(&state, &headers, StatusCode::UNAUTHORIZED, "err.login"),
+        Login::WrongCredentials | Login::Locked { .. } => {
+            // The countdown until the next try is checked; a name that is no user has one too (project owner, 2026-10-31).
+            let wait_s = match state.store.sign_in_wait(form.name.trim()).await {
+                Ok(until) => until.map(|u| (u - crate::store::now_ms() + 999) / 1000),
+                Err(e) => {
+                    tracing::warn!(error = %e, "the wait of a sign-in could not be read");
+                    None
+                }
+            };
+            login_failure_waiting(&state, &headers, StatusCode::UNAUTHORIZED, "err.login", wait_s)
+        }
         Login::Ok { user_id, role } => {
             crate::actor::set(crate::actor::profile(user_id));
             let remember = form.remember == "1";
@@ -2525,7 +2540,12 @@ pub async fn device_delete(State(state): State<AppState>, s: AdminSession, Form(
 // The user's own page: picture and PIN
 
 pub async fn profile_page(State(state): State<AppState>, s: Session, Query(q): Query<PageQuery>) -> Response {
-    render(state.ui.profile(&state.store, view_for(&s, &q), s.user_id).await)
+    // After a wrong current PIN the page counts down until the PIN can be changed again.
+    let wait_s = match state.store.profile_by_id(s.user_id).await {
+        Ok(Some(p)) => state.store.sign_in_wait(&p.name).await.ok().flatten().map(|u| (u - crate::store::now_ms() + 999) / 1000),
+        _ => None,
+    };
+    render(state.ui.profile(&state.store, view_for(&s, &q).wait(wait_s), s.user_id).await)
 }
 
 fn back_to_profile(key: &str) -> Response {

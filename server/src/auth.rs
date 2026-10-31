@@ -21,6 +21,9 @@ use crate::store::{Store, now_ms};
 /// overflow. A forgotten or guessed PIN is reset by an administrator or with `david reset-pin`.
 const MAX_DOUBLINGS: i64 = 30;
 
+/// How many names that are no user the sign-in remembers for their wait (the oldest go first).
+const UNKNOWN_NAMES_KEPT: i64 = 10_000;
+
 /// A PIN is 4 to 12 digits. (Proposal; the owner has not set a rule yet.)
 pub const PIN_MIN_LEN: usize = 4;
 pub const PIN_MAX_LEN: usize = 12;
@@ -120,8 +123,75 @@ impl Store {
         Ok(())
     }
 
+    /// The setting `pin_backoff_s` (a), in milliseconds.
+    async fn backoff_ms(&self) -> Result<i64> {
+        Ok(self.setting("pin_backoff_s").await?.and_then(|v| v.parse::<i64>().ok()).filter(|&a| a > 0).unwrap_or(1) * 1000)
+    }
+
+    /// Counts a try for a name that is no user, like a wrong PIN of a user: the same wait, so the answer (and its
+    /// countdown) does not tell which names exist. `Some(until)` if the name has to wait and the try is refused.
+    async fn count_unknown_name(&self, name: &str, now: i64) -> Result<Option<i64>> {
+        let key: String = name.trim().chars().take(80).collect();
+        let a_ms = self.backoff_ms().await?;
+        // A first try inserts the row with n = 1; a later one counts on, unless the wait is still running.
+        let values: [Value; 8] = [key.clone().into(), (now + a_ms * 2).into(), now.into(), now.into(), a_ms.into(), MAX_DOUBLINGS.into(), now.into(), now.into()];
+        let counted = self
+            .db
+            .writer
+            .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO sign_in_wait (name, failures, wait_until, touched_at) VALUES (?, 1, ?, ?) \
+                 ON CONFLICT (name) DO UPDATE SET \
+                   wait_until = ? + ? * (1 << MIN(failures + 1, ?)), failures = failures + 1, touched_at = ? \
+                 WHERE wait_until <= ? \
+                 RETURNING wait_until",
+                values,
+            ))
+            .await?;
+        // The table only grows by names typed at the sign-in page; the oldest go when it holds more than this many.
+        self.db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "DELETE FROM sign_in_wait WHERE name IN (SELECT name FROM sign_in_wait ORDER BY touched_at \
+                   LIMIT max(0, (SELECT count(*) FROM sign_in_wait) - ?))",
+                [Value::from(UNKNOWN_NAMES_KEPT)],
+            ))
+            .await?;
+        if counted.is_some() {
+            return Ok(None);
+        }
+        Ok(self.wait_of_unknown(&key).await?.filter(|&u| u > now).or(Some(now)))
+    }
+
+    async fn wait_of_unknown(&self, key: &str) -> Result<Option<i64>> {
+        Ok(self
+            .db
+            .writer
+            .query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT wait_until FROM sign_in_wait WHERE name = ?", [Value::from(key.to_owned())]))
+            .await?
+            .and_then(|r| r.try_get_by_index(0).ok()))
+    }
+
+    /// Until when (Unix milliseconds) a sign-in with this name has to wait, if it has to: for a user and for a name
+    /// that is none alike, so the sign-in page can show a countdown that tells nothing about the name.
+    pub async fn sign_in_wait(&self, name: &str) -> Result<Option<i64>> {
+        let now = now_ms();
+        let user = self
+            .db
+            .writer
+            .query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT pin_locked_until FROM profile WHERE name = ?", [Value::from(name.trim().to_owned())]))
+            .await?;
+        let until = match user {
+            Some(row) => row.try_get_by_index::<Option<i64>>(0)?,
+            None => self.wait_of_unknown(&name.trim().chars().take(80).collect::<String>()).await?,
+        };
+        Ok(until.filter(|&u| u > now))
+    }
+
     /// Checks a name and a PIN. A wrong PIN makes the next try wait `a * 2^n` seconds (n wrong PINs in a row, a the
-    /// setting `pin_backoff_s`); a try during the wait is refused unchecked (`Locked`).
+    /// setting `pin_backoff_s`); a try during the wait is refused unchecked (`Locked`). A name that is no user is
+    /// counted the same way.
     pub async fn verify_login(&self, name: &str, pin: &str) -> Result<Login> {
         let now = now_ms();
         let row = self
@@ -129,42 +199,30 @@ impl Store {
             .reader
             .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
-                "SELECT id, role, pin_hash, pin_locked_until, expires_at FROM profile WHERE name = ?",
+                "SELECT id, role, pin_hash, expires_at FROM profile WHERE name = ?",
                 [Value::from(name.to_owned())],
             ))
             .await?;
         let Some(row) = row else {
             // Take about as long as for a real user, so timing does not tell names apart.
             let _ = pin_matches(pin, dummy_hash());
-            return Ok(Login::WrongCredentials);
+            return Ok(match self.count_unknown_name(name, now).await? {
+                Some(until) => Login::Locked { until },
+                None => Login::WrongCredentials,
+            });
         };
         let id: i64 = row.try_get_by_index(0)?;
         let role: String = row.try_get_by_index(1)?;
         let stored: Option<String> = row.try_get_by_index(2)?;
-        let locked_until: Option<i64> = row.try_get_by_index(3)?;
-        let expires_at: Option<i64> = row.try_get_by_index(4)?;
+        let expires_at: Option<i64> = row.try_get_by_index(3)?;
 
-        if let Some(until) = locked_until.filter(|&u| u > now) {
-            // Take as long as a real check, so the time of the answer does not tell a locked user from others.
-            let _ = pin_matches(pin, dummy_hash());
-            return Ok(Login::Locked { until });
-        }
-        if expires_at.is_some_and(|e| e <= now) {
-            let _ = pin_matches(pin, dummy_hash());
-            return Ok(Login::WrongCredentials);
-        }
-        let Some(stored) = stored else {
-            let _ = pin_matches(pin, dummy_hash());
-            return Ok(Login::WrongCredentials);
-        };
-
-        // Count the attempt before the PIN is checked, in one statement that refuses while the user has to wait. The
-        // read above comes from the reader and can be stale: without this, a burst of parallel attempts all passed it
-        // before the first failure was written, and each of them got a guess. The attempt sets the wait it would cause
-        // if it is wrong, `a * 2^n` seconds after the n-th wrong PIN in a row (`pin_backoff_s` is a; project owner,
-        // 2026-10-31); a right PIN lifts it again.
-        let a_s: i64 = self.setting("pin_backoff_s").await?.and_then(|v| v.parse().ok()).filter(|&a| a > 0).unwrap_or(1);
-        let values: [Value; 5] = [now.into(), (a_s * 1000).into(), MAX_DOUBLINGS.into(), id.into(), now.into()];
+        // Count the try before the PIN is checked, in one statement on the writer that refuses while the user has to
+        // wait: a read from the reader can be stale, and a burst of parallel tries all passed it before the first
+        // failure was written, so each of them got a guess. The try sets the wait it causes if it is wrong, `a * 2^n`
+        // seconds after the n-th wrong PIN in a row (`pin_backoff_s` is a; project owner, 2026-10-31); a right PIN
+        // lifts it again. Users without a PIN or whose time ran out are counted like a wrong PIN.
+        let a_ms = self.backoff_ms().await?;
+        let values: [Value; 5] = [now.into(), a_ms.into(), MAX_DOUBLINGS.into(), id.into(), now.into()];
         let reserved = self
             .db
             .writer
@@ -178,8 +236,8 @@ impl Store {
                 values,
             ))
             .await?;
-        let Some(reserved) = reserved else {
-            // Locked meanwhile by a parallel attempt: this one is not checked.
+        if reserved.is_none() {
+            // Still waiting (or a parallel try set the wait just now): this try is not checked.
             let _ = pin_matches(pin, dummy_hash());
             let until: Option<i64> = self
                 .db
@@ -192,8 +250,11 @@ impl Store {
                 .await?
                 .and_then(|r| r.try_get_by_index(0).ok());
             return Ok(Login::Locked { until: until.unwrap_or(now) });
+        }
+        let Some(stored) = stored.filter(|_| !expires_at.is_some_and(|e| e <= now)) else {
+            let _ = pin_matches(pin, dummy_hash());
+            return Ok(Login::WrongCredentials);
         };
-        let _: Option<i64> = reserved.try_get_by_index(0)?;
 
         if pin_matches(pin, &stored) {
             self.db

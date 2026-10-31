@@ -92,11 +92,13 @@ pub struct View<'a> {
     pub message: Option<(MessageKind, &'a str)>,
     /// Who is signed in, for the header.
     pub me: Option<&'a crate::web::Me>,
+    /// Seconds until the next try after wrong PINs, for the countdown of the sign-in page.
+    pub wait_s: Option<i64>,
 }
 
 impl<'a> View<'a> {
     pub fn new(lang: Lang) -> View<'static> {
-        View { lang, csrf: "", message: None, me: None }
+        View { lang, csrf: "", message: None, me: None, wait_s: None }
     }
 
     pub fn csrf(mut self, csrf: &'a str) -> Self {
@@ -114,18 +116,36 @@ impl<'a> View<'a> {
         self
     }
 
+    /// The wait until the next try, shown as a countdown.
+    pub fn wait(mut self, wait_s: Option<i64>) -> Self {
+        self.wait_s = wait_s.filter(|&s| s > 0);
+        self
+    }
+
     fn context(&self) -> minijinja::Value {
         let catalog = Catalog::new(self.lang);
         context! {
             lang => self.lang.code(),
             csrf => self.csrf,
             me => self.me.map(Serde),
+            wait_s => self.wait_s,
+            wait_shown => self.wait_s.map(countdown_text),
             message => self.message.map(|(_, key)| catalog.t(key).to_owned()),
             message_kind => match self.message {
                 Some((MessageKind::Error, _)) => "error",
                 _ => "ok",
             },
         }
+    }
+}
+
+/// A wait as the countdown shows it: `0:08`, `16:40`, `9:06:08`, or with days `2 d 03:15:00`.
+pub fn countdown_text(seconds: i64) -> String {
+    let (d, h, m, s) = (seconds / 86_400, seconds / 3_600 % 24, seconds / 60 % 60, seconds % 60);
+    match (d, h) {
+        (0, 0) => format!("{m}:{s:02}"),
+        (0, _) => format!("{h}:{m:02}:{s:02}"),
+        _ => format!("{d} d {h:02}:{m:02}:{s:02}"),
     }
 }
 
@@ -1790,6 +1810,14 @@ pub async fn cd_preview(store: &Store, lang: Lang, field: &str, pattern: &str) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_countdown_reads_like_a_clock() {
+        assert_eq!(countdown_text(2), "0:02");
+        assert_eq!(countdown_text(1024), "17:04");
+        assert_eq!(countdown_text(32_768), "9:06:08");
+        assert_eq!(countdown_text(2 * 86_400 + 3 * 3_600 + 15 * 60), "2 d 03:15:00");
+    }
 
     #[test]
     fn all_templates_parse() {

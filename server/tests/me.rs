@@ -187,9 +187,13 @@ async fn the_pin_changes_only_with_the_right_current_one() {
     a.store.set_pin(id, "Start1234").await.unwrap();
     let wrong = json_call(&a, "PUT", "/api/v1/me/pin", &anna, json!({ "current": "Nope12345", "new": "Neu123456" })).await;
     assert_eq!((wrong.status, wrong.json()["error"].as_str()), (StatusCode::FORBIDDEN, Some("wrong_pin")));
-    // Right away the next try has to wait (a * 2^1 seconds, a = 1 by default) and is refused unchecked.
+    // The answer says how long the next try waits (a * 2^1 seconds, a = 1 by default), for the countdown of the app.
+    assert_eq!(wrong.json()["retry_after_s"].as_i64(), Some(2), "{}", wrong.json());
+    assert_eq!(wrong.headers.get("retry-after").and_then(|v| v.to_str().ok()), Some("2"));
+    // Right away the next try has to wait and is refused unchecked, with the time that is left.
     let at_once = json_call(&a, "PUT", "/api/v1/me/pin", &anna, json!({ "current": "Start1234", "new": "Neu123456" })).await;
     assert_eq!((at_once.status, at_once.json()["error"].as_str()), (StatusCode::TOO_MANY_REQUESTS, Some("locked")));
+    assert!(matches!(at_once.json()["retry_after_s"].as_i64(), Some(1..=2)), "{}", at_once.json());
     tokio::time::sleep(std::time::Duration::from_millis(2_100)).await;
     let weak = json_call(&a, "PUT", "/api/v1/me/pin", &anna, json!({ "current": "Start1234", "new": "abc" })).await;
     assert_eq!((weak.status, weak.json()["error"].as_str()), (StatusCode::UNPROCESSABLE_ENTITY, Some("invalid_pin")));

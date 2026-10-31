@@ -608,4 +608,33 @@
     if (!box || !e.target.matches('input[data-track]')) return;
     box.querySelector('input[name="track_labels"]').value = [...box.querySelectorAll('input[data-track]')].map((i) => i.dataset.track + '=' + i.value).join('\n');
   });
+  // ---- The wait after a wrong PIN --------------------------------------------------------
+  // The server writes the seconds into the page; this counts them down and keeps the button off until they are over.
+  // Without script the page shows the wait as it was, and the server still refuses a try during it.
+  for (const box of document.querySelectorAll('[data-countdown]')) {
+    const time = box.querySelector('time');
+    const button = box.closest('form') && box.closest('form').querySelector('[data-wait-button]');
+    const end = Date.now() + Number(box.dataset.countdown) * 1000;
+    const shown = (s) => {
+      const d = Math.floor(s / 86400), h = Math.floor(s / 3600) % 24, m = Math.floor(s / 60) % 60, sec = s % 60;
+      const two = (n) => String(n).padStart(2, '0');
+      if (d > 0) return d + ' d ' + two(h) + ':' + two(m) + ':' + two(sec);
+      if (h > 0) return h + ':' + two(m) + ':' + two(sec);
+      return m + ':' + two(sec);
+    };
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+      if (left === 0) {
+        box.textContent = box.dataset.over;
+        if (button) button.disabled = false;
+        return;
+      }
+      time.textContent = shown(left);
+      time.setAttribute('datetime', 'PT' + left + 'S');
+      if (button) button.disabled = true;
+      // Again when the next whole second is reached.
+      setTimeout(tick, ((end - Date.now()) % 1000) || 1000);
+    };
+    tick();
+  }
 })();
