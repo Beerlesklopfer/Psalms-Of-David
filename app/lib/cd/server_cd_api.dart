@@ -70,8 +70,8 @@ class ServerCdApi implements CdServerApi {
 
 /// Calls the CD endpoints through the client's authenticated connection.
 extension CdApiClient on ApiClient {
-  Future<Object?> cdJson(String method, String path, {Object? body}) async {
-    final res = await sendRaw(method, path, body: body);
+  Future<Object?> cdJson(String method, String path, {Object? body, Map<String, String>? query}) async {
+    final res = await sendRaw(method, path, body: body, query: query);
     final text = await utf8.decodeStream(res);
     if (res.statusCode >= 400) throw ApiException(res.statusCode, _code(text), _body(text));
     return text.isEmpty ? null : jsonDecode(text);

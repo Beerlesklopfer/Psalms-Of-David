@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:psalm/cd/cd_events.dart';
+import 'package:psalm/inbox/inbox_models.dart';
 import 'package:psalm/cd/cd_models.dart';
 import 'package:psalm/cd/cd_ports.dart';
 
@@ -128,6 +129,11 @@ class FakeEvents implements CdEventsSource {
 
   @override
   Stream<CdDrivesState> get driveChanged => driveStream.stream;
+
+  final inboxStream = StreamController<InboxWire>.broadcast();
+
+  @override
+  Stream<InboxWire> get inboxChanged => inboxStream.stream;
 
   @override
   Future<CdDrivesState> drives() async {

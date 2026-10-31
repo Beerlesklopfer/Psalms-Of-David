@@ -3433,6 +3433,330 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Or type the digits below the barcode:'**
   String get barcodeTypeHint;
+
+  /// No description provided for @inboxTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'CD inbox'**
+  String get inboxTitle;
+
+  /// No description provided for @inboxNotificationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'CDs'**
+  String get inboxNotificationTitle;
+
+  /// No description provided for @inboxCardWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 CD waits for approval} other{{count} CDs wait for approval}}'**
+  String inboxCardWaiting(int count);
+
+  /// No description provided for @inboxCardUnread.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 unread} other{{count} unread}}'**
+  String inboxCardUnread(int count);
+
+  /// No description provided for @inboxOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the inbox'**
+  String get inboxOpen;
+
+  /// No description provided for @inboxEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing new about your CDs.'**
+  String get inboxEmpty;
+
+  /// No description provided for @inboxMarkAllRead.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark all as read'**
+  String get inboxMarkAllRead;
+
+  /// No description provided for @inboxImport.
+  ///
+  /// In en, this message translates to:
+  /// **'Import'**
+  String get inboxImport;
+
+  /// No description provided for @inboxReject.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject'**
+  String get inboxReject;
+
+  /// No description provided for @inboxRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get inboxRetry;
+
+  /// No description provided for @inboxOpenAlbum.
+  ///
+  /// In en, this message translates to:
+  /// **'Open album'**
+  String get inboxOpenAlbum;
+
+  /// No description provided for @inboxRejectTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject this CD?'**
+  String get inboxRejectTitle;
+
+  /// No description provided for @inboxRejectText.
+  ///
+  /// In en, this message translates to:
+  /// **'Its files are deleted.'**
+  String get inboxRejectText;
+
+  /// No description provided for @inboxWaitsForApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'Waits for approval'**
+  String get inboxWaitsForApproval;
+
+  /// No description provided for @inboxWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'One moment…'**
+  String get inboxWorking;
+
+  /// No description provided for @inboxResolvedApproved.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported by {by}'**
+  String inboxResolvedApproved(String by);
+
+  /// No description provided for @inboxResolvedRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejected by {by}'**
+  String inboxResolvedRejected(String by);
+
+  /// No description provided for @inboxResolvedApprovedYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported'**
+  String get inboxResolvedApprovedYou;
+
+  /// No description provided for @inboxResolvedRejectedYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejected'**
+  String get inboxResolvedRejectedYou;
+
+  /// No description provided for @inboxResolvedExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get inboxResolvedExpired;
+
+  /// No description provided for @inboxAlreadyDecided.
+  ///
+  /// In en, this message translates to:
+  /// **'Already decided by {by}'**
+  String inboxAlreadyDecided(String by);
+
+  /// No description provided for @inboxNeedsServer.
+  ///
+  /// In en, this message translates to:
+  /// **'The inbox needs the server. It is back as soon as you are online.'**
+  String get inboxNeedsServer;
+
+  /// No description provided for @inboxLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The inbox could not be loaded.'**
+  String get inboxLoadFailed;
+
+  /// No description provided for @inboxErrNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not be reached.'**
+  String get inboxErrNetwork;
+
+  /// No description provided for @inboxErrForbidden.
+  ///
+  /// In en, this message translates to:
+  /// **'You may not decide CDs.'**
+  String get inboxErrForbidden;
+
+  /// No description provided for @inboxErrBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'The drive is busy.'**
+  String get inboxErrBusy;
+
+  /// No description provided for @inboxErrNoDisc.
+  ///
+  /// In en, this message translates to:
+  /// **'There is no CD in the drive.'**
+  String get inboxErrNoDisc;
+
+  /// No description provided for @inboxErrDrive.
+  ///
+  /// In en, this message translates to:
+  /// **'The drive cannot be used now.'**
+  String get inboxErrDrive;
+
+  /// No description provided for @inboxErrGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'That did not work.'**
+  String get inboxErrGeneric;
+
+  /// No description provided for @inboxUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'News from the server that this version of the app does not know yet.'**
+  String get inboxUnknown;
+
+  /// No description provided for @inboxThisCd.
+  ///
+  /// In en, this message translates to:
+  /// **'a CD'**
+  String get inboxThisCd;
+
+  /// No description provided for @inboxDiscOf.
+  ///
+  /// In en, this message translates to:
+  /// **'CD {disc} of {total}'**
+  String inboxDiscOf(int disc, int total);
+
+  /// No description provided for @inboxDiscNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'CD {disc}'**
+  String inboxDiscNumber(int disc);
+
+  /// No description provided for @inboxCdAwaitingApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'New CD from {by}: {album}. Import it?'**
+  String inboxCdAwaitingApproval(String by, String album);
+
+  /// No description provided for @inboxCdAwaitingApprovalAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'New CD put in at the server: {album}. Import it?'**
+  String inboxCdAwaitingApprovalAuto(String album);
+
+  /// No description provided for @inboxCdWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'{album} waits for approval.'**
+  String inboxCdWaiting(String album);
+
+  /// No description provided for @inboxCdImported.
+  ///
+  /// In en, this message translates to:
+  /// **'{album} is in the library ({tracks, plural, =1{1 track} other{{tracks} tracks}}).'**
+  String inboxCdImported(String album, int tracks);
+
+  /// No description provided for @inboxCdImportedNoCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{album} is in the library.'**
+  String inboxCdImportedNoCount(String album);
+
+  /// No description provided for @inboxCdPresent.
+  ///
+  /// In en, this message translates to:
+  /// **'{album} is in the library already. The CD was not read.'**
+  String inboxCdPresent(String album);
+
+  /// No description provided for @inboxCdDecidedApproved.
+  ///
+  /// In en, this message translates to:
+  /// **'{by} imported the CD {album}.'**
+  String inboxCdDecidedApproved(String by, String album);
+
+  /// No description provided for @inboxCdDecidedRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'{by} rejected the CD {album}.'**
+  String inboxCdDecidedRejected(String by, String album);
+
+  /// No description provided for @inboxCdExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD {album} was not decided in time. Its files were deleted.'**
+  String inboxCdExpired(String album);
+
+  /// No description provided for @inboxCdReadError.
+  ///
+  /// In en, this message translates to:
+  /// **'{album}: could not read track {tracks}.'**
+  String inboxCdReadError(String album, String tracks);
+
+  /// No description provided for @inboxCdReadErrorNoTracks.
+  ///
+  /// In en, this message translates to:
+  /// **'{album}: some tracks could not be read.'**
+  String inboxCdReadErrorNoTracks(String album);
+
+  /// No description provided for @inboxCdNoMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD in the drive is not known to MusicBrainz. Choose it in the web panel.'**
+  String get inboxCdNoMatch;
+
+  /// No description provided for @inboxCdAmbiguous.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD fits {candidates, plural, =1{1 release} other{{candidates} releases}}. Choose the right one in the web panel.'**
+  String inboxCdAmbiguous(int candidates);
+
+  /// No description provided for @inboxCdAmbiguousNoCount.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD fits several releases. Choose the right one in the web panel.'**
+  String get inboxCdAmbiguousNoCount;
+
+  /// No description provided for @inboxCdHealNeeded.
+  ///
+  /// In en, this message translates to:
+  /// **'{album} is in the library only in part. It must be repaired before the CD is read.'**
+  String inboxCdHealNeeded(String album);
+
+  /// No description provided for @inboxCdNoSpace.
+  ///
+  /// In en, this message translates to:
+  /// **'There is not enough free space to read {album}.'**
+  String inboxCdNoSpace(String album);
+
+  /// No description provided for @inboxCdNoTarget.
+  ///
+  /// In en, this message translates to:
+  /// **'{album} was not read: no folder for imported CDs is set up.'**
+  String inboxCdNoTarget(String album);
+
+  /// No description provided for @inboxAlbumNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'The album is not in the library of this device yet. Refresh the library.'**
+  String get inboxAlbumNotFound;
+
+  /// No description provided for @cdErrInvalidMove.
+  ///
+  /// In en, this message translates to:
+  /// **'This CD is not in the state the step needs. The list is read again.'**
+  String get cdErrInvalidMove;
+
+  /// No description provided for @cdErrDecided.
+  ///
+  /// In en, this message translates to:
+  /// **'Somebody else was faster and decided this CD.'**
+  String get cdErrDecided;
+
+  /// No description provided for @cdErrInvalidPaging.
+  ///
+  /// In en, this message translates to:
+  /// **'The page of the inbox asked for does not exist.'**
+  String get cdErrInvalidPaging;
 }
 
 class _AppLocalizationsDelegate
