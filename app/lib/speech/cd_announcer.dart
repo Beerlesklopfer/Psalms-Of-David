@@ -185,7 +185,7 @@ class CdAnnouncer extends ChangeNotifier {
     if (t == null || before == null) return;
     // Back to exactly the volume the person had, also when the fade is cut short.
     await _ramp(t, t.volume, before);
-    t.setVolume(before);
+    if (t.volume != before) t.setVolume(before);
   }
 
   Future<void> _ramp(DuckTarget t, double from, double to) async {
