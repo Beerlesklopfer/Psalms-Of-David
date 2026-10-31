@@ -984,6 +984,7 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 mode: None,
                 force: false,
                 auto: false,
+                starter_device: String::new(),
             };
             if dry {
                 let mut plan = crate::cdrive::preview_rip(&s.store, &s.cd, s.library.clone(), req).await.map_err(|r| rip_failure(&r))?;

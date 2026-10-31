@@ -650,7 +650,7 @@ pub async fn conclude(
         store, cd, user_id, job_id, meta, set, root, kind, cover, tracks, reserve, extra,
     )
     .await?;
-    notify(&CdEvent::Imported { job: job.clone() });
+    notify(store, cd, &CdEvent::Imported { job: job.clone() }).await;
     Ok(Concluded::Imported(job, placed, queued))
 }
 
@@ -742,7 +742,7 @@ async fn hold(
         .flatten()
         .unwrap_or(moved.job);
     cd.publish(user_id, "progress", &job);
-    notify(&CdEvent::AwaitingApproval { job: job.clone() });
+    notify(store, cd, &CdEvent::AwaitingApproval { job: job.clone() }).await;
     Ok(job)
 }
 
@@ -861,11 +861,13 @@ pub async fn approve(
     {
         Ok((job, _, _)) => {
             discard_held(store, job_id).await;
-            notify(&CdEvent::Decided {
+            notify(store, cd, &CdEvent::Decided {
                 job: job.clone(),
                 approved: true,
+                by_id: actor_id(actor),
                 by: actor_name(actor),
-            });
+            })
+            .await;
             Ok(job)
         }
         Err(r) => Err(unplace(store, cd, user_id, job_id, r.1).await),
@@ -914,12 +916,21 @@ pub async fn reject(
     let moved = store.cd_move(job_id, Move::Reject, actor).await?;
     discard_held(store, job_id).await;
     cd.publish(moved.job.user_id, "failed", &moved.job);
-    notify(&CdEvent::Decided {
+    notify(store, cd, &CdEvent::Decided {
         job: moved.job.clone(),
         approved: false,
+        by_id: actor_id(actor),
         by: actor_name(actor),
-    });
+    })
+    .await;
     Ok(moved.job)
+}
+
+fn actor_id(actor: &Actor) -> i64 {
+    match actor {
+        Actor::Person { id, .. } => *id,
+        Actor::Server => 0,
+    }
 }
 
 fn actor_name(actor: &Actor) -> String {
@@ -957,7 +968,7 @@ pub async fn expire_held(store: &Store, cd: &CdService, now: i64) -> Vec<i64> {
             Ok(moved) => {
                 discard_held(store, id).await;
                 cd.publish(moved.job.user_id, "failed", &moved.job);
-                notify(&CdEvent::Expired { job: moved.job });
+                notify(store, cd, &CdEvent::Expired { job: moved.job }).await;
                 expired.push(id);
             }
             // Decided meanwhile: nothing to do.
@@ -974,6 +985,8 @@ pub async fn expiry_task(store: Store, cd: CdService) {
     loop {
         tick.tick().await;
         expire_held(&store, &cd, now_ms()).await;
+        // The same round removes what the inbox keeps no longer (`inbox_keep_days`).
+        crate::inbox::cleanup(&store, now_ms()).await;
     }
 }
 
@@ -1045,7 +1058,7 @@ pub async fn sweep_held(store: &Store, cd: &CdService) {
 // The hooks for the inbox (phase 3).
 
 /// What happened to a CD that a person may need to be told about. The inbox of phase 3 turns each into a notice or a task for the people who
-/// should get it (the starter, the approvers); until then `notify` does nothing.
+/// should get it (the starter, the approvers); see `inbox::handle`.
 #[derive(Debug, Clone)]
 pub enum CdEvent {
     /// The CD is whole in the library already (`cd_present`); the disc was ejected.
@@ -1060,18 +1073,20 @@ pub enum CdEvent {
     Decided {
         job: Job,
         approved: bool,
+        by_id: i64,
         by: String,
     },
     /// The CD waited too long and was rejected (`cd_expired`).
     Expired { job: Job },
-    /// The automatic import did not start: MusicBrainz knows no release (`cd_no_match`) or several (`cd_ambiguous`).
-    NotStarted { disc_id: String, reason: String },
+    /// The automatic import did not start for a reason a person should know: `no_match` (`cd_no_match`), `ambiguous_match` (`cd_ambiguous`),
+    /// `heal_needed`, `no_space`, `no_target`. `detail` is the number of releases for `ambiguous_match`.
+    NotStarted { disc_id: String, reason: String, author: String, title: String, disc: i64, detail: String },
 }
 
-/// The hook of phase 3: tells the inbox that something happened. Empty on purpose until the inbox exists; every place that makes one of these
-/// events calls it already.
-pub fn notify(event: &CdEvent) {
-    tracing::debug!(?event, "CD event (no inbox yet)");
+/// The hook of the inbox: tells it that something happened (`crate::inbox::handle` picks the recipients and writes the items). Every place that
+/// makes one of these events calls it.
+pub async fn notify(store: &Store, cd: &CdService, event: &CdEvent) {
+    crate::inbox::handle(store, cd, event).await;
 }
 
 #[cfg(test)]

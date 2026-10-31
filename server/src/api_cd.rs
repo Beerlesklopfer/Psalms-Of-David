@@ -581,6 +581,7 @@ async fn import_inner(s: &ApiState, d: &Device, headers: &HeaderMap, form: &mut 
         record: meta.disc_id.clone().filter(|id| !id.is_empty()).map(|disc_id| crate::cdpresent::DiscRow { disc_id, author: meta.author.trim().to_owned(), title: meta.album.trim().to_owned(), disc: meta.disc, discs_total: meta.discs_total.unwrap_or(1), kind: kind.clone(), folder: String::new() }),
         ..Default::default()
     };
+    let _ = s.store.set_cd_starter_device(job_now.id, &cdimport::device_label(&d.token)).await;
     let concluded = crate::cdflow::conclude(&s.store, &s.cd, d.user_id, job_now.id, &meta, &set, root, kind2, cover, staged_tracks, reserve, extra).await?;
     drop(staged);
     Ok(match concluded {
@@ -641,10 +642,12 @@ async fn drive(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
 
 /// Starts ripping the CD that is in the server's drive. Answers `201 {id, job}` at once; the progress comes as
 /// events. `409 busy` when the drive is ripping already, `409 no_disc` / `tray_open` / `no_drive`, `503 drive_denied`.
-async fn rip(State(s): State<ApiState>, d: Device, Json(req): Json<crate::cdrive::RipRequest>) -> Response {
+async fn rip(State(s): State<ApiState>, d: Device, Json(mut req): Json<crate::cdrive::RipRequest>) -> Response {
     if let Err(e) = may_import(&s, &d).await {
         return e.into_response();
     }
+    // The device is the one of the token, whatever the body says: the inbox marks the messages of this rip for it.
+    req.starter_device = cdimport::device_label(&d.token);
     match crate::cdrive::start_rip(&s.store, &s.cd, s.library.clone(), d.user_id, req).await {
         Ok(st) => {
             let mut job = st.job;
@@ -842,7 +845,9 @@ async fn snapshot_text(s: &ApiState, user: i64, device: &str) -> Option<String> 
             }
         }
     }
-    Some(json!({ "v": cdimport::EVENTS_VERSION, "type": "snapshot", "busy": list.iter().any(|j| j.active), "busy_elsewhere": busy_elsewhere(&list, device), "jobs": list }).to_string())
+    // The state of the inbox is read from `GET /inbox`; the counts let the badge show at once.
+    let (unread, tasks_open) = crate::api_inbox::counts(s, user).await;
+    Some(json!({ "v": cdimport::EVENTS_VERSION, "type": "snapshot", "busy": list.iter().any(|j| j.active), "busy_elsewhere": busy_elsewhere(&list, device), "jobs": list, "unread": unread, "tasks_open": tasks_open }).to_string())
 }
 
 /// One connection: a hello and a snapshot, then every change of the account's jobs, a ping at the interval of the

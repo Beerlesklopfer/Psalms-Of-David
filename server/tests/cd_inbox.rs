@@ -24,6 +24,8 @@ use david_server::mcp::{McpState, router as mcp_router};
 use david_server::musicbrainz::{Lookup, LookupError, Service};
 use david_server::{Error, NewProfile, Role, Schedule, Store};
 use serde_json::{Value, json};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 use tower::ServiceExt;
 
 struct NoInternet;
@@ -1510,4 +1512,642 @@ async fn a_cd_that_is_in_the_library_is_not_read_and_is_ejected_when_the_request
         "{}",
         present[0].message
     );
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Phase 3: the inbox.
+
+/// The inbox of a token: the answer of `GET /inbox`.
+async fn inbox(e: &Env, token: &str) -> Value {
+    let r = call(e, "GET", "/api/v1/inbox", token, None).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    r.json()
+}
+
+/// The codes in an inbox, newest first.
+fn codes(list: &Value) -> Vec<String> {
+    list["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["code"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+fn item_with<'a>(list: &'a Value, code: &str) -> &'a Value {
+    list["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["code"] == code)
+        .unwrap_or_else(|| panic!("no {code} in {list}"))
+}
+
+/// A child and a guest, each with a device.
+async fn child_and_guest(e: &mut Env) -> (String, String) {
+    let kid = e
+        .store
+        .create_user(NewProfile::child("Kid", 10, Schedule::always()))
+        .await
+        .unwrap();
+    let guest = e
+        .store
+        .create_user(NewProfile::new("Gast", Role::Guest))
+        .await
+        .unwrap();
+    (pair(e, kid).await, pair(e, guest).await)
+}
+
+#[tokio::test]
+async fn the_inbox_goes_to_the_starter_and_to_the_approvers_by_the_rights_and_to_nobody_else() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let mut e = env().await;
+    give_mp3(&e);
+    let (_, anna) = member(&mut e, "Anna", true, false, false).await;
+    let (_, bea) = member(&mut e, "Bea", false, false, true).await;
+    let (_, carl) = member(&mut e, "Carl", true, true, false).await;
+    let (_, eve) = member(&mut e, "Eve", false, false, false).await;
+    let (kid, guest) = child_and_guest(&mut e).await;
+    let boss = boss_token(&mut e).await;
+    insert(&e, 3).await;
+    let id = call(&e, "POST", "/api/v1/cd/rip", &anna, Some(rip_body("Paulus")))
+        .await
+        .json()["id"]
+        .as_i64()
+        .unwrap();
+    wait_state(&e, id, &["awaiting_approval"]).await;
+
+    // Everybody who may approve gets the task, with the buttons.
+    for who in [&bea, &boss] {
+        let list = inbox(&e, who).await;
+        assert_eq!(codes(&list), ["cd_awaiting_approval"]);
+        let t = &list["items"][0];
+        assert_eq!(
+            (t["kind"].as_str(), t["can_decide"].as_bool(), t["read"].as_bool(), t["resolved"].as_bool(), t["job_id"].as_i64()),
+            (Some("task"), Some(true), Some(false), Some(false), Some(id))
+        );
+        assert_eq!(
+            t["args"],
+            json!({ "job_id": id, "author": "Ken Follett", "title": "Paulus", "disc": 1, "discs_total": 1, "tracks": 3, "by": "Anna" })
+        );
+        assert_eq!((list["unread"].as_i64(), list["tasks_open"].as_i64()), (Some(1), Some(1)));
+    }
+    // The starter sees the entry of the job without the buttons; she cannot decide it either.
+    let list = inbox(&e, &anna).await;
+    let t = &list["items"][0];
+    assert_eq!(
+        (t["code"].as_str(), t["can_decide"].as_bool(), t["args"]["title"].as_str(), t["args"]["tracks"].as_i64()),
+        (Some("cd_awaiting_approval"), Some(false), Some("Paulus"), Some(3))
+    );
+    assert_eq!((list["unread"].as_i64(), list["tasks_open"].as_i64()), (Some(1), Some(0)));
+    let r = call(&e, "POST", &format!("/api/v1/cd/jobs/{id}/approve"), &anna, None).await;
+    assert_eq!((r.status, r.code().as_str()), (StatusCode::FORBIDDEN, "forbidden"));
+    // Somebody who needs no approval, one without any CD right, a child and a guest get nothing.
+    for who in [&carl, &eve, &kid, &guest] {
+        let list = inbox(&e, who).await;
+        assert_eq!(list["items"], json!([]));
+        assert_eq!((list["unread"].as_i64(), list["tasks_open"].as_i64()), (Some(0), Some(0)));
+    }
+    // The held files are no album: the starter's entry is a job, not a title in any list.
+    let r = call(&e, "GET", "/api/v1/items", &anna, None).await;
+    assert!(!String::from_utf8_lossy(&r.bytes).contains("Paulus"));
+    // The count is in /me.
+    assert_eq!(call(&e, "GET", "/api/v1/me", &bea, None).await.json()["inbox_unread"], 1);
+    assert_eq!(call(&e, "GET", "/api/v1/me", &bea, None).await.json()["inbox_tasks_open"], 1);
+    assert_eq!(call(&e, "GET", "/api/v1/me", &kid, None).await.json()["inbox_unread"], 0);
+
+    // Carl's own CD needs no approval: he alone is told when it is in; the approvers are not.
+    insert(&e, 4).await;
+    let id2 = call(&e, "POST", "/api/v1/cd/rip", &carl, Some(rip_body("Eigene")))
+        .await
+        .json()["id"]
+        .as_i64()
+        .unwrap();
+    wait_state(&e, id2, &["imported"]).await;
+    for _ in 0..40 {
+        if !inbox(&e, &carl).await["items"].as_array().unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let list = inbox(&e, &carl).await;
+    assert_eq!(codes(&list), ["cd_imported"]);
+    assert_eq!(list["items"][0]["kind"], "notice");
+    assert_eq!(list["items"][0]["args"]["tracks"], 4);
+    assert_eq!(codes(&inbox(&e, &bea).await), ["cd_awaiting_approval"]);
+}
+
+#[tokio::test]
+async fn read_marks_are_per_person_and_the_list_pages() {
+    let mut e = env().await;
+    let (a, ta) = member(&mut e, "Ann", true, true, true).await;
+    let (b, tb) = member(&mut e, "Ben", true, true, true).await;
+    let (_, tc) = member(&mut e, "Cy", true, true, false).await;
+    let mut ids = Vec::new();
+    for n in 0..5 {
+        let id = e
+            .store
+            .inbox_add(
+                &david_server::inbox::NewItem {
+                    kind: "notice",
+                    job_id: None,
+                    code: "cd_no_match",
+                    args: json!({ "disc_id": format!("d{n}") }),
+                    speak: None,
+                    device: String::new(),
+                },
+                &[(a, false), (b, false)],
+            )
+            .await
+            .unwrap();
+        ids.push(id);
+    }
+    assert_eq!(inbox(&e, &ta).await["unread"], 5);
+    // Ann reads one; Ben still has it unread; Cy was never a recipient.
+    let r = call(&e, "POST", &format!("/api/v1/inbox/{}/read", ids[2]), &ta, None).await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT);
+    assert_eq!(call(&e, "POST", &format!("/api/v1/inbox/{}/read", ids[2]), &ta, None).await.status, StatusCode::NO_CONTENT, "twice is fine");
+    let (la, lb) = (inbox(&e, &ta).await, inbox(&e, &tb).await);
+    assert_eq!((la["unread"].as_i64(), lb["unread"].as_i64()), (Some(4), Some(5)));
+    let read_flags = |l: &Value| l["items"].as_array().unwrap().iter().map(|i| i["read"].as_bool().unwrap()).collect::<Vec<_>>();
+    assert_eq!(read_flags(&la), [false, false, true, false, false]);
+    assert_eq!(read_flags(&lb), [false; 5]);
+    let r = call(&e, "POST", &format!("/api/v1/inbox/{}/read", ids[0]), &tc, None).await;
+    assert_eq!((r.status, r.code().as_str()), (StatusCode::NOT_FOUND, "not_found"));
+    assert_eq!(call(&e, "POST", "/api/v1/inbox/99999/read", &ta, None).await.status, StatusCode::NOT_FOUND);
+    // Paging: newest first, `next` is the id to pass as `after`.
+    let page = call(&e, "GET", "/api/v1/inbox?limit=2", &tb, None).await.json();
+    let got: Vec<i64> = page["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect();
+    assert_eq!((got, page["next"].as_i64()), (vec![ids[4], ids[3]], Some(ids[3])));
+    let page = call(&e, "GET", &format!("/api/v1/inbox?limit=2&after={}", ids[3]), &tb, None).await.json();
+    let got: Vec<i64> = page["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect();
+    assert_eq!((got, page["next"].as_i64()), (vec![ids[2], ids[1]], Some(ids[1])));
+    let page = call(&e, "GET", &format!("/api/v1/inbox?limit=2&after={}", ids[1]), &tb, None).await.json();
+    assert_eq!((page["items"].as_array().unwrap().len(), page["next"].is_null()), (1, true));
+    assert_eq!(page["unread"], 5, "the count is of the whole inbox, not of the page");
+    assert_eq!(call(&e, "GET", "/api/v1/inbox?limit=0", &tb, None).await.code(), "invalid_paging");
+    // All read: only for the one who asks.
+    assert_eq!(call(&e, "POST", "/api/v1/inbox/read_all", &ta, None).await.status, StatusCode::NO_CONTENT);
+    assert_eq!((inbox(&e, &ta).await["unread"].as_i64(), inbox(&e, &tb).await["unread"].as_i64()), (Some(0), Some(5)));
+    assert_eq!(call(&e, "GET", "/api/v1/inbox", "nonsense", None).await.status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a_task_is_decided_once_for_everybody_and_the_others_get_a_notice_in_code_and_args() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let mut e = env().await;
+    give_mp3(&e);
+    let (_, anna) = member(&mut e, "Anna", true, false, false).await;
+    let (_, bea) = member(&mut e, "Bea", false, false, true).await;
+    let boss = boss_token(&mut e).await;
+    insert(&e, 3).await;
+    let id = call(&e, "POST", "/api/v1/cd/rip", &anna, Some(rip_body("Paulus")))
+        .await
+        .json()["id"]
+        .as_i64()
+        .unwrap();
+    wait_state(&e, id, &["awaiting_approval"]).await;
+    let r = call(&e, "POST", &format!("/api/v1/cd/jobs/{id}/approve"), &bea, None).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    // The slower decider is told who was faster.
+    let r = call(&e, "POST", &format!("/api/v1/cd/jobs/{id}/reject"), &boss, None).await;
+    assert_eq!(
+        (r.status, r.code().as_str(), r.json()["by"].as_str(), r.json()["resolution"].as_str()),
+        (StatusCode::CONFLICT, "decided", Some("Bea"), Some("approved"))
+    );
+    // The task is done for the other approver: resolved, read, nothing left to do; and a notice says who decided.
+    let list = inbox(&e, &boss).await;
+    assert_eq!(codes(&list), ["cd_decided", "cd_awaiting_approval"]);
+    let task = item_with(&list, "cd_awaiting_approval");
+    assert_eq!(
+        (task["resolved"].as_bool(), task["resolution"].as_str(), task["by"].as_str(), task["can_decide"].as_bool(), task["read"].as_bool(), task["job_state"].as_str()),
+        (Some(true), Some("approved"), Some("Bea"), Some(false), Some(true), Some("imported"))
+    );
+    assert!(task["resolved_ms"].as_i64().unwrap() > 0);
+    let note = item_with(&list, "cd_decided");
+    assert_eq!(
+        note["args"],
+        json!({ "job_id": id, "author": "Ken Follett", "title": "Paulus", "disc": 1, "approved": true, "by": "Bea" })
+    );
+    assert_eq!((note["kind"].as_str(), note["read"].as_bool()), (Some("notice"), Some(false)));
+    assert_eq!((list["unread"].as_i64(), list["tasks_open"].as_i64()), (Some(1), Some(0)));
+    // The decider gets no notice about their own decision; her task is resolved too.
+    let list = inbox(&e, &bea).await;
+    assert_eq!(codes(&list), ["cd_awaiting_approval"]);
+    assert_eq!((list["items"][0]["resolved"].as_bool(), list["unread"].as_i64()), (Some(true), Some(0)));
+    // The starter: the entry of the job is gone, the decision notice is there.
+    let list = inbox(&e, &anna).await;
+    assert_eq!(codes(&list), ["cd_decided"]);
+    assert_eq!(list["items"][0]["args"]["approved"], true);
+    assert_eq!(list["tasks_open"], 0);
+
+    // A rejection: the same, with the words turned round, and the files are gone.
+    insert(&e, 4).await;
+    let id2 = call(&e, "POST", "/api/v1/cd/rip", &anna, Some(rip_body("Nein")))
+        .await
+        .json()["id"]
+        .as_i64()
+        .unwrap();
+    wait_state(&e, id2, &["awaiting_approval"]).await;
+    assert_eq!(call(&e, "POST", &format!("/api/v1/cd/jobs/{id2}/reject"), &boss, None).await.status, StatusCode::OK);
+    let list = inbox(&e, &bea).await;
+    let note = &list["items"][0];
+    assert_eq!(
+        (note["code"].as_str(), note["args"]["approved"].as_bool(), note["args"]["by"].as_str(), note["args"]["title"].as_str()),
+        (Some("cd_decided"), Some(false), Some("Boss"), Some("Nein"))
+    );
+    assert_eq!(item_with(&list, "cd_awaiting_approval")["resolution"], "rejected", "the newest task");
+    assert_eq!(list["tasks_open"], 0);
+}
+
+#[tokio::test]
+async fn a_held_cd_that_expires_tells_the_approvers_and_the_starter_and_the_cleanup_keeps_open_tasks() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let mut e = env().await;
+    give_mp3(&e);
+    let (_, anna) = member(&mut e, "Anna", true, false, false).await;
+    let (bea_id, bea) = member(&mut e, "Bea", false, false, true).await;
+    e.store.save_settings(&[("cd_held_keep_days".to_owned(), "2".to_owned())]).await.unwrap();
+    insert(&e, 3).await;
+    let id = call(&e, "POST", "/api/v1/cd/rip", &anna, Some(rip_body("Alt")))
+        .await
+        .json()["id"]
+        .as_i64()
+        .unwrap();
+    let since = wait_state(&e, id, &["awaiting_approval"]).await.held_ms.unwrap();
+    let day = 24 * 3600 * 1000;
+    // A cleanup does not take a task nobody decided, however old.
+    assert_eq!(e.store.inbox_cleanup(since + 400 * day, 90).await.unwrap(), 0);
+    assert_eq!(codes(&inbox(&e, &bea).await), ["cd_awaiting_approval"]);
+    assert_eq!(cdflow::expire_held(&e.store, &e.cd, since + 3 * day).await, vec![id]);
+    for who in [&bea, &anna] {
+        let list = inbox(&e, who).await;
+        assert_eq!(item_with(&list, "cd_expired")["args"], json!({ "job_id": id, "author": "Ken Follett", "title": "Alt", "disc": 1 }));
+        assert_eq!(list["tasks_open"], 0);
+    }
+    let list = inbox(&e, &bea).await;
+    assert_eq!(item_with(&list, "cd_awaiting_approval")["resolution"], "expired");
+    assert_eq!(list["items"].as_array().unwrap().len(), 2);
+    // The starter's entry of the job is gone; she keeps the notice.
+    assert_eq!(codes(&inbox(&e, &anna).await), ["cd_expired"]);
+
+    // The cleanup after `inbox_keep_days`: the setting counts, the default is 90.
+    let now = now_ms();
+    assert_eq!(david_server::inbox::cleanup(&e.store, now).await, 0);
+    assert_eq!(david_server::inbox::cleanup(&e.store, now + 89 * day).await, 0, "default 90 days");
+    e.store.save_settings(&[("inbox_keep_days".to_owned(), "5".to_owned())]).await.unwrap();
+    assert_eq!(david_server::inbox::cleanup(&e.store, now + 4 * day).await, 0);
+    assert_eq!(david_server::inbox::cleanup(&e.store, now + 6 * day).await, 2, "the task and the notice go");
+    assert_eq!(inbox(&e, &bea).await["items"], json!([]));
+    assert_eq!(inbox(&e, &anna).await["items"], json!([]));
+    let left: i64 = e.store.inbox_counts(bea_id).await.unwrap().0;
+    assert_eq!(left, 0);
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
+}
+
+#[tokio::test]
+async fn every_code_comes_from_its_event_and_nothing_is_stored_as_prose() {
+    use david_server::cdflow::CdEvent;
+    let mut e = env().await;
+    let (_, bea) = member(&mut e, "Bea", false, false, true).await;
+    let boss = boss_token(&mut e).await;
+    // A CD put in at the server belongs to nobody: its notices go to the approvers.
+    let patch = david_server::cdimport::JobPatch {
+        author: Some("A".into()),
+        album: Some("T".into()),
+        disc: Some(2),
+        tracks_total: Some(7),
+        ..Default::default()
+    };
+    let job = e.store.create_cd_job(david_server::cdimport::SYSTEM_USER, "auto", &patch).await.unwrap();
+    let events = [
+        CdEvent::Present { job: job.clone() },
+        CdEvent::Imported { job: job.clone() },
+        CdEvent::ReadError { job: job.clone(), tracks: vec![2, 5] },
+        CdEvent::AwaitingApproval { job: job.clone() },
+        CdEvent::Decided { job: job.clone(), approved: true, by_id: e.boss, by: "Boss".into() },
+        CdEvent::Expired { job: job.clone() },
+    ];
+    let mut not_started: Vec<CdEvent> = ["no_match", "ambiguous_match", "heal_needed", "no_space", "no_target", "busy", "drive_denied"]
+        .iter()
+        .map(|r| CdEvent::NotStarted { disc_id: "abc".into(), reason: (*r).to_owned(), author: "A".into(), title: "T".into(), disc: 2, detail: "3".into() })
+        .collect();
+    for ev in events.iter().chain(not_started.iter()) {
+        cdflow::notify(&e.store, &e.cd, ev).await;
+    }
+    not_started.clear();
+    // The boss decided: he got every notice but the one about his own decision.
+    let list = inbox(&e, &bea).await;
+    let mut got = codes(&list);
+    got.sort();
+    let mut want: Vec<String> = david_server::inbox::CODES.iter().map(|c| (*c).to_owned()).collect();
+    want.sort();
+    assert_eq!(got, want, "every code is made by its event, `busy` and `drive_denied` make none");
+    let args = |code: &str| item_with(&list, code)["args"].clone();
+    assert_eq!(args("cd_present"), json!({ "job_id": job.id, "author": "A", "title": "T", "disc": 2, "album_id": null }));
+    assert_eq!(args("cd_imported")["tracks"], 7);
+    assert_eq!(args("cd_read_error")["tracks"], json!([2, 5]));
+    assert_eq!(args("cd_awaiting_approval")["by"], "auto");
+    assert_eq!(args("cd_ambiguous"), json!({ "disc_id": "abc", "candidates": 3, "author": "A", "title": "T", "disc": 2 }));
+    assert_eq!(args("cd_no_match")["disc_id"], "abc");
+    assert!(inbox(&e, &boss).await["items"].as_array().unwrap().iter().all(|i| i["code"] != "cd_decided"));
+    // Nothing is stored as prose: the code is a key, the arguments are data, and no text of the panel is in the tables.
+    let rows = e.store.inbox_stored().await.unwrap();
+    assert!(!rows.is_empty());
+    for (code, text) in rows {
+        assert!(david_server::inbox::CODES.contains(&code.as_str()), "{code}");
+        assert!(serde_json::from_str::<Value>(&text).unwrap().is_object());
+        for (_, m) in david_server::admin::messages::EN.iter().chain(david_server::admin::messages::DE) {
+            for chunk in m.split(['{', '}']).filter(|c| c.len() >= 14) {
+                assert!(!text.contains(chunk), "prose {chunk:?} in {text}");
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_cd_that_cannot_be_read_and_one_that_is_there_already_are_told_to_the_right_people() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let mut e = env().await;
+    give_mp3(&e);
+    let (_, anna) = member(&mut e, "Anna", true, false, false).await;
+    let (_, bea) = member(&mut e, "Bea", false, false, true).await;
+    let (_, carl) = member(&mut e, "Carl", true, true, false).await;
+    insert(&e, 3).await;
+    *e.drive.fail_at.lock().unwrap() = Some((2, "read"));
+    let mut body = rip_body("Kaputt");
+    body["only"] = json!([2]);
+    let id = call(&e, "POST", "/api/v1/cd/rip", &anna, Some(body)).await.json()["id"].as_i64().unwrap();
+    wait_state(&e, id, &["retry_wait"]).await;
+    // Anna needs approval, so the approvers are told too; the notice carries the job and the tracks, and the job state for "try again".
+    for who in [&anna, &bea] {
+        let list = inbox(&e, who).await;
+        let n = item_with(&list, "cd_read_error");
+        assert_eq!(n["args"]["tracks"], json!([2]));
+        assert_eq!((n["args"]["job_id"].as_i64(), n["job_state"].as_str(), n["kind"].as_str()), (Some(id), Some("retry_wait"), Some("notice")));
+    }
+    assert!(inbox(&e, &carl).await["items"].as_array().unwrap().is_empty());
+    // The app of the starter started it: the message names the device, which is the `device` of the `hello` message.
+    let n = item_with(&inbox(&e, &bea).await, "cd_read_error").clone();
+    assert_eq!(n["speak"], "starter");
+    assert_eq!(n["device"].as_str().unwrap(), david_server::cdimport::device_label(&anna));
+    // After a new try the job is in again, and the notice shows that "try again" is over.
+    *e.drive.fail_at.lock().unwrap() = None;
+    assert_eq!(call(&e, "POST", &format!("/api/v1/cd/jobs/{id}/retry"), &anna, None).await.status, StatusCode::ACCEPTED);
+    wait_state(&e, id, &["awaiting_approval"]).await;
+    assert_eq!(item_with(&inbox(&e, &bea).await, "cd_read_error")["job_state"], "awaiting_approval");
+}
+
+#[tokio::test]
+async fn a_cd_that_is_in_the_library_is_a_notice_for_the_starter_and_a_rip_from_the_web_speaks_at_home() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let mut e = env().await;
+    give_mp3(&e);
+    let boss = boss_token(&mut e).await;
+    let (_, bea) = member(&mut e, "Bea", true, true, true).await;
+    e.store.save_settings(&[("cd_eject_after".to_owned(), "0".to_owned())]).await.unwrap();
+    insert_short(&e, 3).await;
+    let id = call(&e, "POST", "/api/v1/cd/rip", &boss, Some(rip_body("Da"))).await.json()["id"].as_i64().unwrap();
+    wait_state(&e, id, &["imported"]).await;
+    let mut ask = rip_body("Da");
+    ask["eject"] = json!(true);
+    // The drive is free a moment after the job is done.
+    let mut code = String::new();
+    for _ in 0..40 {
+        code = call(&e, "POST", "/api/v1/cd/rip", &boss, Some(ask.clone())).await.code();
+        if code != "busy" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(code, "disc_present");
+    let list = inbox(&e, &boss).await;
+    let n = item_with(&list, "cd_present");
+    assert_eq!((n["args"]["title"].as_str(), n["args"]["disc"].as_i64(), n["speak"].as_str()), (Some("Da"), Some(1), Some("starter")));
+    assert!(n["args"]["album_id"].as_i64().is_some(), "the album that is there already: {n}");
+    // Bea is no starter, and the CD was put in by an administrator who needs no approval: she gets nothing about it.
+    assert!(!codes(&inbox(&e, &bea).await).contains(&"cd_present".to_owned()));
+
+    // A rip from the web (no device is known) is marked for the home; so is one at the drive.
+    let patch = david_server::cdimport::JobPatch { author: Some("W".into()), album: Some("Web".into()), ..Default::default() };
+    let job = e.store.create_cd_job(e.boss, "server", &patch).await.unwrap();
+    cdflow::notify(&e.store, &e.cd, &cdflow::CdEvent::Imported { job }).await;
+    let list = inbox(&e, &boss).await;
+    let n = list["items"].as_array().unwrap().iter().find(|i| i["args"]["title"] == "Web").unwrap();
+    assert_eq!((n["speak"].as_str(), n["device"].as_str()), (Some("home"), Some("")));
+    // The notices of a decision are not spoken.
+    let job = e.store.create_cd_job(e.boss, "server", &patch).await.unwrap();
+    cdflow::notify(&e.store, &e.cd, &cdflow::CdEvent::Expired { job }).await;
+    let list = inbox(&e, &boss).await;
+    assert!(item_with(&list, "cd_expired").get("speak").is_none());
+}
+
+// The event channel over a real socket.
+
+async fn serve(e: &Env) -> std::net::SocketAddr {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = e.router.clone();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    addr
+}
+
+async fn ws_open(addr: std::net::SocketAddr, token: &str) -> TcpStream {
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    let req = format!(
+        "GET /api/v1/cd/events HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n"
+    );
+    s.write_all(req.as_bytes()).await.unwrap();
+    let mut head = Vec::new();
+    while !head.ends_with(b"\r\n\r\n") {
+        head.push(s.read_u8().await.unwrap());
+    }
+    assert!(String::from_utf8_lossy(&head).starts_with("HTTP/1.1 101"));
+    s
+}
+
+/// The next text message, or `None` after `wait`.
+async fn ws_next(s: &mut TcpStream, wait: Duration) -> Option<Value> {
+    let read = async {
+        loop {
+            let mut head = [0u8; 2];
+            s.read_exact(&mut head).await.ok()?;
+            let len = match head[1] & 0x7f {
+                126 => s.read_u16().await.ok()? as usize,
+                127 => s.read_u64().await.ok()? as usize,
+                n => n as usize,
+            };
+            let mut payload = vec![0u8; len];
+            s.read_exact(&mut payload).await.ok()?;
+            if head[0] & 0x0f == 1 {
+                return serde_json::from_slice::<Value>(&payload).ok();
+            }
+        }
+    };
+    tokio::time::timeout(wait, read).await.ok().flatten()
+}
+
+/// The next message of a type, skipping the others (jobs, progress, drive).
+async fn ws_type(s: &mut TcpStream, kind: &str) -> Value {
+    for _ in 0..60 {
+        let m = ws_next(s, Duration::from_secs(10)).await.unwrap_or_else(|| panic!("no {kind}"));
+        if m["type"] == kind {
+            return m;
+        }
+    }
+    panic!("no {kind}");
+}
+
+/// Every message that comes within a short time.
+async fn ws_rest(s: &mut TcpStream) -> Vec<Value> {
+    let mut out = Vec::new();
+    while let Some(m) = ws_next(s, Duration::from_millis(300)).await {
+        out.push(m);
+    }
+    out
+}
+
+#[tokio::test]
+async fn the_messages_of_the_inbox_reach_only_the_recipients_and_a_reconnect_reads_the_list() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let mut e = env().await;
+    give_mp3(&e);
+    let (_, anna) = member(&mut e, "Anna", true, false, false).await;
+    let (_, bea) = member(&mut e, "Bea", false, false, true).await;
+    let (_, eve) = member(&mut e, "Eve", false, false, false).await;
+    let (_, carl) = member(&mut e, "Carl", true, true, false).await;
+    let addr = serve(&e).await;
+    let mut wa = ws_open(addr, &anna).await;
+    let mut wb = ws_open(addr, &bea).await;
+    let mut weve = ws_open(addr, &eve).await;
+    let mut wc = ws_open(addr, &carl).await;
+    let hello = ws_type(&mut wa, "hello").await;
+    let device_anna = hello["device"].as_str().unwrap().to_owned();
+    for w in [&mut wb, &mut weve, &mut wc] {
+        ws_type(w, "hello").await;
+    }
+    let snap = ws_type(&mut wb, "snapshot").await;
+    assert_eq!((snap["unread"].as_i64(), snap["tasks_open"].as_i64()), (Some(0), Some(0)));
+    for w in [&mut wa, &mut weve, &mut wc] {
+        ws_type(w, "snapshot").await;
+    }
+
+    insert(&e, 3).await;
+    let id = call(&e, "POST", "/api/v1/cd/rip", &anna, Some(rip_body("Paulus"))).await.json()["id"].as_i64().unwrap();
+    // Bea: the task, with the buttons, the counts and the marks for speaking.
+    let m = ws_type(&mut wb, "inbox").await;
+    assert_eq!((m["v"].as_u64(), m["unread"].as_i64(), m["tasks_open"].as_i64()), (Some(1), Some(1), Some(1)));
+    let item = &m["item"];
+    assert_eq!(
+        (item["code"].as_str(), item["kind"].as_str(), item["can_decide"].as_bool(), item["job_id"].as_i64(), item["speak"].as_str(), item["device"].as_str()),
+        (Some("cd_awaiting_approval"), Some("task"), Some(true), Some(id), Some("starter"), Some(device_anna.as_str()))
+    );
+    assert_eq!(item["args"]["title"], "Paulus");
+    // Anna: the entry of her job, without the buttons.
+    let m = ws_type(&mut wa, "inbox").await;
+    assert_eq!((m["item"]["code"].as_str(), m["item"]["can_decide"].as_bool()), (Some("cd_awaiting_approval"), Some(false)));
+    let task_id = m["item"]["id"].as_i64().unwrap();
+    // Eve (no CD right) and Carl (needs no approval, did not start it) hear nothing of the inbox.
+    for w in [&mut weve, &mut wc] {
+        assert!(ws_rest(w).await.iter().all(|m| m["type"] != "inbox" && m["type"] != "inbox_resolved"));
+    }
+
+    // A reconnect: the state is in the list and in the snapshot, not in missed events.
+    drop(wb);
+    let mut wb = ws_open(addr, &bea).await;
+    ws_type(&mut wb, "hello").await;
+    let snap = ws_type(&mut wb, "snapshot").await;
+    assert_eq!((snap["unread"].as_i64(), snap["tasks_open"].as_i64()), (Some(1), Some(1)));
+    assert_eq!(codes(&inbox(&e, &bea).await), ["cd_awaiting_approval"]);
+
+    // The decision: the task is resolved for Anna, who hears `inbox_resolved`, and the notice `cd_decided` follows.
+    let r = call(&e, "POST", &format!("/api/v1/cd/jobs/{id}/approve"), &bea, None).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let m = ws_type(&mut wa, "inbox_resolved").await;
+    assert_eq!(
+        (m["id"].as_i64(), m["resolution"].as_str(), m["by"].as_str(), m["job_id"].as_i64(), m["tasks_open"].as_i64()),
+        (Some(task_id), Some("approved"), Some("Bea"), Some(id), Some(0))
+    );
+    assert!(m["resolved_ms"].as_i64().unwrap() > 0);
+    let m = ws_type(&mut wa, "inbox").await;
+    assert_eq!((m["item"]["code"].as_str(), m["item"]["args"]["by"].as_str(), m["item"]["args"]["approved"].as_bool()), (Some("cd_decided"), Some("Bea"), Some(true)));
+    // Bea decided herself: she hears her own task resolved, but gets no notice.
+    let rest = ws_rest(&mut wb).await;
+    assert!(rest.iter().any(|m| m["type"] == "inbox_resolved"));
+    assert!(rest.iter().all(|m| m["type"] != "inbox"));
+    for w in [&mut weve, &mut wc] {
+        assert!(ws_rest(w).await.iter().all(|m| m["type"] != "inbox" && m["type"] != "inbox_resolved"));
+    }
+}
+
+#[tokio::test]
+async fn the_mcp_server_has_no_tool_to_read_or_decide_the_inbox() {
+    let mut e = env().await;
+    let token = e.store.create_mcp_token("llm", true, e.boss).await.unwrap();
+    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let res = e.mcp.clone().oneshot(req).await.unwrap();
+    let j: Value = serde_json::from_slice(&to_bytes(res.into_body(), 8 * 1024 * 1024).await.unwrap()).unwrap();
+    let names: Vec<String> = j["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect();
+    assert!(names.contains(&"cd_progress".to_owned()));
+    for n in &names {
+        assert!(!n.contains("inbox") && !n.contains("approve") && !n.contains("reject") && !n.contains("decide"), "{n}");
+    }
+    let _ = &mut e;
+}
+
+#[tokio::test]
+async fn the_automatic_import_tells_the_approvers_when_the_cd_is_there_already_or_cannot_be_started() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let mut e = env().await;
+    give_mp3(&e);
+    let boss = boss_token(&mut e).await;
+    let (_, bea) = member(&mut e, "Bea", false, false, true).await;
+    let (_, carl) = member(&mut e, "Carl", true, true, false).await;
+    e.store.save_settings(&[("cd_eject_after".to_owned(), "0".to_owned())]).await.unwrap();
+    insert_short(&e, 3).await;
+    let id = call(&e, "POST", "/api/v1/cd/rip", &boss, Some(rip_body("Da"))).await.json()["id"].as_i64().unwrap();
+    wait_state(&e, id, &["imported"]).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    // The disc is put in again at the server: nothing is read, it is ejected, and the approvers are told (the drive belongs to nobody).
+    let state = e.cd.drives.snapshot().0[0].clone();
+    david_server::cdrive::auto_import(e.cd.clone(), e.store.clone(), Some(e.library.path().to_owned()), state).await;
+    let list = inbox(&e, &bea).await;
+    assert_eq!(codes(&list), ["cd_present"]);
+    assert_eq!(list["items"][0]["args"]["title"], "Da");
+    assert_eq!(list["items"][0]["speak"], "home");
+    assert!(inbox(&e, &carl).await["items"].as_array().unwrap().is_empty());
+    // Another disc that nobody knows (no internet): the log of the tab has it; the reason is not one a person is told.
+    insert(&e, 5).await;
+    let state = e.cd.drives.snapshot().0[0].clone();
+    david_server::cdrive::auto_import(e.cd.clone(), e.store.clone(), Some(e.library.path().to_owned()), state).await;
+    assert_eq!(codes(&inbox(&e, &bea).await), ["cd_present"]);
 }

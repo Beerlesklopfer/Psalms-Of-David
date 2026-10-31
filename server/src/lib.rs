@@ -18,6 +18,8 @@ pub mod bible;
 pub mod cd_settings;
 pub mod musicbrainz;
 pub mod cdflow;
+pub mod inbox;
+pub mod api_inbox;
 pub mod cdimport;
 pub mod cdrights;
 pub mod cdrive;

@@ -63,7 +63,9 @@ pub(crate) async fn me_json(s: &ApiState, d: &Device) -> ApiResult<Value> {
     if !matches!(d.role, crate::roles::Role::Admin | crate::roles::Role::Member) {
         cd = crate::cdrights::CdRights::none();
     }
+    let (inbox_unread, inbox_tasks_open) = if cd.may_insert || cd.may_approve { s.store.inbox_counts(d.user_id).await? } else { (0, 0) };
     let mut me = json!({
+        "inbox_unread": inbox_unread, "inbox_tasks_open": inbox_tasks_open,
         "cd_rights": { "may_insert": cd.may_insert, "no_approval": cd.no_approval, "may_approve": cd.may_approve },
         "share_listening": share || !may_hide, "may_hide_listening": may_hide,
         "id": user.id, "name": user.name, "nickname": user.name, "first_name": user.first_name, "last_name": user.last_name,

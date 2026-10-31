@@ -754,14 +754,14 @@ async fn log_skipped(store: &Store, cd: &CdService, info: &SkipInfo, reason: &'s
     let patch = JobPatch { phase: Some("skipped".into()), author: Some(info.author.clone()), album: Some(info.title.clone()), disc: Some(i64::from(info.disc.max(1))), ..JobPatch::default() };
     match store.create_cd_job(cdimport::SYSTEM_USER, "auto", &patch).await {
         Ok(job) => {
-            let _ = store.update_cd_job(cdimport::SYSTEM_USER, job.id, &JobPatch { error: Some(reason.to_owned()), message: Some(detail), ..JobPatch::default() }).await;
+            let _ = store.update_cd_job(cdimport::SYSTEM_USER, job.id, &JobPatch { error: Some(reason.to_owned()), message: Some(detail.clone()), ..JobPatch::default() }).await;
         }
         Err(e) => tracing::warn!(error = %e, "the log of the import could not be written"),
     }
-    if matches!(reason, "no_match" | "ambiguous_match") {
-        crate::cdflow::notify(&crate::cdflow::CdEvent::NotStarted { disc_id: info.disc_id.clone(), reason: reason.to_owned() });
+    if matches!(reason, "no_match" | "ambiguous_match" | "heal_needed" | "no_space" | "no_target") {
+        let detail = if reason == "ambiguous_match" { detail } else { String::new() };
+        crate::cdflow::notify(store, cd, &crate::cdflow::CdEvent::NotStarted { disc_id: info.disc_id.clone(), reason: reason.to_owned(), author: info.author.clone(), title: info.title.clone(), disc: i64::from(info.disc.max(1)), detail }).await;
     }
-    let _ = cd;
 }
 
 /// A disc was put in and the setting `cd_auto_import` is on: imports it if MusicBrainz knows exactly one release for it and it is not in
@@ -802,7 +802,7 @@ pub async fn auto_import(cd: CdService, store: Store, library: Option<PathBuf>, 
         }
         // Whole in the library: nothing is read, the job is `present`, and the disc comes out at once.
         tracing::info!(device = %d.device, disc_id = %info.disc_id, reason = "disc_present", detail = %book, "automatic import: nothing started, the disc is ejected");
-        finish_present(&store, &cd, cdimport::SYSTEM_USER, "auto", &p, &d.device, true, &set.device).await;
+        finish_present(&store, &cd, cdimport::SYSTEM_USER, "auto", "", &p, &d.device, true, &set.device).await;
         return;
     }
     let candidate = match release {
@@ -887,6 +887,9 @@ pub struct RipRequest {
     /// Started by the service itself (automatic import): the job belongs to `system`.
     #[serde(skip)]
     pub auto: bool,
+    /// The device an app started the rip with (the label of its token; never read from the request body). Empty: the web, MCP or the drive.
+    #[serde(skip)]
+    pub starter_device: String,
 }
 
 fn rip_failure_code(kind: &str) -> &'static str {
@@ -1111,7 +1114,7 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
             // is for a person to decide (repair it or import it as a copy), so it stays in the drive.
             let mut ejected = false;
             if !p.needs_healing() {
-                ejected = finish_present(store, cd, user_id, "server", p, &chosen.device, req.eject == Some(true), &wanted).await;
+                ejected = finish_present(store, cd, user_id, "server", &req.starter_device, p, &chosen.device, req.eject == Some(true), &wanted).await;
             }
             return Err(RipRefusal { refusal: Refusal(409, "disc_present"), taken: Vec::new(), present: Some(present_json(p)), ejected });
         }
@@ -1190,6 +1193,9 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
             .map_err(|_| Refusal(500, "internal"))?,
     };
     if again.is_none() {
+        if !req.starter_device.is_empty() {
+            let _ = store.set_cd_starter_device(job.id, &req.starter_device).await;
+        }
         // What `retry` needs to start the same rip again.
         match serde_json::to_string(&req) {
             Ok(text) => {
@@ -1370,7 +1376,7 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
                     cd2.publish(user_id, "failed", &moved.job);
                     if waits {
                         let tracks = cd2.drives.live_of_job(job_id).map(|l| l.tracks.iter().filter(|t| t.state == "failed").map(|t| t.number).collect()).unwrap_or_default();
-                        crate::cdflow::notify(&crate::cdflow::CdEvent::ReadError { job: moved.job, tracks });
+                        crate::cdflow::notify(&store2, &cd2, &crate::cdflow::CdEvent::ReadError { job: moved.job, tracks }).await;
                     }
                 }
                 Err(e) => tracing::warn!(job = job_id, error = e.code(), "the end of a rip could not be written to the job"),
@@ -1527,9 +1533,12 @@ impl RipPlan {
 /// A CD that is whole in the library: the job (a log entry of the flow, state `present`) is written, nothing is read, and the disc is ejected
 /// at once when `eject` says so (the automatic path always does; a request asks with `"eject": true`). Returns whether the tray was opened.
 #[allow(clippy::too_many_arguments)]
-pub async fn finish_present(store: &Store, cd: &CdService, user_id: i64, device_label: &str, p: &crate::cdpresent::Present, device: &str, eject: bool, wanted: &str) -> bool {
+pub async fn finish_present(store: &Store, cd: &CdService, user_id: i64, device_label: &str, starter_device: &str, p: &crate::cdpresent::Present, device: &str, eject: bool, wanted: &str) -> bool {
     let patch = JobPatch { phase: Some("ripping".into()), author: Some(p.author.clone()), album: Some(p.book.clone()), disc: Some(i64::from(p.disc)), tracks_total: Some(p.tracks_on_disc as i64), ..JobPatch::default() };
     let Ok(job) = store.create_cd_job(user_id, device_label, &patch).await else { return false };
+    if !starter_device.is_empty() {
+        let _ = store.set_cd_starter_device(job.id, starter_device).await;
+    }
     if store.cd_move(job.id, crate::cdflow::Move::Present, &crate::cdflow::Actor::Server).await.is_err() {
         return false;
     }
@@ -1543,7 +1552,7 @@ pub async fn finish_present(store: &Store, cd: &CdService, user_id: i64, device_
     let message = format!("already in the library: {}: {}, CD {}{}", p.author, p.book, p.disc, if ejected { "; the disc was ejected" } else { "" });
     if let Ok(Some(done)) = store.update_cd_job(user_id, job.id, &JobPatch { message: Some(message), ..JobPatch::default() }).await {
         cd.publish(user_id, "done", &done);
-        crate::cdflow::notify(&crate::cdflow::CdEvent::Present { job: done });
+        crate::cdflow::notify(store, cd, &crate::cdflow::CdEvent::Present { job: done }).await;
     }
     cd.publish_drive();
     ejected
