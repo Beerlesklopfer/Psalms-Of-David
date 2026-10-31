@@ -1,0 +1,182 @@
+<!-- SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+# CDs in the family: rights, approval, inbox, spoken messages
+
+Status 2026-10-31: **draft, nothing built.** Decided by the project owner in a conversation on 2026-10-31 (quotes in German are his).
+Builds on `spec-cd-import-api.md` (jobs, the drive of the server, automatic import) and `spec-state-machines.md`.
+
+## Why
+
+"CD rein, Meldung, alles gut": automatic ripping exists so that people who are not at home with technology can put a CD in and be
+done. Today the apps say nothing when something goes differently: a CD that is in the library already, a CD MusicBrainz does not
+know, a track that cannot be read. That is only in the log of the administration. And in a Christian household a CD the parents do
+not want must not reach the library just because someone put it into the drive ("Intrusion-Möglichkeit"). At the same time a
+couple without children or a single person must not be slowed down by approvals they do not need: **it is a matter of settings.**
+
+## Rights per person
+
+Three rights on every profile (owner, 2026-10-31: "in die moderne Kultur muss das anpassbar sein"; the defaults are the careful
+"alte Kultur", every household changes them):
+
+| Right | Column | Means | Default |
+|---|---|---|---|
+| May put in CDs | `cd_may_insert` | may start a rip from the app or the web, and gets the messages of their own CDs | admins yes, others no |
+| Needs no approval | `cd_no_approval` | a CD of theirs goes into the library when it is read; otherwise it waits for approval | admins yes, others no |
+| May approve CDs of others | `cd_may_approve` | gets the tasks "CD waits for approval" and may decide them; gets the notices of CDs put in at the server | admins yes, others no |
+
+- Children and guests never get the first two (the CD API refuses them already, `403`); `cd_may_approve` is refused for them too.
+- An administrator can take rights from another administrator, but at least one profile keeps `cd_may_approve` (otherwise nobody
+  could ever decide); the users page says so when it refuses.
+- Shown on the users page of the administration as three tick boxes in the edit window ("CDs einlegen", "ohne Freigabe",
+  "CDs anderer freigeben"), and in the MCP tool for profiles. Migration: the three columns, admins set to 1, everybody else 0.
+- A member without `cd_may_insert` is treated like a child for CDs: no import symbol in the app, `403 forbidden` from `/cd/rip`.
+
+**A CD put in at the server** (automatic import) belongs to nobody: the server cannot know who stands at the drive. A setting of the
+tab "CD import" decides: `cd_auto_approval` = **wait for approval** (default) or **import at once** (for a single or a couple:
+"Ehepaare ohne Kinder oder Singles"). With "wait", the task goes to everybody with `cd_may_approve`.
+
+## The flow of one CD (state machine of a job)
+
+One state machine per CD, i.e. per job (`spec-state-machines.md`: states are stored, the GUI only shows them, every change goes
+through one function that checks the move and who may make it). The rights decide **who may make which move** and **who is told**.
+
+```
+                     ┌────────────── present ──────────────▶ PRESENT  (eject at once, notice; end)
+ inserted / started ─┤
+                     └─▶ RIPPING ──read error──▶ RETRY_WAIT ──retry──▶ RIPPING
+                            │                        └──eject / give up──▶ CANCELLED (end)
+                            ▼
+                         RIPPED ──(no approval needed)──▶ IMPORTED (end)
+                            │
+                            └─▶ AWAITING_APPROVAL ──approve──▶ IMPORTED (end)
+                                                  └──reject───▶ REJECTED  (files deleted; end)
+```
+
+| State | What the server does | The CD |
+|---|---|---|
+| `present` | the Disc ID (or author, title and CD number) shows the CD is whole in the library: nothing is read | **ejected at once** (owner: "eine CD, die schon vorhanden ist, wird gleich wieder ejected"); notice "already in the library" with a link to the album |
+| `ripping` | reads, verifies, encodes as today | in the drive |
+| `retry_wait` | a track could not be read (`read`, `verify`); what was read stays in the resume folder | **stays in the drive** (owner: "das Fehler auswerfen macht keinen Sinn"), so it can be read again without putting it in again; notice with "try again". The existing eject button of the app takes it out for cleaning |
+| `ripped` | all chosen tracks are files in the job folder; decides at once between `imported` and `awaiting_approval` | ejected (as `cd_eject_after` says) |
+| `awaiting_approval` | the files wait in `<data dir>/cd-import/held-<job>/`, **outside the library**: nobody sees them in any list, no app, no MCP tool other than the approval ones | out |
+| `imported` | the files are placed and imported as today (`finalize`); the new album is released or not by the import criteria as every other album | out |
+| `rejected` | the held files are deleted; the job log keeps the decision (who, when) | out |
+| `cancelled` | as today | out |
+
+- Ripping starts at once, also when an approval will be needed (owner: rip, then wait locked). A parent on a business trip may
+  decide two weeks later without the CD lying in the drive.
+- **Who decides `ripped`:** the starter's `cd_no_approval` for a rip from an app or the web; the setting `cd_auto_approval` for
+  a CD put in at the server.
+- **Moves and who may make them:** `retry` (from `retry_wait`) by the starter or anyone with `cd_may_approve`; `give up` by the
+  same (the app's eject also gives up); `approve` / `reject` only by someone with `cd_may_approve`. Everything else is the
+  server's own move. A move that is not allowed answers `409 invalid_move` or `403 forbidden`.
+- A held CD expires after `cd_held_keep_days` (default 60, 1..365): it becomes `rejected` with the reason `expired`, and the people
+  who could have decided get a notice. (**Open:** the owner may prefer "never expire".)
+- Approval does not replace the release of albums for children (`book_release`, import criteria): it only decides whether the
+  CD enters the library at all.
+
+## The inbox
+
+Messages are kept on the server, not only sent (owner: "ein Elternteil ist im Urlaub oder auf Dienstreise und bekommt die ganzen
+Meldungen nicht mit"). The app fetches the inbox when it opens, however long someone was away.
+
+- **Notices** ("12 tracks imported", "already in the library", "track 7 cannot be read", "Papa approved the CD"): every recipient
+  has their own read mark; a notice stays until it is read (and is removed after `inbox_keep_days`, default 90).
+- **Tasks** ("new CD: *Paulus*; import?"): one decision for everybody. When one person decides, the task is done for all, and the
+  others see a notice "Papa approved the CD *Paulus*" instead.
+- Recipients: the starter of a rip (their own CDs) and everybody with `cd_may_approve` (all tasks; the notices of CDs put in at the
+  server and of CDs of people who need approval). Children and guests receive nothing.
+
+Tables (migration after 0057): `inbox_item(id, kind 'notice'|'task', topic 'cd', job_id, code, args JSON, created_at, resolved_at,
+resolved_by, resolution)`, `inbox_recipient(item_id, profile_id, read_at)`, both with the audit fields (0028). `code` is one of the
+message keys below; the apps make the text in their language from `code` and `args` (author, title, CD n of m, tracks, track
+numbers, who decided).
+
+| Code | Kind | Args |
+|---|---|---|
+| `cd_present` | notice | album id, author, title, disc |
+| `cd_imported` | notice | album id, author, title, disc, tracks |
+| `cd_read_error` | notice (with "try again" while the job is in `retry_wait`) | job id, tracks that failed |
+| `cd_no_match`, `cd_ambiguous` | notice (the CD is not read; the web panel chooses) | disc id, candidates |
+| `cd_awaiting_approval` | task | job id, author, title, disc, tracks, who put it in (`auto` for the drive) |
+| `cd_decided` | notice | job id, approved or rejected, by whom |
+| `cd_expired` | notice | job id |
+
+API (`/api/v1`, bearer token; everybody, the list is empty for children and guests):
+
+| Request | Answer |
+|---|---|
+| `GET /inbox` | `{"items":[{id,kind,code,args,created_ms,read,resolved?,resolution?,by?}],"unread":n,"tasks_open":n}`, newest first |
+| `POST /inbox/{id}/read` | `204` |
+| `POST /inbox/{id}/decide` `{"approve":bool}` | `204`; `403 forbidden` without `cd_may_approve`; `409 decided` with `{by, resolution}` if someone was faster |
+| `POST /cd/jobs/{id}/retry` | `202`; from `retry_wait` only (`409 invalid_move`) |
+
+## Delivery
+
+- **While the app runs** (open, or playing in the background): the server sends the message over the WebSocket the app has open
+  already (`/cd/events`, new types `inbox` and `inbox_resolved`); the app shows it as a system notification with the button of the
+  task ("Import" / "Reject") or "Open album". No outside service.
+- **When the app is closed:** nothing is pushed. The next start shows "1 CD waits for approval" (badge on the profile and a card at
+  the top of the library). Real push (APNs, UnifiedPush/ntfy) is on the backlog: the owner decided it is not needed now, because a
+  CD waits locked anyway ("das genügt, denn die CD bleibt in Familien gesperrt").
+- The channel `/cd/events` is open to Admin and Member today; that stays, and a member without any CD right only gets an empty
+  inbox. (When other topics use the inbox, it moves to a general event channel.)
+
+## Spoken messages
+
+While something plays, a voice says what happened (owner: "ein Elternteil hört Musik. Die CD wird fertig. Dann sollte eine Stimme
+genau das auditiv ankündigen"): the music is ducked, the device's own speech engine (Android TextToSpeech, iOS AVSpeechSynthesizer,
+on Linux speech-dispatcher if present) says e.g. "Die CD Paulus ist fertig und wartet auf deine Freigabe.", the music comes back.
+
+Which device speaks:
+
+| The rip was started | Speaks |
+|---|---|
+| from an app | **that device** (owner: "wenn das Rippen von dem Handy aus bedient wurde, ist das das Gate") |
+| at the server (CD put in) | the devices of people with `cd_may_approve` **that are playing now and are on the home network**: whoever put the CD in is at home; the parent away is not interrupted and gets the silent message (owner: "Rippen dauert bis zu einer halben Stunde", so the finished message is needed here too) |
+
+- The server marks each message with `speak: "starter" | "home"` and the starter's device; the app decides the rest: it speaks
+  only when it is playing (otherwise a normal notification) and, for `home`, only when it reaches the server on its LAN address
+  (today always, because the WireGuard tunnel is not built; then: not over the tunnel).
+- What is spoken: `cd_imported`, `cd_awaiting_approval`, `cd_read_error`, `cd_present` for an app-started rip; not the notices of
+  decisions.
+- A switch in the app settings ("Ansagen zu CDs", on by default for people with a CD right) and the system's own volume. A child's
+  device never speaks: children receive nothing.
+- Later the voice can come from Eliezer (`/v1/audio/speech`); the device's own voice is first because it needs no server and no
+  waiting.
+
+## What changes in what exists
+
+- `cd_auto_import`: the `skipped` reasons that a person should know about become inbox notices to the approvers (`disc_present`
+  with eject, `no_match`, `ambiguous_match`, `heal_needed`, `no_space`, `no_target`); the log of the tab stays as it is.
+- `POST /cd/rip`: the starter needs `cd_may_insert`; `disc_present` ejects as the automatic path does when the request says
+  `"eject": true` (the app sets it); the job has the new states.
+- `read` / `verify` failures go to `retry_wait` instead of `failed`; the resume folder stays (as today) and `retry` uses it.
+- The web panel `/admin/cd` shows held CDs with Approve / Reject (for `cd_may_approve`), and the job log the decisions.
+- MCP: `cd_progress` lists held jobs; approving stays a thing for people, not for an LLM (no MCP tool decides).
+
+## Tests
+
+- State machine: every allowed move, every refused move (`invalid_move`), each right (`forbidden`), the faster of two deciders
+  (`409 decided`), expiry, a restart in every state (held files survive, `ripping` becomes `retry_wait` with the resume folder).
+- Held files are in no list, stream, search, MCP answer or OPDS feed until approved; rejected ones are deleted.
+- Inbox: recipients by rights, read marks per person, a task resolved for all with the notice to the others, children and guests
+  get nothing, the WebSocket messages, the inbox after a reconnect.
+- Present CD: ejected, nothing read (the fake drive counts the reads), notice with the album.
+- App: the card and badge, the notification buttons, speaking only while playing and only on the starter / at home (fake speech
+  engine), the switch.
+
+## Phases
+
+1. Rights (columns, users page, API checks) and `cd_auto_approval`.
+2. State machine with `awaiting_approval`, held folder, approve / reject, `retry_wait` / retry, present → eject.
+3. Inbox (tables, API, WebSocket types), notices from the automatic import.
+4. App: inbox card, badge, notifications with buttons, decide and retry.
+5. Spoken messages.
+6. Backlog: real push (APNs relay, UnifiedPush / ntfy); voice from Eliezer.
+
+## Open
+
+- Should a held CD expire (default 60 days) or wait for ever?
+- Does a member with `cd_may_insert` but without `cd_no_approval` see their own held CD in the app ("waits for approval"), or only
+  the notice? (Proposal: they see it, without the buttons.)

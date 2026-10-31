@@ -31,3 +31,7 @@ Things the project owner has decided to do **later**. Each line says where the c
 - **E-books** (host, read, read aloud, PDF to EPUB with a labelling language model): `docs/spec-ebooks.md`. First step: sample PDFs from the owner.
 - **Abraham Box** (David on an RK3588, night jobs, publisher edition): `docs/spec-abraham-box.md`. First step: the benchmark on the board.
 - **Read aloud through Eliezer** (push one chapter per request, voices, night window, rule 6): `docs/spec-read-aloud.md`, section "Update 2026-10-31".
+- **CDs in the family** (rights per person, approval, inbox on the server, spoken messages): `docs/spec-cd-inbox.md` (draft
+  2026-10-31, branch `feature/cd-inbox`).
+- **Real push messages** when the app is closed (APNs through a small relay without contents; UnifiedPush / ntfy on Android):
+  `docs/spec-cd-inbox.md`, "Delivery". Not needed now (owner, 2026-10-31).
