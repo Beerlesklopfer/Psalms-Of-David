@@ -79,6 +79,28 @@ async fn too_many_wrong_pins_lock_the_user_even_for_the_right_pin() {
     assert_eq!(store.verify_login("Anna", "111111").await.unwrap(), Login::WrongCredentials, "one failure, not a lock");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_burst_of_parallel_guesses_gets_no_more_tries_than_the_limit() {
+    // The lock used to be read before the PIN was checked and written after: parallel attempts all passed the read,
+    // and each got a guess. Now an attempt is counted before it is checked, so a burst gets `pin_max_failures` tries.
+    let (_dir, store) = open().await;
+    with_user(&store, "Anna", Role::Member, "483920").await;
+    let mut burst = tokio::task::JoinSet::new();
+    for i in 0..40 {
+        let store = store.clone();
+        // One of the guesses is right; it must not get through once the five tries are used up.
+        let pin = if i == 39 { "483920" } else { "111111" };
+        burst.spawn(async move { store.verify_login("Anna", pin).await.unwrap() });
+    }
+    let results = burst.join_all().await;
+    let ok = results.iter().filter(|r| matches!(r, Login::Ok { .. })).count();
+    let wrong = results.iter().filter(|r| **r == Login::WrongCredentials).count();
+    // At most five attempts are checked (four plain failures and the one that locks); every other one is refused
+    // unchecked. The right PIN gets through only if it happened to be one of those five.
+    assert!(wrong <= 4, "{wrong} attempts were checked and failed: {results:?}");
+    assert!(ok + wrong <= 5, "{results:?}");
+}
+
 #[tokio::test]
 async fn a_right_pin_resets_the_failure_count() {
     let (_dir, store) = open().await;

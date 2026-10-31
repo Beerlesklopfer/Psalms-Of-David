@@ -346,8 +346,9 @@ pub async fn login_submit(State(state): State<AppState>, headers: HeaderMap, For
         }
     };
     match outcome {
-        Login::WrongCredentials => login_failure(&state, &headers, StatusCode::UNAUTHORIZED, "err.login"),
-        Login::Locked { .. } => login_failure(&state, &headers, StatusCode::TOO_MANY_REQUESTS, "err.locked"),
+        // A lock gets the same answer as a wrong name: only names that exist can be locked, so a different answer
+        // would tell which names exist. The message says that signing in pauses after wrong PINs.
+        Login::WrongCredentials | Login::Locked { .. } => login_failure(&state, &headers, StatusCode::UNAUTHORIZED, "err.login"),
         Login::Ok { user_id, role } => {
             crate::actor::set(crate::actor::profile(user_id));
             let remember = form.remember == "1";
@@ -1020,7 +1021,9 @@ pub struct UserPin {
 
 pub async fn user_set_pin(State(state): State<AppState>, s: AdminSession, Form(f): Form<UserPin>) -> Response {
     let outcome = async {
-        state.store.set_pin(f.id, f.pin.trim()).await?;
+        // A PIN is reset because it is forgotten or known to someone else: the browser sessions signed in with the old
+        // one end (like `david reset-pin`, but paired devices stay signed in, as when the user changes it themself).
+        state.store.replace_pin(f.id, f.pin.trim(), &s.token).await?;
         user_row(&state, &s, f.id).await
     }
     .await;

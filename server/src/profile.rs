@@ -297,6 +297,14 @@ impl Store {
             Login::Locked { .. } => return Err(Error::PinLocked),
             _ => return Err(Error::WrongPin),
         }
+        self.replace_pin(user_id, new, keep_session).await
+    }
+
+    /// Sets a new PIN or password and ends the browser sessions of the user, except `keep_session` (the session that
+    /// makes the change, so an administrator who resets their own PIN stays signed in). Paired devices keep their
+    /// sessions: they were added by pairing, not with the PIN, so a known PIN does not give a device. Used when the
+    /// user changes their own PIN and when an administrator resets it.
+    pub async fn replace_pin(&self, user_id: i64, new: &str, keep_session: &str) -> Result<()> {
         self.set_pin(user_id, new).await?;
         let values: [Value; 2] = [user_id.into(), crate::auth::sha256_hex(keep_session).into()];
         self.db

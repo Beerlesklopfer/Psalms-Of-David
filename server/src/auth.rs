@@ -140,6 +140,8 @@ impl Store {
         let expires_at: Option<i64> = row.try_get_by_index(4)?;
 
         if let Some(until) = locked_until.filter(|&u| u > now) {
+            // Take as long as a real check, so the time of the answer does not tell a locked user from others.
+            let _ = pin_matches(pin, dummy_hash());
             return Ok(Login::Locked { until });
         }
         if expires_at.is_some_and(|e| e <= now) {
@@ -149,6 +151,43 @@ impl Store {
             let _ = pin_matches(pin, dummy_hash());
             return Ok(Login::WrongCredentials);
         };
+
+        // Count the attempt before the PIN is checked, in one statement that refuses while the user is locked. The
+        // lock read above comes from the reader and can be stale: without this, a burst of parallel attempts all pass
+        // that read before the first failure is written, and each of them gets a guess (as many as the requests, not
+        // `pin_max_failures` per lock). The attempt that reaches the limit sets the lock; a right PIN lifts it again.
+        let max: i64 = self.setting("pin_max_failures").await?.and_then(|v| v.parse().ok()).unwrap_or(5);
+        let lock_s: i64 = self.setting("pin_lock_s").await?.and_then(|v| v.parse().ok()).unwrap_or(900);
+        let values: [Value; 5] = [max.into(), (now + lock_s * 1000).into(), max.into(), id.into(), now.into()];
+        let reserved = self
+            .db
+            .writer
+            .query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE profile SET \
+                   pin_locked_until = CASE WHEN pin_failures + 1 >= ? THEN ? ELSE NULL END, \
+                   pin_failures = CASE WHEN pin_failures + 1 >= ? THEN 0 ELSE pin_failures + 1 END \
+                 WHERE id = ? AND (pin_locked_until IS NULL OR pin_locked_until <= ?) \
+                 RETURNING pin_locked_until",
+                values,
+            ))
+            .await?;
+        let Some(reserved) = reserved else {
+            // Locked meanwhile by a parallel attempt: this one is not checked.
+            let _ = pin_matches(pin, dummy_hash());
+            let until: Option<i64> = self
+                .db
+                .writer
+                .query_one_raw(Statement::from_sql_and_values(
+                    DbBackend::Sqlite,
+                    "SELECT pin_locked_until FROM profile WHERE id = ?",
+                    [Value::from(id)],
+                ))
+                .await?
+                .and_then(|r| r.try_get_by_index(0).ok());
+            return Ok(Login::Locked { until: until.unwrap_or(now) });
+        };
+        let locked_now: Option<i64> = reserved.try_get_by_index(0)?;
 
         if pin_matches(pin, &stored) {
             self.db
@@ -163,32 +202,8 @@ impl Store {
             return Ok(Login::Ok { user_id: id, role });
         }
 
-        let max: i64 = self.setting("pin_max_failures").await?.and_then(|v| v.parse().ok()).unwrap_or(5);
-        let lock_s: i64 = self.setting("pin_lock_s").await?.and_then(|v| v.parse().ok()).unwrap_or(900);
-        // One statement, so concurrent attempts cannot both be counted as the first.
-        let values: [Value; 4] = [max.into(), (now + lock_s * 1000).into(), max.into(), id.into()];
-        self.db
-            .writer
-            .execute_raw(Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                "UPDATE profile SET \
-                   pin_locked_until = CASE WHEN pin_failures + 1 >= ? THEN ? ELSE pin_locked_until END, \
-                   pin_failures = CASE WHEN pin_failures + 1 >= ? THEN 0 ELSE pin_failures + 1 END \
-                 WHERE id = ?",
-                values,
-            ))
-            .await?;
-        let locked: Option<i64> = self
-            .db
-            .writer
-            .query_one_raw(Statement::from_sql_and_values(
-                DbBackend::Sqlite,
-                "SELECT pin_locked_until FROM profile WHERE id = ?",
-                [Value::from(id)],
-            ))
-            .await?
-            .and_then(|r| r.try_get_by_index(0).ok());
-        match locked.filter(|&u| u > now) {
+        // The failure is already counted above.
+        match locked_now.filter(|&u| u > now) {
             Some(until) => Ok(Login::Locked { until }),
             None => Ok(Login::WrongCredentials),
         }

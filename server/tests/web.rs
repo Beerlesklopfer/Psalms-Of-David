@@ -198,11 +198,16 @@ async fn five_wrong_pins_lock_the_account() {
         assert_eq!(login(&a, "name=Boss&pin=000000").await.status, StatusCode::UNAUTHORIZED);
     }
     let fifth = login(&a, "name=Boss&pin=000000").await;
-    assert_eq!(fifth.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(fifth.status, StatusCode::UNAUTHORIZED);
     // Even the right PIN is refused while locked.
     let right = login(&a, &format!("name=Boss&pin={PIN}")).await;
-    assert_eq!(right.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(right.status, StatusCode::UNAUTHORIZED);
     assert!(right.header("set-cookie").is_none());
+    // A locked name gets the same page as a name that does not exist, so the lock does not tell which names exist.
+    let without_token = |body: &str| body.split('"').map(|p| if p.len() == 64 && p.bytes().all(|b| b.is_ascii_hexdigit()) { "TOKEN" } else { p }).collect::<Vec<_>>().join("\"");
+    let nobody = login(&a, &format!("name=Nobody&pin={PIN}")).await;
+    assert_eq!((right.status, without_token(&right.body)), (nobody.status, without_token(&nobody.body)));
+    assert!(right.body.contains("signing in pauses"));
 }
 
 #[tokio::test]
@@ -1156,6 +1161,31 @@ async fn the_pin_changes_only_with_the_current_one() {
     assert!(a.store.session_for_token(&other).await.unwrap().is_none());
     assert!(a.store.session_for_token(&device_session).await.unwrap().is_some());
     assert_eq!(send(&a, get("/profile", &o)).await.status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_pin_reset_by_an_administrator_signs_out_the_browsers_but_not_the_devices() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let anna = a.store.create_profile("Anna", false).await.unwrap();
+    a.store.set_pin(anna, "112233").await.unwrap();
+    let browser = a.store.create_session(anna, Role::Member, None).await.unwrap();
+    let device = a.store.add_device(david_server::NewDevice { user_id: anna, name: "Phone".into(), wg_pubkey: "K".repeat(43) + "=", tunnel_ip: "10.77.0.2".into(), shared: false, created_by: None }).await.unwrap();
+    let device_session = a.store.create_session(anna, Role::Member, Some(device)).await.unwrap();
+
+    let r = send(&a, post("/admin/rpc/user.set_pin", &form(&[("id", &anna.to_string()), ("pin", "9876")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(a.store.session_for_token(&browser).await.unwrap().is_none(), "whoever knew the old PIN is signed out");
+    assert!(a.store.session_for_token(&device_session).await.unwrap().is_some(), "the phone stays paired and signed in");
+
+    // An administrator who resets their own PIN keeps the session they do it from; their other browsers end.
+    let boss = a.store.list_profiles().await.unwrap().into_iter().find(|p| p.name == "Boss").unwrap().id;
+    let other = a.store.create_session(boss, Role::Admin, None).await.unwrap();
+    let r = send(&a, post("/admin/rpc/user.set_pin", &form(&[("id", &boss.to_string()), ("pin", "556677")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(a.store.session_for_token(&other).await.unwrap().is_none());
+    assert_eq!(send(&a, get("/admin/users", &Opts { cookie: Some(&cookie), ..Default::default() })).await.status, StatusCode::OK);
 }
 
 #[tokio::test]
