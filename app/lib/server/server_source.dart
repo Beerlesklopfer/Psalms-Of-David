@@ -160,7 +160,11 @@ class ServerSource implements MediaSource {
   Future<void> _once(File file, Future<void> Function() download) {
     final running = _running[file.path];
     if (running != null) return running;
-    final future = download().whenComplete(() => _running.remove(file.path));
+    // A block, not an arrow: `remove` returns the removed future, and a future returned to `whenComplete` is waited
+    // for, so the download would wait for itself and never end.
+    final future = download().whenComplete(() {
+      _running.remove(file.path);
+    });
     _running[file.path] = future;
     return future;
   }
