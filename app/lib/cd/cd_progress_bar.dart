@@ -25,6 +25,34 @@ String cdPhaseLabel(AppLocalizations l, String? phase) => switch (phase) {
   _ => l.cdPhaseWorking,
 };
 
+/// What an ended job says besides done and failed: `present`, `skipped` (with the reason code), `rejected`, `cancelled`, `imported`.
+String cdEndText(AppLocalizations l, CdJobState j) {
+  final title = j.title?.trim() ?? '';
+  switch (j.stateName) {
+    case 'present':
+      return title.isEmpty ? l.cdEndPresentPlain : l.cdEndPresent(title);
+    case 'rejected':
+      return l.cdEndRejected;
+    case 'cancelled':
+      return l.cdEndCancelled;
+    case 'skipped':
+      return cdErrorText(l, j.error ?? 'import_failed');
+    case 'done':
+    case 'imported':
+      final n = j.tracksTotal;
+      return n == null ? l.cdBarDoneNoCount : l.cdBarDone(n);
+    default:
+      return cdErrorText(l, j.error ?? 'import_failed');
+  }
+}
+
+/// The line of a job that waits for a person (no bar): "Sturz der Titanen: Waits for approval".
+String cdWaitText(AppLocalizations l, CdJobState j) {
+  final title = j.title?.trim() ?? '';
+  final what = j.kind == CdJobKind.waitingApproval ? l.cdWaitsApproval : l.cdWaitsRetry;
+  return title.isEmpty ? what : '$title: $what';
+}
+
 /// The one line of the strip: "Sturz der Titanen, CD 3: Track 3 of 11 · Reading · 40 %". Parts that
 /// the job does not know are left out.
 String cdProgressLine(AppLocalizations l, CdJobState j) {
@@ -145,18 +173,12 @@ class _CdProgressStripState extends State<CdProgressStrip> {
     final j = _job;
     Widget child = const SizedBox(width: double.infinity);
     if (j != null) {
-      final ok = j.finished && j.state == 'done';
-      final failed = j.finished && j.state == 'failed';
-      final String text;
-      if (ok) {
-        final n = j.tracksTotal;
-        text = n == null ? l.cdBarDoneNoCount : l.cdBarDone(n);
-      } else if (failed) {
-        text = cdErrorText(l, j.error ?? 'import_failed');
-      } else {
-        text = cdProgressLine(l, j);
-      }
-      final value = j.finished ? 1.0 : j.overall;
+      final ok = j.succeeded;
+      final failed = j.finished && !ok && const {'failed', 'skipped'}.contains(j.stateName);
+      final String text = j.finished
+          ? cdEndText(l, j)
+          : (j.waiting ? cdWaitText(l, j) : cdProgressLine(l, j));
+      final value = j.finished ? 1.0 : (j.waiting ? 0.0 : j.overall);
       final color = ok ? Colors.green : (failed ? cs.error : cs.primary);
       child = Semantics(
         container: true,
