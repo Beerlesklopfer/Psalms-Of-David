@@ -283,8 +283,9 @@ fn place(unpacked: &Path, root: &Path) -> Result<Vec<String>, String> {
         };
         let author = clean_name(&author.or(folder_author).unwrap_or_default(), "Unknown");
         let title = clean_name(&title.or(folder_title).unwrap_or_default(), "Unknown");
-        let files: Vec<(&PathBuf, String)> =
-            audio.iter().chain(pictures.iter()).map(|p| (p, p.file_name().map(|n| clean_name(&n.to_string_lossy(), "file")).unwrap_or_default())).collect();
+        let files: Vec<(&PathBuf, String)> = distinct_names(
+            audio.iter().chain(pictures.iter()).map(|p| (p, p.file_name().map(|n| clean_name(&n.to_string_lossy(), "file")).unwrap_or_default())),
+        );
         // Never over an album that is there already: two uploads with the same tags (or two without tags, both
         // `Unknown/Unknown`) would replace each other's files. The second one goes to `Title (2)` and so on; the
         // administrator sees the name in the result and can merge or rename.
@@ -326,6 +327,27 @@ pub fn clean_name(name: &str, fallback: &str) -> String {
         .collect();
     let cleaned: String = cleaned.trim().trim_start_matches('.').trim().chars().take(120).collect();
     if cleaned.is_empty() { fallback.to_owned() } else { cleaned }
+}
+
+/// Makes the names of the files of one album distinct: two names that are the same after `clean_name` (cut at 120
+/// characters, `:` made `_`, or only differing in case) get ` (2)`, ` (3)` … before the ending, so neither is lost.
+fn distinct_names<'a>(files: impl Iterator<Item = (&'a PathBuf, String)>) -> Vec<(&'a PathBuf, String)> {
+    let mut taken = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for (path, name) in files {
+        let (stem, ending) = match name.rsplit_once('.') {
+            Some((s, e)) if !s.is_empty() => (s.to_owned(), format!(".{e}")),
+            _ => (name.clone(), String::new()),
+        };
+        let mut candidate = name.clone();
+        let mut n = 2;
+        while !taken.insert(candidate.to_lowercase()) {
+            candidate = format!("{stem} ({n}){ending}");
+            n += 1;
+        }
+        out.push((path, candidate));
+    }
+    out
 }
 
 /// The folder for an album: `root/author/title`, or `title (2)`, `title (3)` … when one of `names` is there already.
@@ -378,6 +400,19 @@ mod tests {
         fs::write(elsewhere.path().join("x"), "new").unwrap();
         assert!(move_file(&elsewhere.path().join("x"), &root.path().join("Unknown/Unknown/01.mp3")).is_err());
         assert_eq!(fs::read_to_string(root.path().join("Unknown/Unknown/01.mp3")).unwrap(), "first");
+    }
+
+    #[test]
+    fn two_files_whose_names_become_the_same_both_arrive() {
+        let root = tempfile::tempdir().unwrap();
+        let unpacked = tempfile::tempdir().unwrap();
+        fs::write(unpacked.path().join("Teil 1: Anfang.mp3"), "a").unwrap();
+        fs::write(unpacked.path().join("Teil 1_ Anfang.mp3"), "b").unwrap();
+        place(unpacked.path(), root.path()).unwrap();
+        let dest = root.path().join("Unknown/Unknown");
+        let mut names: Vec<String> = fs::read_dir(&dest).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        names.sort();
+        assert_eq!(names, ["Teil 1_ Anfang (2).mp3", "Teil 1_ Anfang.mp3"]);
     }
 
     #[test]

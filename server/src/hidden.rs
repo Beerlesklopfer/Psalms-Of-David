@@ -75,7 +75,11 @@ impl Store {
         let authors = self
             .db
             .reader
-            .query_all_raw(stmt("SELECT a.id, a.name, h.kind FROM profile_hidden h JOIN author a ON a.id = h.author_id WHERE h.profile_id = ? ORDER BY a.name, h.kind", [profile_id.into()]))
+            // Only authors with a book the profile may see, like the books above.
+            .query_all_raw(stmt(
+                &format!("SELECT a.id, a.name, h.kind FROM profile_hidden h JOIN profile p ON p.id = h.profile_id JOIN author a ON a.id = h.author_id WHERE h.profile_id = ? AND EXISTS (SELECT 1 FROM book b WHERE b.author_id = a.id AND {VISIBLE}) ORDER BY a.name, h.kind"),
+                [profile_id.into()],
+            ))
             .await?;
         Ok(Hidden {
             show_hidden: show == 1,
@@ -93,12 +97,13 @@ impl Store {
     /// Hides a book for the profile, or shows it again. `false` if there is no such book for this profile: a book it may not
     /// see answers like one that does not exist, so hiding cannot be used to find out which books there are.
     pub async fn set_book_hidden(&self, profile_id: i64, book_id: i64, hidden: bool) -> Result<bool> {
-        let exists = self
-            .db
-            .reader
-            .query_one_raw(stmt(&format!("SELECT 1 FROM book b JOIN profile p ON p.id = ? WHERE b.id = ? AND {VISIBLE}"), [profile_id.into(), book_id.into()]))
-            .await?
-            .is_some();
+        // Showing again works for whatever the profile itself hid (that tells it nothing new); hiding needs a book it may see.
+        let sql = if hidden {
+            format!("SELECT 1 FROM book b JOIN profile p ON p.id = ? WHERE b.id = ? AND {VISIBLE}")
+        } else {
+            "SELECT 1 FROM profile_hidden WHERE profile_id = ? AND book_id = ?".to_owned()
+        };
+        let exists = self.db.reader.query_one_raw(stmt(&sql, [profile_id.into(), book_id.into()])).await?.is_some();
         if !exists {
             return Ok(false);
         }
@@ -131,10 +136,18 @@ impl Store {
         let Some(row) = self
             .db
             .reader
-            .query_one_raw(stmt(
-                &format!("SELECT a.id FROM author a JOIN book b ON b.author_id = a.id JOIN profile p ON p.id = ? WHERE a.name = ? COLLATE NOCASE AND {VISIBLE} LIMIT 1"),
-                [profile_id.into(), author.trim().to_owned().into()],
-            ))
+            .query_one_raw(if hidden {
+                stmt(
+                    &format!("SELECT a.id FROM author a JOIN book b ON b.author_id = a.id JOIN profile p ON p.id = ? WHERE a.name = ? COLLATE NOCASE AND {VISIBLE} LIMIT 1"),
+                    [profile_id.into(), author.trim().to_owned().into()],
+                )
+            } else {
+                // Showing again: an author this profile hid, whatever it may see now.
+                stmt(
+                    "SELECT a.id FROM profile_hidden h JOIN author a ON a.id = h.author_id WHERE h.profile_id = ? AND a.name = ? COLLATE NOCASE LIMIT 1",
+                    [profile_id.into(), author.trim().to_owned().into()],
+                )
+            })
             .await?
         else {
             return Ok(false);

@@ -70,29 +70,18 @@ fn is_web_address(url: &str) -> bool {
 /// document that is built to use up the memory.
 const MAX_NODES: u32 = 1_000_000;
 
-/// Whether the document type declaration has an internal subset (`<!DOCTYPE rss [ ... ]>`), the only place where
-/// entities can be declared. Old RSS 0.91 feeds carry a plain public declaration, which stays allowed; an internal
-/// subset is refused, because entities that refer to each other expand a small feed into gigabytes of text
-/// ("billion laughs"), and roxmltree does not limit how often the document itself refers to one.
-fn has_internal_subset(xml: &str) -> bool {
-    let Some(start) = xml.find("<!DOCTYPE") else { return false };
-    let mut quote = None;
-    for c in xml[start + "<!DOCTYPE".len()..].chars() {
-        match (quote, c) {
-            (Some(q), c) if c == q => quote = None,
-            (Some(_), _) => {}
-            (None, '"' | '\'') => quote = Some(c),
-            (None, '[') => return true,
-            (None, '>') => return false,
-            (None, _) => {}
-        }
-    }
-    false
+/// Whether the document declares entities (`<!ENTITY`), which XML allows only in the internal subset of the document
+/// type declaration (`<!DOCTYPE rss [ ... ]>`). Entities that refer to each other expand a small feed into gigabytes of
+/// text ("billion laughs"), and roxmltree does not limit how often the document itself refers to one; no real feed
+/// declares any. A plain public declaration (old RSS 0.91 feeds) stays allowed. The whole text is searched, not only the
+/// first DOCTYPE, because a comment before the real one can carry a harmless decoy.
+fn declares_entities(xml: &str) -> bool {
+    xml.contains("<!ENTITY")
 }
 
 /// Reads an RSS 2.0 or Atom document. An error says in a few words why it is none.
 pub fn parse(xml: &str) -> Result<Feed, String> {
-    if has_internal_subset(xml) {
+    if declares_entities(xml) {
         return Err("not a feed: it declares its own entities".into());
     }
     let options = roxmltree::ParsingOptions { allow_dtd: true, nodes_limit: MAX_NODES, ..Default::default() };
@@ -269,9 +258,9 @@ mod tests {
         bomb.push_str(&"&j;".repeat(1000));
         bomb.push_str("</title></channel></rss>");
         assert!(parse(&bomb).unwrap_err().contains("entities"));
-        // A bracket inside a quoted identifier is not an internal subset.
-        assert!(!has_internal_subset(r#"<!DOCTYPE rss SYSTEM "http://example.org/[x].dtd"><rss/>"#));
-        assert!(has_internal_subset("<!DOCTYPE rss SYSTEM 'x.dtd' [ <!ENTITY e 'x'> ]><rss/>"));
+        // A decoy DOCTYPE in a comment in front of the real one does not hide the declarations.
+        let decoy = bomb.replacen("<!DOCTYPE rss [", "<!-- <!DOCTYPE x> --><!DOCTYPE rss [", 1);
+        assert!(parse(&decoy).unwrap_err().contains("entities"));
     }
 
     #[test]

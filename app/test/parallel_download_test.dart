@@ -48,6 +48,16 @@ void main() {
     expect(dir.listSync().where((e) => e.path.endsWith('.part')), isEmpty, reason: 'no half file is left behind');
   });
 
+  test('the half-loaded files of an earlier run are deleted at the start, the downloaded ones stay', () {
+    final dir = Directory.systemTemp.createTempSync('psalm-partials-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    File('${dir.path}/7.mp3').writeAsStringSync('whole');
+    File('${dir.path}/8.mp3.123-0.part').writeAsStringSync('half');
+    File('${dir.path}/ep-x.audio.part').writeAsStringSync('half');
+    ServerSource.dropPartials(dir);
+    expect(dir.listSync().map((e) => e.uri.pathSegments.last), ['7.mp3']);
+  });
+
   test('every download gets a file of its own until it is complete', () {
     final dest = File('${Directory.systemTemp.path}/x.mp3');
     final a = partialFileFor(dest), b = partialFileFor(dest);

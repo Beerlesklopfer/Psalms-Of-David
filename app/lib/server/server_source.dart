@@ -142,6 +142,20 @@ class ServerSource implements MediaSource {
   /// waits for the first instead of writing the same file again. Static, because every source writes into the same cache.
   static final Map<String, Future<void>> _running = {};
 
+  /// Deletes the half-loaded files (`*.part`) that a run left behind when it was closed during a download. Every download
+  /// writes a file of its own (see [partialFileFor]), so a later one does not reuse them; called once at the start, before
+  /// anything is downloaded.
+  static void dropPartials(Directory cache) {
+    try {
+      if (!cache.existsSync()) return;
+      for (final e in cache.listSync()) {
+        if (e is File && e.path.endsWith('.part')) e.deleteSync();
+      }
+    } on FileSystemException {
+      // Left for the next start.
+    }
+  }
+
   /// Runs [download] for [file] unless the same file is being downloaded already; then it waits for that one.
   static Future<void> _once(File file, Future<void> Function() download) {
     final running = _running[file.path];

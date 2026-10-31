@@ -57,6 +57,8 @@ import 'widgets.dart';
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppPaths.init();
+  // Before any download starts: what an earlier run left half loaded is of no use.
+  ServerSource.dropPartials(partCache());
   await PsalmAudioHandler.init();
   runApp(PsalmApp(pairing: _pairingAddress(args)));
 }

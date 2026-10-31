@@ -145,6 +145,7 @@ impl Store {
             return Ok(Login::Locked { until });
         }
         if expires_at.is_some_and(|e| e <= now) {
+            let _ = pin_matches(pin, dummy_hash());
             return Ok(Login::WrongCredentials);
         }
         let Some(stored) = stored else {
