@@ -192,14 +192,10 @@ async fn a_wrong_name_and_a_wrong_pin_get_the_same_answer() {
 }
 
 #[tokio::test]
-async fn five_wrong_pins_lock_the_account() {
+async fn a_wrong_pin_makes_the_next_try_wait() {
     let a = app().await;
-    for _ in 0..4 {
-        assert_eq!(login(&a, "name=Boss&pin=000000").await.status, StatusCode::UNAUTHORIZED);
-    }
-    let fifth = login(&a, "name=Boss&pin=000000").await;
-    assert_eq!(fifth.status, StatusCode::UNAUTHORIZED);
-    // Even the right PIN is refused while locked.
+    assert_eq!(login(&a, "name=Boss&pin=000000").await.status, StatusCode::UNAUTHORIZED);
+    // Right after it, even the right PIN is refused: the wait (a * 2^n seconds) has not run out.
     let right = login(&a, &format!("name=Boss&pin={PIN}")).await;
     assert_eq!(right.status, StatusCode::UNAUTHORIZED);
     assert!(right.header("set-cookie").is_none());
@@ -207,7 +203,7 @@ async fn five_wrong_pins_lock_the_account() {
     let without_token = |body: &str| body.split('"').map(|p| if p.len() == 64 && p.bytes().all(|b| b.is_ascii_hexdigit()) { "TOKEN" } else { p }).collect::<Vec<_>>().join("\"");
     let nobody = login(&a, &format!("name=Nobody&pin={PIN}")).await;
     assert_eq!((right.status, without_token(&right.body)), (nobody.status, without_token(&nobody.body)));
-    assert!(right.body.contains("signing in pauses"));
+    assert!(right.body.contains("the next try has to wait"));
 }
 
 #[tokio::test]

@@ -28,7 +28,7 @@ async fn the_overview_shows_the_state_in_english_and_german() {
     assert!(en.contains("<h1>Dashboard</h1>"));
     assert!(en.contains("Books waiting for a release"));
     assert!(en.contains("<dd>2</dd>"), "two unreleased books: {en}");
-    assert!(en.contains("<dd>11</dd>"), "eleven unconfirmed proposals");
+    assert!(en.contains("<dd>9</dd>"), "nine unconfirmed proposals (the two of the PIN lock gave way to the owner's pin_backoff_s, 0057)");
     assert!(en.contains("locked"), "the import is locked by default");
     assert!(en.contains(&server_id));
 

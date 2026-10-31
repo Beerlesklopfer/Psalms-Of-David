@@ -206,8 +206,7 @@ impl SettingView {
     fn from_row(s: crate::entities::setting::Model) -> SettingView {
         let minutes = |v: &str| v.parse::<i64>().map_or_else(|_| v.to_owned(), |n| (n / 60).to_string());
         let (group, unit, shown) = match s.key.as_str() {
-            "pin_max_failures" => ("signin", "unit.attempts", s.value.clone()),
-            "pin_lock_s" => ("signin", "unit.minutes", minutes(&s.value)),
+            "pin_backoff_s" => ("signin", "unit.seconds", s.value.clone()),
             "enrollment_code_ttl_s" => ("pairing", "unit.minutes", minutes(&s.value)),
             "device_inactive_days" => ("pairing", "unit.days", s.value.clone()),
             "guest_expire_days" => ("guests", "unit.days", s.value.clone()),

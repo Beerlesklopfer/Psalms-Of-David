@@ -17,6 +17,10 @@ use crate::error::{Error, Result};
 use crate::roles::Role;
 use crate::store::{Store, now_ms};
 
+/// The wait after wrong PINs doubles at most this many times (a * 2^30 seconds is decades); only so that the number cannot
+/// overflow. A forgotten or guessed PIN is reset by an administrator or with `david reset-pin`.
+const MAX_DOUBLINGS: i64 = 30;
+
 /// A PIN is 4 to 12 digits. (Proposal; the owner has not set a rule yet.)
 pub const PIN_MIN_LEN: usize = 4;
 pub const PIN_MAX_LEN: usize = 12;
@@ -116,7 +120,8 @@ impl Store {
         Ok(())
     }
 
-    /// Checks a name and a PIN. Counts failures and locks the user after too many.
+    /// Checks a name and a PIN. A wrong PIN makes the next try wait `a * 2^n` seconds (n wrong PINs in a row, a the
+    /// setting `pin_backoff_s`); a try during the wait is refused unchecked (`Locked`).
     pub async fn verify_login(&self, name: &str, pin: &str) -> Result<Login> {
         let now = now_ms();
         let row = self
@@ -153,21 +158,21 @@ impl Store {
             return Ok(Login::WrongCredentials);
         };
 
-        // Count the attempt before the PIN is checked, in one statement that refuses while the user is locked. The
-        // lock read above comes from the reader and can be stale: without this, a burst of parallel attempts all pass
-        // that read before the first failure is written, and each of them gets a guess (as many as the requests, not
-        // `pin_max_failures` per lock). The attempt that reaches the limit sets the lock; a right PIN lifts it again.
-        let max: i64 = self.setting("pin_max_failures").await?.and_then(|v| v.parse().ok()).unwrap_or(5);
-        let lock_s: i64 = self.setting("pin_lock_s").await?.and_then(|v| v.parse().ok()).unwrap_or(900);
-        let values: [Value; 5] = [max.into(), (now + lock_s * 1000).into(), max.into(), id.into(), now.into()];
+        // Count the attempt before the PIN is checked, in one statement that refuses while the user has to wait. The
+        // read above comes from the reader and can be stale: without this, a burst of parallel attempts all passed it
+        // before the first failure was written, and each of them got a guess. The attempt sets the wait it would cause
+        // if it is wrong, `a * 2^n` seconds after the n-th wrong PIN in a row (`pin_backoff_s` is a; project owner,
+        // 2026-10-31); a right PIN lifts it again.
+        let a_s: i64 = self.setting("pin_backoff_s").await?.and_then(|v| v.parse().ok()).filter(|&a| a > 0).unwrap_or(1);
+        let values: [Value; 5] = [now.into(), (a_s * 1000).into(), MAX_DOUBLINGS.into(), id.into(), now.into()];
         let reserved = self
             .db
             .writer
             .query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE profile SET \
-                   pin_locked_until = CASE WHEN pin_failures + 1 >= ? THEN ? ELSE NULL END, \
-                   pin_failures = CASE WHEN pin_failures + 1 >= ? THEN 0 ELSE pin_failures + 1 END \
+                   pin_locked_until = ? + ? * (1 << MIN(pin_failures + 1, ?)), \
+                   pin_failures = pin_failures + 1 \
                  WHERE id = ? AND (pin_locked_until IS NULL OR pin_locked_until <= ?) \
                  RETURNING pin_locked_until",
                 values,
@@ -188,7 +193,7 @@ impl Store {
                 .and_then(|r| r.try_get_by_index(0).ok());
             return Ok(Login::Locked { until: until.unwrap_or(now) });
         };
-        let locked_now: Option<i64> = reserved.try_get_by_index(0)?;
+        let _: Option<i64> = reserved.try_get_by_index(0)?;
 
         if pin_matches(pin, &stored) {
             self.db
@@ -203,11 +208,8 @@ impl Store {
             return Ok(Login::Ok { user_id: id, role });
         }
 
-        // The failure is already counted above.
-        match locked_now.filter(|&u| u > now) {
-            Some(until) => Ok(Login::Locked { until }),
-            None => Ok(Login::WrongCredentials),
-        }
+        // Counted above, and the wait for the next try is set.
+        Ok(Login::WrongCredentials)
     }
 
     /// Opens a session and returns its token. The lifetime comes from the policy

@@ -1685,7 +1685,7 @@ pub async fn book_set_exempt(State(state): State<AppState>, s: AdminSession, For
 }
 
 /// The values of the settings page. Each is a number in the unit the page shows, except the time zone.
-const SETTING_RULES: [(&str, i64, i64, i64); 14] = [
+const SETTING_RULES: [(&str, i64, i64, i64); 13] = [
     ("transcode_kbps", 32, 320, 1),
     ("transcode_cache_mb", 64, 1_000_000, 1),
     ("transcode_parallel", 1, 8, 1),
@@ -1696,8 +1696,7 @@ const SETTING_RULES: [(&str, i64, i64, i64); 14] = [
     ("import_interval_min", 0, 1440, 1),
     ("min_free_gb", 0, 100_000, 1),
     // key, smallest, largest, factor to the stored unit
-    ("pin_max_failures", 1, 20, 1),
-    ("pin_lock_s", 1, 1440, 60),
+    ("pin_backoff_s", 1, 3600, 1),
     ("enrollment_code_ttl_s", 1, 1440, 60),
     ("device_inactive_days", 1, 3650, 1),
     ("guest_expire_days", 1, 365, 1),
