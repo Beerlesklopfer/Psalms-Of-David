@@ -169,7 +169,7 @@ void main() {
     );
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
     await tester.pumpAndSettle();
-    expect(find.text('Storage on this device'), findsOneWidget);
+    expect(find.text('Saved for offline'), findsOneWidget);
     expect(find.text('20 B in 4 downloaded parts'), findsOneWidget);
 
     await tester.ensureVisible(find.text('Remove'));
@@ -180,7 +180,7 @@ void main() {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
     await tester.pumpAndSettle();
     expect(p.downloadedCount(b), 0);
-    expect(find.text('No downloads'), findsOneWidget);
+    expect(find.text('Nothing yet'), findsOneWidget);
     p.dispose();
   });
 }

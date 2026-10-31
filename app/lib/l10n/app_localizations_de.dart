@@ -458,8 +458,7 @@ class AppLocalizationsDe extends AppLocalizations {
   }
 
   @override
-  String get aboutDescription =>
-      'Psalms spielt Hörbücher, Musik und mehr von deinem eigenen David-Server, für die ganze Familie.';
+  String get aboutDescription => 'Psalms, das Mediacenter deiner Familie';
 
   @override
   String get aboutLicense =>
@@ -482,18 +481,18 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get connectNeedsDavid =>
-      'Psalms ist nur der Player. Es braucht einen David-Server, auf dem deine Hörbücher, deine Musik und die Profile der Familie liegen. Ohne einen gibt es in Psalms nichts zu hören.';
+      'Wer David betreut, gibt dir einen Code. Mit dem verbindest du dieses Gerät einmal, danach hörst du alles, was für dich freigegeben ist.';
 
   @override
-  String get aboutDavidTitle => 'Psalms braucht einen David-Server';
+  String get aboutDavidTitle => 'Psalms spielt die Bibliothek deiner Familie';
 
   @override
   String get aboutDavidText =>
-      'Psalms bringt selbst keine Inhalte mit. Es spielt, was ein David-Server anbietet: Hörbücher, Musik und mehr aus deiner eigenen Bibliothek, mit einem Profil für jedes Familienmitglied. David ist freie Software, die du selbst betreibst, auf einem Heimserver oder einem kleinen Rechner. Wer ihn betreibt, erzeugt auf der Verwaltungsseite einen Kopplungscode; den gibst du hier einmal ein. Ohne David-Server kannst du nur die Demodaten ausprobieren.';
+      'Hörbücher, Musik, Podcasts und Radio liegen zunächst nicht in der App, sondern auf dem Computer zu Hause, auf dem David läuft. Das entlastet den Speicher deines Geräts. Möchtest du Musik mitnehmen, lädst du nur das herunter, was du gerade brauchst.\n\nWer David betreut, gibt dir einen Code. Mit dem verbindest du dieses Gerät einmal, danach hörst du alles, was für dich freigegeben ist.';
 
   @override
   String get aboutDavidSteps =>
-      '1. David-Server betreiben.  2. Seine Verwaltungsseite öffnen und „Gerät koppeln“ wählen.  3. Den Code in Psalms scannen oder einfügen.';
+      '1. Lass dir den Code zeigen („Gerät koppeln“).  2. Scanne ihn oder tippe ihn hier ein.';
 
   @override
   String get tooltipRefresh => 'Bibliothek aktualisieren';
@@ -523,10 +522,10 @@ class AppLocalizationsDe extends AppLocalizations {
   String get downloadRemove => 'Entfernen';
 
   @override
-  String get aboutStorage => 'Speicher auf diesem Gerät';
+  String get aboutStorage => 'Offline gespeichert';
 
   @override
-  String get aboutStorageNone => 'Keine Downloads';
+  String get aboutStorageNone => 'Noch nichts';
 
   @override
   String aboutStorageUsed(String size, int count) {
@@ -647,6 +646,9 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get sectionAlbumsAndBooks => 'Alben und Bücher';
+
+  @override
+  String get sectionTracks => 'Titel';
 
   @override
   String get navPodcasts => 'Podcasts';

@@ -23,16 +23,30 @@ List<(String?, List<Book>)> groupByGenre(List<Book> books, List<String> order) {
   return [for (final g in names) (g, by[g]!), if (none.isNotEmpty) (null, none)];
 }
 
+/// One title (a song, a chapter) that a search found: the track [index] of [book].
+class TrackHit {
+  const TrackHit(this.book, this.index);
+
+  final Book book;
+  final int index;
+
+  Track get track => book.tracks[index];
+}
+
+/// Most titles a search lists, so that a short text does not bring thousands of lines.
+const int kMaxTrackHits = 50;
+
 /// What a search finds, in groups: the albums (or books) by their title, the creators (artists or
-/// authors) and the narrators by their name. A name typed in full also brings all their albums.
+/// authors) and the narrators by their name, and single titles by their own title. A name typed in full also brings all their albums.
 class SearchGroups {
-  SearchGroups(this.albums, this.creators, this.narrators);
+  SearchGroups(this.albums, this.creators, this.narrators, [this.tracks = const []]);
 
   final List<Book> albums;
   final List<String> creators;
   final List<String> narrators;
+  final List<TrackHit> tracks;
 
-  bool get isEmpty => albums.isEmpty && creators.isEmpty && narrators.isEmpty;
+  bool get isEmpty => albums.isEmpty && creators.isEmpty && narrators.isEmpty && tracks.isEmpty;
 }
 
 SearchGroups searchGroups(List<Book> pool, String query) {
@@ -53,7 +67,13 @@ SearchGroups searchGroups(List<Book> pool, String query) {
   final albums = pool
       .where((b) => has(b.title) || is_(b.author) || is_(b.narrator) || b.allLabels.any(has))
       .toList();
-  return SearchGroups(albums, creators, narrators);
+  // A title of its own (a song, a chapter): found when its title contains the text, in the order of the albums given.
+  final tracks = <TrackHit>[
+    for (final b in pool)
+      for (var i = 0; i < b.tracks.length; i++)
+        if (has(b.tracks[i].title)) TrackHit(b, i),
+  ];
+  return SearchGroups(albums, creators, narrators, tracks.take(kMaxTrackHits).toList());
 }
 
 /// Music (or any list) by owner: the owners alphabetically by nickname, each with their albums in the order given, and the albums that belong to

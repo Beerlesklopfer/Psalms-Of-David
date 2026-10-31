@@ -65,6 +65,8 @@ class _AboutScreenState extends State<AboutScreen> {
           children: [
             Chip(avatar: const Icon(Icons.menu_book_outlined, size: 18), label: Text(l.filterBooks)),
             Chip(avatar: const Icon(Icons.music_note_outlined, size: 18), label: Text(l.filterMusic)),
+            Chip(avatar: const Icon(Icons.podcasts, size: 18), label: Text(l.navPodcasts)),
+            Chip(avatar: const Icon(Icons.radio, size: 18), label: Text(l.navRadio)),
             Chip(avatar: const Icon(Icons.auto_stories_outlined, size: 18), label: Text(l.aboutScripture)),
             Chip(avatar: const Icon(Icons.family_restroom_outlined, size: 18), label: Text(l.aboutFamily)),
           ],

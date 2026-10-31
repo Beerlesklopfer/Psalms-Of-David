@@ -851,7 +851,7 @@ abstract class AppLocalizations {
   /// No description provided for @aboutDescription.
   ///
   /// In en, this message translates to:
-  /// **'Psalms plays audiobooks, music and more from your own David server, for the whole family.'**
+  /// **'Psalms, the media center of your family'**
   String get aboutDescription;
 
   /// No description provided for @aboutLicense.
@@ -893,25 +893,25 @@ abstract class AppLocalizations {
   /// No description provided for @connectNeedsDavid.
   ///
   /// In en, this message translates to:
-  /// **'Psalms is only the player. It needs a David server, which holds your audiobooks, music and the family\'s profiles. Without one, Psalms has nothing to play.'**
+  /// **'Whoever looks after David gives you a code. You connect this device once, and then you hear everything that is shared with you.'**
   String get connectNeedsDavid;
 
   /// No description provided for @aboutDavidTitle.
   ///
   /// In en, this message translates to:
-  /// **'Psalms needs a David server'**
+  /// **'Psalms plays your family\'s library'**
   String get aboutDavidTitle;
 
   /// No description provided for @aboutDavidText.
   ///
   /// In en, this message translates to:
-  /// **'Psalms does not come with any content. It plays what a David server offers: audiobooks, music and more from your own library, with a profile for each family member. David is free software that you run yourself, on a home server or a small computer. Whoever runs it creates a pairing code on its admin page; you enter that code here once. Without a David server you can only try the demo data.'**
+  /// **'Audiobooks, music, podcasts and radio are not stored in the app at first, but on the computer at home where David runs. That keeps your device\'s storage free. If you want to take music with you, download only what you need right now.\n\nWhoever looks after David gives you a code. You connect this device once, and then you hear everything that is shared with you.'**
   String get aboutDavidText;
 
   /// No description provided for @aboutDavidSteps.
   ///
   /// In en, this message translates to:
-  /// **'1. Run a David server.  2. Open its admin page and choose Pair a device.  3. Scan or paste the code in Psalms.'**
+  /// **'1. Ask for the code (\"Pair a device\").  2. Scan it or type it in here.'**
   String get aboutDavidSteps;
 
   /// No description provided for @tooltipRefresh.
@@ -965,13 +965,13 @@ abstract class AppLocalizations {
   /// No description provided for @aboutStorage.
   ///
   /// In en, this message translates to:
-  /// **'Storage on this device'**
+  /// **'Saved for offline'**
   String get aboutStorage;
 
   /// No description provided for @aboutStorageNone.
   ///
   /// In en, this message translates to:
-  /// **'No downloads'**
+  /// **'Nothing yet'**
   String get aboutStorageNone;
 
   /// No description provided for @aboutStorageUsed.
@@ -1183,6 +1183,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Albums and books'**
   String get sectionAlbumsAndBooks;
+
+  /// No description provided for @sectionTracks.
+  ///
+  /// In en, this message translates to:
+  /// **'Titles'**
+  String get sectionTracks;
 
   /// No description provided for @navPodcasts.
   ///

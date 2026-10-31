@@ -51,6 +51,22 @@ void main() {
     expect(searchGroups(pool, 'Johannes Steck').albums.map((b) => b.id), ['4']);
     expect(searchGroups(pool, '  ').isEmpty, isTrue);
   });
+
+  test('a title inside an album is found too, with its place, and a hit on a track alone is not empty', () {
+    Track t(int n, String title) => Track(disc: 1, number: n, title: title, length: const Duration(minutes: 3));
+    final book = Book(
+      id: '9',
+      title: 'Spiele',
+      author: 'Various',
+      color: const Color(0xFF000000),
+      tracks: [t(1, 'Ein Lied'), t(2, 'Monopoly'), t(3, 'Monopoly (Reprise)')],
+    );
+    final f = searchGroups([book, _b('1', 'Nichts', 'Niemand')], 'monopoly');
+    expect(f.albums, isEmpty, reason: 'no album title says it');
+    expect(f.tracks.map((h) => (h.book.id, h.index, h.track.title)), [('9', 1, 'Monopoly'), ('9', 2, 'Monopoly (Reprise)')]);
+    expect(f.isEmpty, isFalse);
+    expect(searchGroups([book], 'gibt es nicht').isEmpty, isTrue);
+  });
 }
 
 void _narratorTest() {

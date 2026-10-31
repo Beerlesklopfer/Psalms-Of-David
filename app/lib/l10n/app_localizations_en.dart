@@ -453,8 +453,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get aboutDescription =>
-      'Psalms plays audiobooks, music and more from your own David server, for the whole family.';
+  String get aboutDescription => 'Psalms, the media center of your family';
 
   @override
   String get aboutLicense =>
@@ -477,18 +476,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get connectNeedsDavid =>
-      'Psalms is only the player. It needs a David server, which holds your audiobooks, music and the family\'s profiles. Without one, Psalms has nothing to play.';
+      'Whoever looks after David gives you a code. You connect this device once, and then you hear everything that is shared with you.';
 
   @override
-  String get aboutDavidTitle => 'Psalms needs a David server';
+  String get aboutDavidTitle => 'Psalms plays your family\'s library';
 
   @override
   String get aboutDavidText =>
-      'Psalms does not come with any content. It plays what a David server offers: audiobooks, music and more from your own library, with a profile for each family member. David is free software that you run yourself, on a home server or a small computer. Whoever runs it creates a pairing code on its admin page; you enter that code here once. Without a David server you can only try the demo data.';
+      'Audiobooks, music, podcasts and radio are not stored in the app at first, but on the computer at home where David runs. That keeps your device\'s storage free. If you want to take music with you, download only what you need right now.\n\nWhoever looks after David gives you a code. You connect this device once, and then you hear everything that is shared with you.';
 
   @override
   String get aboutDavidSteps =>
-      '1. Run a David server.  2. Open its admin page and choose Pair a device.  3. Scan or paste the code in Psalms.';
+      '1. Ask for the code (\"Pair a device\").  2. Scan it or type it in here.';
 
   @override
   String get tooltipRefresh => 'Refresh the library';
@@ -518,10 +517,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get downloadRemove => 'Remove';
 
   @override
-  String get aboutStorage => 'Storage on this device';
+  String get aboutStorage => 'Saved for offline';
 
   @override
-  String get aboutStorageNone => 'No downloads';
+  String get aboutStorageNone => 'Nothing yet';
 
   @override
   String aboutStorageUsed(String size, int count) {
@@ -642,6 +641,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sectionAlbumsAndBooks => 'Albums and books';
+
+  @override
+  String get sectionTracks => 'Titles';
 
   @override
   String get navPodcasts => 'Podcasts';

@@ -235,6 +235,22 @@ class _SearchScreenState extends State<SearchScreen> {
               },
             ),
           ],
+          if (found.tracks.isNotEmpty) ...[
+            SliverToBoxAdapter(child: SectionHeader(l.sectionTracks)),
+            SliverList.builder(
+              itemCount: found.tracks.length,
+              itemBuilder: (context, i) {
+                final hit = found.tracks[i];
+                return ListTile(
+                  key: ValueKey('search-track-${hit.book.id}-$i'),
+                  leading: SizedBox.square(dimension: 48, child: Cover(book: hit.book)),
+                  title: Text(hit.track.title),
+                  subtitle: Text('${hit.book.title} · ${hit.book.author}'),
+                  onTap: () => p.open(hit.book, track: hit.index),
+                );
+              },
+            ),
+          ],
           if (found.creators.isNotEmpty) ...[
             SliverToBoxAdapter(
               child: SectionHeader(switch (_category) {

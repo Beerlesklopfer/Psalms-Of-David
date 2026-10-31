@@ -1,10 +1,15 @@
 # David und Psalms
 
-Selbst gehosteter Medienserver für die Familie: Hörbücher, Musik, Podcasts und Radio, mit Apps für Linux, Android,
+Psalms, das Mediacenter deiner Familie. Selbst gehosteter Medienserver für die Familie: Hörbücher, Musik, Podcasts und Radio, mit Apps für Linux, Android,
 iPhone/iPad und macOS.
 
 - **David** ist der Server (Bibliothek, Profile, Hörfortschritt, Verwaltung im Browser).
 - **Psalms** ist die App (Programm- und Paketname `psalm`). Zusammen sind sie das Paar aus dem Namen: David und seine Psalmen.
+
+**Für alle, die nur zuhören:** Wer David betreut, gibt dir einen Code. Mit dem verbindest du dieses Gerät einmal, danach hörst du alles,
+was für dich freigegeben ist. Die Hörbücher, die Musik, die Podcasts und das Radio liegen zunächst nicht in der App, sondern auf dem
+Computer zu Hause, auf dem David läuft; das entlastet den Speicher deines Geräts. Möchtest du Musik mitnehmen, lädst du nur herunter,
+was du gerade brauchst.
 
 **Status:** früh, aber im Familienbetrieb benutzbar. Erste Vorabversion: [Preview 1](https://github.com/Beerlesklopfer/Psalms-Of-David/releases/tag/preview-1)
 (lokal gebaut, unsigniert, zum Ausprobieren).
