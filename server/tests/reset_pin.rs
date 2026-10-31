@@ -16,6 +16,8 @@ async fn a_new_pin_replaces_the_old_one_ends_the_sessions_and_lifts_the_lock() {
     let id = store.list_profiles().await.unwrap().into_iter().find(|p| p.name == "Papa").unwrap().id;
     let token = store.create_session(id, Role::Admin, None).await.unwrap();
 
+    // a = 10 s, so the wait cannot run out between the attempts, however slow the machine.
+    store.save_settings(&[("pin_backoff_s".to_owned(), "10".to_owned())]).await.unwrap();
     // Locked out by wrong attempts.
     for _ in 0..5 {
         let _ = store.verify_login("Papa", "000000").await;
