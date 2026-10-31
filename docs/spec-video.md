@@ -64,6 +64,11 @@ terms of such services have to be read first, *check*).
 
 Both are **persisted**, not only held by the player, so a person finds them as they left them on every device (like the position).
 
+- **Every app supports both** (project owner, 2026-10-31: "the apps must support both"): Linux, Android, iPhone, iPad and macOS can switch the sound
+  language and the subtitles, show the choice by name and write it to the server. A video backend is **not finished** until it does both; a platform
+  that cannot show some kind of subtitle (picture subtitles, say) says so in the menu and still offers the rest. The interface `VideoBackend` has the
+  calls for it (`audioStreams`, `subtitleStreams`, `selectAudio`, `selectSubtitle`, and subtitle files given as WebVTT), so the GUI and the state machine
+  are the same on every platform and only the backend differs.
 - **Per profile, the default:** `profile.video_audio_lang` (a language code or empty: "as the file says") and `profile.video_subtitles`
   (`off | forced | <language code>`; `forced` shows only the subtitles that the film marks as forced, for example for foreign words). Set in the app
   and in the administration; a child profile may be set by a parent.
@@ -125,6 +130,7 @@ the `.nfo` (information only). Family films default to "all ages" when the owner
 ## The app
 
 - The category "Videos" (today "coming soon") lists films and series, a season opens its episodes; the poster is the cover.
+- Every app has the sound and subtitle menu (see "Sound language and subtitles"); it is part of the first player on each platform, not a later addition.
 - A **video player** is a different backend from the audio engine (`spec-audio-pipewire.md` stays for audio): `video_player` on Android and iOS,
   libmpv on Linux (*check*); it sits behind an interface like `AudioBackend` and has an explicit state machine (idle, loading, playing, paused,
   buffering, ended, error) that the GUI only shows (`spec-player-state-machine.md`).
@@ -137,11 +143,13 @@ the `.nfo` (information only). Family films default to "all ages" when the owner
 ## Phases
 
 1. **Scanner and listing** (server): video roots, ffprobe, `kind = 'video'`, year, poster, `min_age`, the API fields; the category in the app lists them.
-2. **Playing** in the Linux app: player interface, libmpv backend, state machine, progress, next episode.
+2. **Playing** in the Linux app: player interface, libmpv backend, state machine, progress, next episode, and the sound and subtitle menu (the
+   server side of it is phase 3, so the Linux app uses the streams of the file and keeps the choice locally until then).
 3. **Streams, sound language and subtitles** (server: `video_stream`, the choice and the defaults, WebVTT; app: the menu, written to the server).
    Remux and `playable_on` (the marks in the app and the administration).
 4. **Discs**: `video_discs`, the disc job, the staging folder.
-5. Android and iOS players; offline (with the subtitle files); OCR of picture subtitles.
+5. Android, iOS and macOS players, each **with the sound and subtitle menu and the choice written to the server**; offline (with the subtitle files);
+   OCR of picture subtitles.
 6. Later: an outside worker for conversion; the rights and inbox pattern for put-in video.
 
 ## Tests
@@ -150,7 +158,8 @@ Scanner on generated small files (naming, a film, a season with episodes, a fami
 the rating rule (no release without a rating, a child with a lower limit does not see it, the planner applies); `playable_on` from container and codecs;
 the disc job as a state machine against a fake `makemkvcon` (robot output, failure, cancel, a second job refused); the feature switch (off: no route,
 no tool, no text); a stream with `Range`; the streams of a file stored as rows (language, default, forced; `und` for none); the pick rule (choice of the
-item beats the default of the profile beats the file's default beats the first; a missing language falls back); the choice of a show carries to its
+item beats the default of the profile beats the file's default beats the first; a missing language falls back); every backend passes the same tests for the choice (a fake backend with two audio and two subtitle streams: the menu lists
+them by language, a choice reaches the server, the next open follows it); the choice of a show carries to its
 next episode and does not leak to another profile; a subtitle file next to the video is found by its language; text subtitles are served as WebVTT and a
 picture subtitle is listed with a mark but not served as text.
 
