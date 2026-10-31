@@ -8,6 +8,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'audio/audio_backend.dart';
 import 'cd/cd_kit.dart';
+import 'inbox/inbox_controller.dart';
+import 'inbox/inbox_demo.dart';
+import 'inbox/inbox_ui.dart';
 import 'audio/just_audio_backend.dart';
 import 'audio/mpris.dart';
 import 'audio/pipewire_backend.dart';
@@ -603,6 +606,9 @@ class _ShellState extends State<Shell> {
   /// The CD symbols: the server's drive and jobs; null without a server.
   late final CdKit? _cd = widget.api == null ? null : createCdKit(widget.api!);
 
+  /// The inbox of the CDs: the kit's (fed by the event channel), or the example inbox of the demo.
+  late final InboxController? _inbox = _cd?.inbox ?? (widget.api == null ? InboxController.demo(demoInboxItems()) : null);
+
   int _toldRejected = 0;
 
   @override
@@ -610,6 +616,19 @@ class _ShellState extends State<Shell> {
     super.initState();
     widget.offline?.addListener(_tellRejected);
     showStartRequests.addListener(_showStart);
+    _inbox?.openRequests.addListener(_openInbox);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The system notification of the inbox has no context: it takes its words from here.
+    _inbox?.l10n = AppLocalizations.of(context);
+  }
+
+  /// A tap on a notification of the inbox opens its page.
+  void _openInbox() {
+    if (mounted) openInbox(context, _inbox!, offline: widget.offline);
   }
 
   /// A voice command ("what is new") asks for the start page.
@@ -631,7 +650,9 @@ class _ShellState extends State<Shell> {
   void dispose() {
     widget.offline?.removeListener(_tellRejected);
     showStartRequests.removeListener(_showStart);
+    _inbox?.openRequests.removeListener(_openInbox);
     _cd?.dispose();
+    if (_cd == null) _inbox?.dispose();
     super.dispose();
   }
 
@@ -663,7 +684,9 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     final offline = widget.offline;
-    final shell = _build(context);
+    var shell = _build(context);
+    final inbox = _inbox;
+    if (inbox != null) shell = InboxScope(controller: inbox, child: shell);
     return offline == null ? shell : OfflineScope(controller: offline, child: shell);
   }
 

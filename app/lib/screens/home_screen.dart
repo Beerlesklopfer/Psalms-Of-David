@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../inbox/inbox_ui.dart';
 import '../models.dart';
 import '../player_controller.dart';
 import '../profile.dart';
@@ -45,7 +46,7 @@ class HomeScreen extends StatelessWidget {
                     tooltip: l.profileAvatarTooltip,
                     padding: EdgeInsets.zero,
                     onPressed: () => openProfile(context),
-                    icon: const OwnAvatar(size: 36),
+                    icon: const InboxBadge(child: OwnAvatar(size: 36)),
                   ),
                 ),
           title: Text(
