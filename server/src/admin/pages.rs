@@ -232,6 +232,7 @@ impl SettingView {
             "guest_expire_days" => ("guests", "unit.days", s.value.clone()),
             "import_interval_min" => ("library", "unit.minutes", s.value.clone()),
             "new_days" => ("library", "unit.days", s.value.clone()),
+            "inbox_keep_days" => ("library", "unit.days", s.value.clone()),
             "list_page_size" => ("library", "unit.items", s.value.clone()),
             "min_free_gb" => ("library", "unit.gb", s.value.clone()),
             "time_zone" => ("general", "", s.value.clone()),

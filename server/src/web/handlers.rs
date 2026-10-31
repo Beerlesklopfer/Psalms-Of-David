@@ -1716,7 +1716,7 @@ pub async fn book_set_exempt(State(state): State<AppState>, s: AdminSession, For
 }
 
 /// The values of the settings page. Each is a number in the unit the page shows, except the time zone.
-const SETTING_RULES: [(&str, i64, i64, i64); 13] = [
+const SETTING_RULES: [(&str, i64, i64, i64); 14] = [
     ("transcode_kbps", 32, 320, 1),
     ("transcode_cache_mb", 64, 1_000_000, 1),
     ("transcode_parallel", 1, 8, 1),
@@ -1731,6 +1731,7 @@ const SETTING_RULES: [(&str, i64, i64, i64); 13] = [
     ("enrollment_code_ttl_s", 1, 1440, 60),
     ("device_inactive_days", 1, 3650, 1),
     ("guest_expire_days", 1, 365, 1),
+    ("inbox_keep_days", 1, 3650, 1),
 ];
 
 pub async fn settings_save(State(state): State<AppState>, s: AdminSession, Form(f): Form<HashMap<String, String>>) -> Response {
@@ -1908,6 +1909,7 @@ pub async fn cd_rip(State(state): State<AppState>, s: AdminSession, Form(pairs):
         mode: text("mode"),
         force: q.fields.get("force").is_some_and(|v| v == "1"),
         auto: false,
+        starter_device: String::new(),
     };
     // Starting needs the right to put in CDs (an administrator has it unless somebody took it away).
     if !state.store.cd_rights(s.user_id).await.map(|r| r.may_insert).unwrap_or(false) {
