@@ -44,3 +44,10 @@ acl = true
 # (see FAQ.md) or use the CD drive (FAQ.md, "audio CDs in the drive of the server"): the administrator adds the
 # user to the group (usermod -aG), the server sets no rights on files that are not its own.
 # groups = ["ssl-cert", "cdrom"]
+
+# Hidden features, off unless switched on here (or by the environment, DAVID_FEATURE_DOWNLOAD=1, which wins over this
+# file). They are not settings of the pages and leave no trace in the interface while they are off.
+# Download: administrators may take the original files of the library (one title, or an album as a ZIP archive).
+# Every download is written to the change log.
+# [features]
+# download = true

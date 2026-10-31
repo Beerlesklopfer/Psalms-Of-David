@@ -424,5 +424,39 @@ unused" for one that expired in that time.
 The server **logs** (tracing, never the code or its hash): `pairing code made` (user, who made it, shared, validity), `device paired` (device, user, device id),
 `pairing code revoked`, and `pairing refused` with the reason (`unknown_code`, `code_used`, `code_revoked`, `code_expired`, `device_limit_reached`,
 `invalid_public_key`, `invalid_device_name`). The peer address is not logged (the server does not keep the connection info of the request). There is no general
-change log of the administration (the MCP `change_log` and the table `tag_change` record tag changes only); the audit fields of the tables say who changed a row.
+change log of the administration (the MCP `change_log` and the table `tag_change` record tag changes, and downloads when that hidden feature is on); the audit fields of the tables say who changed a row.
+
+## Downloading files (hidden feature `download`, 2026-10-31)
+
+David has no file download for people; the offline "parts" download of the apps is a different thing. The owner wants one for administrators, but as a
+**hidden feature** like the other legally unclear ones (see `spec-radio-recording-and-dwgload.md`, section 3): a copy of a library file is a
+reproduction that is allowed for private use only, so it is off unless the administrator of the machine decides otherwise.
+
+- **Switch.** `[features] download = true` in `/etc/david.toml`, or the environment variable `DAVID_FEATURE_DOWNLOAD=1` (the environment wins over the file, so
+  `0` switches a file's `true` off). Default off; read once at the start (`server/src/features.rs`, `Features`, carried in `AppState`, `ApiState` and
+  the `AdminUi`), a change needs a restart. It is **not** a setting of the pages and there is no command line flag, so nothing in `david help` or in the
+  browser mentions it. The packaged file has the two lines commented out.
+- **Off means absent.** The routes are not registered (`404`, not `403`, also for an administrator), the templates render exactly as before (no button, no
+  column, no markup), `GET /api/v1/me` has no `downloads` field.
+- **Routes (on).** Both are plain `GET` links, no JavaScript, administrators only (`AdminSession`: a member, a child or a guest gets `403`, nobody signed in is
+  sent to the sign-in page). Nothing of the request becomes a path: the file comes from the database row of the title and is looked up by `api::resolve`,
+  which keeps it below the library folders (a `..` in the row, a link that leads out, an absolute path: `404`).
+  - `GET /admin/books/{book_id}/tracks/{track_id}/download`: the ORIGINAL file (never transcoded), `Content-Disposition: attachment` with the file's own name
+    made safe (control and direction characters, quotes and separators removed; `filename=` in ASCII and `filename*=UTF-8''...` for umlauts, RFC 6266 and 5987),
+    the stored `Content-Type`, `Content-Length`, `Accept-Ranges: bytes`, one `Range` (`206`; `416` with `Content-Range: bytes */size`; several ranges or an
+    `If-Range` get the whole file, the standard allows it). The title must belong to the album (`404` otherwise). Read from the disk in chunks of 64 KiB
+    through a short queue, so a slow client never makes the server hold the file; `HEAD` gives the headers and is not a download.
+  - `GET /admin/books/{book_id}/download`: the whole album as one ZIP archive, written as a stream in "store" mode (audio is compressed already), named after the
+    title (`<title>.zip`), entries `<disc folder>/<file name>` when the album has several discs (the folder the file lies in, else `CD <n>`), the plain
+    file name for one disc; equal names get ` (2)`. No `Content-Length` (the archive is written as it is read). Every file is looked up before the first
+    byte goes out: an album with a missing file is refused as a whole (`409`). The writer is `server/src/zipstream.rs` (local headers, data descriptors, central
+    directory, ZIP64 where a file, an offset or the count needs it); the `zip` crate is not a dependency because it buffers or needs a seekable output and
+    brings compression libraries this never uses. A file that changes while it is read breaks the transfer (error at the connection), not the archive silently.
+- **Buttons (on).** A download icon on each title of the list under an album (a column of its own), and "Download" in the head of the album dialog; German:
+  "Herunterladen", "Diesen Titel herunterladen". Texts in `messages.rs` (`download.*`).
+- **What is logged.** Every download is an entry of the change log (`tag_change`, field `Download`, shown by the MCP tool `change_log` and in the tab "LLM access"):
+  `token_name` = `admin:<profile id>`, the book, `file` = the title's file name (empty for an album), `old_value` = the range (`bytes a-b/size`) or `album, <n> files`,
+  `new_value` = `complete, <bytes> bytes` or `incomplete, <bytes> of <total> bytes` (the connection ended early). The entry is written before the transfer ends, so a client
+  that has the whole body can rely on it. Never any file content, never a cookie or token. A refused request (`403`, `404`) is no download and not logged.
+- **Not done.** No limit on the number of parallel downloads; no `Content-Length` for the archive; the apps get the capability but no route yet.
 

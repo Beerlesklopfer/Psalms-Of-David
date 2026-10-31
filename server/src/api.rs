@@ -58,6 +58,8 @@ pub struct ApiState {
     pub library: Option<PathBuf>,
     /// The CD import: the way to MusicBrainz, the staging folder and the channel to the devices.
     pub cd: crate::cdimport::CdService,
+    /// Hidden features that are switched on (`features.rs`); the capabilities in `GET /me` follow them.
+    pub features: crate::features::Features,
 }
 
 pub fn router(state: ApiState) -> Router {

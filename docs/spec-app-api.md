@@ -199,7 +199,7 @@ Implemented in `server/src/api_me.rs`.
 
 | Request | Answer |
 |---|---|
-| `GET /me` | `{id, name, nickname, first_name, last_name, role, max_age, language, has_avatar, avatar_version, device_count, device_limit}` |
+| `GET /me` | `{id, name, nickname, first_name, last_name, role, max_age, language, has_avatar, avatar_version, device_count, device_limit}`, plus `downloads: true` **only** when the hidden feature `download` is on (see below); the field is absent, never `false`, when it is off |
 | `PUT /me` `{nickname?, first_name?, last_name?, language?}` | changes what is given and answers like `GET /me`. `language`: `en`, `de` or `""` (follow the device). `409 exists` (nickname taken, no regard to case), `422 invalid_name`, `422 invalid_language`. Other fields (`role`, `max_age` ...) are ignored. |
 | `PUT /me/pin` `{current, new}` | `204`; `403 wrong_pin` (counts like a wrong sign-in), `429 locked`, `422 invalid_pin`. The sessions of the browser end, the paired devices keep theirs. |
 | `GET /me/devices` | `[{id, name, shared, last_seen, this}]` (not revoked) |
@@ -246,3 +246,11 @@ invalid_barcode` is shown as an invalid code.
 Albums carry their EAN in the library (schema `0056`: `book.barcode` = the digits of the tag `Barcode`, `book.gtin` = the same as 14 digits, indexed). The scanner reads the first valid `Barcode` tag among the files of an album (digits only, 8/12/13/14 digits, correct GTIN check digit; anything else counts as none); a tag edit in the administration (`Barcode=...` line of the tags window) or by MCP `set_tags` updates the library at once and refuses a wrong code. A CD import writes the barcode of the chosen MusicBrainz release into the files.
 
 `GET /api/v1/barcode/{code}`, any signed-in device. `code`: digits, spaces and hyphens ignored, 8, 12, 13 or 14 digits with a valid check digit, else `422 {"error":"invalid_barcode"}`. Answer `200 {"code":"<cleaned digits>","gtin":"<14 digits>","found":bool,"items":[{"item_id","kind","title","creator","has_cover"}]}`. The match is by GTIN-14, so a UPC-A and the EAN-13 with a leading 0 are one product and an EAN-8 is padded. Only albums the caller may see are listed (the rule of the lists: age limit, release, blocks); what the caller hid in their own library still counts as present. `GET /api/v1/items/{id}` carries `"barcode"` (digits or `null`) so that an app can keep a copy and check offline. Albums get their code at the next rescan or at a tag edit.
+
+## Capability `downloads` (hidden feature, 2026-10-31)
+
+`GET /api/v1/me` carries `"downloads": true` when the administrator of the machine switched the hidden feature `download` on (`[features] download = true` in
+`/etc/david.toml`, or `DAVID_FEATURE_DOWNLOAD=1`; see `spec-admin-ui.md`, "Downloading files"). Without the switch the field is **absent** (not `false`), so a
+server that has not got the feature says nothing about it, and an app must treat a missing field as "no". The field is the same for every role: it says what the
+server offers, not who may use it (today only administrators, in the web interface; there is no download route for the apps). No app uses it yet.
+

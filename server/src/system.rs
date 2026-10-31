@@ -42,11 +42,13 @@ pub struct FileConfig {
     /// Groups the service is a member of in addition to those of its account, for example the one
     /// that may read the certificates. Looked up by name when the service starts as root.
     pub groups: Vec<String>,
+    /// Hidden features, off unless the table `[features]` switches them on (see `features.rs`).
+    pub features: crate::features::Features,
 }
 
 impl Default for FileConfig {
     fn default() -> Self {
-        FileConfig { user: "david".into(), uid: None, gid: None, acl: true, data_dir: None, listen: None, mcp: None, log: None, tls_cert: None, tls_key: None, tls_host: None, tls_reload_s: None, groups: Vec::new() }
+        FileConfig { user: "david".into(), uid: None, gid: None, acl: true, data_dir: None, listen: None, mcp: None, log: None, tls_cert: None, tls_key: None, tls_host: None, tls_reload_s: None, groups: Vec::new(), features: Default::default() }
     }
 }
 
@@ -72,6 +74,8 @@ impl FileConfig {
             "DAVID_TLS_HOST" => self.tls_host.clone(),
             "DAVID_TLS_RELOAD_S" => self.tls_reload_s.map(|s| s.to_string()),
             "DAVID_MCP" => self.mcp.map(|m| if m { "1" } else { "0" }.to_owned()),
+            // Only a switch that is on is passed on: an environment variable set to 0 beats it either way.
+            k if k == crate::features::Features::DOWNLOAD_ENV => self.features.download.then(|| "1".to_owned()),
             _ => None,
         }
     }
@@ -352,6 +356,21 @@ mod tests {
     }
 
     #[test]
+    fn a_hidden_feature_is_on_only_when_the_environment_or_else_the_file_says_so() {
+        let on: FileConfig = toml::from_str("[features]\ndownload = true\n").unwrap();
+        let run = |env: Option<&str>, file: &FileConfig| {
+            let lookup = |k: &str| env.filter(|_| k == "DAVID_FEATURE_DOWNLOAD").map(str::to_owned).or_else(|| file.as_env(k));
+            let Ok(crate::cli::Command::Run(c)) = crate::cli::parse(["run".to_owned()], lookup) else { panic!() };
+            c.features.download
+        };
+        assert!(!run(None, &FileConfig::default()), "off by default");
+        assert!(run(None, &on), "the file switches it on");
+        assert!(run(Some("1"), &FileConfig::default()), "so does the environment");
+        assert!(!run(Some("0"), &on), "the environment wins over the file");
+        assert!(toml::from_str::<FileConfig>("[features]\nmovies = true\n").is_err(), "an unknown switch is a mistake");
+    }
+
+    #[test]
     fn the_macos_package_file_parses_and_names_the_account_the_launchd_daemon_drops_to() {
         let text = include_str!("../packaging/macos/david.toml");
         let file: FileConfig = toml::from_str(text).unwrap();
@@ -370,10 +389,13 @@ mod tests {
         let text = include_str!("../packaging/david.toml");
         assert_eq!(toml::from_str::<FileConfig>(text).unwrap(), FileConfig::default().with_acl_from(text));
         // Uncommenting the examples must give a valid file with the certificate keys set.
-        let all: String = text.lines().map(|l| l.strip_prefix("# ").filter(|r| r.contains(" = ") && !r.starts_with(' ')).unwrap_or(l)).collect::<Vec<_>>().join("\n");
+        let all: String = text.lines().map(|l| l.strip_prefix("# ").filter(|r| (r.contains(" = ") || *r == "[features]") && !r.starts_with(' ')).unwrap_or(l)).collect::<Vec<_>>().join("\n");
         let file: FileConfig = toml::from_str(&all).unwrap();
         assert!(file.tls_cert.is_some() && file.tls_key.is_some() && file.tls_host.is_some() && file.tls_reload_s == Some(300), "{file:?}");
         assert_eq!(file.as_env("DAVID_TLS_HOST").as_deref(), Some("david.example.org"));
+        assert!(file.features.download, "the commented example of the hidden feature is a real key");
+        assert_eq!(file.as_env("DAVID_FEATURE_DOWNLOAD").as_deref(), Some("1"));
+        assert_eq!(FileConfig::default().as_env("DAVID_FEATURE_DOWNLOAD"), None, "off by default, and a file that is off passes nothing on");
         assert_eq!(file.as_env("DAVID_LISTEN").as_deref(), Some("0.0.0.0:8484,[::]:8484"), "a list of addresses");
         // One address as a string works too, and a list reaches the parser as several addresses.
         let one: FileConfig = toml::from_str("listen = \"127.0.0.1:9\"").unwrap();

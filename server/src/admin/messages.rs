@@ -957,6 +957,9 @@ pub static EN: &[(&str, &str)] = &[
     ("blacklist.result_marked", "media marked in total"),
     ("err.blacklist_pattern", "This word is not usable: empty, longer than 100 characters, a control character or a broken regular expression."),
     ("err.blacklist_exists", "This word is on the list already."),
+    ("download.track", "Download this title"),
+    ("download.album", "Download"),
+    ("download.album_hint", "Download the whole album as a ZIP archive (the original files, unchanged)"),
 ];
 
 pub static DE: &[(&str, &str)] = &[
@@ -1913,6 +1916,9 @@ pub static DE: &[(&str, &str)] = &[
     ("blacklist.result_marked", "Medien insgesamt markiert"),
     ("err.blacklist_pattern", "Dieses Wort ist nicht brauchbar: leer, länger als 100 Zeichen, ein Steuerzeichen oder ein fehlerhafter regulärer Ausdruck."),
     ("err.blacklist_exists", "Dieses Wort steht schon auf der Liste."),
+    ("download.track", "Diesen Titel herunterladen"),
+    ("download.album", "Herunterladen"),
+    ("download.album_hint", "Das ganze Album als ZIP-Archiv herunterladen (die Originaldateien, unverändert)"),
 ];
 
 #[cfg(test)]

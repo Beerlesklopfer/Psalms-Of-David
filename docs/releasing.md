@@ -173,7 +173,9 @@ data folder to that user and drops to it for good. No `setfacl` is needed; a fol
 `/etc/david.toml` holds what belongs to the machine: the account (`user`, optional numeric `uid` and `gid`, which the post-install script uses when it
 creates the account), `acl = false` to switch the ACL step off, and `data_dir`, `listen`, `mcp`. A value comes from the command line, else the
 environment (`DAVID_...`), else the file, else the default; what the family decides in the pages is in the database. The package marks the file as
-configuration, so an update keeps it. A process that is not root (a development run) skips the rights and the switch of user.
+configuration, so an update keeps it. The table `[features]` holds the hidden features, all off by default; `download = true` (or `DAVID_FEATURE_DOWNLOAD=1`, which
+wins over the file) lets administrators download original files and albums as ZIP archives (`spec-admin-ui.md`, "Downloading files"). The packaged file shows the two
+lines commented out; a change needs `systemctl restart david`. A process that is not root (a development run) skips the rights and the switch of user.
 
 The sandbox must let the writes through: `ProtectSystem=strict` makes everything but the state directory read-only, for root's ACL step too.
 The library lives in the service's state directory, `/var/lib/david/library` (`StateDirectory=david david/library`):

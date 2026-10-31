@@ -172,6 +172,7 @@ where
             allow_import,
             announce,
             mcp,
+            features: crate::features::Features::from_env(&env),
             tls: {
                 if tls_cert.is_some() != tls_key.is_some() {
                     return Err("--tls-cert and --tls-key belong together".to_owned());

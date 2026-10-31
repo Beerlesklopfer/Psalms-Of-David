@@ -36,7 +36,7 @@ async fn app_with(mcp: bool) -> App {
     let boss = store.create_profile("Boss", true).await.unwrap();
     store.set_pin(boss, PIN).await.unwrap();
     let (cd, drive) = test_cd(dir.path());
-    let state = AppState { store: store.clone(), mcp, listen: "127.0.0.1:8484".parse().unwrap(), fingerprint: None, ca_host: None, ui: Arc::new(AdminUi::new().unwrap()), secure_cookie: false, library: None, uploads: david_server::upload::Uploads::start(store.clone(), dir.path()  /* its own folder for each test app: job numbers start at 1 in each database */), cd: cd.clone() };
+    let state = AppState { store: store.clone(), mcp, listen: "127.0.0.1:8484".parse().unwrap(), fingerprint: None, ca_host: None, ui: Arc::new(AdminUi::new().unwrap()), secure_cookie: false, library: None, uploads: david_server::upload::Uploads::start(store.clone(), dir.path()  /* its own folder for each test app: job numbers start at 1 in each database */), cd: cd.clone(), features: Default::default() };
     App { router: router(state), store, _dir: dir, cd, drive }
 }
 
@@ -1016,6 +1016,7 @@ async fn with_tls_the_pairing_code_carries_the_certificate_fingerprint() {
         library: None,
         uploads: david_server::upload::Uploads::start(store.clone(), &std::env::temp_dir().join(format!("david-uploads-tls-{}", std::process::id()))),
         cd: cd.clone(),
+        features: Default::default(),
     };
     let a = App { router: router(state), store, _dir: dir, cd, drive };
 

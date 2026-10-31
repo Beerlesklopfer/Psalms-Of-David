@@ -29,6 +29,7 @@ async fn start(prepare: impl AsyncFnOnce(&std::path::Path)) -> Running {
         mcp: false,
         log: None,
         tls: Default::default(),
+        features: Default::default(),
         also_listen: Vec::new(),
         listen: "127.0.0.1:0".parse().unwrap(),
     };

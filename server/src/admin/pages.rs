@@ -713,7 +713,15 @@ impl AdminUi {
             };
             Catalog::new(lang).t(&key).to_owned()
         });
+        // Hidden features are off in the templates until `with_features` switches them on; a strict environment needs the name defined.
+        env.add_global("downloads", false);
         Ok(AdminUi { env, dirs, overrides })
+    }
+
+    /// Tells the templates which hidden features are on (`features.rs`). Without this call none is: the pages render as they always did.
+    pub fn with_features(mut self, features: crate::features::Features) -> AdminUi {
+        self.env.add_global("downloads", features.download);
+        self
     }
 
     /// The stylesheet or another static file of a distribution, if a folder has one.
@@ -903,7 +911,7 @@ impl AdminUi {
                 }
             })
             .collect();
-        self.render("fragments/book_tracks.html", context! { tracks => Serde(lines), ..view.into().context() })
+        self.render("fragments/book_tracks.html", context! { tracks => Serde(lines), book_id => id, ..view.into().context() })
     }
 
     /// The titles of an album with an entry of labels for each (in the tab "Edit"); the form of the window sends them with its Save.

@@ -7,7 +7,7 @@
       <div id="tracks-{{ book.id }}" hx-get="/admin/rpc/book.tracks?id={{ book.id }}" hx-trigger="toggle from:closest details once" hx-swap="innerHTML"></div>
     </details>
     <dialog id="dlg-book-{{ book.id }}" class="window edit-window book-window" aria-labelledby="dlg-book-title-{{ book.id }}">
-      <div class="window-head"><h3 id="dlg-book-title-{{ book.id }}">{{ book.title }}<small>{{ book.author }}</small></h3><form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
+      <div class="window-head"><h3 id="dlg-book-title-{{ book.id }}">{{ book.title }}<small>{{ book.author }}</small></h3>{% if downloads %}<a class="btn outline" href="/admin/books/{{ book.id }}/download" title="{{ t('download.album_hint') }}">{{ icon("download") }}<span>{{ t("download.album") }}</span></a>{% endif %}<form method="dialog"><button class="ghost" aria-label="{{ t('ui.close') }}">{{ icon("close") }}</button></form></div>
       <div class="tabs" role="tablist" aria-label="{{ book.title }}">
         <button type="button" role="tab" class="tab" data-tab="release" data-form="book-form-{{ book.id }}" aria-selected="true">{{ t("books.tab_release") }}</button>
         <button type="button" role="tab" class="tab" data-tab="edit" data-form="book-edit-form-{{ book.id }}" aria-selected="false">{{ icon("edit") }}<span>{{ t("users.edit") }}</span></button>

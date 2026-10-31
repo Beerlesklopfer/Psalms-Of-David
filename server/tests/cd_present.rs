@@ -82,7 +82,7 @@ async fn env_with(heartbeat: Option<Duration>) -> Env {
     }
     // The tests never want to wait for the reserve of free space.
     store.save_settings(&[("min_free_gb".to_owned(), "0".to_owned())]).await.unwrap();
-    let state = ApiState { store: store.clone(), library: Some(library.path().to_owned()), cd: cd.clone() };
+    let state = ApiState { store: store.clone(), library: Some(library.path().to_owned()), cd: cd.clone(), features: Default::default() };
     Env { router: router(state), store, fake, library, dir, cd, drive, admin, n: 0 }
 }
 

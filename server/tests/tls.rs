@@ -99,6 +99,7 @@ async fn a_device_that_pins_the_fingerprint_connects_and_any_other_server_is_ref
         mcp: false,
         log: None,
         tls: Default::default(),
+        features: Default::default(),
         also_listen: Vec::new(),
         // Not loopback, so the server speaks TLS. Port 0 lets the system choose.
         listen: "0.0.0.0:0".parse().unwrap(),
@@ -193,6 +194,7 @@ async fn a_certificate_from_somebody_else_is_served_and_a_renewal_is_loaded_with
         mcp: false,
         log: None,
         tls: External { cert: Some(cert_file.clone()), key: Some(key_file.clone()), host: Some("david.example.test".into()), reload_s: Some(5) },
+        features: Default::default(),
         also_listen: Vec::new(),
         listen: "0.0.0.0:0".parse().unwrap(),
     };
@@ -263,6 +265,7 @@ async fn a_list_of_addresses_serves_ipv4_and_ipv6_at_the_same_time() {
         mcp: false,
         log: None,
         tls: Default::default(),
+        features: Default::default(),
         also_listen: vec![format!("[::]:{port}").parse().unwrap()],
         listen: format!("0.0.0.0:{port}").parse().unwrap(),
     };

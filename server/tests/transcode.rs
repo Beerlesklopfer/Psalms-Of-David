@@ -39,7 +39,7 @@ async fn api() -> Api {
     let (dir, store) = open().await;
     let admin = store.create_profile("Boss", true).await.unwrap();
     let library = tempfile::TempDir::new().unwrap();
-    let state = ApiState { store: store.clone(), library: Some(library.path().to_owned()), cd: david_server::cdimport::CdService::new(dir.path()) };
+    let state = ApiState { store: store.clone(), library: Some(library.path().to_owned()), cd: david_server::cdimport::CdService::new(dir.path()), features: Default::default() };
     Api { router: router(state), store, admin, library, dir }
 }
 

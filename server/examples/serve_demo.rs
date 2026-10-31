@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("pairing address: {uri}");
     drop(store);
 
-    let config = Config { data_dir, library: Some(library), allow_import: false, listen, announce: true, mcp: false, log: None, tls: Default::default(), also_listen: Vec::new() };
+    let config = Config { data_dir, library: Some(library), allow_import: false, listen, announce: true, mcp: false, log: None, tls: Default::default(), features: Default::default(), also_listen: Vec::new() };
     run(config, async { let _ = tokio::signal::ctrl_c().await; }, |addr| println!("listening on {addr}")).await?;
     Ok(())
 }

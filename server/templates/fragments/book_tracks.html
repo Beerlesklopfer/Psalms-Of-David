@@ -1,11 +1,11 @@
 {# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
-   SPDX-License-Identifier: AGPL-3.0-or-later -#}<table class="track-table">
-  <thead><tr><th>{{ t("books.disc") }}</th><th>#</th><th>{{ t("books.track_title") }}</th><th>{{ t("books.track_length") }}</th></tr></thead>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}<table class="track-table">
+  <thead><tr><th>{{ t("books.disc") }}</th><th>#</th><th>{{ t("books.track_title") }}</th><th>{{ t("books.track_length") }}</th>{% if downloads %}<th><span class="sr-only">{{ t("download.track") }}</span></th>{% endif %}</tr></thead>
   <tbody>
   {% for track in tracks %}
-    <tr><td>{{ track.disc }}</td><td>{{ track.number }}</td><td>{{ track.title }}{% for l in track.labels %} <span class="badge label">{{ l }}</span>{% endfor %}{% if track.format %} <span class="badge{% if not track.ios_ok %} warn{% endif %}"{% if not track.ios_ok %} title="{{ t('filing.ios_warn') }}"{% endif %}>{{ track.format }}</span>{% endif %}</td><td>{{ track.length }}</td></tr>
+    <tr><td>{{ track.disc }}</td><td>{{ track.number }}</td><td>{{ track.title }}{% for l in track.labels %} <span class="badge label">{{ l }}</span>{% endfor %}{% if track.format %} <span class="badge{% if not track.ios_ok %} warn{% endif %}"{% if not track.ios_ok %} title="{{ t('filing.ios_warn') }}"{% endif %}>{{ track.format }}</span>{% endif %}</td><td>{{ track.length }}</td>{% if downloads %}<td><a class="ghost" href="/admin/books/{{ book_id }}/tracks/{{ track.id }}/download" title="{{ t('download.track') }}" aria-label="{{ t('download.track') }}: {{ track.title }}">{{ icon("download") }}</a></td>{% endif %}</tr>
   {% else %}
-    <tr><td colspan="4">{{ t("books.no_tracks") }}</td></tr>
+    <tr><td colspan="{% if downloads %}5{% else %}4{% endif %}">{{ t("books.no_tracks") }}</td></tr>
   {% endfor %}
   </tbody>
 </table>

@@ -316,6 +316,7 @@ dialog.window::backdrop { background: rgb(0 0 0 / .5); }
 .window-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .6rem .6rem .6rem 1.25rem;
                border-bottom: 1px solid var(--line); }
 .window-head h3 { margin: 0; }
+.window-head > .btn { margin-left: auto; }
 .window-head form { margin: 0; }
 .window-body { padding: 1rem 1.25rem 1.25rem; overflow: auto; }
 .window-body .planner thead th { top: 0; }

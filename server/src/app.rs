@@ -48,6 +48,8 @@ pub struct Config {
     pub log: Option<tracing::Level>,
     /// A certificate and key of somebody else (Let's Encrypt, ...), instead of the self-signed one.
     pub tls: crate::tls::External,
+    /// Hidden features (`[features]` in `/etc/david.toml`, `DAVID_FEATURE_*`); all off by default.
+    pub features: crate::features::Features,
 }
 
 impl Config {
@@ -181,7 +183,7 @@ pub async fn run(
     };
     // With a certificate from a certificate authority devices check the name, not the fingerprint.
     let ca_host = external.is_set().then(|| external.host.clone().unwrap_or_default().trim().to_owned()).filter(|_| tls.is_some());
-    let ui = AdminUi::with_override_dirs(crate::admin::pages::default_template_dirs())?;
+    let ui = AdminUi::with_override_dirs(crate::admin::pages::default_template_dirs())?.with_features(config.features);
     for path in &ui.overrides {
         tracing::info!(template = %path.display(), "using a template that replaces the built-in one");
     }
@@ -189,6 +191,9 @@ pub async fn run(
     let cd = crate::cdimport::CdService::new(&config.data_dir).with_library(config.library.clone());
     cd.start(&store).await;
     tokio::spawn(crate::cdrive::monitor(cd.clone(), store.clone(), config.library.clone()));
+    if config.features.download {
+        tracing::info!("hidden feature on: administrators may download files (features.download)");
+    }
     let state = AppState {
         store: store.clone(),
         mcp: config.mcp,
@@ -200,6 +205,7 @@ pub async fn run(
         library: config.library.clone(),
         uploads: crate::upload::Uploads::start(store.clone(), &config.data_dir),
         cd: cd.clone(),
+        features: config.features,
     };
     // Every address of the list, each its own socket: `[::]` listens on IPv6 only, so that it can sit next to
     // `0.0.0.0` (IPv4). A machine without IPv6 skips the IPv6 address with a warning, as long as another one is left.
@@ -240,6 +246,7 @@ pub async fn run(
         store: store.clone(),
         library: config.library.clone(),
         cd,
+        features: config.features,
     }));
     if config.mcp {
         tracing::info!("MCP endpoint on /mcp (tokens are made in the settings)");

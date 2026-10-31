@@ -58,12 +58,17 @@ pub(crate) async fn me_json(s: &ApiState, d: &Device) -> ApiResult<Value> {
     let avatar = s.store.avatar_version(d.user_id).await?;
     let (used, max) = s.store.device_usage(d.user_id).await?;
     let (share, may_hide) = s.store.listening_sharing(d.user_id).await?;
-    Ok(json!({
+    let mut me = json!({
         "share_listening": share || !may_hide, "may_hide_listening": may_hide,
         "id": user.id, "name": user.name, "nickname": user.name, "first_name": user.first_name, "last_name": user.last_name,
         "role": d.role.as_str(), "max_age": user.max_age, "language": user.language,
         "has_avatar": avatar.is_some(), "avatar_version": avatar, "device_count": used, "device_limit": max,
-    }))
+    });
+    // Capabilities of hidden features appear only while they are on: a server without them says nothing about them.
+    if s.features.download {
+        me["downloads"] = json!(true);
+    }
+    Ok(me)
 }
 
 async fn put_me(State(s): State<ApiState>, d: Device, Json(req): Json<MeUpdate>) -> ApiResult<Json<Value>> {

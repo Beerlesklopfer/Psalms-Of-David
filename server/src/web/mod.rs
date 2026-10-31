@@ -9,6 +9,7 @@
 //! state-changing requests, and, for the pages and procedures themselves, the
 //! session check that demands an administrator.
 
+mod download;
 mod handlers;
 
 use std::sync::Arc;
@@ -65,10 +66,12 @@ pub struct AppState {
     pub uploads: crate::upload::Uploads,
     /// The CD drive of the server and the import of CDs.
     pub cd: crate::cdimport::CdService,
+    /// Hidden features that are switched on (`features.rs`). What is off has no route at all.
+    pub features: crate::features::Features,
 }
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    let mut routes = Router::new()
         .route("/", get(handlers::start_page))
         .route("/admin", get(|| async { Redirect::to("/admin/") }))
         .route("/admin/", get(handlers::overview))
@@ -191,7 +194,12 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/static/fields.js", get(handlers::fields_js))
         .route("/admin/static/logo.svg", get(handlers::logo))
         .route("/admin/static/favicon.svg", get(handlers::favicon))
-        .route("/admin/static/htmx.min.js", get(handlers::htmx))
+        .route("/admin/static/htmx.min.js", get(handlers::htmx));
+    // A hidden feature that is off is not registered: its addresses answer 404 like any other that does not exist.
+    if state.features.download {
+        routes = routes.merge(download::routes());
+    }
+    routes
         .layer(middleware::from_fn(crate::actor::scope))
         .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn(csrf_check))

@@ -27,6 +27,7 @@ pub mod buildinfo;
 pub mod cli;
 pub mod db;
 pub mod discovery;
+pub mod features;
 pub mod feeds;
 pub mod fetch;
 pub mod filing;
@@ -69,6 +70,7 @@ pub mod tls;
 pub mod tree;
 pub mod web;
 pub mod writer;
+pub mod zipstream;
 
 pub use bible::{Anchor, BibleHit, Reference};
 pub use error::{Error, MAX_PROFILES, Result};
