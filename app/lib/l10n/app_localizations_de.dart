@@ -1028,6 +1028,28 @@ class AppLocalizationsDe extends AppLocalizations {
   String get cdImportingTooltip => 'CD wird importiert';
 
   @override
+  String cdEndPresent(String album) {
+    return 'Diese CD ist schon in der Bibliothek (ausgeworfen): $album';
+  }
+
+  @override
+  String get cdEndPresentPlain =>
+      'Diese CD ist schon in der Bibliothek (ausgeworfen).';
+
+  @override
+  String get cdEndRejected =>
+      'Die CD wurde abgelehnt. Ihre Dateien wurden gelöscht.';
+
+  @override
+  String get cdEndCancelled => 'Der Import wurde abgebrochen.';
+
+  @override
+  String get cdWaitsApproval => 'Wartet auf Freigabe';
+
+  @override
+  String get cdWaitsRetry => 'Lesefehler: Die CD liegt noch im Laufwerk';
+
+  @override
   String get cdEject => 'Auswerfen';
 
   @override
