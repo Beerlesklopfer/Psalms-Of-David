@@ -35,9 +35,10 @@ void main() {
     ApiClient api() => ApiClient(address: '127.0.0.1:${server.port}', token: 't');
     const track = Track(disc: 1, number: 1, title: 'A', length: Duration(minutes: 1), partId: 7, format: 'mp3');
 
-    // Two sources, as the player and the download each have their own.
-    final first = ServerSource(api(), dir).fetchPart(track);
-    final second = ServerSource(api(), dir).fetchPart(track);
+    // One source, as the player and its downloads share it.
+    final source = ServerSource(api(), dir);
+    final first = source.fetchPart(track);
+    final second = source.fetchPart(track);
     await Future<void>.delayed(const Duration(milliseconds: 100));
     release.complete();
     final paths = await Future.wait([first, second]);
