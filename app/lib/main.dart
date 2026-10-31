@@ -11,6 +11,8 @@ import 'cd/cd_kit.dart';
 import 'inbox/inbox_controller.dart';
 import 'inbox/inbox_demo.dart';
 import 'inbox/inbox_ui.dart';
+import 'speech/announcer_scope.dart';
+import 'speech/cd_announcer.dart';
 import 'audio/just_audio_backend.dart';
 import 'audio/mpris.dart';
 import 'audio/pipewire_backend.dart';
@@ -609,11 +611,15 @@ class _ShellState extends State<Shell> {
   /// The inbox of the CDs: the kit's (fed by the event channel), or the example inbox of the demo.
   late final InboxController? _inbox = _cd?.inbox ?? (widget.api == null ? InboxController.demo(demoInboxItems()) : null);
 
+  /// The voice for the messages of the CD inbox (while music plays); next to the notification.
+  late final CdAnnouncer? _announcer = _inbox == null ? null : createShellAnnouncer(() => mounted ? context : null, _cd);
+
   int _toldRejected = 0;
 
   @override
   void initState() {
     super.initState();
+    if (_inbox != null) _announcer?.attach(_inbox);
     widget.offline?.addListener(_tellRejected);
     showStartRequests.addListener(_showStart);
     _inbox?.openRequests.addListener(_openInbox);
@@ -651,6 +657,8 @@ class _ShellState extends State<Shell> {
     widget.offline?.removeListener(_tellRejected);
     showStartRequests.removeListener(_showStart);
     _inbox?.openRequests.removeListener(_openInbox);
+    if (_inbox != null) _announcer?.detach(_inbox);
+    _announcer?.dispose();
     _cd?.dispose();
     if (_cd == null) _inbox?.dispose();
     super.dispose();
@@ -687,6 +695,7 @@ class _ShellState extends State<Shell> {
     var shell = _build(context);
     final inbox = _inbox;
     if (inbox != null) shell = InboxScope(controller: inbox, child: shell);
+    if (_announcer != null) shell = AnnouncerScope(announcer: _announcer, child: shell);
     return offline == null ? shell : OfflineScope(controller: offline, child: shell);
   }
 

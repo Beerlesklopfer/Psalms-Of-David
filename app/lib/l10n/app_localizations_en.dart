@@ -2073,6 +2073,60 @@ class AppLocalizationsEn extends AppLocalizations {
       'The import ends. What was read is kept for a while, so reading the CD again later is quicker.';
 
   @override
+  String cdSpeakAwaiting(String title) {
+    return 'The CD $title is done and waits for your approval.';
+  }
+
+  @override
+  String get cdSpeakAwaitingNoTitle =>
+      'A CD is done and waits for your approval.';
+
+  @override
+  String cdSpeakImported(String title) {
+    return 'The CD $title was imported.';
+  }
+
+  @override
+  String get cdSpeakImportedNoTitle => 'A CD was imported.';
+
+  @override
+  String cdSpeakReadError(String title) {
+    return 'The CD $title has a read error.';
+  }
+
+  @override
+  String get cdSpeakReadErrorNoTitle => 'A CD has a read error.';
+
+  @override
+  String cdSpeakPresent(String title) {
+    return 'The CD $title is in the library already.';
+  }
+
+  @override
+  String get cdSpeakPresentNoTitle => 'A CD is in the library already.';
+
+  @override
+  String get cdAnnounceTest => 'This is how the announcements about CDs sound.';
+
+  @override
+  String get cdAnnounceTitle => 'CD announcements';
+
+  @override
+  String get cdAnnounceHint =>
+      'While music plays, a voice says when a CD is done or needs you.';
+
+  @override
+  String get cdAnnounceTestButton => 'Test';
+
+  @override
+  String get cdAnnounceNoSpdSay =>
+      'No voice: the program spd-say (speech-dispatcher) is missing.';
+
+  @override
+  String get cdAnnounceNoVoice =>
+      'This device has no voice for announcements yet.';
+
+  @override
   String get inboxRetry => 'Try again';
 
   @override

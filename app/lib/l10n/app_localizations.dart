@@ -3548,6 +3548,90 @@ abstract class AppLocalizations {
   /// **'The import ends. What was read is kept for a while, so reading the CD again later is quicker.'**
   String get cdGiveUpText;
 
+  /// No description provided for @cdSpeakAwaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD {title} is done and waits for your approval.'**
+  String cdSpeakAwaiting(String title);
+
+  /// No description provided for @cdSpeakAwaitingNoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A CD is done and waits for your approval.'**
+  String get cdSpeakAwaitingNoTitle;
+
+  /// No description provided for @cdSpeakImported.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD {title} was imported.'**
+  String cdSpeakImported(String title);
+
+  /// No description provided for @cdSpeakImportedNoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A CD was imported.'**
+  String get cdSpeakImportedNoTitle;
+
+  /// No description provided for @cdSpeakReadError.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD {title} has a read error.'**
+  String cdSpeakReadError(String title);
+
+  /// No description provided for @cdSpeakReadErrorNoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A CD has a read error.'**
+  String get cdSpeakReadErrorNoTitle;
+
+  /// No description provided for @cdSpeakPresent.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD {title} is in the library already.'**
+  String cdSpeakPresent(String title);
+
+  /// No description provided for @cdSpeakPresentNoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A CD is in the library already.'**
+  String get cdSpeakPresentNoTitle;
+
+  /// No description provided for @cdAnnounceTest.
+  ///
+  /// In en, this message translates to:
+  /// **'This is how the announcements about CDs sound.'**
+  String get cdAnnounceTest;
+
+  /// No description provided for @cdAnnounceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'CD announcements'**
+  String get cdAnnounceTitle;
+
+  /// No description provided for @cdAnnounceHint.
+  ///
+  /// In en, this message translates to:
+  /// **'While music plays, a voice says when a CD is done or needs you.'**
+  String get cdAnnounceHint;
+
+  /// No description provided for @cdAnnounceTestButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Test'**
+  String get cdAnnounceTestButton;
+
+  /// No description provided for @cdAnnounceNoSpdSay.
+  ///
+  /// In en, this message translates to:
+  /// **'No voice: the program spd-say (speech-dispatcher) is missing.'**
+  String get cdAnnounceNoSpdSay;
+
+  /// No description provided for @cdAnnounceNoVoice.
+  ///
+  /// In en, this message translates to:
+  /// **'This device has no voice for announcements yet.'**
+  String get cdAnnounceNoVoice;
+
   /// No description provided for @inboxRetry.
   ///
   /// In en, this message translates to:

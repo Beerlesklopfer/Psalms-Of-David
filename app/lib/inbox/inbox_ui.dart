@@ -8,6 +8,7 @@ import '../offline/offline_controller.dart';
 import '../player_controller.dart';
 import '../profile.dart';
 import '../screens/confirm_dialog.dart';
+import '../speech/announce_section.dart';
 import '../widgets.dart';
 import 'inbox_controller.dart';
 import 'inbox_machine.dart';
@@ -171,13 +172,20 @@ class InboxTile extends StatelessWidget {
       child: Card(
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
-        child: ListTile(
-          key: const ValueKey('open-inbox'),
-          leading: const Icon(Icons.inbox_outlined),
-          title: Text(l.inboxTitle),
-          subtitle: c.state.unread > 0 ? Text(l.inboxCardUnread(c.state.unread)) : null,
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => openInbox(context, c),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              key: const ValueKey('open-inbox'),
+              leading: const Icon(Icons.inbox_outlined),
+              title: Text(l.inboxTitle),
+              subtitle: c.state.unread > 0 ? Text(l.inboxCardUnread(c.state.unread)) : null,
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => openInbox(context, c),
+            ),
+            // The voice for the messages (only where the shell made an announcer).
+            const AnnounceSection(),
+          ],
         ),
       ),
     );

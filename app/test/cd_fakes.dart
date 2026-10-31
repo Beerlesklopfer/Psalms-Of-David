@@ -106,6 +106,9 @@ class FakeCdServer implements CdServerApi {
 
 /// The event channel without a network: the test sends the messages.
 class FakeEvents implements CdEventsSource {
+  @override
+  String? deviceLabel;
+
   final connections = <StreamController<CdJobState>>[];
   List<CdJobState> open = [];
   final jobs = <String, CdJobState>{};

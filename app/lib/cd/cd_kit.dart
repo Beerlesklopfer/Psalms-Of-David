@@ -14,7 +14,10 @@ import 'server_cd_api.dart';
 /// What the library needs for the CD symbols: the server's drive state, its jobs, a way to make the
 /// import controller and to eject. Null in the screen where there is no server (demo mode).
 class CdKit {
-  CdKit({required this.server, required this.drives, required this.tracker, this.inbox});
+  CdKit({required this.server, required this.drives, required this.tracker, this.inbox, this.ownDevice});
+
+  /// This device's name as the server knows it (the `hello` of the event channel); null before it arrived or in tests.
+  final String? Function()? ownDevice;
 
   final CdServerApi server;
   final CdDriveWatcher drives;
@@ -50,5 +53,5 @@ CdKit createCdKit(ApiClient api) {
   watcher.start();
   // The first read of the list; the snapshot after each connect reads it again (nothing is replayed).
   inbox.start();
-  return CdKit(server: ServerCdApi(api), drives: watcher, tracker: tracker, inbox: inbox);
+  return CdKit(server: ServerCdApi(api), drives: watcher, tracker: tracker, inbox: inbox, ownDevice: () => events.deviceLabel);
 }

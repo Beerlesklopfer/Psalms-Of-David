@@ -2098,6 +2098,60 @@ class AppLocalizationsDe extends AppLocalizations {
       'Der Import endet. Was gelesen wurde, bleibt noch eine Weile erhalten, so geht ein neuer Versuch später schneller.';
 
   @override
+  String cdSpeakAwaiting(String title) {
+    return 'Die CD $title ist fertig und wartet auf deine Freigabe.';
+  }
+
+  @override
+  String get cdSpeakAwaitingNoTitle =>
+      'Eine CD ist fertig und wartet auf deine Freigabe.';
+
+  @override
+  String cdSpeakImported(String title) {
+    return 'Die CD $title wurde importiert.';
+  }
+
+  @override
+  String get cdSpeakImportedNoTitle => 'Eine CD wurde importiert.';
+
+  @override
+  String cdSpeakReadError(String title) {
+    return 'Die CD $title hat einen Lesefehler.';
+  }
+
+  @override
+  String get cdSpeakReadErrorNoTitle => 'Eine CD hat einen Lesefehler.';
+
+  @override
+  String cdSpeakPresent(String title) {
+    return 'Die CD $title ist schon in der Bibliothek.';
+  }
+
+  @override
+  String get cdSpeakPresentNoTitle => 'Eine CD ist schon in der Bibliothek.';
+
+  @override
+  String get cdAnnounceTest => 'So klingen die Ansagen zu CDs.';
+
+  @override
+  String get cdAnnounceTitle => 'Ansagen zu CDs';
+
+  @override
+  String get cdAnnounceHint =>
+      'Während Musik läuft, sagt eine Stimme, wenn eine CD fertig ist oder dich braucht.';
+
+  @override
+  String get cdAnnounceTestButton => 'Test';
+
+  @override
+  String get cdAnnounceNoSpdSay =>
+      'Keine Stimme: Das Programm spd-say (speech-dispatcher) fehlt.';
+
+  @override
+  String get cdAnnounceNoVoice =>
+      'Dieses Gerät hat noch keine Stimme für Ansagen.';
+
+  @override
   String get inboxRetry => 'Erneut versuchen';
 
   @override
