@@ -515,6 +515,7 @@
   "cdEncoding": "Converting the audio…",
   "cdAddingToLibrary": "Adding the CD to the library…",
   "cdImportingTooltip": "Importing the CD",
+  "cdEject": "Eject",
   "cdEjectTooltip": "Eject CD",
   "cdNothingToEject": "There is nothing to eject.",
   "cdErrNoDrive": "The server has no CD drive.",

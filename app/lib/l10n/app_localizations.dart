@@ -1808,6 +1808,12 @@ abstract class AppLocalizations {
   /// **'Importing the CD'**
   String get cdImportingTooltip;
 
+  /// No description provided for @cdEject.
+  ///
+  /// In en, this message translates to:
+  /// **'Eject'**
+  String get cdEject;
+
   /// No description provided for @cdEjectTooltip.
   ///
   /// In en, this message translates to:

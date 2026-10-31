@@ -1028,6 +1028,9 @@ class AppLocalizationsDe extends AppLocalizations {
   String get cdImportingTooltip => 'CD wird importiert';
 
   @override
+  String get cdEject => 'Auswerfen';
+
+  @override
   String get cdEjectTooltip => 'CD auswerfen';
 
   @override

@@ -204,7 +204,8 @@ class _CdImportDialogState extends State<CdImportDialog> {
             child: Text(l.cdClose),
           ),
         ] else ...[
-          if (c.phase != CdPhase.starting)
+          if (c.phase != CdPhase.starting &&
+              !(c.phase == CdPhase.present && c.ejectPhase == CdEjectPhase.ejected))
             TextButton(
               key: const Key('cd-cancel'),
               onPressed: () async {
@@ -221,7 +222,21 @@ class _CdImportDialogState extends State<CdImportDialog> {
               onPressed: c.canSave ? c.save : null,
               child: Text(c.resumeOffer != null && !c.rereadFromStart ? l.cdContinue : l.cdSave),
             ),
-          if (c.phase == CdPhase.present) ...[
+          if (c.phase == CdPhase.present && c.ejectPhase == CdEjectPhase.ejected)
+            // The CD is out: nothing more to do with it, so there is no import anyway.
+            FilledButton(
+              key: const Key('cd-close'),
+              onPressed: () => Navigator.pop(context),
+              child: Text(l.cdClose),
+            )
+          else if (c.phase == CdPhase.present && c.ejectPhase != CdEjectPhase.ejecting) ...[
+            // The CD is in the drive: it can be taken out by hand, imported again, or (with gaps) repaired.
+            TextButton.icon(
+              key: const Key('cd-eject-now'),
+              onPressed: c.ejectNow,
+              icon: const Icon(Icons.eject),
+              label: Text(l.cdEject),
+            ),
             TextButton(
               key: const Key('cd-force'),
               onPressed: _askForce,
@@ -399,6 +414,24 @@ class _CdImportDialogState extends State<CdImportDialog> {
           ],
           const SizedBox(height: 8),
           Text(l.cdHealHint, style: t.bodySmall),
+        ],
+        if (c.ejectPhase == CdEjectPhase.ejecting) ...[
+          const SizedBox(height: 12),
+          const LinearProgressIndicator(key: Key('cd-ejecting')),
+        ],
+        if (c.ejectPhase == CdEjectPhase.ejected) ...[
+          const SizedBox(height: 12),
+          Text(l.cdEjected, key: const Key('cd-ejected')),
+        ],
+        if (c.ejectPhase == CdEjectPhase.failed) ...[
+          const SizedBox(height: 12),
+          Text(
+            c.ejectError == 'nothing_to_eject'
+                ? l.cdNothingToEject
+                : cdErrorText(l, c.ejectError ?? 'eject_failed'),
+            key: const Key('cd-eject-error'),
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
         ],
       ],
     );

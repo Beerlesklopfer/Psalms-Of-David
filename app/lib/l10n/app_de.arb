@@ -391,6 +391,7 @@
   "cdEncoding": "Die Audiodaten werden umgewandelt…",
   "cdAddingToLibrary": "Die CD wird in die Bibliothek aufgenommen…",
   "cdImportingTooltip": "CD wird importiert",
+  "cdEject": "Auswerfen",
   "cdEjectTooltip": "CD auswerfen",
   "cdNothingToEject": "Es gibt nichts auszuwerfen.",
   "cdErrNoDrive": "Der Server hat kein CD-Laufwerk.",

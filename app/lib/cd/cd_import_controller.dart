@@ -12,6 +12,10 @@ import 'cd_ports.dart';
 /// `present`: the disc is in the library already; the dialog offers a check and repair, not an import.
 enum CdPhase { identifying, present, confirm, starting, running, done, failed, cancelled }
 
+/// The tray in the `present` view: `idle` (the CD is in the drive), `ejecting` (the call runs), `ejected` (the CD is out, by the
+/// app or by the server), `failed` (the tray did not open; the CD stays and the person may try again or import anyway).
+enum CdEjectPhase { idle, ejecting, ejected, failed }
+
 /// Time between two direct questions about the running job, as a safety net for the event channel.
 const Duration kCdJobPoll = Duration(seconds: 10);
 
@@ -84,6 +88,13 @@ class CdImportController extends ChangeNotifier {
 
   /// The disc is in the library already (from the drive's state, or from a refusal of the server).
   CdPresent? present;
+
+  /// The state of the tray in the `present` view. A disc that is whole in the library is ejected at once; one with gaps stays in the
+  /// drive (the server may repair it) until the person ejects it.
+  CdEjectPhase ejectPhase = CdEjectPhase.idle;
+
+  /// The code of a failed eject (`eject_failed`, or the server's own code), for the dialog to turn into words.
+  String? ejectError;
 
   /// A hint that comes with a good end (`unreadable_track`, `locked`), and the job's own message.
   String? doneNote;
@@ -204,6 +215,7 @@ class CdImportController extends ChangeNotifier {
       }
       phase = CdPhase.present;
       _notify();
+      if (present!.complete) await ejectNow();
       return;
     }
     await _loadForm();
@@ -213,9 +225,29 @@ class CdImportController extends ChangeNotifier {
   Future<void> importAnyway() async {
     force = true;
     present = null;
+    ejectPhase = CdEjectPhase.idle;
+    ejectError = null;
     phase = CdPhase.identifying;
     _notify();
     await _loadForm();
+  }
+
+  /// Opens the tray of the drive. Used by the automatic eject of a complete disc and by the Eject button; does nothing while a call
+  /// runs or when the disc is out already.
+  Future<void> ejectNow() async {
+    if (_disposed || ejectPhase == CdEjectPhase.ejecting || ejectPhase == CdEjectPhase.ejected) return;
+    ejectPhase = CdEjectPhase.ejecting;
+    ejectError = null;
+    _notify();
+    try {
+      final out = await server.eject(device: drive.device);
+      ejectPhase = out ? CdEjectPhase.ejected : CdEjectPhase.failed;
+      if (!out) ejectError = 'nothing_to_eject';
+    } on Object catch (e) {
+      ejectPhase = CdEjectPhase.failed;
+      ejectError = e is ApiException && e.code.isNotEmpty ? e.code : 'eject_failed';
+    }
+    _notify();
   }
 
   Future<void> _loadForm() async {
@@ -396,6 +428,14 @@ class CdImportController extends ChangeNotifier {
             disc: (b?['disc'] as int?) ?? disc,
           );
     phase = CdPhase.present;
+    ejectPhase = CdEjectPhase.idle;
+    ejectError = null;
+    // The server ejected the disc already when the request said so: no second eject, just the message.
+    if (b?['ejected'] == true) {
+      ejectPhase = CdEjectPhase.ejected;
+    } else if (present!.complete) {
+      unawaited(ejectNow());
+    }
     _notify();
     return true;
   }
