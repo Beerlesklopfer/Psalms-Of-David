@@ -2,7 +2,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # CDs in the family: rights, approval, inbox, spoken messages
 
-Status 2026-10-31: **phases 1 and 2 built** (rights, `cd_auto_approval`, the state machine, the held folder, approve / reject, `retry_wait`, `present`, expiry; `server/src/cdrights.rs`, `server/src/cdflow.rs`, migrations 0058 and 0059, tests `server/tests/cd_inbox.rs`, `tests/web.rs`, `tests/mcp_cd.rs`); phases 3 to 6 are not built. Decided by the project owner in a conversation on 2026-10-31 (quotes in German are his).
+Status 2026-10-31: **phases 1 to 3 built** (rights, `cd_auto_approval`, the state machine, the held folder, approve / reject, `retry_wait`, `present`, expiry; `server/src/cdrights.rs`, `server/src/cdflow.rs`, migrations 0058, 0059 and 0060, `server/src/inbox.rs`, `server/src/api_inbox.rs`, tests `server/tests/cd_inbox.rs`, `tests/web.rs`, `tests/mcp_cd.rs`); phases 4 to 6 are not built. Decided by the project owner in a conversation on 2026-10-31 (quotes in German are his).
 Builds on `spec-cd-import-api.md` (jobs, the drive of the server, automatic import) and `spec-state-machines.md`.
 
 ## Why
@@ -113,8 +113,11 @@ API (`/api/v1`, bearer token; everybody, the list is empty for children and gues
 |---|---|
 | `GET /inbox` | `{"items":[{id,kind,code,args,created_ms,read,resolved?,resolution?,by?}],"unread":n,"tasks_open":n}`, newest first |
 | `POST /inbox/{id}/read` | `204` |
-| `POST /inbox/{id}/decide` `{"approve":bool}` | `204`; `403 forbidden` without `cd_may_approve`; `409 decided` with `{by, resolution}` if someone was faster |
+| `POST /inbox/read_all` | `204` |
+| ~~`POST /inbox/{id}/decide`~~ | **not built, on purpose:** a task is decided through `POST /cd/jobs/{job_id}/approve` or `/reject` (phase 2), the one way; the slower decider gets `409 decided` with `{by, resolution}` |
 | `POST /cd/jobs/{id}/retry` | `202`; from `retry_wait` only (`409 invalid_move`) |
+
+The exact shapes (item, paging, WebSocket messages) are in `spec-app-api.md` ("The inbox of the CDs").
 
 ## Delivery
 
@@ -177,7 +180,7 @@ Which device speaks:
 
 1. **Done (2026-10-31).** Rights (columns, users page, API checks) and `cd_auto_approval`.
 2. **Done (2026-10-31).** State machine with `awaiting_approval`, held folder, approve / reject, `retry_wait` / retry, present → eject.
-3. Inbox (tables, API, WebSocket types), notices from the automatic import.
+3. **Done (2026-10-31).** Inbox (tables, API, WebSocket types), notices from the automatic import.
 4. App: inbox card, badge, notifications with buttons, decide and retry.
 5. Spoken messages.
 6. Backlog: real push (APNs relay, UnifiedPush / ntfy); voice from Eliezer.
@@ -199,8 +202,16 @@ Specified in `spec-cd-import-api.md` ("States of a job"), `spec-admin-ui.md` and
 - The rights are columns of the profile with triggers (a child or guest never holds one; the last `cd_may_approve` cannot be taken or deleted); a profile that becomes an administrator gets all three.
 - No MCP tool changes the rights or decides a CD; `list_profiles` only shows the rights.
 
-**Hooks for phase 3** (all in `server/src/cdflow.rs`): `pub enum CdEvent { Present, Imported, ReadError { tracks }, AwaitingApproval, Decided { approved, by }, Expired, NotStarted { reason } }` and `pub fn notify(event: &CdEvent)`, which does nothing yet. Every place that makes one of these events already calls it: `finish_present` (`Present`, also for the automatic path), `conclude` (`Imported`), the end of a rip (`ReadError` for `retry_wait`), `hold` (`AwaitingApproval`), `approve` / `reject` (`Decided`), `expire_held` (`Expired`), `log_skipped` (`NotStarted` for `no_match` and `ambiguous_match`). `Store::cd_approvers()` lists the profiles a task goes to; `Store::cd_rights(profile)` the recipients by right; the starter is `Job::user_id` (0 = the drive). `cdflow::recover` and `expire_held(store, cd, now_ms)` are the entry points of restart and expiry. The WebSocket types `inbox` / `inbox_resolved` and the tables of the inbox are not built.
+**Hooks for phase 3** (all in `server/src/cdflow.rs`): `pub enum CdEvent { Present, Imported, ReadError { tracks }, AwaitingApproval, Decided { approved, by }, Expired, NotStarted { reason } }` and `pub fn notify(event: &CdEvent)`, which does nothing yet. Every place that makes one of these events already calls it: `finish_present` (`Present`, also for the automatic path), `conclude` (`Imported`), the end of a rip (`ReadError` for `retry_wait`), `hold` (`AwaitingApproval`), `approve` / `reject` (`Decided`), `expire_held` (`Expired`), `log_skipped` (`NotStarted` for `no_match` and `ambiguous_match`). `Store::cd_approvers()` lists the profiles a task goes to; `Store::cd_rights(profile)` the recipients by right; the starter is `Job::user_id` (0 = the drive). `cdflow::recover` and `expire_held(store, cd, now_ms)` are the entry points of restart and expiry. (Phase 3 turned `notify` into `async fn notify(store, cd, &CdEvent)`, which calls `inbox::handle`.)
 
 ## Open
 
 Nothing at the moment. (OPDS feeds are named in the draft's tests; the server has no OPDS feed yet, so there is nothing to hide from.)
+
+## What phase 3 built, and what it leaves for phases 4 and 5
+
+- Tables (migration 0060): `inbox_item(id, kind, topic 'cd', job_id, code, args JSON, speak, device, resolved_at, resolved_by, resolved_name, resolution)` and `inbox_recipient(item_id, profile_id, read_at, decide)`, both with the audit fields (0028; `created_at` is the time of the item); `cd_job.starter_device`; the setting `inbox_keep_days` (90, 1 to 3650; the settings page, group "library"). Code: `server/src/inbox.rs` (`inbox::handle` is the one place that turns a `CdEvent` into items; `Store::inbox_*`), `server/src/api_inbox.rs`.
+- Cleanup: the periodic round of `cdflow::expiry_task` (every ten minutes, also expires held CDs) removes the items older than `inbox_keep_days`. **A task nobody decided is never removed** (a held CD may wait longer than the inbox keeps notices: `cd_held_keep_days` goes up to 365).
+- Decisions where the draft was silent: (1) the starter's entry of a held CD is **the same task item**, with `decide = 0` in his row of `inbox_recipient` (API: `can_decide: false`), so that one task stays one decision; when it is decided, it disappears from his list and the decision notice (`cd_decided`, or `cd_expired`) takes its place. (2) A decided task is marked read for everybody (nothing is left to do). (3) The decider gets no notice about their own decision. (4) `cd_imported` and `cd_read_error` go to the starter, and also to the approvers when the CD was put in at the server or the starter needs approval; an approved CD gives `cd_decided` instead of `cd_imported`. (5) The skipped reasons `no_match`, `ambiguous_match`, `heal_needed`, `no_space`, `no_target` give `cd_no_match`, `cd_ambiguous`, `cd_heal_needed`, `cd_no_space`, `cd_no_target`; `disc_present` of the automatic import is `cd_present` (the job `present`); the other reasons (`busy`, `drive_denied`, `udev_off`, ...) stay in the log only. (6) Without any CD right (neither `cd_may_insert` nor `cd_may_approve`) the inbox is always empty, whatever it held before. (7) Only these four codes may be spoken, `speak` is set for them only.
+- **The starter's device.** Devices are identified by `cdimport::device_label(token)`, the `device` of the `hello` message. `POST /cd/rip` and `POST /cd/import` store it in `cd_job.starter_device`; a rip started in the web panel, by MCP or at the drive has none, so its messages carry `speak: "home"` and `device: ""`. The body of a request cannot set it.
+- Left for phase 4: the card, the badge, the notifications with buttons (against `spec-app-api.md`); for phase 5: speaking by `speak` / `device`, "playing" and "on the home network" (the server knows neither).
