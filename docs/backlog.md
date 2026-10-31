@@ -34,6 +34,7 @@ Things the project owner has decided to do **later**. Each line says where the c
 
 ## Drafts (2026-10-31, not yet decided)
 
+- **Video** (family films and series, age ratings, direct play, discs through MakeMKV as a hidden feature; PDC cannot transcode): `docs/spec-video.md`. First step: the scanner and the listing.
 - **E-books** (host, read, read aloud, PDF to EPUB with a labelling language model): `docs/spec-ebooks.md`. First step: sample PDFs from the owner.
 - **Abraham Box** (David on an RK3588, night jobs, publisher edition): `docs/spec-abraham-box.md`. First step: the benchmark on the board.
 - **Read aloud through Eliezer** (push one chapter per request, voices, night window, rule 6): `docs/spec-read-aloud.md`, section "Update 2026-10-31".

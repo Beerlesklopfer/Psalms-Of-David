@@ -56,7 +56,7 @@ was du gerade brauchst.
 - **Plattformen:** Android auf einem echten Telefon, Windows (siehe unten).
 - **Pakete:** signierte Pakete und Releases (`docs/releasing.md`).
 - **Weitere Medien:** E-Books und Videos zeigt die App als Kategorie, David verwaltet sie noch nicht
-  (`docs/spec-ebooks.md`, Entwurf).
+  (`docs/spec-ebooks.md` und `docs/spec-video.md`, Entwürfe).
 - **Konzepte ohne Code:** Vorlesen in den Stimmen der Eltern (`docs/spec-read-aloud.md`), Predigten als Text
   (`docs/spec-transcription.md`), Abraham Box (`docs/spec-abraham-box.md`, Entwurf), Foto-Abgleich
   (`docs/spec-photo-sync.md`). Was als Nächstes kommt, steht in `docs/backlog.md`.
