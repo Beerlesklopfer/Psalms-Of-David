@@ -11,7 +11,8 @@ anything is built on them (marked *check*).
 
 1. **Host** the family's films and series on David like the audiobooks: one library, the same roles, age limits, releases, hiding, owner and listening
    (here: watching) progress per profile.
-2. **Play** them in Psalms (Linux first, then Android, iPhone, iPad, macOS) with a position that is kept on the server and a next episode that follows.
+2. **Play** them in Psalms (Linux first, then Android, iPhone, iPad, macOS) with a position that is kept on the server, a next episode that follows,
+   and the **language of the sound and the subtitles** that the person chose, kept on the server too (see "Sound language and subtitles").
 3. **Take in** files from a folder or an upload, and discs through MakeMKV (a hidden feature, off by default).
 
 Not a goal: transcoding on PDC, a shop, streaming services, and anything that works around copy protection by itself (MakeMKV is the owner's own
@@ -41,8 +42,10 @@ tool; David only calls it, see "Discs").
 
 ## Data
 
-Migration after the current last one. On `track`, for video only (NULL for audio): `width`, `height`, `video_codec`, `fps`, `streams` (JSON: audio
-tracks with language and codec, subtitle tracks with language and kind). The existing `format` (container), `codec`, `mime_type`, `duration_ms`,
+Migration after the current last one. On `track`, for video only (NULL for audio): `width`, `height`, `video_codec`, `fps`. The streams of a file are rows, not a JSON text, so they can be
+listed and asked about (which films have a German track, which have subtitles): `video_stream(track_id, idx, kind, language, codec, title, is_default,
+is_forced, source)`: `kind` is `audio` or `subtitle`; `language` is the ISO 639 code of the stream (`und` when the file does not say); `source` is
+`embedded` or `file` (a sidecar file next to the video). The existing `format` (container), `codec`, `mime_type`, `duration_ms`,
 `size_bytes` are reused. On `book` for a season or a film: `year` (read from the file, like the year of an album), `min_age` and `recommended_age` as today.
 
 Folder layout below the video roots of the settings (nothing built in), after the naming that the common media programs use so existing collections work
@@ -56,6 +59,27 @@ Family/<Year> <Event>/<name>.mp4                   (family films: a folder is on
 
 Poster and metadata come from files next to the video (`poster.jpg`, an optional `.nfo`); **no lookup on the internet by default** (privacy, and the
 terms of such services have to be read first, *check*).
+
+## Sound language and subtitles (kept on the server)
+
+Both are **persisted**, not only held by the player, so a person finds them as they left them on every device (like the position).
+
+- **Per profile, the default:** `profile.video_audio_lang` (a language code or empty: "as the file says") and `profile.video_subtitles`
+  (`off | forced | <language code>`; `forced` shows only the subtitles that the film marks as forced, for example for foreign words). Set in the app
+  and in the administration; a child profile may be set by a parent.
+- **Per profile and item, the last choice:** `video_choice(profile_id, book_id, audio_lang, subtitle)`. A person who picks English sound and German
+  subtitles for a series gets the same for the next episode and for the next season of that show; a film keeps its own choice. The choice wins over the
+  default; no row means the default applies.
+- **How a stream is picked** when a part is opened: the choice of this item, else the default of the profile, else the stream the file marks as default,
+  else the first. A language the file does not have falls back to the next rule (never to silence or to a missing picture); the app says so once.
+- **The state is the choice, not the player:** the app writes the choice when the person changes it in the player, the server answers with it when the
+  item is opened, and the player only follows it (an explicit small state machine: `default`, `chosen`, `unavailable`; the GUI shows it).
+- **Subtitles**: text subtitles inside the file (SRT, ASS, mov_text) and files next to the video (`<name>.<lang>.srt`, `.vtt`) are offered. The server
+  gives a text subtitle as **WebVTT** (`GET /parts/{id}/subtitles/{idx}`): turning text into WebVTT is cheap and is not transcoding. Subtitles that are
+  pictures (the PGS and VobSub of discs) cannot be shown by every player; they are listed with a mark and shown where the player can (*check* per
+  platform); converting them to text (OCR) is a later step outside PDC.
+- **Sound**: the player switches between the audio streams of the file; no new file is made. A part that has several languages lists them with the
+  language, the codec and the channels, so the person sees "German 5.1" and "English stereo", not a number.
 
 ## Age rating (FSK)
 
@@ -92,6 +116,12 @@ the `.nfo` (information only). Family films default to "all ages" when the owner
 `GET /items` and `GET /items/{id}` as today with `kind: "video"`; a part carries `width`, `height`, `video_codec`, `container`, `streams`, `playable_on`.
 `GET /parts/{id}/stream` as today. Progress and resume as today (`finished` of an episode offers the next one). The poster is the cover of the item.
 
+- `GET /items/{id}` carries for every video part its `streams` (from `video_stream`) and, for the asking profile, the **resolved choice** (`audio`,
+  `subtitle`, and why: `chosen`, `default`, `file`).
+- `PUT /items/{id}/video-choice` `{audio, subtitle}` stores the choice of the profile for this item (and, for an episode, for its show); `DELETE` takes
+  it back to the default. `PUT /me/video-defaults` `{audio, subtitles}` sets the default of the profile.
+- `GET /parts/{id}/subtitles/{idx}` gives the text subtitle as WebVTT (token, visibility, rating and planner as for the stream).
+
 ## The app
 
 - The category "Videos" (today "coming soon") lists films and series, a season opens its episodes; the poster is the cover.
@@ -100,15 +130,18 @@ the `.nfo` (information only). Family films default to "all ages" when the owner
   buffering, ended, error) that the GUI only shows (`spec-player-state-machine.md`).
 - Position is saved as for audio; the next episode follows after a short count-down that can be stopped.
 - Offline: downloads are large; only on Wi-Fi and with room (the rule of the podcasts), per episode, never automatic.
-- Later: subtitles, audio track choice, chapters, skip intro.
+- The player has a menu for the sound language and the subtitles (names, not numbers); a change is written to the server at once and the same
+  person finds it on the next device.
+- Later: chapters, skip intro.
 
 ## Phases
 
 1. **Scanner and listing** (server): video roots, ffprobe, `kind = 'video'`, year, poster, `min_age`, the API fields; the category in the app lists them.
 2. **Playing** in the Linux app: player interface, libmpv backend, state machine, progress, next episode.
-3. **Remux** and `playable_on` (the marks in the app and the administration).
+3. **Streams, sound language and subtitles** (server: `video_stream`, the choice and the defaults, WebVTT; app: the menu, written to the server).
+   Remux and `playable_on` (the marks in the app and the administration).
 4. **Discs**: `video_discs`, the disc job, the staging folder.
-5. Android and iOS players; offline; subtitles and audio tracks.
+5. Android and iOS players; offline (with the subtitle files); OCR of picture subtitles.
 6. Later: an outside worker for conversion; the rights and inbox pattern for put-in video.
 
 ## Tests
@@ -116,7 +149,10 @@ the `.nfo` (information only). Family films default to "all ages" when the owner
 Scanner on generated small files (naming, a film, a season with episodes, a family folder, a file without a year); ffprobe answered by a fake program;
 the rating rule (no release without a rating, a child with a lower limit does not see it, the planner applies); `playable_on` from container and codecs;
 the disc job as a state machine against a fake `makemkvcon` (robot output, failure, cancel, a second job refused); the feature switch (off: no route,
-no tool, no text); a stream with `Range`.
+no tool, no text); a stream with `Range`; the streams of a file stored as rows (language, default, forced; `und` for none); the pick rule (choice of the
+item beats the default of the profile beats the file's default beats the first; a missing language falls back); the choice of a show carries to its
+next episode and does not leak to another profile; a subtitle file next to the video is found by its language; text subtitles are served as WebVTT and a
+picture subtitle is listed with a mark but not served as text.
 
 ## Open questions
 
@@ -125,3 +161,5 @@ no tool, no text); a stream with `Range`.
 - Remux on PDC: how much CPU and time does it take there, and is the result kept next to the original or does it replace it?
 - Which device formats matter first (the iPhone is the strictest)?
 - Is `ffprobe` installed on PDC, or does the scanner read the containers itself?
+- Is the choice per show (all seasons) or per season? The proposal is per show.
+- Do children get their language and subtitles set by a parent only, or may they change them?
