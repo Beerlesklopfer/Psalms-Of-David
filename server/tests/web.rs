@@ -135,6 +135,11 @@ async fn sign_in(app: &App) -> (String, String) {
     (pair, csrf_token(&token))
 }
 
+/// Lets the wait after one wrong PIN run out (a * 2^1 seconds with the default a = 1), so the next try is checked.
+async fn after_the_wait() {
+    tokio::time::sleep(std::time::Duration::from_millis(2_100)).await;
+}
+
 fn form(fields: &[(&str, &str)]) -> String {
     serde_urlencoded::to_string(fields).unwrap()
 }
@@ -519,27 +524,27 @@ async fn every_setting_is_a_line_edit_and_one_save_decides_them() {
     // Three tabs; the values are inputs with their unit, and nothing speaks of proposals any more.
     let page = send(&a, get("/admin/settings?tab=values", &Opts { cookie: Some(&cookie), ..Default::default() })).await.body;
     assert!(page.contains("class=\"tab\"") && page.contains("aria-current=\"page\""), "{page}");
-    assert!(page.contains("name=\"import_interval_min\"") && page.contains("name=\"pin_lock_s\"") && page.contains("name=\"time_zone\"") && page.contains("<span class=\"unit\">min</span>"));
+    assert!(page.contains("name=\"import_interval_min\"") && page.contains("name=\"pin_backoff_s\"") && page.contains("name=\"time_zone\"") && page.contains("<span class=\"unit\">min</span>"));
     assert!(!page.contains("Proposal") && !page.contains("Accepted") && !page.contains("import_roots"));
     assert!(page.contains("form=") || page.contains("type=\"submit\" class=\"btn\">Save"));
 
     // Minutes and days are stored as the engine reads them.
-    let ok = form(&[("pin_max_failures", "7"), ("pin_lock_s", "30"), ("enrollment_code_ttl_s", "10"), ("device_inactive_days", "90"), ("guest_expire_days", "3"), ("import_interval_min", "0"), ("time_zone", "Europe/Berlin")]);
+    let ok = form(&[("pin_backoff_s", "3"), ("enrollment_code_ttl_s", "10"), ("device_inactive_days", "90"), ("guest_expire_days", "3"), ("import_interval_min", "0"), ("time_zone", "Europe/Berlin")]);
     let r = send(&a, post("/admin/rpc/settings.save", &ok, &o)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
     assert!(r.body.starts_with("<form id=\"values-form\"") && r.body.contains("Saved."));
-    assert_eq!(a.store.setting("pin_lock_s").await.unwrap().as_deref(), Some("1800"));
+    assert_eq!(a.store.setting("pin_backoff_s").await.unwrap().as_deref(), Some("3"), "seconds are stored as they are");
     assert_eq!(a.store.setting("enrollment_code_ttl_s").await.unwrap().as_deref(), Some("600"));
-    assert_eq!(a.store.setting("pin_max_failures").await.unwrap().as_deref(), Some("7"));
     assert_eq!(a.store.setting("import_interval_min").await.unwrap().as_deref(), Some("0"), "0 turns the automatic look off");
     assert!(a.store.unconfirmed_defaults().await.unwrap() < before, "saving decides the values");
 
     // Wrong input changes nothing.
-    for (key, value) in [("pin_max_failures", "0"), ("pin_lock_s", "abc"), ("guest_expire_days", "999"), ("time_zone", "Mars/Olympus")] {
-        let r = send(&a, post("/admin/rpc/settings.save", &form(&[("pin_max_failures", "9"), (key, value)]), &o)).await;
+    for (key, value) in [("pin_backoff_s", "0"), ("pin_backoff_s", "abc"), ("guest_expire_days", "999"), ("time_zone", "Mars/Olympus")] {
+        let r = send(&a, post("/admin/rpc/settings.save", &form(&[("enrollment_code_ttl_s", "20"), (key, value)]), &o)).await;
         assert_eq!(r.status, StatusCode::UNPROCESSABLE_ENTITY, "{key}={value}");
     }
-    assert_eq!(a.store.setting("pin_max_failures").await.unwrap().as_deref(), Some("7"));
+    assert_eq!(a.store.setting("pin_backoff_s").await.unwrap().as_deref(), Some("3"));
+    assert_eq!(a.store.setting("enrollment_code_ttl_s").await.unwrap().as_deref(), Some("600"));
 
     // Roles: devices and days; a session that is not whole days stays when its shown number is left alone.
     let guest_before = a.store.role_policies().await.unwrap().into_iter().find(|p| p.role == "guest").unwrap();
@@ -1143,6 +1148,7 @@ async fn the_pin_changes_only_with_the_current_one() {
 
     let r = send(&a, post("/profile/pin", &change("000000", "445566", "445566"), &o)).await;
     assert_eq!(r.header("location"), Some("/profile?msg=err.pin_wrong"));
+    after_the_wait().await;
     let r = send(&a, post("/profile/pin", &change("112233", "445566", "445567"), &o)).await;
     assert_eq!(r.header("location"), Some("/profile?msg=err.pin_mismatch"));
     let r = send(&a, post("/profile/pin", &change("112233", "12ab", "12ab"), &o)).await;
@@ -1151,6 +1157,7 @@ async fn the_pin_changes_only_with_the_current_one() {
     let r = send(&a, post("/profile/pin", &change("112233", "445566", "445566"), &o)).await;
     assert_eq!(r.header("location"), Some("/profile?msg=ok.pin_changed"));
     assert_eq!(login(&a, "name=Anna&pin=112233").await.status, StatusCode::UNAUTHORIZED, "the old PIN no longer works");
+    after_the_wait().await;
     assert_eq!(login(&a, "name=Anna&pin=445566").await.status, StatusCode::SEE_OTHER);
 
     // Other browsers are signed out; this one and the paired device stay.
@@ -1977,6 +1984,7 @@ async fn the_profile_has_one_form_and_one_save_for_everything() {
     assert!(a.store.has_avatar(anna).await.unwrap());
     assert_eq!(login(&a, "name=Annchen&pin=Sommer2026").await.status, StatusCode::SEE_OTHER, "the new password works");
     assert_eq!(login(&a, "name=Annchen&pin=112233").await.status, StatusCode::UNAUTHORIZED);
+    after_the_wait().await;
 
     // Saving with the secret fields empty keeps it; the picture box removes the picture.
     let r = send(&a, profile_form(&csrf, &cookie, &[("nickname", "Annchen"), ("language", ""), ("remove_avatar", "1")], None)).await;
@@ -2007,6 +2015,7 @@ async fn a_refused_save_changes_nothing() {
         let p = a.store.profile_by_id(anna).await.unwrap().unwrap();
         assert_eq!((p.name.as_str(), p.first_name, p.language), ("Anna", None, None), "{what}: nothing changed");
     }
+    after_the_wait().await;
     assert_eq!(login(&a, "name=Anna&pin=112233").await.status, StatusCode::SEE_OTHER, "the secret is still the old one");
     // No token, no save.
     assert_eq!(send(&a, profile_form("wrong", &cookie, &[("nickname", "X")], None)).await.status, StatusCode::FORBIDDEN);
