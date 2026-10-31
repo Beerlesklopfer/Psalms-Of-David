@@ -13,6 +13,18 @@ CREATE TABLE sign_in_wait (
     name       TEXT    NOT NULL PRIMARY KEY COLLATE NOCASE,
     failures   INTEGER NOT NULL,
     wait_until INTEGER NOT NULL,
-    touched_at INTEGER NOT NULL
+    touched_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT 0,
+    created_by TEXT,
+    updated_at INTEGER NOT NULL DEFAULT 0,
+    updated_by TEXT
 ) STRICT;
 CREATE INDEX sign_in_wait_touched ON sign_in_wait (touched_at);
+CREATE TRIGGER audit_sign_in_wait_ai AFTER INSERT ON sign_in_wait FOR EACH ROW BEGIN
+    UPDATE sign_in_wait SET created_at = CASE WHEN NEW.created_at = 0 THEN CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) ELSE NEW.created_at END, updated_at = CASE WHEN NEW.updated_at = 0 THEN CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) ELSE NEW.updated_at END, updated_by = coalesce(NEW.updated_by, (SELECT label FROM actor WHERE id = 1)), created_by = coalesce(NEW.created_by, (SELECT label FROM actor WHERE id = 1))
+    WHERE name IS NEW.name;
+END;
+CREATE TRIGGER audit_sign_in_wait_au AFTER UPDATE ON sign_in_wait FOR EACH ROW BEGIN
+    UPDATE sign_in_wait SET updated_at = CASE WHEN NEW.updated_at IS OLD.updated_at THEN CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER) ELSE NEW.updated_at END, updated_by = (SELECT label FROM actor WHERE id = 1)
+    WHERE name IS NEW.name;
+END;
