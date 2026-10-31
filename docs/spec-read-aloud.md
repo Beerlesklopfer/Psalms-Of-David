@@ -108,3 +108,45 @@ the API; CPU on the server (slower than real time, a book overnight); a rented G
 - Where does the worker run (workstation, server CPU, rented GPU)?
 - Voice of one parent for one book, or several voices (dialogue parts) in one book? (Several voices need a markup in the text; deferred.)
 - Do we keep the original text next to the album for later re-rendering with a better model? (Proposal: yes, for family-owned texts only, owner can delete.)
+
+## Update 2026-10-31 (draft)
+
+Written after a conversation with the owner and a look at Eliezer's branch `feat/speech-to-text` (pushed 2026-10-31). Draft: nothing here is decided
+until the owner says so.
+
+### Eliezer already speaks
+
+Eliezer serves `POST /v1/audio/speech` for models with `kind = "tts"` (Chatterbox through audio.cpp, MIT): JSON with `model`, `input`, `voice` (a name
+from `GET /v1/audio/voices`), `response_format` (`wav` or `pcm`), optional `speed`, `language`, `seed`, `stream`. A long text is cut at sentence
+boundaries and joined with the configured pauses, so **one chapter is one request**. With `stream` an error in a later passage aborts the connection
+instead of returning a status.
+
+Consequences for this spec:
+
+- **Push instead of pull.** The pipeline above plans a worker that fetches jobs from David (`GET /api/v1/tts/jobs/next`). With Eliezer it is simpler that
+  David's job runner calls Eliezer, one chapter per request, without `stream` (a complete WAV or an error status per chapter). The worker protocol stays
+  as the way for engines that cannot be called (a workstation behind a firewall). The `SpeechEngine` trait gets an `OpenAiSpeech` adapter (address, key,
+  model, voice from the settings).
+- **Resume per chapter** follows directly: a failed request repeats only that chapter.
+- **Voice samples.** Rule 2 keeps samples private in David; Eliezer has its own voice library. Proposal: David stays the owner of sample and consent;
+  it uploads the sample to Eliezer under an opaque name when a job needs it, and deleting a voice profile (rule 3) deletes it in Eliezer too
+  (`DELETE /v1/audio/voices/{name}`). A test checks that.
+- **GPU time.** A book holds the GPU for hours; it should run in the night window (below) or at a low priority (Eliezer's branch
+  `feature/gpu-priority`).
+
+### Night window and measured speed
+
+Long jobs run in a work window (default 23:00 to 06:00) and pause in between; the new job state `paused_window`, the window itself and the box this runs
+on are in `spec-abraham-box.md`. The estimate "duration and processing time before the start" (section "API and UI") uses the real-time factor measured
+on the machine that speaks, not a constant.
+
+### E-books as a source
+
+An EPUB (or a PDF converted to EPUB) is a text source: one chapter of the book per audio file, titles from its table of contents. See `spec-ebooks.md`.
+
+### Rule 6, new wording (proposal)
+
+Rule 6 says the text of a protected book is never stored longer than the job runs. With hosted e-books the text is on the server anyway. Proposed wording:
+"Texts: public-domain works, the family's own texts, and books whose publisher allows synthetic reading aloud (licence field of the publisher catalogue,
+`spec-ebooks.md`). Other protected books are read aloud for private use in the family only; a spoken edition of them is never shared, published or
+offered through OPDS. The UI says so."
