@@ -580,6 +580,19 @@ async fn every_setting_is_a_line_edit_and_one_save_decides_them() {
 }
 
 #[tokio::test]
+async fn the_retention_of_the_cd_messages_is_set_on_the_cd_import_tab() {
+    let a = app().await;
+    let (cookie, _) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    // The messages about CDs belong to the CD import (they are not a value of the library).
+    let cd = send(&a, get("/admin/settings?tab=cdimport", &o)).await;
+    assert_eq!(cd.status, StatusCode::OK, "{}", cd.body);
+    assert!(cd.body.contains("name=\"inbox_keep_days\""), "the CD import tab shows the setting: {}", cd.body);
+    let library = send(&a, get("/admin/settings?tab=values", &o)).await;
+    assert!(!library.body.contains("name=\"inbox_keep_days\""), "the library tab does not");
+}
+
+#[tokio::test]
 async fn the_overview_counts_follow_what_happens() {
     let a = app().await;
     a.store.import_books(vec![book("A", "One", &[1]), book("A", "Two", &[1])]).await.unwrap();
