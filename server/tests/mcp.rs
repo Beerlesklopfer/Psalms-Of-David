@@ -1432,6 +1432,10 @@ async fn albums_are_hidden_for_a_profile_by_label_and_shown_again() {
     }
     let all = m.store.admin_book_rows().await.unwrap();
     let id = |t: &str| all.iter().find(|r| r.title == t).unwrap().id;
+    // Released, so Anni sees them: what a profile hid is listed only for books it may see.
+    for r in &all {
+        m.store.release_book(r.id, 0).await.unwrap();
+    }
     let write = m.store.create_mcp_token("w", true, m.admin).await.unwrap();
     let read = m.store.create_mcp_token("r", false, m.admin).await.unwrap();
     m.store.set_book_labels(id("Eins"), &["Schule".to_owned()]).await.unwrap();

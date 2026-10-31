@@ -1481,7 +1481,7 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                     continue;
                 };
                 if !dry {
-                    s.store.set_book_hidden(profile, id, hide).await.map_err(db)?;
+                    s.store.admin_set_book_hidden(profile, id, hide).await.map_err(db)?;
                 }
                 done.push(json!({ "id": id, "title": row.title, "author": row.author }));
             }
