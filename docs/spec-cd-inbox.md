@@ -71,7 +71,7 @@ through one function that checks the move and who may make it). The rights decid
   same (the app's eject also gives up); `approve` / `reject` only by someone with `cd_may_approve`. Everything else is the
   server's own move. A move that is not allowed answers `409 invalid_move` or `403 forbidden`.
 - A held CD expires after `cd_held_keep_days` (default 60, 1..365): it becomes `rejected` with the reason `expired`, and the people
-  who could have decided get a notice. (**Open:** the owner may prefer "never expire".)
+  who could have decided get a notice. (Decided by the owner on 2026-10-31: it expires, after 60 days by default; there is no "never".)
 - Approval does not replace the release of albums for children (`book_release`, import criteria): it only decides whether the
   CD enters the library at all.
 
@@ -86,6 +86,11 @@ Meldungen nicht mit"). The app fetches the inbox when it opens, however long som
   others see a notice "Papa approved the CD *Paulus*" instead.
 - Recipients: the starter of a rip (their own CDs) and everybody with `cd_may_approve` (all tasks; the notices of CDs put in at the
   server and of CDs of people who need approval). Children and guests receive nothing.
+- **The starter sees their own held CD** (decided on 2026-10-31): a member with `cd_may_insert` but without `cd_no_approval` finds the CD in
+  the app as an entry of the job, "waits for approval", with author, title, the number of tracks and since when, **without the buttons**
+  (only someone with `cd_may_approve` decides). It is an entry about the job, not an album: the files stay out of every list of the
+  library, of the search, of streams, of MCP answers and of OPDS feeds until approved (see Tests), and the entry disappears when the CD is
+  approved (then it is an album), rejected or expired (then the starter gets the notice `cd_expired` or the decision notice).
 
 Tables (migration after 0057): `inbox_item(id, kind 'notice'|'task', topic 'cd', job_id, code, args JSON, created_at, resolved_at,
 resolved_by, resolution)`, `inbox_recipient(item_id, profile_id, read_at)`, both with the audit fields (0028). `code` is one of the
@@ -160,6 +165,8 @@ Which device speaks:
 - State machine: every allowed move, every refused move (`invalid_move`), each right (`forbidden`), the faster of two deciders
   (`409 decided`), expiry, a restart in every state (held files survive, `ripping` becomes `retry_wait` with the resume folder).
 - Held files are in no list, stream, search, MCP answer or OPDS feed until approved; rejected ones are deleted.
+- The starter's own held CD is shown as a job entry without buttons (with title, author, number of tracks), and still gives no track, no stream and
+  no search hit; another member without a CD right sees nothing of it; the entry goes away on approve, reject and expiry.
 - Inbox: recipients by rights, read marks per person, a task resolved for all with the notice to the others, children and guests
   get nothing, the WebSocket messages, the inbox after a reconnect.
 - Present CD: ejected, nothing read (the fake drive counts the reads), notice with the album.
@@ -175,8 +182,12 @@ Which device speaks:
 5. Spoken messages.
 6. Backlog: real push (APNs relay, UnifiedPush / ntfy); voice from Eliezer.
 
+## Decided
+
+- A held CD expires after `cd_held_keep_days` (default 60 days, 1 to 365); there is no "wait for ever". On expiry the files are deleted, the job is
+  `rejected` with the reason `expired`, and the approvers and the starter get the notice `cd_expired` (owner, 2026-10-31).
+- The starter sees their own held CD in the app as "waits for approval", without the buttons (owner, 2026-10-31).
+
 ## Open
 
-- Should a held CD expire (default 60 days) or wait for ever?
-- Does a member with `cd_may_insert` but without `cd_no_approval` see their own held CD in the app ("waits for approval"), or only
-  the notice? (Proposal: they see it, without the buttons.)
+Nothing at the moment.
