@@ -2088,6 +2088,16 @@ class AppLocalizationsDe extends AppLocalizations {
   String get inboxReject => 'Ablehnen';
 
   @override
+  String get cdGiveUp => 'Aufgeben';
+
+  @override
+  String get cdGiveUpTitle => 'Diese CD aufgeben?';
+
+  @override
+  String get cdGiveUpText =>
+      'Der Import endet. Was gelesen wurde, bleibt noch eine Weile erhalten, so geht ein neuer Versuch später schneller.';
+
+  @override
   String get inboxRetry => 'Erneut versuchen';
 
   @override

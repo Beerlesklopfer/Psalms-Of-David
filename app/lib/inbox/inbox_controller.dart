@@ -240,4 +240,6 @@ class _DemoInboxApi implements InboxApi {
   Future<void> reject(int jobId) async {}
   @override
   Future<void> retry(int jobId) async {}
+  @override
+  Future<void> giveUp(int jobId) async {}
 }

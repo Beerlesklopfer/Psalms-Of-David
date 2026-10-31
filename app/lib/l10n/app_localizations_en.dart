@@ -2063,6 +2063,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get inboxReject => 'Reject';
 
   @override
+  String get cdGiveUp => 'Give up';
+
+  @override
+  String get cdGiveUpTitle => 'Give up on this CD?';
+
+  @override
+  String get cdGiveUpText =>
+      'The import ends. What was read is kept for a while, so reading the CD again later is quicker.';
+
+  @override
   String get inboxRetry => 'Try again';
 
   @override

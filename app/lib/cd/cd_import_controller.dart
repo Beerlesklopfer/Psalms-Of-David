@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../inbox/inbox_api.dart';
 import '../server/api_client.dart';
 import 'cd_events.dart';
 import 'cd_models.dart';
@@ -16,6 +17,9 @@ enum CdPhase { identifying, present, confirm, starting, running, done, failed, c
 /// The tray in the `present` view: `idle` (the CD is in the drive), `ejecting` (the call runs), `ejected` (the CD is out, by the
 /// app or by the server), `failed` (the tray did not open; the CD stays and the person may try again or import anyway).
 enum CdEjectPhase { idle, ejecting, ejected, failed }
+
+/// A move of a job that waits after a read error: `retrying` and `givingUp` run a call; the button is off meanwhile.
+enum CdMovePhase { idle, retrying, givingUp }
 
 /// Time between two direct questions about the running job, as a safety net for the event channel.
 const Duration kCdJobPoll = Duration(seconds: 10);
@@ -32,6 +36,7 @@ class CdImportController extends ChangeNotifier {
     required this.tracker,
     required this.drive,
     this.resumeJobId,
+    this.inboxApi,
     this.pollInterval = kCdJobPoll,
   }) : phase = resumeJobId == null ? CdPhase.identifying : CdPhase.running {
     tracker.addListener(_onJobs);
@@ -39,6 +44,9 @@ class CdImportController extends ChangeNotifier {
 
   final CdServerApi server;
   final CdJobTracker tracker;
+
+  /// The client of the job moves (`retry`, `give_up`) that the inbox uses too; null where there is no inbox (the buttons are then not shown).
+  final InboxApi? inboxApi;
 
   /// The drive to import from (null: the server chooses). Only the name the server gave it.
   final CdDriveInfo drive;
@@ -96,6 +104,14 @@ class CdImportController extends ChangeNotifier {
 
   /// The code of a failed eject (`eject_failed`, or the server's own code), for the dialog to turn into words.
   String? ejectError;
+
+  /// The move of the job in `retry_wait` that is under way, and the code of the last one that failed (`forbidden`, `invalid_move`, ...).
+  CdMovePhase movePhase = CdMovePhase.idle;
+  String? moveError;
+
+  /// The job shown waits after a read error and the app can offer to try again or give up.
+  bool get canMoveJob =>
+      inboxApi != null && job?.kind == CdJobKind.waitingRetry && int.tryParse(jobId ?? '') != null;
 
   /// A hint that comes with a good end (`unreadable_track`, `locked`), and the job's own message.
   String? doneNote;
@@ -470,6 +486,37 @@ class CdImportController extends ChangeNotifier {
     _onJobs();
   }
 
+  /// Reads the CD again (`POST /cd/jobs/{id}/retry`). The job goes back to running with the server's next message; an error is kept in
+  /// [moveError] and the button is on again.
+  Future<void> retryRead() => _move(CdMovePhase.retrying, (api, id) => api.retry(id));
+
+  /// Ends the read error (`POST /cd/jobs/{id}/give_up`); the job then ends as cancelled. The dialog asks first.
+  Future<void> giveUp() => _move(CdMovePhase.givingUp, (api, id) => api.giveUp(id));
+
+  Future<void> _move(CdMovePhase what, Future<void> Function(InboxApi api, int id) call) async {
+    final api = inboxApi, id = int.tryParse(jobId ?? '');
+    if (api == null || id == null || movePhase != CdMovePhase.idle || !canMoveJob) return;
+    movePhase = what;
+    moveError = null;
+    _notify();
+    try {
+      await call(api, id);
+      // The phase stays until the job's next message says it moved (see _onJobs).
+      _pollOnce();
+    } on Object catch (e) {
+      movePhase = CdMovePhase.idle;
+      moveError = e is ApiException && e.code.isNotEmpty ? e.code : 'network';
+      // `invalid_move`: the job moved on meanwhile; ask for its state so the dialog follows it.
+      _pollOnce();
+    }
+    _notify();
+  }
+
+  void _pollOnce() {
+    final id = jobId;
+    if (id != null) unawaited(tracker.refresh(id));
+  }
+
   /// Closes the result of the rip on the server (the list of tracks stays there until then).
   Future<void> dismiss() async {
     if (jobId == null) return;
@@ -511,6 +558,8 @@ class CdImportController extends ChangeNotifier {
     final j = tracker.value[id];
     if (j == null) return;
     job = j;
+    // The server moved the job (running again, ended, ...): the move is over.
+    if (j.kind != CdJobKind.waitingRetry) movePhase = CdMovePhase.idle;
     if (j.finished) {
       _poll?.cancel();
       if (j.stateName == 'present' || j.stateName == 'rejected') {

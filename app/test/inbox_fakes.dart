@@ -98,6 +98,9 @@ class FakeInboxApi implements InboxApi {
 
   @override
   Future<void> retry(int jobId) => _go('retry $jobId');
+
+  @override
+  Future<void> giveUp(int jobId) => _go('give_up $jobId');
 }
 
 class FakeNotifier implements InboxNotifier {

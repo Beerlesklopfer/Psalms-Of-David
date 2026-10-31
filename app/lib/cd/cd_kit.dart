@@ -24,7 +24,13 @@ class CdKit {
   final InboxController? inbox;
 
   CdImportController controllerFor(CdDriveInfo drive, {String? resumeJobId}) =>
-      CdImportController(server: server, tracker: tracker, drive: drive, resumeJobId: resumeJobId);
+      CdImportController(
+        server: server,
+        tracker: tracker,
+        drive: drive,
+        resumeJobId: resumeJobId,
+        inboxApi: inbox?.api,
+      );
 
   void dispose() {
     drives.dispose();

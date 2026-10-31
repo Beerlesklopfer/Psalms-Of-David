@@ -24,6 +24,9 @@ abstract class InboxApi {
 
   /// `POST /cd/jobs/{job_id}/retry`, only while the job is in `retry_wait`.
   Future<void> retry(int jobId);
+
+  /// `POST /cd/jobs/{job_id}/give_up`: ends a CD that could not be read (the job becomes `cancelled`); only in `retry_wait`.
+  Future<void> giveUp(int jobId);
 }
 
 /// The inbox of the real server.
@@ -70,5 +73,10 @@ class ServerInboxApi implements InboxApi {
   @override
   Future<void> retry(int jobId) async {
     await api.cdJson('POST', '/api/v1/cd/jobs/$jobId/retry');
+  }
+
+  @override
+  Future<void> giveUp(int jobId) async {
+    await api.cdJson('POST', '/api/v1/cd/jobs/$jobId/give_up');
   }
 }

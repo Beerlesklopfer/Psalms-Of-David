@@ -3530,6 +3530,24 @@ abstract class AppLocalizations {
   /// **'Reject'**
   String get inboxReject;
 
+  /// No description provided for @cdGiveUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Give up'**
+  String get cdGiveUp;
+
+  /// No description provided for @cdGiveUpTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Give up on this CD?'**
+  String get cdGiveUpTitle;
+
+  /// No description provided for @cdGiveUpText.
+  ///
+  /// In en, this message translates to:
+  /// **'The import ends. What was read is kept for a while, so reading the CD again later is quicker.'**
+  String get cdGiveUpText;
+
   /// No description provided for @inboxRetry.
   ///
   /// In en, this message translates to:
