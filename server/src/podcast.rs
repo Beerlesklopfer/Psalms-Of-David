@@ -66,9 +66,37 @@ fn is_web_address(url: &str) -> bool {
     (url.starts_with("https://") || url.starts_with("http://")) && url.len() <= 2000 && !url.chars().any(|c| c.is_control() || c == ' ')
 }
 
+/// The most nodes a feed may have. A feed of `MAX_EPISODES` episodes has a few thousand; the limit only stops a
+/// document that is built to use up the memory.
+const MAX_NODES: u32 = 1_000_000;
+
+/// Whether the document type declaration has an internal subset (`<!DOCTYPE rss [ ... ]>`), the only place where
+/// entities can be declared. Old RSS 0.91 feeds carry a plain public declaration, which stays allowed; an internal
+/// subset is refused, because entities that refer to each other expand a small feed into gigabytes of text
+/// ("billion laughs"), and roxmltree does not limit how often the document itself refers to one.
+fn has_internal_subset(xml: &str) -> bool {
+    let Some(start) = xml.find("<!DOCTYPE") else { return false };
+    let mut quote = None;
+    for c in xml[start + "<!DOCTYPE".len()..].chars() {
+        match (quote, c) {
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), _) => {}
+            (None, '"' | '\'') => quote = Some(c),
+            (None, '[') => return true,
+            (None, '>') => return false,
+            (None, _) => {}
+        }
+    }
+    false
+}
+
 /// Reads an RSS 2.0 or Atom document. An error says in a few words why it is none.
 pub fn parse(xml: &str) -> Result<Feed, String> {
-    let doc = Document::parse_with_options(xml, roxmltree::ParsingOptions { allow_dtd: true, ..Default::default() }).map_err(|e| format!("not a feed: {e}"))?;
+    if has_internal_subset(xml) {
+        return Err("not a feed: it declares its own entities".into());
+    }
+    let options = roxmltree::ParsingOptions { allow_dtd: true, nodes_limit: MAX_NODES, ..Default::default() };
+    let doc = Document::parse_with_options(xml, options).map_err(|e| format!("not a feed: {e}"))?;
     let root = doc.root_element();
     match root.tag_name().name() {
         "rss" => {
@@ -228,6 +256,32 @@ mod tests {
         assert!(parse("<html><body>hello</body></html>").unwrap_err().contains("<html>"));
         assert!(parse("not xml at all").is_err());
         assert!(parse("<rss><nothing/></rss>").unwrap_err().contains("no channel"));
+    }
+
+    #[test]
+    fn a_feed_with_its_own_entities_is_refused_before_it_is_expanded() {
+        // A billion-laughs document: small, but expanded it would take gigabytes. It must be refused, not parsed.
+        let mut bomb = String::from("<?xml version=\"1.0\"?>\n<!DOCTYPE rss [\n <!ENTITY a \"aaaaaaaaaaaaaaaa\">\n");
+        for i in 1..10 {
+            bomb.push_str(&format!(" <!ENTITY {} \"{}\">\n", (b'a' + i) as char, format!("&{};", (b'a' + i - 1) as char).repeat(10)));
+        }
+        bomb.push_str("]>\n<rss><channel><title>");
+        bomb.push_str(&"&j;".repeat(1000));
+        bomb.push_str("</title></channel></rss>");
+        assert!(parse(&bomb).unwrap_err().contains("entities"));
+        // A bracket inside a quoted identifier is not an internal subset.
+        assert!(!has_internal_subset(r#"<!DOCTYPE rss SYSTEM "http://example.org/[x].dtd"><rss/>"#));
+        assert!(has_internal_subset("<!DOCTYPE rss SYSTEM 'x.dtd' [ <!ENTITY e 'x'> ]><rss/>"));
+    }
+
+    #[test]
+    fn an_old_rss_091_feed_with_its_public_doctype_is_still_read() {
+        let xml = r#"<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE rss PUBLIC "-//Netscape Communications//DTD RSS 0.91//EN" "http://my.netscape.com/publish/formats/rss-0.91.dtd">
+<rss version="0.91"><channel><title>Alt</title><link>https://example.org/</link><description>d</description>
+ <item><title>Eins</title><enclosure url="https://cdn.example.org/1.mp3" length="1" type="audio/mpeg"/></item></channel></rss>"#;
+        let f = parse(xml).unwrap();
+        assert_eq!((f.title.as_str(), f.episodes.len()), ("Alt", 1));
     }
 
     #[test]
