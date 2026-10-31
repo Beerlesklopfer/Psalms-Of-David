@@ -210,7 +210,7 @@ directory belongs to `david`, so run the command as that user:
     sudo systemctl start david
 
 A forgotten PIN or password is replaced with `david reset-pin --name <name>` (same data directory as above); the user
-is signed out everywhere and a lock after wrong attempts is lifted.
+is signed out everywhere and the wait after wrong attempts is lifted.
 
 ## MCP: a remote LLM corrects the tags
 

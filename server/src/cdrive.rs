@@ -754,11 +754,14 @@ async fn log_skipped(store: &Store, cd: &CdService, info: &SkipInfo, reason: &'s
     let patch = JobPatch { phase: Some("skipped".into()), author: Some(info.author.clone()), album: Some(info.title.clone()), disc: Some(i64::from(info.disc.max(1))), ..JobPatch::default() };
     match store.create_cd_job(cdimport::SYSTEM_USER, "auto", &patch).await {
         Ok(job) => {
-            let _ = store.update_cd_job(cdimport::SYSTEM_USER, job.id, &JobPatch { error: Some(reason.to_owned()), message: Some(detail), ..JobPatch::default() }).await;
+            let _ = store.update_cd_job(cdimport::SYSTEM_USER, job.id, &JobPatch { error: Some(reason.to_owned()), message: Some(detail.clone()), ..JobPatch::default() }).await;
         }
         Err(e) => tracing::warn!(error = %e, "the log of the import could not be written"),
     }
-    let _ = cd;
+    if matches!(reason, "no_match" | "ambiguous_match" | "heal_needed" | "no_space" | "no_target") {
+        let detail = if reason == "ambiguous_match" { detail } else { String::new() };
+        crate::cdflow::notify(store, cd, &crate::cdflow::CdEvent::NotStarted { disc_id: info.disc_id.clone(), reason: reason.to_owned(), author: info.author.clone(), title: info.title.clone(), disc: i64::from(info.disc.max(1)), detail }).await;
+    }
 }
 
 /// A disc was put in and the setting `cd_auto_import` is on: imports it if MusicBrainz knows exactly one release for it and it is not in
@@ -797,7 +800,10 @@ pub async fn auto_import(cd: CdService, store: Store, library: Option<PathBuf>, 
         if p.needs_healing() {
             skip!("heal_needed", format!("{book} ({} of {})", p.tracks_in_library, p.tracks_on_disc));
         }
-        skip!("disc_present", book);
+        // Whole in the library: nothing is read, the job is `present`, and the disc comes out at once.
+        tracing::info!(device = %d.device, disc_id = %info.disc_id, reason = "disc_present", detail = %book, "automatic import: nothing started, the disc is ejected");
+        finish_present(&store, &cd, cdimport::SYSTEM_USER, "auto", "", &p, &d.device, true, &set.device).await;
+        return;
     }
     let candidate = match release {
         Ok(c) => c,
@@ -851,7 +857,7 @@ pub async fn auto_import(cd: CdService, store: Store, library: Option<PathBuf>, 
 // Ripping.
 
 /// What the caller says about the disc.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct RipRequest {
     pub kind: Option<String>,
@@ -881,6 +887,9 @@ pub struct RipRequest {
     /// Started by the service itself (automatic import): the job belongs to `system`.
     #[serde(skip)]
     pub auto: bool,
+    /// The device an app started the rip with (the label of its token; never read from the request body). Empty: the web, MCP or the drive.
+    #[serde(skip)]
+    pub starter_device: String,
 }
 
 fn rip_failure_code(kind: &str) -> &'static str {
@@ -903,11 +912,13 @@ pub struct RipRefusal {
     pub taken: Vec<u32>,
     /// For `disc_present`: what is known of the CD in the library (see `present_json`).
     pub present: Option<serde_json::Value>,
+    /// For `disc_present`: the tray was opened because the request said `"eject": true` and the CD is whole in the library.
+    pub ejected: bool,
 }
 
 impl From<Refusal> for RipRefusal {
     fn from(refusal: Refusal) -> Self {
-        RipRefusal { refusal, taken: Vec::new(), present: None }
+        RipRefusal { refusal, taken: Vec::new(), present: None, ejected: false }
     }
 }
 
@@ -996,14 +1007,14 @@ impl CdService {
 }
 
 /// The error codes after which the finished tracks of a rip are kept for a resume.
-const RESUMABLE: &[&str] = &["read", "verify", "drive_gone", "cancelled", "interrupted"];
+const RESUMABLE: &[&str] = &["read", "verify", "drive_gone", "cancelled", "interrupted", "unreadable_track"];
 /// A rip that is stopped by the service stopping may finish the track it is on if that takes no longer than this.
 pub const STOP_GRACE: Duration = Duration::from_secs(10);
 /// And may take this long to write its manifest and end.
 pub const STOP_PATIENCE: Duration = Duration::from_secs(10);
 
 pub async fn start_rip(store: &Store, cd: &CdService, library: Option<PathBuf>, user_id: i64, req: RipRequest) -> Result<Started, RipRefusal> {
-    match rip_inner(store, cd, library, user_id, req, false).await? {
+    match rip_inner(store, cd, library, user_id, req, false, None).await? {
         RipOutcome::Started(started) => Ok(*started),
         RipOutcome::Preview(_) => Err(Refusal(500, "internal").into()),
     }
@@ -1019,7 +1030,7 @@ pub fn pick_drive(states: &[DriveState], wanted: &str) -> Option<DriveState> {
 /// staging folder, no command to the drive. Refusals are the same as those of `start_rip`, except `disc_present` and
 /// `disc_exists`, which are reported inside the answer (`would_start: false`, `refusal`) together with what they are about.
 pub async fn preview_rip(store: &Store, cd: &CdService, library: Option<PathBuf>, req: RipRequest) -> Result<serde_json::Value, RipRefusal> {
-    match rip_inner(store, cd, library, 0, req, true).await? {
+    match rip_inner(store, cd, library, 0, req, true, None).await? {
         RipOutcome::Preview(plan) => Ok(plan),
         RipOutcome::Started(_) => Err(Refusal(500, "internal").into()),
     }
@@ -1032,7 +1043,7 @@ enum RipOutcome {
 }
 
 /// The one code path behind the web form, the API and the MCP tool. With `dry` it stops before anything is created.
-async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user_id: i64, req: RipRequest, dry: bool) -> Result<RipOutcome, RipRefusal> {
+async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user_id: i64, req: RipRequest, dry: bool, again: Option<(i64, crate::cdflow::Actor)>) -> Result<RipOutcome, RipRefusal> {
     let set = CdSettings::load(store).await.map_err(|_| Refusal(500, "internal"))?;
     let kind = req.kind.clone().unwrap_or_else(|| set.target_kind.clone());
     let wanted = req.device.clone().filter(|d| !d.is_empty()).unwrap_or_else(|| set.device.clone());
@@ -1097,9 +1108,15 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
         }
         (p.author.clone(), p.book.clone(), p.disc, req.discs_total.or(p.discs_total.filter(|n| *n >= p.disc)), p.kind.clone(), targets)
     } else {
-        if present.is_some() && !req.force && !req.auto && !dry {
+        if present.is_some() && !req.force && !req.auto && !dry && again.is_none() {
             let p = present.as_ref().ok_or(Refusal(500, "internal"))?;
-            return Err(RipRefusal { refusal: Refusal(409, "disc_present"), taken: Vec::new(), present: Some(present_json(p)) });
+            // A CD that is whole in the library goes to `present`, and is ejected at once when the request asks for it. One that needs a repair
+            // is for a person to decide (repair it or import it as a copy), so it stays in the drive.
+            let mut ejected = false;
+            if !p.needs_healing() {
+                ejected = finish_present(store, cd, user_id, "server", &req.starter_device, p, &chosen.device, req.eject == Some(true), &wanted).await;
+            }
+            return Err(RipRefusal { refusal: Refusal(409, "disc_present"), taken: Vec::new(), present: Some(present_json(p)), ejected });
         }
         (req.author.clone(), req.title.clone(), req.disc.unwrap_or(1), req.discs_total, kind.clone(), selected)
     };
@@ -1135,6 +1152,9 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
     if dry {
         return Ok(RipOutcome::Preview(rip_plan_json(&RipPlanView { req: &req, set: &set, meta: &meta, root: &root, chosen: &chosen, kind: &kind, taken: &taken, present: present.as_ref(), healing, eject: req.eject.unwrap_or(set.eject_after), staging: &cd.staging })));
     }
+    if !taken.is_empty() && again.is_some() {
+        return Err(RipRefusal { refusal: Refusal(409, "disc_exists"), taken, present: None, ejected: false });
+    }
     if !taken.is_empty() {
         let list = taken.iter().map(u32::to_string).collect::<Vec<_>>().join(", ");
         let job = store
@@ -1144,7 +1164,7 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
         if let Ok(Some(failed)) = store.update_cd_job(user_id, job.id, &JobPatch { error: Some("disc_exists".into()), message: Some(format!("tracks already in the library: {list}")), ..JobPatch::default() }).await {
             cd.publish(user_id, "failed", &failed);
         }
-        return Err(RipRefusal { refusal: Refusal(409, "disc_exists"), taken, present: None });
+        return Err(RipRefusal { refusal: Refusal(409, "disc_exists"), taken, present: None, ejected: false });
     }
     let eject = req.eject.unwrap_or(set.eject_after);
     let reserve = crate::diskspace::reserve(store).await;
@@ -1152,22 +1172,38 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
     // One rip per drive.
     let device = chosen.device.clone();
     let flag = Arc::new(AtomicBool::new(false));
-    let job = store
-        .create_cd_job(
-            user_id,
-            if req.auto { "auto" } else { "server" },
-            &JobPatch {
-                phase: Some("ripping".into()),
-                tracks_total: Some(tracks_total as i64),
-                author: Some(meta.author.trim().to_owned()),
-                album: Some(meta.album.trim().to_owned()),
-                disc: Some(i64::from(disc)),
-                discs_total: Some(i64::from(meta.discs_total.unwrap_or(1))),
-                ..JobPatch::default()
-            },
-        )
-        .await
-        .map_err(|_| Refusal(500, "internal"))?;
+    let job = match &again {
+        // A new try of a job that waits in `retry_wait`: the same job, the same request.
+        Some((id, _)) => store.cd_job_any(*id).await.ok().flatten().ok_or(Refusal(404, "not_found"))?,
+        None => store
+            .create_cd_job(
+                user_id,
+                if req.auto { "auto" } else { "server" },
+                &JobPatch {
+                    phase: Some("ripping".into()),
+                    tracks_total: Some(tracks_total as i64),
+                    author: Some(meta.author.trim().to_owned()),
+                    album: Some(meta.album.trim().to_owned()),
+                    disc: Some(i64::from(disc)),
+                    discs_total: Some(i64::from(meta.discs_total.unwrap_or(1))),
+                    ..JobPatch::default()
+                },
+            )
+            .await
+            .map_err(|_| Refusal(500, "internal"))?,
+    };
+    if again.is_none() {
+        if !req.starter_device.is_empty() {
+            let _ = store.set_cd_starter_device(job.id, &req.starter_device).await;
+        }
+        // What `retry` needs to start the same rip again.
+        match serde_json::to_string(&req) {
+            Ok(text) => {
+                let _ = store.set_cd_request(job.id, &text).await;
+            }
+            Err(e) => tracing::warn!(error = %e, "the request of a rip could not be written down"),
+        }
+    }
     let taken = {
         let mut g = cd.drives.lock();
         if g.running.contains_key(&device) {
@@ -1179,9 +1215,23 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
         }
     };
     if !taken {
-        let _ = store.update_cd_job(user_id, job.id, &JobPatch { phase: Some("failed".into()), error: Some("busy".into()), ..JobPatch::default() }).await;
+        if again.is_none() {
+            let _ = store.cd_move(job.id, crate::cdflow::Move::Fail("busy".into()), &crate::cdflow::Actor::Server).await;
+        }
         return Err(Refusal(409, "busy").into());
     }
+    let job = match &again {
+        Some((id, actor)) => match store.cd_move(*id, crate::cdflow::Move::Retry, actor).await {
+            Ok(moved) => moved.job,
+            Err(e) => {
+                let mut g = cd.drives.lock();
+                g.running.remove(&device);
+                g.cancels.remove(&job.id);
+                return Err(Refusal(e.status(), e.code()).into());
+            }
+        },
+        None => job,
+    };
     // An interrupted rip of this disc: take over what checks out, or remove it when it cannot be used. What is decided here is logged only in
     // a development build (`cfg(debug_assertions)`): a release build does not contain these lines at all (project owner, 2026-10-29).
     let fingerprint = cdresume::Fingerprint::of(&set);
@@ -1311,14 +1361,26 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
                 Err(code) => l.error = (*code).to_owned(),
             }
         });
-        let (patch, event) = match &outcome {
-            Ok(()) => (None, ""),
-            Err(code) => (Some(JobPatch { phase: Some("failed".into()), error: Some((*code).to_owned()), ..JobPatch::default() }), "failed"),
-        };
-        if let Some(patch) = patch
-            && let Ok(Some(failed)) = store2.update_cd_job(user_id, job_id, &patch).await
-        {
-            cd2.publish(user_id, event, &failed);
+        if let Err(code) = &outcome {
+            // A track that cannot be read or confirmed: the CD stays in the drive and the job waits for a new try (`retry_wait`); the finished
+            // tracks stay in the resume folder. A cancel and a stop of the server have their own moves; everything else is a failure.
+            let mv = match *code {
+                "cancelled" => crate::cdflow::Move::Cancel,
+                "interrupted" => crate::cdflow::Move::Interrupted,
+                "read" | "verify" | "unreadable_track" => crate::cdflow::Move::ReadFailed((*code).to_owned()),
+                other => crate::cdflow::Move::Fail(other.to_owned()),
+            };
+            let waits = matches!(mv, crate::cdflow::Move::ReadFailed(_));
+            match store2.cd_move(job_id, mv, &crate::cdflow::Actor::Server).await {
+                Ok(moved) => {
+                    cd2.publish(user_id, "failed", &moved.job);
+                    if waits {
+                        let tracks = cd2.drives.live_of_job(job_id).map(|l| l.tracks.iter().filter(|t| t.state == "failed").map(|t| t.number).collect()).unwrap_or_default();
+                        crate::cdflow::notify(&store2, &cd2, &crate::cdflow::CdEvent::ReadError { job: moved.job, tracks }).await;
+                    }
+                }
+                Err(e) => tracing::warn!(job = job_id, error = e.code(), "the end of a rip could not be written to the job"),
+            }
         }
         // The finished tracks of a rip that stopped for a reason that a new try can mend stay for a resume; the rest goes.
         match &outcome {
@@ -1465,6 +1527,50 @@ impl RipPlan {
         let mut m = self.manifest.lock().unwrap_or_else(|e| e.into_inner());
         m.updated_ms = crate::store::now_ms();
         let _ = cdresume::write(&self.dir, &m);
+    }
+}
+
+/// A CD that is whole in the library: the job (a log entry of the flow, state `present`) is written, nothing is read, and the disc is ejected
+/// at once when `eject` says so (the automatic path always does; a request asks with `"eject": true`). Returns whether the tray was opened.
+#[allow(clippy::too_many_arguments)]
+pub async fn finish_present(store: &Store, cd: &CdService, user_id: i64, device_label: &str, starter_device: &str, p: &crate::cdpresent::Present, device: &str, eject: bool, wanted: &str) -> bool {
+    let patch = JobPatch { phase: Some("ripping".into()), author: Some(p.author.clone()), album: Some(p.book.clone()), disc: Some(i64::from(p.disc)), tracks_total: Some(p.tracks_on_disc as i64), ..JobPatch::default() };
+    let Ok(job) = store.create_cd_job(user_id, device_label, &patch).await else { return false };
+    if !starter_device.is_empty() {
+        let _ = store.set_cd_starter_device(job.id, starter_device).await;
+    }
+    if store.cd_move(job.id, crate::cdflow::Move::Present, &crate::cdflow::Actor::Server).await.is_err() {
+        return false;
+    }
+    let mut ejected = false;
+    if eject {
+        let drives = cd.drives.clone();
+        let d = device.to_owned();
+        ejected = matches!(tokio::task::spawn_blocking(move || drives.eject(&d)).await, Ok(Ok(EjectResult::Ejected)));
+        cd.refresh_drives(wanted, true).await;
+    }
+    let message = format!("already in the library: {}: {}, CD {}{}", p.author, p.book, p.disc, if ejected { "; the disc was ejected" } else { "" });
+    if let Ok(Some(done)) = store.update_cd_job(user_id, job.id, &JobPatch { message: Some(message), ..JobPatch::default() }).await {
+        cd.publish(user_id, "done", &done);
+        crate::cdflow::notify(store, cd, &crate::cdflow::CdEvent::Present { job: done }).await;
+    }
+    cd.publish_drive();
+    ejected
+}
+
+/// A new try of a job that waits in `retry_wait`: the same request is started again on the same job; what was read is taken over from the
+/// resume folder. The caller has checked with `Store::cd_check` that `actor` may retry; a refusal of the start itself (`busy`, `no_disc`,
+/// `tray_open` ...) leaves the job in `retry_wait`.
+pub async fn retry_rip(store: &Store, cd: &CdService, library: Option<PathBuf>, job_id: i64, actor: crate::cdflow::Actor) -> Result<Started, RipRefusal> {
+    let job = store.cd_job_any(job_id).await.ok().flatten().ok_or(Refusal(404, "not_found"))?;
+    let text = store.cd_request(job_id).await.map_err(|_| Refusal(500, "internal"))?;
+    // A job without the request of a rip of the server (an upload of an app) cannot be read again here.
+    let mut req: RipRequest = serde_json::from_str(&text).map_err(|_| Refusal(409, "invalid_move"))?;
+    req.resume = Some(true);
+    req.auto = job.device == "auto";
+    match rip_inner(store, cd, library, job.user_id, req, false, Some((job_id, actor))).await? {
+        RipOutcome::Started(started) => Ok(*started),
+        RipOutcome::Preview(_) => Err(Refusal(500, "internal").into()),
     }
 }
 
@@ -1726,7 +1832,7 @@ async fn run_rip(
         // What is more serious is the one that shows: a track left out is worse than one that was taken without a confirmation.
         error: if !skipped.is_empty() { Some("unreadable_track".to_owned()) } else if !unverified.is_empty() { Some("unverified_track".to_owned()) } else { None },
     };
-    cdimport::finalize(store, cd, user_id, job_id, &meta, &set, root, kind, cover, staged, reserve, extra).await.map(|_| ()).map_err(|r| r.1)
+    crate::cdflow::conclude(store, cd, user_id, job_id, &meta, &set, root, kind, cover, staged, reserve, extra).await.map(|_| ()).map_err(|r| r.1)
 }
 
 /// The size of the ring between the drive and the encoder: the seconds of the setting, or (0) the longest chosen track by the table of

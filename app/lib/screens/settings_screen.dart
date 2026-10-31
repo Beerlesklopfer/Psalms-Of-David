@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../audio/audio_backend.dart';
 import '../l10n/app_localizations.dart';
 import '../labels.dart';
+import '../inbox/inbox_ui.dart';
 import '../profile.dart';
 import 'profile_screen.dart';
 import '../library_hiding.dart';
@@ -75,7 +76,7 @@ class SettingsScreen extends StatelessWidget {
               clipBehavior: Clip.antiAlias,
               child: ListTile(
                 key: const ValueKey('open-profile'),
-                leading: const OwnAvatar(),
+                leading: const InboxBadgeOverlay(childSize: 40, child: OwnAvatar()),
                 title: Text(profile.profile?.name ?? l.profileTitle),
                 subtitle: Text(l.profileSettingsHint),
                 trailing: const Icon(Icons.chevron_right),
@@ -85,6 +86,8 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
         ],
+        // The inbox of the CDs (only for a profile with a CD right, and in the demo).
+        const InboxTile(),
         // The groups: each has a title with an icon (as the cards of the page "About"), and shows only when it has something.
         _GroupTitle(icon: Icons.tune, title: l.settingsGroupGeneral),
         const _ThemeCard(),

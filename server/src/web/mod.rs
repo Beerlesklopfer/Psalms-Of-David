@@ -169,6 +169,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/rpc/cd.rip", post(handlers::cd_rip))
         .route("/admin/rpc/cd.preview", get(handlers::cd_preview))
         .route("/admin/rpc/cd.cancel", post(handlers::cd_cancel))
+        .route("/admin/rpc/cd.job/{what}", post(handlers::cd_decide))
         .route("/admin/rpc/cd.dismiss", post(handlers::cd_dismiss))
         .route("/admin/rpc/cd.log_clear", post(handlers::cd_log_clear))
         .route("/admin/rpc/cd.eject", post(handlers::cd_eject))

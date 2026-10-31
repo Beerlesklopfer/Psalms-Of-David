@@ -81,7 +81,8 @@ async fn env_with(heartbeat: Option<Duration>) -> Env {
         cd = cd.with_heartbeat(h);
     }
     // The tests never want to wait for the reserve of free space.
-    store.save_settings(&[("min_free_gb".to_owned(), "0".to_owned())]).await.unwrap();
+    // These tests are about the automatic import itself: a CD put in at the server goes into the library at once (the setting is `wait` by default; see tests/cd_inbox.rs).
+    store.save_settings(&[("min_free_gb".to_owned(), "0".to_owned()), ("cd_auto_approval".to_owned(), "now".to_owned())]).await.unwrap();
     let state = ApiState { store: store.clone(), library: Some(library.path().to_owned()), cd: cd.clone(), features: Default::default() };
     Env { router: router(state), store, fake, library, dir, cd, drive, admin, n: 0 }
 }
@@ -433,8 +434,12 @@ async fn nothing_is_started_for_two_releases_none_or_a_cd_that_is_there_and_each
     let before = skipped(&e).await.len();
     auto(&e, lib(&e)).await;
     let got = skipped(&e).await;
-    assert_eq!(got.len(), before + 1);
-    assert_eq!((got.last().unwrap().0.as_str(), got.last().unwrap().1.as_str()), ("disc_present", "A: B, CD 1"), "the disc is in the library: nothing is done");
+    assert_eq!(got.len(), before, "a CD that is whole in the library is no log entry of the automatic import any more: it is a job in the state `present`");
+    let present = e.store.cd_log(100).await.unwrap().into_iter().find(|j| j.cd_state == "present").expect("a job in the state present");
+    assert_eq!((present.device.as_str(), present.phase.as_str(), present.author.as_str(), present.album.as_str()), ("auto", "present", "A", "B"), "{present:?}");
+    assert!(present.message.starts_with("already in the library: A: B, CD 1"), "{}", present.message);
+    assert_eq!(e.drive.ejects.lock().unwrap().len(), 1, "the disc was ejected at once");
+    insert_short(&e, 3).await;
     // ... and a CD with a track missing is for a person to repair.
     let dir = e.library.path().join("A/B");
     let victim = std::fs::read_dir(&dir).unwrap().flatten().map(|d| d.path()).find(|p| p.extension().is_some_and(|x| x == "mp3")).unwrap();

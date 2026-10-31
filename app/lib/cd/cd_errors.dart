@@ -26,6 +26,9 @@ const List<String> kCdErrorCodes = [
   'certificate', // the server's certificate is not the paired one
   // The server, by its codes.
   'forbidden',
+  'invalid_move', // the CD is not in the state the move needs (decided, or read again meanwhile)
+  'decided', // somebody was faster with the decision
+  'invalid_paging',
   'unauthorized',
   'invalid_toc',
   'invalid_query',
@@ -93,6 +96,9 @@ String cdErrorText(AppLocalizations l, String code) {
     'eject_failed': l.cdErrEjectFailed,
     'internal': l.cdErrInternal,
     'forbidden': l.cdErrForbidden,
+    'invalid_move': l.cdErrInvalidMove,
+    'decided': l.cdErrDecided,
+    'invalid_paging': l.cdErrInvalidPaging,
     'unauthorized': l.cdErrUnauthorized,
     'invalid_toc': l.cdErrInvalidToc,
     'invalid_query': l.cdErrInvalidQuery,

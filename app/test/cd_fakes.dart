@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:psalm/cd/cd_events.dart';
+import 'package:psalm/inbox/inbox_models.dart';
 import 'package:psalm/cd/cd_models.dart';
 import 'package:psalm/cd/cd_ports.dart';
 
@@ -105,6 +106,9 @@ class FakeCdServer implements CdServerApi {
 
 /// The event channel without a network: the test sends the messages.
 class FakeEvents implements CdEventsSource {
+  @override
+  String? deviceLabel;
+
   final connections = <StreamController<CdJobState>>[];
   List<CdJobState> open = [];
   final jobs = <String, CdJobState>{};
@@ -128,6 +132,11 @@ class FakeEvents implements CdEventsSource {
 
   @override
   Stream<CdDrivesState> get driveChanged => driveStream.stream;
+
+  final inboxStream = StreamController<InboxWire>.broadcast();
+
+  @override
+  Stream<InboxWire> get inboxChanged => inboxStream.stream;
 
   @override
   Future<CdDrivesState> drives() async {

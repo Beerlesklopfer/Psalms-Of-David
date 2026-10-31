@@ -169,3 +169,39 @@ async fn the_owner_of_a_book_is_shown_in_the_items_and_is_not_the_release() {
 fn items_ids(r: &Reply) -> Vec<i64> {
     r.json.as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect()
 }
+
+#[tokio::test]
+async fn hiding_tells_a_child_nothing_about_books_it_may_not_see() {
+    // A book above the child's age answers 404 like one that does not exist: neither its title nor its existence
+    // can be found out by hiding it (docs/spec-app-api.md: an invisible item answers 404).
+    let a = api().await;
+    let kim = a.store.create_user(david_server::NewProfile::child("Kim", 8, david_server::Schedule::always())).await.unwrap();
+    let token = pair(&a, kim, 3).await;
+    let (pippi, _) = add_book(&a, "Lindgren", "Pippi", &[1]).await;
+    let (adult, _) = add_book(&a, "King", "Es", &[1]).await;
+    a.store.release_book(adult, 16).await.unwrap();
+
+    let r = call(&a, "POST", "/api/v1/me/hidden", &token, Some(json!({ "scope": "book", "id": adult, "hidden": true }))).await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND, "{}", r.json);
+    let r = call(&a, "POST", "/api/v1/me/hidden", &token, Some(json!({ "scope": "author", "name": "King", "hidden": true }))).await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND, "the name of an author of only hidden books is not confirmed");
+    // A book the child may see is hidden as before.
+    let r = call(&a, "POST", "/api/v1/me/hidden", &token, Some(json!({ "scope": "book", "id": pippi, "hidden": true }))).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.json);
+
+    let r = call(&a, "POST", "/api/v1/me/hidden", &token, Some(json!({ "scope": "author", "name": "Lindgren", "hidden": true }))).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.json);
+
+    // A book and an author hidden while visible, then rated higher: no longer listed by name, and still shown again on request.
+    a.store.release_book(pippi, 12).await.unwrap();
+    let lib = call(&a, "GET", "/api/v1/me/library", &token, None).await;
+    assert_eq!((&lib.json["books"], &lib.json["authors"]), (&json!([]), &json!([])), "{}", lib.json);
+    assert!(!lib.json.to_string().contains("Pippi") && !lib.json.to_string().contains("Lindgren"));
+    let r = call(&a, "POST", "/api/v1/me/hidden", &token, Some(json!({ "scope": "author", "name": "Lindgren", "hidden": false }))).await;
+    assert_eq!(r.status, StatusCode::OK, "what the child hid itself can be shown again: {}", r.json);
+    let r = call(&a, "POST", "/api/v1/me/hidden", &token, Some(json!({ "scope": "book", "id": pippi, "hidden": false }))).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.json);
+    // Showing what was never hidden still tells nothing.
+    let r = call(&a, "POST", "/api/v1/me/hidden", &token, Some(json!({ "scope": "book", "id": adult, "hidden": false }))).await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+}

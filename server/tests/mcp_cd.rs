@@ -106,20 +106,36 @@ async fn the_tools_are_listed_and_have_help() {
 }
 
 #[tokio::test]
-async fn only_tokens_of_administrators_use_the_cd_tools() {
+async fn only_tokens_of_profiles_that_may_put_in_cds_use_the_cd_tools() {
     let e = env().await;
     insert(&e, 3).await;
     for name in ["cd_drive", "cd_progress"] {
         let (err, msg) = tool(&e, &e.member_token, name, json!({})).await;
-        assert!(err && msg.as_str().unwrap().contains("administrators only"), "{name}: {msg}");
+        assert!(err && msg.as_str().unwrap().contains("may put in CDs"), "{name}: {msg}");
     }
     let (err, msg) = tool(&e, &e.member_token, "cd_rip", rip_args(true)).await;
-    assert!(err && msg.as_str().unwrap().contains("administrators only"), "{msg}");
+    assert!(err && msg.as_str().unwrap().contains("may put in CDs"), "{msg}");
     // An administrator's token that may only read can look and plan, not start.
     assert!(!tool(&e, &e.reader_token, "cd_drive", json!({})).await.0);
     assert!(!tool(&e, &e.reader_token, "cd_rip", rip_args(true)).await.0);
     let (err, msg) = tool(&e, &e.reader_token, "cd_rip", rip_args(false)).await;
     assert!(err && msg.as_str().unwrap().contains("may only read"), "{msg}");
+    // The right counts, not the role: a member who was given it may use the tools, an administrator whose right was taken away may not.
+    let anna = e.store.list_profiles().await.unwrap().into_iter().find(|p| p.name == "Anna").unwrap().id;
+    e.store.set_cd_rights(anna, david_server::cdrights::CdRightsChange { may_insert: Some(true), ..Default::default() }).await.unwrap();
+    assert!(!tool(&e, &e.member_token, "cd_drive", json!({})).await.0);
+    let boss = e.store.list_profiles().await.unwrap().into_iter().find(|p| p.name == "Boss").unwrap().id;
+    e.store.set_cd_rights(boss, david_server::cdrights::CdRightsChange { may_insert: Some(false), ..Default::default() }).await.unwrap();
+    let (err, msg) = tool(&e, &e.admin_token, "cd_drive", json!({})).await;
+    assert!(err && msg.as_str().unwrap().contains("may put in CDs"), "{msg}");
+    // The profiles are listed with their rights; no tool approves or rejects a CD.
+    let (err, profiles) = tool(&e, &e.member_token, "list_profiles", json!({})).await;
+    assert!(!err);
+    let boss_row = profiles["profiles"].as_array().unwrap().iter().find(|p| p["name"] == "Boss").unwrap();
+    assert_eq!((boss_row["may_put_in_cds"].as_bool(), boss_row["needs_no_approval"].as_bool(), boss_row["may_approve_cds"].as_bool()), (Some(false), Some(true), Some(true)));
+    let (_, list) = tool(&e, &e.member_token, "list", json!({})).await;
+    let names: Vec<String> = list["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect();
+    assert!(names.iter().all(|n| !n.contains("approve") && !n.contains("reject")), "{names:?}");
 }
 
 #[tokio::test]

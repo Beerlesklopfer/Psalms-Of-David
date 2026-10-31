@@ -11,8 +11,11 @@
 //! | `POST /cd/import` | the ripped files: checked, named, tagged, placed and imported |
 //! | `GET /cd/import/{id}` | the state of a job (the fallback for the event channel) |
 //! | `GET /cd/events` | WebSocket: every change of a job, pushed to all devices of the account |
+//! | `POST /cd/jobs/{id}/approve`, `/reject` | a person who may approve decides a CD that waits for approval |
+//! | `POST /cd/jobs/{id}/retry`, `/give_up` | a CD that could not be read: read it again, or give up |
 //!
-//! Only an administrator or a member may use it; a child or a guest gets `403 forbidden`.
+//! Only an administrator or a member whose profile has the right may use it (`cd_may_insert`; the decisions need `cd_may_approve`);
+//! everybody else gets `403 forbidden`.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -30,6 +33,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::api::{ApiError, ApiResult, ApiState, Device};
 use crate::cd_settings::CdSettings;
+use crate::cdflow::{Actor, Move, MoveError};
 use crate::cdimport::{self, CLIENT_PHASES, Job, JobPatch, Meta, Refusal, StagedTrack};
 use crate::musicbrainz::{self, Toc};
 use crate::roles::Role;
@@ -46,6 +50,10 @@ pub fn routes() -> Router<ApiState> {
         .route("/api/v1/cd/cover", get(cover))
         .route("/api/v1/cd/jobs", get(jobs).post(create_job))
         .route("/api/v1/cd/jobs/{id}", get(job))
+        .route("/api/v1/cd/jobs/{id}/approve", post(approve))
+        .route("/api/v1/cd/jobs/{id}/reject", post(reject))
+        .route("/api/v1/cd/jobs/{id}/retry", post(retry))
+        .route("/api/v1/cd/jobs/{id}/give_up", post(give_up))
         .route("/api/v1/cd/jobs/{id}/progress", put(progress))
         .route("/api/v1/cd/import", get(open_jobs).post(import).layer(DefaultBodyLimit::max(MAX_IMPORT_BYTES)))
         .route("/api/v1/cd/import/{id}", get(job))
@@ -61,8 +69,22 @@ fn refuse() -> ApiError {
     ApiError(StatusCode::FORBIDDEN, "forbidden")
 }
 
-fn may_import(d: &Device) -> ApiResult<()> {
+/// The role is one that may use the CD interface at all (the event channel asks only for this).
+fn role_ok(d: &Device) -> ApiResult<()> {
     matches!(d.role, Role::Admin | Role::Member).then_some(()).ok_or_else(refuse)
+}
+
+/// May put in CDs: an administrator or member whose profile has `cd_may_insert`. Everybody else gets `403 forbidden`.
+async fn may_import(s: &ApiState, d: &Device) -> ApiResult<()> {
+    role_ok(d)?;
+    s.store.cd_rights(d.user_id).await?.may_insert.then_some(()).ok_or_else(refuse)
+}
+
+/// May look at the jobs: whoever may put in CDs, and whoever may approve those of others (they decide the held ones).
+async fn may_look(s: &ApiState, d: &Device) -> ApiResult<crate::cdrights::CdRights> {
+    role_ok(d)?;
+    let rights = s.store.cd_rights(d.user_id).await?;
+    (rights.may_insert || rights.may_approve).then_some(rights).ok_or_else(refuse)
 }
 
 fn err(status: u16, code: &'static str) -> ApiError {
@@ -76,7 +98,7 @@ impl From<Refusal> for ApiError {
 }
 
 async fn settings(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
-    may_import(&d)?;
+    may_import(&s, &d).await?;
     let cd = CdSettings::load(&s.store).await?;
     // The values are at the top level, in the words of the apps; `device` is the name this device has in the jobs.
     let mut out = serde_json::to_value(&cd).map_err(|_| err(500, "internal"))?;
@@ -127,7 +149,7 @@ pub(crate) fn candidate_json(c: &musicbrainz::Candidate) -> Value {
 }
 
 async fn lookup(State(s): State<ApiState>, d: Device, Json(req): Json<LookupRequest>) -> ApiResult<Json<Value>> {
-    may_import(&d)?;
+    may_import(&s, &d).await?;
     let set = CdSettings::load(&s.store).await?;
     // Without a table of contents from the caller the server reads the disc in its own drive.
     let toc = match req.toc {
@@ -160,7 +182,7 @@ struct CoverQuery {
 }
 
 async fn cover(State(s): State<ApiState>, d: Device, Query(q): Query<CoverQuery>) -> ApiResult<Response> {
-    may_import(&d)?;
+    may_import(&s, &d).await?;
     if !musicbrainz::is_mbid(&q.r#ref) {
         return Err(err(422, "invalid_release"));
     }
@@ -189,7 +211,7 @@ fn busy_elsewhere(jobs: &[Job], mine: &str) -> bool {
 }
 
 async fn create_job(State(s): State<ApiState>, d: Device, Json(mut req): Json<JobPatch>) -> ApiResult<(StatusCode, Json<Value>)> {
-    may_import(&d)?;
+    may_import(&s, &d).await?;
     let ok = req.author.as_deref().is_none_or(text_ok)
         && req.album.as_deref().is_none_or(text_ok)
         && req.tracks_total.is_none_or(|n| (0..=99).contains(&n))
@@ -207,9 +229,24 @@ async fn create_job(State(s): State<ApiState>, d: Device, Json(mut req): Json<Jo
     Ok((StatusCode::CREATED, Json(json!({ "job": job, "busy_elsewhere": busy_elsewhere(&before, &device) }))))
 }
 
-async fn jobs(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
-    may_import(&d)?;
+/// The jobs this person sees: their own (and those of the server), and, for somebody who may approve, those of others that wait for a decision
+/// or a new try.
+async fn visible_jobs(s: &ApiState, d: &Device, rights: &crate::cdrights::CdRights) -> ApiResult<Vec<Job>> {
     let mut list = s.store.cd_jobs(d.user_id).await?;
+    if rights.may_approve {
+        for j in s.store.cd_jobs_waiting().await? {
+            if !list.iter().any(|k| k.id == j.id) {
+                list.push(j);
+            }
+        }
+        list.sort_by_key(|j| std::cmp::Reverse((j.updated_ms, j.id)));
+    }
+    Ok(list)
+}
+
+async fn jobs(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
+    let rights = may_look(&s, &d).await?;
+    let mut list = visible_jobs(&s, &d, &rights).await?;
     list.iter_mut().for_each(|j| s.cd.decorate(j));
     let device = cdimport::device_label(&d.token);
     Ok(Json(json!({ "busy": list.iter().any(|j| j.active), "busy_elsewhere": busy_elsewhere(&list, &device), "device": device, "jobs": list })))
@@ -217,22 +254,26 @@ async fn jobs(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
 
 /// The jobs that are still open.
 async fn open_jobs(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
-    may_import(&d)?;
+    may_import(&s, &d).await?;
     let mut list: Vec<Job> = s.store.cd_jobs(d.user_id).await?.into_iter().filter(|j| j.active).collect();
     list.iter_mut().for_each(|j| s.cd.decorate(j));
     Ok(Json(json!({ "jobs": list })))
 }
 
 async fn job(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>) -> ApiResult<Json<Value>> {
-    may_import(&d)?;
+    let rights = may_look(&s, &d).await?;
     s.store.expire_cd_jobs().await?;
-    let mut job = s.store.cd_job(d.user_id, id).await?.ok_or_else(|| err(404, "not_found"))?;
+    let mut job = match s.store.cd_job(d.user_id, id).await? {
+        Some(j) => j,
+        // An approver also sees the jobs of others that wait for them.
+        None => s.store.cd_job_any(id).await?.filter(|j| rights.may_approve && matches!(j.cd_state.as_str(), "awaiting_approval" | "retry_wait")).ok_or_else(|| err(404, "not_found"))?,
+    };
     s.cd.decorate(&mut job);
     Ok(Json(json!({ "job": job })))
 }
 
 async fn progress(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, Json(mut req): Json<JobPatch>) -> ApiResult<Json<Value>> {
-    may_import(&d)?;
+    may_import(&s, &d).await?;
     s.store.expire_cd_jobs().await?;
     let current = s.store.cd_job(d.user_id, id).await?.ok_or_else(|| err(404, "not_found"))?;
     if !current.active || matches!(current.phase.as_str(), "placing" | "importing") {
@@ -256,7 +297,17 @@ async fn progress(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64
     if failed && req.error.as_deref().is_none_or(str::is_empty) {
         req.error = Some("client".to_owned());
     }
-    let job = s.store.update_cd_job(d.user_id, id, &req).await?.ok_or_else(|| err(404, "not_found"))?;
+    // The end of the job is a move of the state machine, not a phase an app writes.
+    let code = req.error.clone().unwrap_or_default();
+    if failed {
+        req.phase = None;
+        req.error = None;
+    }
+    let mut job = s.store.update_cd_job(d.user_id, id, &req).await?.ok_or_else(|| err(404, "not_found"))?;
+    if failed {
+        let mv = if code == "cancelled" { Move::Cancel } else { Move::Fail(code) };
+        job = s.store.cd_move(id, mv, &Actor::Server).await.map_err(|e| err(e.status(), e.code()))?.job;
+    }
     s.cd.publish(d.user_id, if failed { "failed" } else { "progress" }, &job);
     Ok(Json(json!({ "job": job })))
 }
@@ -274,15 +325,16 @@ impl Drop for Staged {
 }
 
 async fn import(State(s): State<ApiState>, d: Device, headers: HeaderMap, mut form: Multipart) -> ApiResult<(StatusCode, Json<Value>)> {
-    may_import(&d)?;
+    may_import(&s, &d).await?;
     let mut job: Option<Job> = None;
     let mut info = JobPatch::default();
     let result = import_inner(&s, &d, &headers, &mut form, &mut job, &mut info).await;
     if let Err(e) = &result {
         // A refusal is an entry of the log too, also when it came before there was a job.
-        let patch = JobPatch { phase: Some("failed".into()), error: Some(e.1.to_owned()), ..JobPatch::default() };
+        let patch = JobPatch { error: Some(e.1.to_owned()), ..JobPatch::default() };
         let failed = match &job {
-            Some(j) => s.store.update_cd_job(d.user_id, j.id, &patch).await.ok().flatten(),
+            // The job fails by a move of the state machine (it may have moved on already, then nothing changes).
+            Some(j) => s.store.cd_move(j.id, Move::Fail(e.1.to_owned()), &Actor::Server).await.ok().map(|m| m.job),
             None => {
                 let first = JobPatch { phase: Some("failed".into()), ..info };
                 match s.store.create_cd_job(d.user_id, &cdimport::device_label(&d.token), &first).await {
@@ -529,12 +581,17 @@ async fn import_inner(s: &ApiState, d: &Device, headers: &HeaderMap, form: &mut 
         record: meta.disc_id.clone().filter(|id| !id.is_empty()).map(|disc_id| crate::cdpresent::DiscRow { disc_id, author: meta.author.trim().to_owned(), title: meta.album.trim().to_owned(), disc: meta.disc, discs_total: meta.discs_total.unwrap_or(1), kind: kind.clone(), folder: String::new() }),
         ..Default::default()
     };
-    let (updated, placed, import_queued) = cdimport::finalize(&s.store, &s.cd, d.user_id, job_now.id, &meta, &set, root, kind2, cover, staged_tracks, reserve, extra).await?;
+    let _ = s.store.set_cd_starter_device(job_now.id, &cdimport::device_label(&d.token)).await;
+    let concluded = crate::cdflow::conclude(&s.store, &s.cd, d.user_id, job_now.id, &meta, &set, root, kind2, cover, staged_tracks, reserve, extra).await?;
     drop(staged);
-    Ok((
-        StatusCode::CREATED,
-        Json(json!({ "id": updated.id, "job": updated, "placed": placed, "import": if import_queued { "queued" } else { "locked" }, "eject": set.eject_after })),
-    ))
+    Ok(match concluded {
+        crate::cdflow::Concluded::Imported(updated, placed, import_queued) => (
+            StatusCode::CREATED,
+            Json(json!({ "id": updated.id, "job": updated, "placed": placed, "import": if import_queued { "queued" } else { "locked" }, "eject": set.eject_after })),
+        ),
+        // The files wait for approval outside the library: read, so the disc may come out, but not in the library yet.
+        crate::cdflow::Concluded::Held(updated) => (StatusCode::CREATED, Json(json!({ "id": updated.id, "job": updated, "placed": null, "import": "held", "eject": set.eject_after }))),
+    })
 }
 
 /// Announces the job of an upload: the one the app made before, or a new one.
@@ -574,7 +631,7 @@ async fn import_root(s: &ApiState, kind: &str) -> ApiResult<PathBuf> {
 
 /// The state of the drives, as in the `drive` message of the event channel.
 async fn drive(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
-    may_import(&d)?;
+    may_import(&s, &d).await?;
     let set = CdSettings::load(&s.store).await?;
     s.cd.apply_settings(&set);
     let fp = crate::cdresume::Fingerprint::of(&set);
@@ -585,10 +642,12 @@ async fn drive(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
 
 /// Starts ripping the CD that is in the server's drive. Answers `201 {id, job}` at once; the progress comes as
 /// events. `409 busy` when the drive is ripping already, `409 no_disc` / `tray_open` / `no_drive`, `503 drive_denied`.
-async fn rip(State(s): State<ApiState>, d: Device, Json(req): Json<crate::cdrive::RipRequest>) -> Response {
-    if let Err(e) = may_import(&d) {
+async fn rip(State(s): State<ApiState>, d: Device, Json(mut req): Json<crate::cdrive::RipRequest>) -> Response {
+    if let Err(e) = may_import(&s, &d).await {
         return e.into_response();
     }
+    // The device is the one of the token, whatever the body says: the inbox marks the messages of this rip for it.
+    req.starter_device = cdimport::device_label(&d.token);
     match crate::cdrive::start_rip(&s.store, &s.cd, s.library.clone(), d.user_id, req).await {
         Ok(st) => {
             let mut job = st.job;
@@ -609,6 +668,7 @@ async fn rip(State(s): State<ApiState>, d: Device, Json(req): Json<crate::cdrive
                 body["missing"] = p["missing"].clone();
                 body["damaged"] = p["damaged"].clone();
                 body["present"] = p.clone();
+                body["ejected"] = json!(r.ejected);
             }
             (StatusCode::from_u16(r.refusal.0).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), [(header::CACHE_CONTROL, "no-store")], Json(body)).into_response()
         }
@@ -616,7 +676,14 @@ async fn rip(State(s): State<ApiState>, d: Device, Json(req): Json<crate::cdrive
 }
 
 async fn rip_cancel(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>) -> ApiResult<(StatusCode, Json<Value>)> {
-    may_import(&d)?;
+    may_import(&s, &d).await?;
+    // The starter stops their own rip; somebody who may approve stops any.
+    if let Some(job) = s.store.cd_job_any(id).await? {
+        let mine = job.user_id == d.user_id && job.user_id != cdimport::SYSTEM_USER;
+        if !mine && !s.store.cd_rights(d.user_id).await?.may_approve {
+            return Err(refuse());
+        }
+    }
     if !s.cd.drives.cancel(id) {
         return Err(err(404, "not_found"));
     }
@@ -625,7 +692,7 @@ async fn rip_cancel(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i
 
 /// Closes the list of tracks of a rip that has ended (it stays with its result until then).
 async fn rip_dismiss(State(s): State<ApiState>, d: Device, body: Option<Json<EjectRequest>>) -> ApiResult<StatusCode> {
-    may_import(&d)?;
+    may_import(&s, &d).await?;
     let device = body.and_then(|Json(b)| b.device);
     let (states, _) = s.cd.drives.snapshot();
     let found = states.iter().filter(|x| device.as_deref().is_none_or(|w| w.is_empty() || x.device == w)).any(|x| s.cd.drives.dismiss(&x.device));
@@ -645,16 +712,109 @@ struct EjectRequest {
 
 /// Opens the tray when a disc is in and the tray is shut; never closes it. `409 busy` while a rip runs.
 async fn eject(State(s): State<ApiState>, d: Device, body: Option<Json<EjectRequest>>) -> ApiResult<Json<Value>> {
-    may_import(&d)?;
+    may_import(&s, &d).await?;
     let device = body.and_then(|Json(b)| b.device);
     let outcome = crate::cdrive::eject(&s.store, &s.cd, device).await?;
+    // Taking the disc out of a drive that holds a CD which could not be read gives that job up (the starter's or an approver's wish).
+    if outcome == crate::cdrive::EjectResult::Ejected {
+        let actor = Actor::person(&s.store, d.user_id).await?;
+        for id in s.store.cd_ids_in(crate::cdflow::CdState::RetryWait).await? {
+            if let Ok(moved) = s.store.cd_move(id, Move::GiveUp, &actor).await {
+                s.cd.publish(moved.job.user_id, "failed", &moved.job);
+            }
+        }
+    }
     Ok(Json(json!({ "result": outcome, "ejected": outcome == crate::cdrive::EjectResult::Ejected })))
+}
+
+// Decisions and new tries
+
+/// The answer for a refused move: `403 forbidden`, `404 not_found`, `409 invalid_move`, and `409 decided` with who decided and what.
+fn move_error(e: MoveError) -> Response {
+    let mut body = json!({ "error": e.code() });
+    match &e {
+        MoveError::Decided { by, resolution } => {
+            body["by"] = json!(by);
+            body["resolution"] = json!(resolution);
+        }
+        MoveError::Invalid { from } => body["state"] = json!(from.as_str()),
+        _ => {}
+    }
+    (StatusCode::from_u16(e.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), [(header::CACHE_CONTROL, "no-store")], Json(body)).into_response()
+}
+
+/// `POST /cd/jobs/{id}/approve`: the held files go into the library and are imported. `200 {"job"}`; `403 forbidden` without `cd_may_approve`,
+/// `409 invalid_move` if the job does not wait for approval, `409 decided` (`by`, `resolution`) if somebody was faster.
+async fn approve(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>) -> Response {
+    decide(s, d, id, true).await
+}
+
+/// `POST /cd/jobs/{id}/reject`: the held files are deleted. Same answers as `approve`.
+async fn reject(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>) -> Response {
+    decide(s, d, id, false).await
+}
+
+async fn decide(s: ApiState, d: Device, id: i64, approve: bool) -> Response {
+    if let Err(e) = role_ok(&d) {
+        return e.into_response();
+    }
+    let actor = match Actor::person(&s.store, d.user_id).await {
+        Ok(a) => a,
+        Err(_) => return err(500, "internal").into_response(),
+    };
+    let done = if approve { crate::cdflow::approve(&s.store, &s.cd, s.library.as_deref(), id, &actor).await } else { crate::cdflow::reject(&s.store, &s.cd, id, &actor).await };
+    match done {
+        Ok(mut job) => {
+            s.cd.decorate(&mut job);
+            Json(json!({ "job": job })).into_response()
+        }
+        Err(e) => move_error(e),
+    }
+}
+
+/// `POST /cd/jobs/{id}/retry`: reads a CD again that could not be read (it is still in the drive; what was read is taken over). `202
+/// {"job","resume"}`; `409 invalid_move` unless the job is in `retry_wait`; `403 forbidden` unless the starter or somebody who may approve;
+/// and the refusals of a start (`409 busy`, `no_disc`, `tray_open` ...) with the job still in `retry_wait`.
+async fn retry(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>) -> Response {
+    if let Err(e) = role_ok(&d) {
+        return e.into_response();
+    }
+    let Ok(actor) = Actor::person(&s.store, d.user_id).await else { return err(500, "internal").into_response() };
+    if let Err(e) = s.store.cd_check(id, &Move::Retry, &actor).await {
+        return move_error(e);
+    }
+    match crate::cdrive::retry_rip(&s.store, &s.cd, s.library.clone(), id, actor).await {
+        Ok(st) => {
+            let mut job = st.job;
+            s.cd.decorate(&mut job);
+            s.cd.publish(job.user_id, "progress", &job);
+            (StatusCode::ACCEPTED, Json(json!({ "job": job, "resume": st.resume }))).into_response()
+        }
+        Err(r) => err(r.refusal.0, r.refusal.1).into_response(),
+    }
+}
+
+/// `POST /cd/jobs/{id}/give_up`: gives up a CD that could not be read (`cancelled`). The files that were read are kept for the resume time.
+async fn give_up(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>) -> Response {
+    if let Err(e) = role_ok(&d) {
+        return e.into_response();
+    }
+    let Ok(actor) = Actor::person(&s.store, d.user_id).await else { return err(500, "internal").into_response() };
+    match s.store.cd_move(id, Move::GiveUp, &actor).await {
+        Ok(moved) => {
+            let mut job = moved.job;
+            s.cd.decorate(&mut job);
+            s.cd.publish(job.user_id, "failed", &job);
+            Json(json!({ "job": job })).into_response()
+        }
+        Err(e) => move_error(e),
+    }
 }
 
 // Events (WebSocket)
 
 async fn events(State(s): State<ApiState>, d: Device, req: Request) -> Response {
-    if let Err(e) = may_import(&d) {
+    if let Err(e) = role_ok(&d) {
         return e.into_response();
     }
     let Some(accept) = ws::accept_value(req.headers()) else { return err(400, "bad_upgrade").into_response() };
@@ -676,8 +836,18 @@ async fn events(State(s): State<ApiState>, d: Device, req: Request) -> Response 
 }
 
 async fn snapshot_text(s: &ApiState, user: i64, device: &str) -> Option<String> {
-    let list = s.store.cd_jobs(user).await.ok()?;
-    Some(json!({ "v": cdimport::EVENTS_VERSION, "type": "snapshot", "busy": list.iter().any(|j| j.active), "busy_elsewhere": busy_elsewhere(&list, device), "jobs": list }).to_string())
+    let rights = s.store.cd_rights(user).await.ok()?;
+    let mut list = s.store.cd_jobs(user).await.ok()?;
+    if rights.may_approve {
+        for j in s.store.cd_jobs_waiting().await.ok()? {
+            if !list.iter().any(|k| k.id == j.id) {
+                list.push(j);
+            }
+        }
+    }
+    // The state of the inbox is read from `GET /inbox`; the counts let the badge show at once.
+    let (unread, tasks_open) = crate::api_inbox::counts(s, user).await;
+    Some(json!({ "v": cdimport::EVENTS_VERSION, "type": "snapshot", "busy": list.iter().any(|j| j.active), "busy_elsewhere": busy_elsewhere(&list, device), "jobs": list, "unread": unread, "tasks_open": tasks_open }).to_string())
 }
 
 /// One connection: a hello and a snapshot, then every change of the account's jobs, a ping at the interval of the

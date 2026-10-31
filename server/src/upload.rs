@@ -283,10 +283,15 @@ fn place(unpacked: &Path, root: &Path) -> Result<Vec<String>, String> {
         };
         let author = clean_name(&author.or(folder_author).unwrap_or_default(), "Unknown");
         let title = clean_name(&title.or(folder_title).unwrap_or_default(), "Unknown");
-        let dest = root.join(&author).join(&title);
+        let files: Vec<(&PathBuf, String)> = distinct_names(
+            audio.iter().chain(pictures.iter()).map(|p| (p, p.file_name().map(|n| clean_name(&n.to_string_lossy(), "file")).unwrap_or_default())),
+        );
+        // Never over an album that is there already: two uploads with the same tags (or two without tags, both
+        // `Unknown/Unknown`) would replace each other's files. The second one goes to `Title (2)` and so on; the
+        // administrator sees the name in the result and can merge or rename.
+        let (title, dest) = free_place(root, &author, &title, files.iter().map(|(_, n)| n.as_str()));
         fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
-        for path in audio.iter().chain(pictures.iter()) {
-            let name = path.file_name().map(|n| clean_name(&n.to_string_lossy(), "file")).unwrap_or_default();
+        for (path, name) in &files {
             move_file(path, &dest.join(name))?;
         }
         albums.push(format!("{author} - {title}"));
@@ -324,12 +329,53 @@ pub fn clean_name(name: &str, fallback: &str) -> String {
     if cleaned.is_empty() { fallback.to_owned() } else { cleaned }
 }
 
+/// Makes the names of the files of one album distinct: two names that are the same after `clean_name` (cut at 120
+/// characters, `:` made `_`, or only differing in case) get ` (2)`, ` (3)` … before the ending, so neither is lost.
+fn distinct_names<'a>(files: impl Iterator<Item = (&'a PathBuf, String)>) -> Vec<(&'a PathBuf, String)> {
+    let mut taken = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for (path, name) in files {
+        let (stem, ending) = match name.rsplit_once('.') {
+            Some((s, e)) if !s.is_empty() => (s.to_owned(), format!(".{e}")),
+            _ => (name.clone(), String::new()),
+        };
+        let mut candidate = name.clone();
+        let mut n = 2;
+        while !taken.insert(candidate.to_lowercase()) {
+            candidate = format!("{stem} ({n}){ending}");
+            n += 1;
+        }
+        out.push((path, candidate));
+    }
+    out
+}
+
+/// The folder for an album: `root/author/title`, or `title (2)`, `title (3)` … when one of `names` is there already.
+fn free_place<'a>(root: &Path, author: &str, title: &str, names: impl Iterator<Item = &'a str> + Clone) -> (String, PathBuf) {
+    for n in 1.. {
+        let t = if n == 1 { title.to_owned() } else { format!("{title} ({n})") };
+        let dest = root.join(author).join(&t);
+        if !names.clone().any(|name| dest.join(name).symlink_metadata().is_ok()) {
+            return (t, dest);
+        }
+    }
+    unreachable!("the loop returns")
+}
+
+/// Moves a file to a place that must be free; an existing file there is never replaced.
 fn move_file(from: &Path, to: &Path) -> Result<(), String> {
-    if fs::rename(from, to).is_ok() {
+    if to.symlink_metadata().is_ok() {
+        return Err(format!("{}: there is a file there already", to.display()));
+    }
+    // A hard link fails if the place is taken, so nothing is replaced even if a file appeared meanwhile.
+    if fs::hard_link(from, to).is_ok() {
+        let _ = fs::remove_file(from);
         return Ok(());
     }
-    // Another file system: copy, then remove.
-    fs::copy(from, to).map_err(|e| format!("{}: {e}", to.display()))?;
+    // Another file system: copy into a new file, then remove.
+    let mut source = fs::File::open(from).map_err(|e| format!("{}: {e}", from.display()))?;
+    let mut target = fs::OpenOptions::new().write(true).create_new(true).open(to).map_err(|e| format!("{}: {e}", to.display()))?;
+    std::io::copy(&mut source, &mut target).map_err(|e| format!("{}: {e}", to.display()))?;
     let _ = fs::remove_file(from);
     Ok(())
 }
@@ -337,6 +383,37 @@ fn move_file(from: &Path, to: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_second_album_with_the_same_place_does_not_replace_the_first() {
+        let root = tempfile::tempdir().unwrap();
+        for (n, content) in [(1, "first"), (2, "second")] {
+            let unpacked = tempfile::tempdir().unwrap();
+            // No tags, no folders: both land in Unknown/Unknown with the same file name.
+            fs::write(unpacked.path().join("01.mp3"), content).unwrap();
+            let albums = place(unpacked.path(), root.path()).unwrap();
+            assert_eq!(albums, vec![if n == 1 { "Unknown - Unknown".to_owned() } else { "Unknown - Unknown (2)".to_owned() }]);
+        }
+        assert_eq!(fs::read_to_string(root.path().join("Unknown/Unknown/01.mp3")).unwrap(), "first");
+        assert_eq!(fs::read_to_string(root.path().join("Unknown/Unknown (2)/01.mp3")).unwrap(), "second");
+        let elsewhere = tempfile::tempdir().unwrap();
+        fs::write(elsewhere.path().join("x"), "new").unwrap();
+        assert!(move_file(&elsewhere.path().join("x"), &root.path().join("Unknown/Unknown/01.mp3")).is_err());
+        assert_eq!(fs::read_to_string(root.path().join("Unknown/Unknown/01.mp3")).unwrap(), "first");
+    }
+
+    #[test]
+    fn two_files_whose_names_become_the_same_both_arrive() {
+        let root = tempfile::tempdir().unwrap();
+        let unpacked = tempfile::tempdir().unwrap();
+        fs::write(unpacked.path().join("Teil 1: Anfang.mp3"), "a").unwrap();
+        fs::write(unpacked.path().join("Teil 1_ Anfang.mp3"), "b").unwrap();
+        place(unpacked.path(), root.path()).unwrap();
+        let dest = root.path().join("Unknown/Unknown");
+        let mut names: Vec<String> = fs::read_dir(&dest).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        names.sort();
+        assert_eq!(names, ["Teil 1_ Anfang (2).mp3", "Teil 1_ Anfang.mp3"]);
+    }
 
     #[test]
     fn endings_and_names() {

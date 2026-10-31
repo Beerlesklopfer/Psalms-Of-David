@@ -199,9 +199,9 @@ Implemented in `server/src/api_me.rs`.
 
 | Request | Answer |
 |---|---|
-| `GET /me` | `{id, name, nickname, first_name, last_name, role, max_age, language, has_avatar, avatar_version, device_count, device_limit}`, plus `downloads: true` **only** when the hidden feature `download` is on (see below); the field is absent, never `false`, when it is off |
+| `GET /me` | `{id, name, nickname, first_name, last_name, role, max_age, language, has_avatar, avatar_version, device_count, device_limit, cd_rights}` (`cd_rights` is `{may_insert, no_approval, may_approve}`, all `false` for a child, a guest and a session on a shared device of one; it decides which CD symbols and buttons the app shows), plus `downloads: true` **only** when the hidden feature `download` is on (see below); the field is absent, never `false`, when it is off |
 | `PUT /me` `{nickname?, first_name?, last_name?, language?}` | changes what is given and answers like `GET /me`. `language`: `en`, `de` or `""` (follow the device). `409 exists` (nickname taken, no regard to case), `422 invalid_name`, `422 invalid_language`. Other fields (`role`, `max_age` ...) are ignored. |
-| `PUT /me/pin` `{current, new}` | `204`; `403 wrong_pin` (counts like a wrong sign-in), `429 locked`, `422 invalid_pin`. The sessions of the browser end, the paired devices keep theirs. |
+| `PUT /me/pin` `{current, new}` | `204`; `403 wrong_pin` (counts like a wrong sign-in), `429 locked` (still waiting; the PIN was not checked), `422 invalid_pin`. With `wrong_pin` and `locked` the answer carries `retry_after_s` (seconds until the next try, a × 2ⁿ, see `spec-admin-ui.md`) and the header `Retry-After`; the app counts it down. The sessions of the browser end, the paired devices keep theirs. |
 | `GET /me/devices` | `[{id, name, shared, last_seen, this}]` (not revoked) |
 | `GET /me/avatar` | the picture (`ETag` = `avatar_version`, `304` for a repeated request), `404` without one |
 | `PUT /me/avatar` | the picture as the body; type from the first bytes (JPEG, PNG, WebP; SVG and GIF are refused), at most 256 KiB: `415 avatar_type`, `413 avatar_size`, `422 avatar_none`. Answers like `GET /me`. |
@@ -254,3 +254,101 @@ Albums carry their EAN in the library (schema `0056`: `book.barcode` = the digit
 server that has not got the feature says nothing about it, and an app must treat a missing field as "no". The field is the same for every role: it says what the
 server offers, not who may use it (today only administrators, in the web interface; there is no download route for the apps). No app uses it yet.
 
+
+## CDs: jobs, approval and a new try (for the app of phase 4; server built 2026-10-31)
+
+The full description of the routes, the states and the errors is `docs/spec-cd-import-api.md` ("States of a job"); this is what the app is built against. All requests under `/api/v1/cd`, bearer token, JSON. The app learns what the person may do from `GET /me` -> `cd_rights`:
+
+| Right | The app shows |
+|---|---|
+| `may_insert` | the import and eject symbols, `POST /cd/rip` (with `"eject": true`), the entry of the own CD while it waits ("waits for approval", no buttons) |
+| `may_approve` | the tasks of CDs that wait, with the buttons Approve / Reject; Try again / Give up for CDs of others that could not be read |
+| neither | nothing of the CD import (every `/cd` route answers `403 forbidden`; `GET /cd/jobs` and the event channel stay open to somebody with `may_approve` only) |
+
+**A job** (`GET /cd/jobs` -> `{"jobs":[...],"busy","busy_elsewhere","device"}`, `GET /cd/jobs/{id}` -> `{"job":{...}}`, the events `job`, `progress`, `done`, `failed` and the `snapshot` of the event channel): besides the members already described there are `cd_state`, `reason`, `decided_by`, `decided_ms`, `user_id`, `starter`, `held_ms`. The app shows the job by `cd_state`:
+
+| `cd_state` | The app shows | Buttons |
+|---|---|---|
+| `ripping` | progress (`fraction`, `track` of `tracks_total`, `track_states`) | stop (`POST /cd/rip/{id}/cancel`, starter or approver) |
+| `retry_wait` | "track could not be read, the CD is still in the drive", `error` (`unreadable_track`, `read`, `verify`, `interrupted`) | Try again (`POST /cd/jobs/{id}/retry`), Give up (`POST /cd/jobs/{id}/give_up`) for the starter and `may_approve`; the eject button also gives up |
+| `ripped` | short; "being filed" | none |
+| `awaiting_approval` | author, `album`, `tracks_total`, `held_ms` ("since"), `starter`; the files are no album and no track yet | Approve / Reject (`POST /cd/jobs/{id}/approve`, `.../reject`) only with `may_approve`; the starter without it sees no buttons |
+| `imported` | "n tracks imported"; `import_ran`; the album is in the library once the import has run | none |
+| `rejected` | `reason` `declined` or `expired`; `decided_by` | none |
+| `present` | "already in the library", `message` names the book | none |
+| `cancelled`, `failed` | `error`, `message` | none |
+
+**Requests and answers** (all errors `{"error":"<code>"}`):
+
+| Request | Success | Errors |
+|---|---|---|
+| `POST /cd/rip` `{author, title, disc, discs_total?, tracks?, only?, mbid?, kind?, eject?, ...}` | `201 {"id","job","resume"}`; the job is `ripping` (a CD of a profile that needs approval is read at once and then waits) | `403 forbidden` (no `may_insert`), `409 busy` / `no_disc` / `tray_open` / `no_drive` / `disc_exists` (+`taken`), `503 drive_denied`, `422 ...`; `409 disc_present` with `present`, `missing`, `damaged` and **`ejected`** (true when the request said `"eject": true` and the CD is whole in the library: nothing was read, the tray is open) |
+| `POST /cd/jobs/{id}/approve` | `200 {"job"}` | `403 forbidden` (no `may_approve`), `409 invalid_move` (+`state`), `409 decided` (+`by`, `resolution` = `approved`/`rejected`/`expired`; show "Papa approved the CD" instead of the buttons), `404 not_found`, `500 internal` (the files could not be placed; the CD waits again) |
+| `POST /cd/jobs/{id}/reject` | `200 {"job"}` | as approve |
+| `POST /cd/jobs/{id}/retry` | `202 {"job","resume"}` | `403 forbidden` (neither starter nor `may_approve`), `409 invalid_move`, `409 busy` / `no_disc` / `tray_open` / `no_drive`, `503 drive_denied`; the job stays `retry_wait` after a refusal |
+| `POST /cd/jobs/{id}/give_up` | `200 {"job"}` | `403 forbidden`, `409 invalid_move` |
+
+An upload (`POST /cd/import`) of somebody who needs approval answers `201` with `"import":"held"`, `"placed":null` and `job.cd_state` `awaiting_approval`; the app may eject (`eject`), the CD is read. The app tells the cases apart by `cd_state` and the codes, not by the text; the texts are the app's own (en first, de second). The inbox follows below; the spoken messages (phase 5) are the app's own business and use only the marks `speak` and `device` described there.
+
+## The inbox of the CDs (for the app of phase 4; server built 2026-10-31)
+
+Messages about CDs are kept on the server (`docs/spec-cd-inbox.md`). The app reads the list when it opens and after every reconnect; the WebSocket only adds. Bearer token, JSON, all under `/api/v1`. The inbox exists for a profile with `cd_rights.may_insert` or `cd_rights.may_approve`; for everybody else (child, guest, a member with no CD right) every answer is the empty inbox below, and `POST .../read` answers `404 not_found`.
+
+| Request | Answer |
+|---|---|
+| `GET /inbox?after=<id>&limit=<n>` | `200 {"items":[Item...],"unread":n,"tasks_open":n,"next":id or null}`, newest first. `limit` 1 to 200 (default 50); `after` is the `next` of the page before (the items with a smaller id follow); `next` is `null` on the last page. `unread` and `tasks_open` count the whole inbox, not the page. `422 invalid_paging` for `limit` or `after` below 1. |
+| `POST /inbox/{id}/read` | `204`; reading twice is fine; `404 not_found` if the item is not in the inbox of this profile |
+| `POST /inbox/read_all` | `204` |
+| `GET /me` | carries `inbox_unread` and `inbox_tasks_open` (0 without an inbox), for the badge |
+| `POST /cd/jobs/{job_id}/approve`, `POST /cd/jobs/{job_id}/reject` | **the only way to decide a task** (the buttons of the notification and of the card): `job_id` is `item.job_id`; `200 {"job"}`; `403 forbidden` without `may_approve`; `409 decided` with `{"by","resolution"}` if somebody was faster (`resolution` is `approved`, `rejected` or `expired`; show "<by> approved the CD" instead of the buttons); `409 invalid_move`; `404 not_found` |
+| `POST /cd/jobs/{job_id}/retry` | "Try again" of a `cd_read_error` notice, only while `item.job_state` is `retry_wait` (see the CD section above) |
+
+**Item:**
+
+```json
+{"id":17,"kind":"task","code":"cd_awaiting_approval","job_id":42,
+ "args":{"job_id":42,"author":"Ken Follett","title":"Sturz der Titanen","disc":1,"discs_total":12,"tracks":14,"by":"Anna"},
+ "created_ms":1793000000000,"read":false,"resolved":false,"can_decide":true,"job_state":"awaiting_approval"}
+```
+
+| Member | Meaning |
+|---|---|
+| `id` | the paging key; grows with time |
+| `kind` | `notice` (own read mark per person) or `task` (one decision for everybody) |
+| `code`, `args` | all the server stores; **the app makes the text** (en first, de second) from them. Never prose. |
+| `job_id` | the CD job, or `null` (`cd_no_match`, `cd_ambiguous` and the other messages of a disc that was not started have none) |
+| `created_ms` | Unix ms |
+| `read` | this profile has read it. A task that is decided counts as read. |
+| `resolved` | `true` for a task that is decided. Then also `resolved_ms`, `resolution` (`approved`, `rejected`, `expired`) and `by` (nickname, empty for `expired`) |
+| `can_decide` | `true` only for an open task and a profile that may decide it now: show the buttons Approve / Reject only then. The starter of a held CD sees the same task with `can_decide: false`: the entry "waits for approval", without buttons. |
+| `job_state` | the `cd_state` of the job now, or `null` (`retry_wait`: "try again" still works) |
+| `speak`, `device` | only on `cd_imported`, `cd_awaiting_approval`, `cd_read_error`, `cd_present`: see below |
+
+A decided task stays in the list of the people who could decide it (as "done", `resolved: true`); for the starter who could not decide it, it is removed from the list when it is decided (the entry of the job is gone; the decision comes as a notice).
+
+**Codes and `args`** (every number and name is data; `author`, `title` are as in the library):
+
+| `code` | kind | `args` | Who gets it |
+|---|---|---|---|
+| `cd_awaiting_approval` | task | `job_id, author, title, disc, discs_total, tracks, by` (`by` is the nickname of the starter, `auto` for a CD put in at the server) | all with `may_approve` (`can_decide: true`); the starter without that right (`can_decide: false`) |
+| `cd_decided` | notice | `job_id, author, title, disc, approved (bool), by` | the other approvers and the starter, not the one who decided |
+| `cd_expired` | notice | `job_id, author, title, disc` | the approvers and the starter |
+| `cd_imported` | notice | `job_id, author, title, disc, discs_total, tracks, album_id` | the starter; the approvers too if the CD was put in at the server or its starter needs approval |
+| `cd_present` | notice | `job_id, author, title, disc, album_id` (`album_id` is `null` if it could not be found by name) | as `cd_imported` |
+| `cd_read_error` | notice | `job_id, author, title, disc, tracks (the numbers that failed), reason` | as `cd_imported` |
+| `cd_no_match` | notice | `disc_id` (+ `author, title, disc` if known) | approvers (a CD put in at the server) |
+| `cd_ambiguous` | notice | `disc_id, candidates (number of releases)` (+ `author, title, disc`) | approvers |
+| `cd_heal_needed`, `cd_no_space`, `cd_no_target` | notice | `disc_id, author, title, disc` | approvers |
+
+**Spoken messages.** `speak` is `"starter"` when an app started the rip: `device` is then the id of that device, the `device` of the `hello` message of the event channel; only the app whose own id it is speaks. `speak` is `"home"` when no device is known (the rip was started at the web panel, by MCP or at the drive; `device` is `""`): the devices of approvers that are playing and on the home network speak. The server cannot know the starter's device for a rip started from the web panel, so such a message is always `home`. Items of other codes carry neither member.
+
+**WebSocket `/cd/events`** (open to Admin and Member; the new types are sent only to the profiles the item went to, to all their devices; a member without any CD right gets none and an empty inbox):
+
+```json
+{"v":1,"type":"inbox","item":{...Item as for this profile...},"unread":3,"tasks_open":1}
+{"v":1,"type":"inbox_resolved","id":17,"job_id":42,"resolution":"approved","by":"Bea","resolved_ms":1793000100000,"unread":2,"tasks_open":0}
+```
+
+`inbox` is a new item (a notice, or a task; the item is complete: show it, notify, and make a card). `inbox_resolved` says that the task with this `id` is decided for everybody: remove its buttons and its notification; the notice "<by> approved the CD" comes as an `inbox` message of its own (not to the one who decided). `unread` and `tasks_open` are the counts after the change. The `snapshot` after `hello` carries `unread` and `tasks_open` too. **Nothing is replayed after a reconnect:** read `GET /inbox` (the state is in the list, not in missed events); the same after a `snapshot` that follows a lost message.
+
+**How the app of phase 4 read this contract** (docs/spec-cd-inbox.md, "What phase 4 built"): the starter without `may_approve` gets `inbox_resolved` for the task of his held CD too; the app removes that entry (it has `can_decide: false`), the decision notice replaces it. The `snapshot` counts only show the badge at once: the list is read again after every `snapshot`. `GET /inbox` with an empty query is asked without `?`. The inbox is shown only to a profile whose `cd_rights` has `may_insert` or `may_approve`; the app does not rely on the empty list alone.

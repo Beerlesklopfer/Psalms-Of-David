@@ -185,7 +185,7 @@ pub fn healed_name(existing: &BTreeMap<u32, PathBuf>, number: u32) -> Option<Str
 
 // The tables.
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DiscRow {
     pub disc_id: String,
     pub author: String,

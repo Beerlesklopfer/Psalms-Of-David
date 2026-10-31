@@ -51,6 +51,8 @@ small { color: var(--muted); }
 .login input, .login button { width: 100%; }
 .login button { padding: .6rem .75rem; font-weight: 600; }
 .login-title { text-align: center; margin: 2.5rem 0 0; }
+.countdown { margin: 0; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+.countdown time { font-weight: 600; color: var(--fg); }
 input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px; }
 

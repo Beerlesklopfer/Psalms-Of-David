@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Android 11 and older (android:fullBackupContent). The pairing (server.json, with the token of the device) is not
+     backed up: a token belongs to one device, and a phone restored from a backup pairs again. The folder of the app is
+     app_flutter (path_provider) or files, depending on the version, so both are named; a rule for a missing file does no harm. -->
+<full-backup-content>
+    <exclude domain="root" path="app_flutter/server.json" />
+    <exclude domain="root" path="app_flutter/server.json.new" />
+    <exclude domain="file" path="server.json" />
+    <exclude domain="file" path="server.json.new" />
+</full-backup-content>

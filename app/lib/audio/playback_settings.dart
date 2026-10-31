@@ -59,4 +59,17 @@ class PlaybackSettingsStore {
       };
 
   void writeThemeMode(ThemeMode mode) => _write({..._read(), 'theme_mode': mode.name});
+
+  /// The switch "CD announcements": on when nothing is stored (it shows only for a profile with a CD right).
+  bool readAnnounceCds() => _read()['announce_cds'] != false;
+
+  void writeAnnounceCds(bool value) => _write({..._read(), 'announce_cds': value});
+
+  /// The share of the volume the music keeps while a sentence is spoken; null when nothing usable is stored (the default applies).
+  double? readDuckLevel() {
+    final n = _read()['duck_level'];
+    return n is num ? n.toDouble().clamp(0.0, 1.0) : null;
+  }
+
+  void writeDuckLevel(double value) => _write({..._read(), 'duck_level': value});
 }

@@ -46,6 +46,15 @@ CdDriveInfo _drive({CdPresent? present, CdResume? resume, CdRipInfo? rip}) => Cd
   rip: rip,
 );
 
+const _whole = CdPresent(
+  book: 'Sturz der Titanen',
+  author: 'Ken Follett',
+  disc: 2,
+  tracksInLibrary: 4,
+  tracksOnDisc: 4,
+  complete: true,
+);
+
 const _names = CdCandidate(
   author: 'Ken Follett',
   title: 'Sturz der Titanen',
@@ -216,6 +225,123 @@ void main() {
       expect(c.phase, CdPhase.running);
       c.dispose();
     });
+
+    test('a whole CD is ejected once, at once, from the drive that was asked; no import anyway is needed', () async {
+      final c = make(_drive(present: _whole));
+      await c.identify();
+      expect(c.phase, CdPhase.present);
+      expect(c.ejectPhase, CdEjectPhase.ejected);
+      expect(server.ejects, ['drive0']);
+      await c.ejectNow();
+      expect(server.ejects, hasLength(1), reason: 'never twice');
+      expect(server.started, isNull);
+      c.dispose();
+    });
+
+    test('a failed eject keeps the CD and the manual way: eject again, or import anyway', () async {
+      server.ejectError = ApiException(500, 'eject_failed');
+      final c = make(_drive(present: _whole));
+      await c.identify();
+      expect(
+        (c.ejectPhase, c.ejectError),
+        (CdEjectPhase.failed, 'eject_failed'),
+      );
+      server.ejectError = null;
+      await c.ejectNow();
+      expect(c.ejectPhase, CdEjectPhase.ejected);
+      expect(server.ejects, hasLength(2));
+      c.dispose();
+    });
+
+    test(
+      'an eject with nothing to eject is a failure, not an ejected CD',
+      () async {
+        server.ejectResult = false;
+        final c = make(_drive(present: _whole));
+        await c.identify();
+        expect(
+          (c.ejectPhase, c.ejectError),
+          (CdEjectPhase.failed, 'nothing_to_eject'),
+        );
+        c.dispose();
+      },
+    );
+
+    test(
+      'a CD with gaps stays in the drive; the Eject button takes it out',
+      () async {
+        final c = make(_drive(present: _present));
+        await c.identify();
+        expect(c.ejectPhase, CdEjectPhase.idle);
+        expect(server.ejects, isEmpty);
+        await c.ejectNow();
+        expect(c.ejectPhase, CdEjectPhase.ejected);
+        expect(server.ejects, ['drive0']);
+        c.dispose();
+      },
+    );
+
+    test(
+      'disc_present of a rip: ejected by the server means no second eject',
+      () async {
+        server.startError = ApiException(409, 'disc_present', {
+          'ejected': true,
+          'present': {'book': 'B', 'author': 'A', 'disc': 1, 'complete': true},
+        });
+        final c = make(_drive());
+        await c.identify();
+        await c.save();
+        expect(
+          (c.phase, c.ejectPhase),
+          (CdPhase.present, CdEjectPhase.ejected),
+        );
+        expect(server.ejects, isEmpty);
+        c.dispose();
+      },
+    );
+
+    test('disc_present of a rip, complete and not ejected by the server: the app ejects', () async {
+      server.startError = ApiException(409, 'disc_present', {
+        'ejected': false,
+        'present': {'book': 'B', 'author': 'A', 'disc': 1, 'complete': true},
+      });
+      final c = make(_drive());
+      await c.identify();
+      await c.save();
+      await tick();
+      expect(c.ejectPhase, CdEjectPhase.ejected);
+      expect(server.ejects, ['drive0']);
+      c.dispose();
+    });
+
+    test('disc_present of a rip with gaps: no eject', () async {
+      server.startError = ApiException(409, 'disc_present', {
+        'ejected': false,
+        'present': {
+          'book': 'B',
+          'disc': 1,
+          'missing': [2],
+        },
+      });
+      final c = make(_drive());
+      await c.identify();
+      await c.save();
+      await tick();
+      expect(c.ejectPhase, CdEjectPhase.idle);
+      expect(server.ejects, isEmpty);
+      c.dispose();
+    });
+
+    test(
+      'the rip request keeps the choice of the checkbox for eject',
+      () async {
+        final c = make(_drive());
+        await c.identify();
+        await c.save();
+        expect(server.started!.eject, isFalse);
+        c.dispose();
+      },
+    );
 
     test('"Import anyway" is a deliberate step: the form comes, and Save sends force', () async {
       final c = make(_drive(present: _present));
@@ -544,6 +670,71 @@ void main() {
       await open(tester, _drive(present: whole));
       expect(find.text('The CD is whole in the library (4 of 4 tracks).'), findsOneWidget);
       expect(find.byKey(const Key('cd-heal')), findsNothing);
+    });
+
+    testWidgets(
+      'a whole CD is ejected: the message and one Close button, no import anyway',
+      (tester) async {
+        await open(tester, _drive(present: _whole));
+        expect(server.ejects, ['drive0']);
+        expect(find.text('The CD was ejected.'), findsOneWidget);
+        expect(find.byKey(const Key('cd-close')), findsOneWidget);
+        for (final k in [
+          'cd-force',
+          'cd-heal',
+          'cd-eject-now',
+          'cd-cancel',
+          'cd-save',
+        ]) {
+          expect(find.byKey(Key(k)), findsNothing, reason: k);
+        }
+        await tester.tap(find.byKey(const Key('cd-close')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('cd-present')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a whole CD that could not be ejected: error, Eject, Import anyway, Cancel',
+      (tester) async {
+        server.ejectError = ApiException(500, 'eject_failed');
+        await open(tester, _drive(present: _whole));
+        expect(find.text('The drive did not open its tray.'), findsOneWidget);
+        expect(find.byKey(const Key('cd-eject-now')), findsOneWidget);
+        expect(find.byKey(const Key('cd-force')), findsOneWidget);
+        expect(find.byKey(const Key('cd-cancel')), findsOneWidget);
+        server.ejectError = null;
+        await tester.tap(find.byKey(const Key('cd-eject-now')));
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('The CD was ejected.'), findsOneWidget);
+        expect(find.byKey(const Key('cd-force')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a CD with gaps: Eject next to Cancel, Import anyway and Repair; Eject ejects and closes',
+      (tester) async {
+        await open(tester, _drive(present: _present));
+        expect(server.ejects, isEmpty);
+        for (final k in ['cd-eject-now', 'cd-cancel', 'cd-force', 'cd-heal']) {
+          expect(find.byKey(Key(k)), findsOneWidget, reason: k);
+        }
+        expect(find.text('Eject'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('cd-eject-now')));
+        await tester.pump();
+        await tester.pump();
+        expect(server.ejects, ['drive0']);
+        expect(find.text('The CD was ejected.'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('cd-close')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('cd-present')), findsNothing);
+      },
+    );
+
+    testWidgets('the ejected whole CD in German', (tester) async {
+      await open(tester, _drive(present: _whole), locale: const Locale('de'));
+      expect(find.text('Die CD wurde ausgeworfen.'), findsOneWidget);
     });
 
     testWidgets('Import anyway asks first; No leaves it, Yes goes to the form', (tester) async {

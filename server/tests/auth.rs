@@ -59,38 +59,97 @@ async fn wrong_name_wrong_pin_and_no_pin_look_the_same() {
     assert_eq!(no_pin, wrong_pin, "a user without a PIN cannot sign in");
 }
 
-#[tokio::test]
-async fn too_many_wrong_pins_lock_the_user_even_for_the_right_pin() {
-    let (dir, store) = open().await;
-    let id = with_user(&store, "Anna", Role::Member, "483920").await;
+/// The time the user has to wait until, in Unix milliseconds (None: no wait).
+async fn wait_until(dir: &tempfile::TempDir, id: i64) -> Option<i64> {
+    let row = raw(dir).await.query_one_raw(sea_orm::Statement::from_string(sea_orm::DbBackend::Sqlite, format!("SELECT pin_locked_until FROM profile WHERE id = {id}"))).await.unwrap().unwrap();
+    row.try_get_by_index(0).unwrap()
+}
 
-    for _ in 0..4 {
-        assert_eq!(store.verify_login("Anna", "111111").await.unwrap(), Login::WrongCredentials);
-    }
-    // The fifth wrong PIN locks.
-    let locked = store.verify_login("Anna", "111111").await.unwrap();
-    let Login::Locked { until } = locked else { panic!("expected a lock, got {locked:?}") };
-    assert!(until > david_server::now_ms());
-    assert!(matches!(store.verify_login("Anna", "483920").await.unwrap(), Login::Locked { .. }), "the right PIN does not help while locked");
-
-    // When the lock has run out, the right PIN works and the counter starts again.
-    raw(&dir).await.execute_unprepared(&format!("UPDATE profile SET pin_locked_until = 1 WHERE id = {id}")).await.unwrap();
-    assert_eq!(store.verify_login("Anna", "483920").await.unwrap(), Login::Ok { user_id: id, role: Role::Member });
-    assert_eq!(store.verify_login("Anna", "111111").await.unwrap(), Login::WrongCredentials, "one failure, not a lock");
+/// Lets the wait run out at once, as if the time had passed.
+async fn wait_over(dir: &tempfile::TempDir, id: i64) {
+    raw(dir).await.execute_unprepared(&format!("UPDATE profile SET pin_locked_until = 1 WHERE id = {id}")).await.unwrap();
 }
 
 #[tokio::test]
-async fn a_right_pin_resets_the_failure_count() {
+async fn every_wrong_pin_in_a_row_doubles_the_wait_and_a_right_one_starts_again() {
+    // a * 2^n seconds after the n-th wrong PIN in a row (project owner, 2026-10-31); a is the setting pin_backoff_s.
+    let (dir, store) = open().await;
+    let id = with_user(&store, "Anna", Role::Member, "483920").await;
+    store.save_settings(&[("pin_backoff_s".to_owned(), "3".to_owned())]).await.unwrap();
+
+    for n in 1..=5u32 {
+        let before = david_server::now_ms();
+        assert_eq!(store.verify_login("Anna", "111111").await.unwrap(), Login::WrongCredentials, "try {n}");
+        let wait = wait_until(&dir, id).await.unwrap() - before;
+        let expected = 3_000 * 2i64.pow(n);
+        assert!((expected..expected + 2_000).contains(&wait), "after {n} wrong PINs the wait is {wait} ms, not {expected}");
+        // During the wait even the right PIN is refused, unchecked.
+        assert!(matches!(store.verify_login("Anna", "483920").await.unwrap(), Login::Locked { .. }), "try {n}");
+        wait_over(&dir, id).await;
+    }
+    // The right PIN after the wait works and starts the count again: the next wrong one waits a * 2 again.
+    assert_eq!(store.verify_login("Anna", "483920").await.unwrap(), Login::Ok { user_id: id, role: Role::Member });
+    assert_eq!(wait_until(&dir, id).await, None);
+    let before = david_server::now_ms();
+    assert_eq!(store.verify_login("Anna", "111111").await.unwrap(), Login::WrongCredentials);
+    assert!(wait_until(&dir, id).await.unwrap() - before < 8_000);
+}
+
+#[tokio::test]
+async fn a_new_pin_lifts_the_wait_and_starts_the_count_again() {
+    let (dir, store) = open().await;
+    let id = with_user(&store, "Anna", Role::Member, "483920").await;
+    for _ in 0..6 {
+        store.verify_login("Anna", "111111").await.unwrap();
+        wait_over(&dir, id).await;
+    }
+    store.verify_login("Anna", "111111").await.unwrap();
+    assert!(matches!(store.verify_login("Anna", "483920").await.unwrap(), Login::Locked { .. }));
+    store.set_pin(id, "715204").await.unwrap();
+    assert!(matches!(store.verify_login("Anna", "715204").await.unwrap(), Login::Ok { .. }), "an administrator's reset lets the user in at once");
+}
+
+#[tokio::test]
+async fn a_name_that_is_no_user_waits_like_a_user() {
+    // The countdown of the sign-in page shows for every name (project owner, 2026-10-31), so it cannot tell which exist.
+    let (dir, store) = open().await;
+    let id = with_user(&store, "Anna", Role::Member, "483920").await;
+    // a = 10 s, so the waits are still running when they are read (Argon2 is slow in a debug build).
+    store.save_settings(&[("pin_backoff_s".to_owned(), "10".to_owned())]).await.unwrap();
+    assert_eq!(store.verify_login("Anna", "111111").await.unwrap(), Login::WrongCredentials);
+    assert_eq!(store.verify_login("Nobody", "111111").await.unwrap(), Login::WrongCredentials);
+    let now = david_server::now_ms();
+    let (anna, nobody) = (store.sign_in_wait("Anna").await.unwrap().unwrap() - now, store.sign_in_wait("nobody ").await.unwrap().unwrap() - now);
+    assert!((10_000..=20_000).contains(&anna) && (10_000..=20_000).contains(&nobody), "{anna} {nobody}");
+    // During the wait both are refused; afterwards both wait twice as long after the next wrong try.
+    assert!(matches!(store.verify_login("Anna", "111111").await.unwrap(), Login::Locked { .. }));
+    assert!(matches!(store.verify_login("Nobody", "111111").await.unwrap(), Login::Locked { .. }));
+    wait_over(&dir, id).await;
+    raw(&dir).await.execute_unprepared("UPDATE sign_in_wait SET wait_until = 1").await.unwrap();
+    store.verify_login("Anna", "111111").await.unwrap();
+    store.verify_login("Nobody", "111111").await.unwrap();
+    let now = david_server::now_ms();
+    let (anna, nobody) = (store.sign_in_wait("Anna").await.unwrap().unwrap() - now, store.sign_in_wait("Nobody").await.unwrap().unwrap() - now);
+    assert!((30_000..=40_000).contains(&anna) && (30_000..=40_000).contains(&nobody), "{anna} {nobody}");
+    assert_eq!(store.sign_in_wait("Somebody else").await.unwrap(), None);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_burst_of_parallel_guesses_gets_one_try() {
+    // The lock used to be read before the PIN was checked and written after: parallel attempts all passed the read,
+    // and each got a guess (on the old code a right PIN sent as the 40th of a burst got through). Now an attempt is
+    // counted before it is checked and sets the wait, so a burst gets one try; all the others are refused unchecked.
     let (_dir, store) = open().await;
     with_user(&store, "Anna", Role::Member, "483920").await;
-    for _ in 0..4 {
-        store.verify_login("Anna", "111111").await.unwrap();
+    let mut burst = tokio::task::JoinSet::new();
+    for i in 0..40 {
+        let store = store.clone();
+        let pin = if i == 39 { "483920" } else { "111111" };
+        burst.spawn(async move { store.verify_login("Anna", pin).await.unwrap() });
     }
-    assert!(matches!(store.verify_login("Anna", "483920").await.unwrap(), Login::Ok { .. }));
-    // Four more wrong ones do not lock, because the count started again.
-    for _ in 0..4 {
-        assert_eq!(store.verify_login("Anna", "111111").await.unwrap(), Login::WrongCredentials);
-    }
+    let results = burst.join_all().await;
+    let checked = results.iter().filter(|r| !matches!(r, Login::Locked { .. })).count();
+    assert_eq!(checked, 1, "{results:?}");
 }
 
 #[tokio::test]

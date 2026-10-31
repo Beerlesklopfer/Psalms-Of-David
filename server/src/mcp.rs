@@ -163,12 +163,12 @@ fn tool_list() -> Value {
         },
         {
             "name": "cd_drive",
-            "description": "The CD drives of the server: device, tray, medium, Disc ID, the tracks with their length in seconds, the total minutes, whether a rip runs, whether the CD is in the library already or an interrupted rip waits, and the MusicBrainz releases for the disc (title, author, tracks, release id) with the status of the lookup (ok, no_contact, no_match, lookup_failed). Read only. Needs a token made by an administrator.",
+            "description": "The CD drives of the server: device, tray, medium, Disc ID, the tracks with their length in seconds, the total minutes, whether a rip runs, whether the CD is in the library already or an interrupted rip waits, and the MusicBrainz releases for the disc (title, author, tracks, release id) with the status of the lookup (ok, no_contact, no_match, lookup_failed). Read only. Needs a token made by a profile that may put in CDs.",
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
             "name": "cd_rip",
-            "description": "Imports the audio CD that is in the drive of the server, with the details read from its cover photos: author, title, one title per track. The same code as the CD page of the administration. dry_run is true by default and then only reports what would be started (folder, file names, tags, warnings such as an album of that name in the library already) and starts nothing; with dry_run=false the rip starts in the background and the job id is returned (follow it with cd_progress). The number of tracks must equal the number of the selected tracks (all of the disc, or only_tracks). Refused while a rip runs, with no disc or an open tray. Needs a token made by an administrator; starting needs a token that may write.",
+            "description": "Imports the audio CD that is in the drive of the server, with the details read from its cover photos: author, title, one title per track. The same code as the CD page of the administration. dry_run is true by default and then only reports what would be started (folder, file names, tags, warnings such as an album of that name in the library already) and starts nothing; with dry_run=false the rip starts in the background and the job id is returned (follow it with cd_progress). The number of tracks must equal the number of the selected tracks (all of the disc, or only_tracks). Refused while a rip runs, with no disc or an open tray. Needs a token made by a profile that may put in CDs; starting needs a token that may write. The CD goes into the library at once only if the profile that made the token needs no approval; otherwise it is read and then waits for a person to approve it (cd_progress lists such CDs).",
             "inputSchema": { "type": "object", "properties": {
                 "author": { "type": "string", "description": "Author of the book or artist of the album" },
                 "title": { "type": "string", "description": "Title of the book or album" },
@@ -185,8 +185,13 @@ fn tool_list() -> Value {
         },
         {
             "name": "cd_progress",
-            "description": "The state of the running or the last rip of the server: state (none, running, done, done_with_warnings, failed, cancelled), percent, the job, the state of each track (waiting, reading, verifying, encoding, done, failed) with its percent and error, and the error code. Read only. Needs a token made by an administrator.",
+            "description": "The state of the running or the last rip of the server: state (none, running, retry_wait, awaiting_approval, rejected, present, done, done_with_warnings, failed, cancelled), percent, the job, the state of each track (waiting, reading, verifying, encoding, done, failed) with its percent and error, the error code, and `held`: the CDs that wait for approval (job, author, title, disc, tracks, who put it in, since when). Nothing here approves or rejects: people decide. Read only. Needs a token made by a profile that may put in CDs.",
             "inputSchema": { "type": "object", "properties": { "job": { "type": "integer", "description": "A job id from cd_rip; default the newest rip of the server" } } }
+        },
+        {
+            "name": "list_profiles",
+            "description": "The profiles of the family with their role and their rights for CDs: may_put_in_cds (cd_may_insert), needs_no_approval (cd_no_approval), may_approve_cds (cd_may_approve). Read only. The rights are changed by an administrator on the users page; no tool changes them, and no tool approves a CD.",
+            "inputSchema": { "type": "object", "properties": {} }
         },
         {
             "name": "list_formats",
@@ -488,7 +493,7 @@ fn example_of(tool: &str) -> Value {
         "edit_genres" => json!({ "action": "assign", "tag": "Prog Rock", "genre": "Rock" }),
         "list_podcasts" => json!({ "profile": "Anna" }),
         "edit_podcasts" => json!({ "action": "follow", "url": "https://example.org/podcast/feed.xml", "for": ["Anna"] }),
-        "list_stations" => json!({}),
+        "list_stations" | "list_profiles" => json!({}),
         "edit_blacklist" => json!({ "action": "add", "words": ["sex * katze"], "dry_run": true }),
         "edit_stations" => json!({ "action": "add", "name": "DWG Lyra", "stream_url": "https://server34599.streamplus.de/stream.mp3", "for": ["*"] }),
         "list_playlists" => json!({ "profile": "Anna" }),
@@ -503,14 +508,15 @@ fn example_of(tool: &str) -> Value {
     }
 }
 
-/// Who may use the tools for the CD drive: a token made by an administrator (the role is looked at now, not when the token
-/// was made). Returns the profile whose account the jobs belong to.
+/// Who may use the tools for the CD drive: a token made by a profile that may put in CDs (`cd_may_insert`; an administrator has it unless
+/// somebody took it away). The right is looked at now, not when the token was made. Returns the profile whose account the jobs belong to.
 async fn cd_admin(s: &McpState, token: &McpToken) -> Result<i64, String> {
-    let creator = token.created_by.ok_or("this token has no owner; the CD tools need a token made by an administrator")?;
-    let user = s.store.user_row(creator).await.map_err(|e| format!("database error: {e}"))?;
-    match user {
-        Some(u) if u.role == "admin" => Ok(u.id),
-        _ => Err("the CD tools are for administrators only; this token was not made by an administrator".into()),
+    let creator = token.created_by.ok_or("this token has no owner; the CD tools need a token made by a profile that may put in CDs")?;
+    let rights = s.store.cd_rights(creator).await.map_err(|e| format!("database error: {e}"))?;
+    if rights.may_insert {
+        Ok(creator)
+    } else {
+        Err("the CD tools are for profiles that may put in CDs; this token was not made by one".into())
     }
 }
 
@@ -518,6 +524,14 @@ async fn cd_admin(s: &McpState, token: &McpToken) -> Result<i64, String> {
 /// with a hint about single tracks (`unreadable_track`, `unverified_track`) is `done_with_warnings`; the rest is `failed`
 /// or `cancelled`.
 fn progress_state(job: &crate::cdimport::Job) -> &'static str {
+    // The states that wait for a person or for a new try say themselves.
+    match job.cd_state.as_str() {
+        "retry_wait" => return "retry_wait",
+        "awaiting_approval" => return "awaiting_approval",
+        "rejected" => return "rejected",
+        "present" => return "present",
+        _ => {}
+    }
     match (job.active, job.state, job.error.as_str()) {
         (true, _, _) => "running",
         (false, "done", "") => "done",
@@ -970,6 +984,7 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 mode: None,
                 force: false,
                 auto: false,
+                starter_device: String::new(),
             };
             if dry {
                 let mut plan = crate::cdrive::preview_rip(&s.store, &s.cd, s.library.clone(), req).await.map_err(|r| rip_failure(&r))?;
@@ -986,6 +1001,14 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             s.store.log_tag_change(&token.name, 0, "", "CdRip", "", &format!("job {}: {author} / {title}, CD {disc} of {discs_total}, {} tracks", job.id, selected.len())).await.map_err(db)?;
             Ok(json!({ "dry_run": false, "started": true, "job_id": job.id, "resume": started.resume, "job": job, "next": "follow it with cd_progress" }))
         }
+        "list_profiles" => {
+            let people = s.store.user_rows().await.map_err(db)?;
+            let rows: Vec<Value> = people
+                .iter()
+                .map(|u| json!({ "name": u.name, "role": u.role, "may_put_in_cds": u.cd_may_insert, "needs_no_approval": u.cd_no_approval, "may_approve_cds": u.cd_may_approve }))
+                .collect();
+            Ok(json!({ "profiles": rows }))
+        }
         "cd_progress" => {
             cd_admin(s, token).await?;
             let log = s.store.cd_log(100).await.map_err(db)?;
@@ -997,6 +1020,16 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 return Ok(json!({ "state": "none", "rip_running": s.cd.drives.is_ripping(), "message": "no rip of the server so far" }));
             };
             s.cd.decorate(&mut job);
+            // The CDs that wait for a decision: only people decide them, there is no tool for it.
+            let held: Vec<Value> = s
+                .store
+                .cd_jobs_waiting()
+                .await
+                .map_err(db)?
+                .iter()
+                .filter(|j| j.cd_state == "awaiting_approval")
+                .map(|j| json!({ "job": j.id, "author": j.author, "title": j.album, "disc": j.disc, "tracks": j.tracks_total, "put_in_by": j.starter, "waiting_since_ms": j.held_ms, "state": "awaiting_approval" }))
+                .collect();
             let percent = match progress_state(&job) {
                 "running" => (job.fraction.unwrap_or(0.0) * 100.0).round() as i64,
                 "failed" | "cancelled" => (job.fraction.unwrap_or(0.0) * 100.0).round() as i64,
@@ -1004,7 +1037,7 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             };
             let tracks: Vec<Value> = job.track_states.iter().map(|t| json!({ "number": t.number, "title": t.title, "seconds": t.seconds, "state": t.state, "percent": (t.fraction.clamp(0.0, 1.0) * 100.0).round() as i64, "error": t.error })).collect();
             let track_errors: Vec<Value> = job.track_states.iter().filter(|t| !t.error.is_empty()).map(|t| json!({ "number": t.number, "error": t.error })).collect();
-            Ok(json!({ "state": progress_state(&job), "percent": percent, "rip_running": s.cd.drives.is_ripping(), "error": job.error, "track_errors": track_errors, "tracks": tracks, "job": job }))
+            Ok(json!({ "state": progress_state(&job), "percent": percent, "rip_running": s.cd.drives.is_ripping(), "error": job.error, "track_errors": track_errors, "tracks": tracks, "job": job, "held": held, "note": "CDs that wait for approval are decided by people (the family) in the app or on the CD page; there is no tool for it" }))
         }
         "set_cover_from_url" => {
             if !token.can_write {
@@ -1481,7 +1514,7 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                     continue;
                 };
                 if !dry {
-                    s.store.set_book_hidden(profile, id, hide).await.map_err(db)?;
+                    s.store.admin_set_book_hidden(profile, id, hide).await.map_err(db)?;
                 }
                 done.push(json!({ "id": id, "title": row.title, "author": row.author }));
             }

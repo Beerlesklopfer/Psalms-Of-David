@@ -199,6 +199,24 @@ class _CdImportDialogState extends State<CdImportDialog> {
             child: Text(l.cdClose),
           )
         else if (c.phase == CdPhase.running) ...[
+          if (c.canMoveJob) ...[
+            // A read error: the CD is still in the drive. Read it again, or give up (what was read is kept for a while).
+            TextButton(
+              key: const Key('cd-give-up'),
+              onPressed: c.movePhase == CdMovePhase.idle ? _askGiveUp : null,
+              child: Text(l.cdGiveUp),
+            ),
+            FilledButton.tonal(
+              key: const Key('cd-retry'),
+              onPressed: c.movePhase == CdMovePhase.idle ? c.retryRead : null,
+              child: c.movePhase == CdMovePhase.idle
+                  ? Text(l.inboxRetry)
+                  : const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(key: Key('cd-moving'), strokeWidth: 2),
+                    ),
+            ),
+          ],
           // The import runs on the server: stopping it is one button, leaving the dialog (it goes on without it, and the strip
           // under the app bar opens it again) is the other.
           TextButton(key: const Key('cd-cancel'), onPressed: c.cancel, child: Text(l.cdStopImport)),
@@ -208,7 +226,8 @@ class _CdImportDialogState extends State<CdImportDialog> {
             child: Text(l.cdClose),
           ),
         ] else ...[
-          if (c.phase != CdPhase.starting)
+          if (c.phase != CdPhase.starting &&
+              !(c.phase == CdPhase.present && c.ejectPhase == CdEjectPhase.ejected))
             TextButton(
               key: const Key('cd-cancel'),
               onPressed: () async {
@@ -225,7 +244,21 @@ class _CdImportDialogState extends State<CdImportDialog> {
               onPressed: c.canSave ? c.save : null,
               child: Text(c.resumeOffer != null && !c.rereadFromStart ? l.cdContinue : l.cdSave),
             ),
-          if (c.phase == CdPhase.present) ...[
+          if (c.phase == CdPhase.present && c.ejectPhase == CdEjectPhase.ejected)
+            // The CD is out: nothing more to do with it, so there is no import anyway.
+            FilledButton(
+              key: const Key('cd-close'),
+              onPressed: () => Navigator.pop(context),
+              child: Text(l.cdClose),
+            )
+          else if (c.phase == CdPhase.present && c.ejectPhase != CdEjectPhase.ejecting) ...[
+            // The CD is in the drive: it can be taken out by hand, imported again, or (with gaps) repaired.
+            TextButton.icon(
+              key: const Key('cd-eject-now'),
+              onPressed: c.ejectNow,
+              icon: const Icon(Icons.eject),
+              label: Text(l.cdEject),
+            ),
             TextButton(
               key: const Key('cd-force'),
               onPressed: _askForce,
@@ -254,7 +287,22 @@ class _CdImportDialogState extends State<CdImportDialog> {
       case CdPhase.running:
         final j = c.job;
         if (j != null && j.waiting) {
-          return Text(cdWaitText(l, j), key: const Key('cd-waiting'));
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(cdWaitText(l, j), key: const Key('cd-waiting')),
+              if (c.moveError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    cdErrorText(l, c.moveError!),
+                    key: const Key('cd-move-error'),
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  ),
+                ),
+            ],
+          );
         }
         final text = switch (j?.phase) {
           'encoding' => l.cdEncoding,
@@ -329,6 +377,30 @@ class _CdImportDialogState extends State<CdImportDialog> {
           ],
         );
     }
+  }
+
+  Future<void> _askGiveUp() async {
+    final l = AppLocalizations.of(context);
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.cdGiveUpTitle),
+        content: Text(l.cdGiveUpText),
+        actions: [
+          TextButton(
+            key: const Key('cd-give-up-no'),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            key: const Key('cd-give-up-yes'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l.cdGiveUp),
+          ),
+        ],
+      ),
+    );
+    if (yes == true) await c.giveUp();
   }
 
   Future<void> _askForce() async {
@@ -408,6 +480,24 @@ class _CdImportDialogState extends State<CdImportDialog> {
           ],
           const SizedBox(height: 8),
           Text(l.cdHealHint, style: t.bodySmall),
+        ],
+        if (c.ejectPhase == CdEjectPhase.ejecting) ...[
+          const SizedBox(height: 12),
+          const LinearProgressIndicator(key: Key('cd-ejecting')),
+        ],
+        if (c.ejectPhase == CdEjectPhase.ejected) ...[
+          const SizedBox(height: 12),
+          Text(l.cdEjected, key: const Key('cd-ejected')),
+        ],
+        if (c.ejectPhase == CdEjectPhase.failed) ...[
+          const SizedBox(height: 12),
+          Text(
+            c.ejectError == 'nothing_to_eject'
+                ? l.cdNothingToEject
+                : cdErrorText(l, c.ejectError ?? 'eject_failed'),
+            key: const Key('cd-eject-error'),
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
         ],
       ],
     );

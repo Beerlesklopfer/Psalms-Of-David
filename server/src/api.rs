@@ -89,6 +89,7 @@ pub fn router(state: ApiState) -> Router {
         .merge(crate::api_me::routes())
         .merge(crate::api_playlists::routes())
         .merge(crate::api_cd::routes())
+        .merge(crate::api_inbox::routes())
         .layer(axum::middleware::from_fn(crate::actor::scope))
         .with_state(state)
 }

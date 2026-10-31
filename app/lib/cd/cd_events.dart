@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../inbox/inbox_models.dart';
 import 'cd_models.dart';
 
 /// State of a CD import job as the server holds it (`docs/spec-cd-import-api.md`, "Jobs").
@@ -197,14 +198,26 @@ abstract class CdEventsSource {
 
   /// The jobs that are still open, for a freshly started app or another device.
   Future<List<CdJobState>> openJobs();
+
+  /// What the channel says about the inbox (`inbox`, `inbox_resolved`, the counts of the `snapshot`). Nothing is replayed after a reconnect:
+  /// the inbox reads its list again.
+  Stream<InboxWire> get inboxChanged;
+
+  /// The name of this device as the server gave it in the `hello` of the channel (the `device` of a job or an inbox item that this device
+  /// started); null before the first `hello`.
+  String? get deviceLabel;
 }
 
 /// What one WebSocket message says: job states (`job`, `progress`, `done`, `failed` carry one,
-/// `snapshot` carries the open jobs) or the state of the drives (`drive`).
+/// `snapshot` carries the open jobs), the state of the drives (`drive`) or a message of the inbox.
 class CdMessage {
-  const CdMessage(this.jobs, {this.drives});
+  const CdMessage(this.jobs, {this.drives, this.inbox, this.helloDevice});
   final List<CdJobState> jobs;
   final CdDrivesState? drives;
+  final InboxWire? inbox;
+
+  /// The `device` of a `hello` message.
+  final String? helloDevice;
 }
 
 /// Parses one text message of `GET cd/events`; unknown types and broken text give an empty message.
@@ -219,9 +232,13 @@ CdMessage parseCdMessage(String text) {
         return CdMessage([
           for (final e in (j['jobs'] as List? ?? const []).cast<Map<String, dynamic>>())
             CdJobState.fromJson(e),
-        ]);
+        ], inbox: parseInboxWire(j));
+      case 'inbox' || 'inbox_resolved':
+        return CdMessage(const [], inbox: parseInboxWire(j));
       case 'drive':
         return CdMessage(const [], drives: CdDrivesState.fromJson(j));
+      case 'hello':
+        return CdMessage(const [], helloDevice: j['device'] as String?);
     }
   } on Object {
     // not an event
@@ -378,6 +395,15 @@ class SocketCdEventsSource implements CdEventsSource {
   final Future<Object?> Function(String path) getJson;
 
   final _drives = StreamController<CdDrivesState>.broadcast();
+  final _inbox = StreamController<InboxWire>.broadcast();
+
+  @override
+  Stream<InboxWire> get inboxChanged => _inbox.stream;
+
+  String? _deviceLabel;
+
+  @override
+  String? get deviceLabel => _deviceLabel;
 
   @override
   Stream<CdDrivesState> get driveChanged => _drives.stream;
@@ -393,7 +419,9 @@ class SocketCdEventsSource implements CdEventsSource {
       await for (final m in ws) {
         if (m is! String) continue;
         final msg = parseCdMessage(m);
+        if (msg.helloDevice != null) _deviceLabel = msg.helloDevice;
         if (msg.drives != null) _drives.add(msg.drives!);
+        if (msg.inbox != null) _inbox.add(msg.inbox!);
         for (final j in msg.jobs) {
           yield j;
         }

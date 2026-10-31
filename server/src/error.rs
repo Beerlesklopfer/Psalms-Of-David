@@ -9,6 +9,10 @@ pub enum Error {
     ProfileLimitReached,
     #[error("the last admin cannot be removed or demoted")]
     LastAdmin,
+    #[error("at least one profile must keep the right to approve CDs")]
+    LastCdApprover,
+    #[error("children and guests cannot hold rights for CDs")]
+    CdRightsRole,
     #[error("the user has reached the limit of devices")]
     DeviceLimitReached,
     #[error("an active device must be revoked before it is deleted")]
@@ -79,6 +83,10 @@ impl Error {
             Error::ProfileLimitReached
         } else if message.contains("last_admin") {
             Error::LastAdmin
+        } else if message.contains("last_cd_approver") {
+            Error::LastCdApprover
+        } else if message.contains("cd_rights_role") {
+            Error::CdRightsRole
         } else if message.contains("UNIQUE constraint failed: device.wg_pubkey") {
             Error::InvalidPublicKey
         } else if message.contains("device_limit_reached") {

@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:image/image.dart' as img;
 
+import 'inbox/inbox_models.dart' show CdRights;
 import 'server/api_client.dart' show ApiException;
 import 'server/app_paths.dart';
 
@@ -40,7 +41,17 @@ class Profile {
     this.avatarVersion,
     this.deviceCount = 0,
     this.deviceLimit,
+    this.cdRights = const CdRights(),
+    this.inboxUnread = 0,
+    this.inboxTasksOpen = 0,
   });
+
+  /// What the person may do with CDs; decides whether the app shows the inbox.
+  final CdRights cdRights;
+
+  /// The inbox counts at the time of the last `GET /me` (the live counts are the inbox controller's).
+  final int inboxUnread;
+  final int inboxTasksOpen;
 
   /// The nickname: what is shown and what the person signs in with.
   final String name;
@@ -69,6 +80,9 @@ class Profile {
         avatarVersion: j['avatar_version'] as int?,
         deviceCount: j['device_count'] as int? ?? 0,
         deviceLimit: j['device_limit'] as int?,
+        cdRights: CdRights.fromJson(j['cd_rights']),
+        inboxUnread: (j['inbox_unread'] as num?)?.toInt() ?? 0,
+        inboxTasksOpen: (j['inbox_tasks_open'] as num?)?.toInt() ?? 0,
       );
 
   Map<String, Object?> toJson() => {
@@ -81,6 +95,9 @@ class Profile {
         'avatar_version': avatarVersion,
         'device_count': deviceCount,
         'device_limit': deviceLimit,
+        'cd_rights': cdRights.toJson(),
+        'inbox_unread': inboxUnread,
+        'inbox_tasks_open': inboxTasksOpen,
       };
 }
 
@@ -229,7 +246,21 @@ class ProfileController extends ChangeNotifier {
         unawaited(store?.write(profile!, avatarBytes));
       });
 
-  Future<bool> changePin(String current, String next) => _change((a) => a.changePin(current, next));
+  /// Until when the next try to change the PIN has to wait, after a wrong current PIN (the server says how long); null: no wait.
+  DateTime? pinWaitUntil;
+
+  Future<bool> changePin(String current, String next) {
+    pinWaitUntil = null;
+    return _change((a) async {
+      try {
+        await a.changePin(current, next);
+      } on ApiException catch (e) {
+        final s = e.retryAfterS;
+        if (s != null) pinWaitUntil = DateTime.now().add(Duration(seconds: s));
+        rethrow;
+      }
+    });
+  }
 
   /// Sends a picture that [prepareAvatar] made.
   Future<bool> setAvatar(Uint8List jpeg) => _change((a) async {

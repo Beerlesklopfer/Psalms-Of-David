@@ -58,7 +58,15 @@ pub(crate) async fn me_json(s: &ApiState, d: &Device) -> ApiResult<Value> {
     let avatar = s.store.avatar_version(d.user_id).await?;
     let (used, max) = s.store.device_usage(d.user_id).await?;
     let (share, may_hide) = s.store.listening_sharing(d.user_id).await?;
+    // What the person may do with CDs. The effective role counts too: a session on a shared device of a child holds none.
+    let mut cd = s.store.cd_rights(d.user_id).await?;
+    if !matches!(d.role, crate::roles::Role::Admin | crate::roles::Role::Member) {
+        cd = crate::cdrights::CdRights::none();
+    }
+    let (inbox_unread, inbox_tasks_open) = if cd.may_insert || cd.may_approve { s.store.inbox_counts(d.user_id).await? } else { (0, 0) };
     let mut me = json!({
+        "inbox_unread": inbox_unread, "inbox_tasks_open": inbox_tasks_open,
+        "cd_rights": { "may_insert": cd.may_insert, "no_approval": cd.no_approval, "may_approve": cd.may_approve },
         "share_listening": share || !may_hide, "may_hide_listening": may_hide,
         "id": user.id, "name": user.name, "nickname": user.name, "first_name": user.first_name, "last_name": user.last_name,
         "role": d.role.as_str(), "max_age": user.max_age, "language": user.language,
@@ -112,15 +120,36 @@ struct PinChange {
     new: String,
 }
 
-async fn put_pin(State(s): State<ApiState>, d: Device, Json(req): Json<PinChange>) -> ApiResult<StatusCode> {
+async fn put_pin(State(s): State<ApiState>, d: Device, Json(req): Json<PinChange>) -> axum::response::Response {
+    use axum::response::IntoResponse;
     // The sessions of the browser end, the paired devices keep theirs (this one included).
-    s.store.change_pin(d.user_id, &req.current, &req.new, &d.token).await.map_err(|e| match e {
-        Error::WrongPin => ApiError(StatusCode::FORBIDDEN, "wrong_pin"),
-        Error::PinLocked => ApiError(StatusCode::TOO_MANY_REQUESTS, "locked"),
-        Error::InvalidPin => ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_pin"),
-        e => e.into(),
-    })?;
-    Ok(StatusCode::NO_CONTENT)
+    let error = match s.store.change_pin(d.user_id, &req.current, &req.new, &d.token).await {
+        Ok(()) => return StatusCode::NO_CONTENT.into_response(),
+        Err(Error::WrongPin) => ApiError(StatusCode::FORBIDDEN, "wrong_pin"),
+        Err(Error::PinLocked) => ApiError(StatusCode::TOO_MANY_REQUESTS, "locked"),
+        Err(Error::InvalidPin) => ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_pin"),
+        Err(e) => ApiError::from(e),
+    };
+    // After a wrong current PIN (and while it waits) the answer says how long the next try waits, for the countdown of
+    // the app: `retry_after_s` in the body and the header `Retry-After` (seconds).
+    let wait_s = if matches!(error.1, "wrong_pin" | "locked") { wait_of(&s, d.user_id).await } else { None };
+    let mut res = match wait_s {
+        Some(w) => (error.0, [(axum::http::header::CACHE_CONTROL, "no-store")], Json(serde_json::json!({ "error": error.1, "retry_after_s": w }))).into_response(),
+        None => error.into_response(),
+    };
+    if let Some(w) = wait_s
+        && let Ok(v) = axum::http::HeaderValue::from_str(&w.to_string())
+    {
+        res.headers_mut().insert(axum::http::header::RETRY_AFTER, v);
+    }
+    res
+}
+
+/// Seconds until the user may try a PIN again, if they have to wait.
+async fn wait_of(s: &ApiState, user_id: i64) -> Option<i64> {
+    let profile = s.store.profile_by_id(user_id).await.ok().flatten()?;
+    let until = s.store.sign_in_wait(&profile.name).await.ok().flatten()?;
+    Some((until - crate::store::now_ms() + 999) / 1000)
 }
 
 /// What the other members of the family listened to lately, one entry per member (`docs/spec-app-api.md`). Guests see nothing.

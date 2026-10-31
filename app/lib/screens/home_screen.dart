@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../inbox/inbox_ui.dart';
 import '../models.dart';
 import '../player_controller.dart';
 import '../profile.dart';
@@ -36,16 +37,19 @@ class HomeScreen extends StatelessWidget {
           floating: true,
           backgroundColor: Theme.of(context).colorScheme.surface,
           // The picture and the greeting open the own profile (with a server; the demo has none).
+          leadingWidth: inboxBadgeShown(context) ? 56 + kInboxBadgeExtraWidth : null,
           leading: ProfileScope.maybeOf(context) == null
               ? null
               : Padding(
                   padding: const EdgeInsets.all(8),
-                  child: IconButton(
-                    key: const ValueKey('home-avatar'),
-                    tooltip: l.profileAvatarTooltip,
-                    padding: EdgeInsets.zero,
-                    onPressed: () => openProfile(context),
-                    icon: const OwnAvatar(size: 36),
+                  child: InboxBadgeOverlay(
+                    child: IconButton(
+                      key: const ValueKey('home-avatar'),
+                      tooltip: l.profileAvatarTooltip,
+                      padding: EdgeInsets.zero,
+                      onPressed: () => openProfile(context),
+                      icon: const OwnAvatar(size: 36),
+                    ),
                   ),
                 ),
           title: Text(

@@ -191,6 +191,8 @@ pub async fn run(
     let cd = crate::cdimport::CdService::new(&config.data_dir).with_library(config.library.clone());
     cd.start(&store).await;
     tokio::spawn(crate::cdrive::monitor(cd.clone(), store.clone(), config.library.clone()));
+    // CDs that wait for approval expire after the time of the settings.
+    tokio::spawn(crate::cdflow::expiry_task(store.clone(), cd.clone()));
     if config.features.download {
         tracing::info!("hidden feature on: administrators may download files (features.download)");
     }

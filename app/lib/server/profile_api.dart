@@ -20,12 +20,16 @@ class ServerProfileApi implements ProfileApi {
 
   Never _fail(int status, String text) {
     var code = 'error';
+    Map<String, dynamic>? body;
     try {
-      code = (jsonDecode(text) as Map<String, dynamic>)['error'] as String? ?? code;
+      body = jsonDecode(text) as Map<String, dynamic>;
+      code = body['error'] as String? ?? code;
     } on FormatException {
       // not JSON: the generic code
+    } on TypeError {
+      // JSON, but not an object: the generic code
     }
-    throw ApiException(status, code);
+    throw ApiException(status, code, body);
   }
 
   Future<Profile> _profile(String method, String path, {Object? body}) async {

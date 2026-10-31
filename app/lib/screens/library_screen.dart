@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../cd/cd_import_ui.dart';
 import '../cd/cd_kit.dart';
 import '../cd/cd_progress_bar.dart';
+import '../inbox/inbox_ui.dart';
 import '../l10n/app_localizations.dart';
 import '../labels.dart';
 import '../library_folds.dart';
@@ -226,6 +227,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ],
         ),
         if (widget.cd != null) SliverToBoxAdapter(child: CdProgressStrip(kit: widget.cd!)),
+        const SliverToBoxAdapter(child: InboxCard()),
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),

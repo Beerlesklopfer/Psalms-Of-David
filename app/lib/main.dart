@@ -8,6 +8,11 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'audio/audio_backend.dart';
 import 'cd/cd_kit.dart';
+import 'inbox/inbox_controller.dart';
+import 'inbox/inbox_demo.dart';
+import 'inbox/inbox_ui.dart';
+import 'speech/announcer_scope.dart';
+import 'speech/cd_announcer.dart';
 import 'audio/just_audio_backend.dart';
 import 'audio/mpris.dart';
 import 'audio/pipewire_backend.dart';
@@ -57,6 +62,8 @@ import 'widgets.dart';
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppPaths.init();
+  // Before any download starts: what an earlier run left half loaded is of no use.
+  ServerSource.dropPartials(partCache());
   await PsalmAudioHandler.init();
   runApp(PsalmApp(pairing: _pairingAddress(args)));
 }
@@ -208,6 +215,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     final api = _api;
     if (api == null || _offline.manual) return false;
     final r = await _offline.sync(ServerOutboxApi(api));
+    if (!identical(api, _api)) return false;
     return r != null && (r.sent > 0 || r.rejected.isNotEmpty);
   }
 
@@ -428,14 +436,19 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     final api = _api;
     // The offline mode (the person's switch) does not ask the server at all.
     if (api == null || !mounted || _offline.manual) return;
+    // The pairing can be forgotten while this waits for the server: what comes back for the old one is dropped then,
+    // or it would put the old account's library back into the player and the cache that `_disconnect` just cleared.
+    bool stale() => !mounted || !identical(api, _api);
     try {
       final v = await api.libraryVersions();
+      if (stale()) return;
       // The server answers again: what waits is sent first, so that the library that is loaded has it, and everything is loaded again.
       if (_offline.unreachable) {
         _offline.setUnreachable(false);
         force = true;
       }
       if (await _syncOutbox()) force = true;
+      if (stale()) return;
       // The playlists of this profile have their own fingerprint: a change of another profile's lists is not seen here.
       final playlistsChanged = v.playlists != _playlistsVersion;
       _playlistsVersion = v.playlists;
@@ -445,7 +458,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
       if (hiddenChanged) unawaited(_hiding.load());
       if (force || hiddenChanged || v.version != _libraryVersion) {
         final loaded = await loadLibrary(api);
-        if (!mounted) return;
+        if (stale()) return;
         _libraryVersion = v.version;
         _player.updateLibrary(loaded);
         unawaited(_cache.write(loaded));
@@ -456,7 +469,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
       }
     } on ApiException catch (e) {
       // The server is not reachable right now; the next look tries again. The lists show what is downloaded meanwhile.
-      if (e.code == 'network') _offline.setUnreachable(true);
+      if (e.code == 'network' && !stale()) _offline.setUnreachable(true);
     }
   }
 
@@ -595,13 +608,33 @@ class _ShellState extends State<Shell> {
   /// The CD symbols: the server's drive and jobs; null without a server.
   late final CdKit? _cd = widget.api == null ? null : createCdKit(widget.api!);
 
+  /// The inbox of the CDs: the kit's (fed by the event channel), or the example inbox of the demo.
+  late final InboxController? _inbox = _cd?.inbox ?? (widget.api == null ? InboxController.demo(demoInboxItems()) : null);
+
+  /// The voice for the messages of the CD inbox (while music plays); next to the notification.
+  late final CdAnnouncer? _announcer = _inbox == null ? null : createShellAnnouncer(() => mounted ? context : null, _cd);
+
   int _toldRejected = 0;
 
   @override
   void initState() {
     super.initState();
+    if (_inbox != null) _announcer?.attach(_inbox);
     widget.offline?.addListener(_tellRejected);
     showStartRequests.addListener(_showStart);
+    _inbox?.openRequests.addListener(_openInbox);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The system notification of the inbox has no context: it takes its words from here.
+    _inbox?.l10n = AppLocalizations.of(context);
+  }
+
+  /// A tap on a notification of the inbox opens its page.
+  void _openInbox() {
+    if (mounted) openInbox(context, _inbox!, offline: widget.offline);
   }
 
   /// A voice command ("what is new") asks for the start page.
@@ -623,7 +656,11 @@ class _ShellState extends State<Shell> {
   void dispose() {
     widget.offline?.removeListener(_tellRejected);
     showStartRequests.removeListener(_showStart);
+    _inbox?.openRequests.removeListener(_openInbox);
+    if (_inbox != null) _announcer?.detach(_inbox);
+    _announcer?.dispose();
     _cd?.dispose();
+    if (_cd == null) _inbox?.dispose();
     super.dispose();
   }
 
@@ -655,7 +692,10 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     final offline = widget.offline;
-    final shell = _build(context);
+    var shell = _build(context);
+    final inbox = _inbox;
+    if (inbox != null) shell = InboxScope(controller: inbox, child: shell);
+    if (_announcer != null) shell = AnnouncerScope(announcer: _announcer, child: shell);
     return offline == null ? shell : OfflineScope(controller: offline, child: shell);
   }
 

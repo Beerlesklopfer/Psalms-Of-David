@@ -1034,6 +1034,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cdWaitsRetry => 'Read error: the CD is still in the drive';
 
   @override
+  String get cdEject => 'Eject';
+
+  @override
   String get cdEjectTooltip => 'Eject CD';
 
   @override
@@ -1772,6 +1775,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileErrLocked => 'Too many wrong tries. Try again later.';
 
   @override
+  String profilePinWait(String time) {
+    return 'The PIN can be changed again in $time';
+  }
+
+  @override
   String get profileErrAvatarType => 'This file is not a picture.';
 
   @override
@@ -2010,4 +2018,305 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get barcodeTypeHint => 'Or type the digits below the barcode:';
+
+  @override
+  String get inboxTitle => 'CD inbox';
+
+  @override
+  String get inboxNotificationTitle => 'CDs';
+
+  @override
+  String inboxCardWaiting(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count CDs wait for approval',
+      one: '1 CD waits for approval',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String inboxCardUnread(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count unread',
+      one: '1 unread',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get inboxOpen => 'Open the inbox';
+
+  @override
+  String get inboxEmpty => 'No messages about your CDs.';
+
+  @override
+  String get inboxMarkAllRead => 'Mark all as read';
+
+  @override
+  String get inboxImport => 'Import';
+
+  @override
+  String get inboxReject => 'Reject';
+
+  @override
+  String get cdGiveUp => 'Give up';
+
+  @override
+  String get cdGiveUpTitle => 'Give up on this CD?';
+
+  @override
+  String get cdGiveUpText =>
+      'The import ends. What was read is kept for a while, so reading the CD again later is quicker.';
+
+  @override
+  String cdSpeakAwaiting(String title) {
+    return 'The CD $title is done and waits for your approval.';
+  }
+
+  @override
+  String get cdSpeakAwaitingNoTitle =>
+      'A CD is done and waits for your approval.';
+
+  @override
+  String cdSpeakImported(String title) {
+    return 'The CD $title was imported.';
+  }
+
+  @override
+  String get cdSpeakImportedNoTitle => 'A CD was imported.';
+
+  @override
+  String cdSpeakReadError(String title) {
+    return 'The CD $title has a read error.';
+  }
+
+  @override
+  String get cdSpeakReadErrorNoTitle => 'A CD has a read error.';
+
+  @override
+  String cdSpeakPresent(String title) {
+    return 'The CD $title is in the library already.';
+  }
+
+  @override
+  String get cdSpeakPresentNoTitle => 'A CD is in the library already.';
+
+  @override
+  String get cdAnnounceTest => 'This is how the announcements about CDs sound.';
+
+  @override
+  String get cdAnnounceTitle => 'CD announcements';
+
+  @override
+  String get cdAnnounceHint =>
+      'While music plays, a voice says when a CD is done or needs you.';
+
+  @override
+  String get cdAnnounceTestButton => 'Test';
+
+  @override
+  String get cdAnnounceNoSpdSay =>
+      'No voice: the program spd-say (speech-dispatcher) is missing.';
+
+  @override
+  String get cdAnnounceNoVoice =>
+      'This device has no voice for announcements yet.';
+
+  @override
+  String get inboxRetry => 'Try again';
+
+  @override
+  String get inboxOpenAlbum => 'Open album';
+
+  @override
+  String get inboxRejectTitle => 'Reject this CD?';
+
+  @override
+  String get inboxRejectText => 'Its files are deleted.';
+
+  @override
+  String get inboxWaitsForApproval => 'Waits for approval';
+
+  @override
+  String get inboxWorking => 'One moment…';
+
+  @override
+  String inboxResolvedApproved(String by) {
+    return 'Imported by $by';
+  }
+
+  @override
+  String inboxResolvedRejected(String by) {
+    return 'Rejected by $by';
+  }
+
+  @override
+  String get inboxResolvedApprovedYou => 'Imported';
+
+  @override
+  String get inboxResolvedRejectedYou => 'Rejected';
+
+  @override
+  String get inboxResolvedExpired => 'Expired';
+
+  @override
+  String inboxAlreadyDecided(String by) {
+    return 'Already decided by $by';
+  }
+
+  @override
+  String get inboxNeedsServer =>
+      'The inbox needs the server. It is back as soon as you are online.';
+
+  @override
+  String get inboxLoadFailed => 'The inbox could not be loaded.';
+
+  @override
+  String get inboxErrNetwork => 'The server could not be reached.';
+
+  @override
+  String get inboxErrForbidden => 'You may not decide CDs.';
+
+  @override
+  String get inboxErrBusy => 'The drive is busy.';
+
+  @override
+  String get inboxErrNoDisc => 'There is no CD in the drive.';
+
+  @override
+  String get inboxErrDrive => 'The drive cannot be used now.';
+
+  @override
+  String get inboxErrGeneric => 'That did not work.';
+
+  @override
+  String get inboxUnknown =>
+      'News from the server that this version of the app does not know yet.';
+
+  @override
+  String get inboxThisCd => 'a CD';
+
+  @override
+  String inboxDiscOf(int disc, int total) {
+    return 'CD $disc of $total';
+  }
+
+  @override
+  String inboxDiscNumber(int disc) {
+    return 'CD $disc';
+  }
+
+  @override
+  String inboxCdAwaitingApproval(String by, String album) {
+    return 'New CD from $by: $album. Import it?';
+  }
+
+  @override
+  String inboxCdAwaitingApprovalAuto(String album) {
+    return 'New CD put in at the server: $album. Import it?';
+  }
+
+  @override
+  String inboxCdWaiting(String album) {
+    return '$album waits for approval.';
+  }
+
+  @override
+  String inboxCdImported(String album, int tracks) {
+    String _temp0 = intl.Intl.pluralLogic(
+      tracks,
+      locale: localeName,
+      other: '$tracks tracks',
+      one: '1 track',
+    );
+    return '$album is in the library ($_temp0).';
+  }
+
+  @override
+  String inboxCdImportedNoCount(String album) {
+    return '$album is in the library.';
+  }
+
+  @override
+  String inboxCdPresent(String album) {
+    return '$album is in the library already. The CD was not read.';
+  }
+
+  @override
+  String inboxCdDecidedApproved(String by, String album) {
+    return '$by imported the CD $album.';
+  }
+
+  @override
+  String inboxCdDecidedRejected(String by, String album) {
+    return '$by rejected the CD $album.';
+  }
+
+  @override
+  String inboxCdExpired(String album) {
+    return 'The CD $album was not decided in time. Its files were deleted.';
+  }
+
+  @override
+  String inboxCdReadError(String album, String tracks) {
+    return '$album: could not read track $tracks.';
+  }
+
+  @override
+  String inboxCdReadErrorNoTracks(String album) {
+    return '$album: some tracks could not be read.';
+  }
+
+  @override
+  String get inboxCdNoMatch =>
+      'The CD in the drive is not known to MusicBrainz. Choose it in the web panel.';
+
+  @override
+  String inboxCdAmbiguous(int candidates) {
+    String _temp0 = intl.Intl.pluralLogic(
+      candidates,
+      locale: localeName,
+      other: '$candidates releases',
+      one: '1 release',
+    );
+    return 'The CD fits $_temp0. Choose the right one in the web panel.';
+  }
+
+  @override
+  String get inboxCdAmbiguousNoCount =>
+      'The CD fits several releases. Choose the right one in the web panel.';
+
+  @override
+  String inboxCdHealNeeded(String album) {
+    return '$album is in the library only in part. It must be repaired before the CD is read.';
+  }
+
+  @override
+  String inboxCdNoSpace(String album) {
+    return 'There is not enough free space to read $album.';
+  }
+
+  @override
+  String inboxCdNoTarget(String album) {
+    return '$album was not read: no folder for imported CDs is set up.';
+  }
+
+  @override
+  String get inboxAlbumNotFound =>
+      'The album is not in the library of this device yet. Refresh the library.';
+
+  @override
+  String get cdErrInvalidMove =>
+      'This CD is not in the state the step needs. The list is read again.';
+
+  @override
+  String get cdErrDecided => 'Somebody else was faster and decided this CD.';
+
+  @override
+  String get cdErrInvalidPaging =>
+      'The page of the inbox asked for does not exist.';
 }

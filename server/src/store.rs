@@ -158,6 +158,10 @@ pub struct UserRow {
     pub share_listening: bool,
     /// May the person turn that off? With `false` the listening is shown whatever the person chose.
     pub may_hide_listening: bool,
+    /// The rights for CDs (migration 0058): to put in, to need no approval, to approve the CDs of others.
+    pub cd_may_insert: bool,
+    pub cd_no_approval: bool,
+    pub cd_may_approve: bool,
 }
 
 /// One book as the administration interface shows it (all books, released or not).
@@ -292,7 +296,7 @@ const ADMIN_BOOKS: &str = "SELECT b.id, b.kind, b.folder, b.title, a.name AS aut
 /// The columns of one line of the user list; the callers add the ordering or the filter.
 const USER_ROWS: &str = "SELECT p.id, p.name, p.first_name, p.last_name, p.birth_date, p.role, p.max_age, p.max_devices, \
     (SELECT count(*) FROM device d WHERE d.user_id = p.id AND d.revoked_at IS NULL) AS devices, \
-    EXISTS (SELECT 1 FROM avatar a WHERE a.profile_id = p.id) AS has_avatar, p.share_listening, p.may_hide_listening \
+    EXISTS (SELECT 1 FROM avatar a WHERE a.profile_id = p.id) AS has_avatar, p.share_listening, p.may_hide_listening, p.cd_may_insert, p.cd_no_approval, p.cd_may_approve \
     FROM profile p";
 
 /// The one place that decides which books a user sees (spec section 3b):

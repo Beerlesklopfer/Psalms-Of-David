@@ -13,9 +13,9 @@
   <tr>
     <td>{{ job.book }}{% if job.author %}<br><span class="unit">{{ job.author }}</span>{% endif %}{% if job.auto %}<br><span class="unit">{{ t("cd.log.auto") }}</span>{% endif %}</td>
     <td>{{ job.disc }} / {{ job.discs_total }}</td>
-    <td>{{ t("cd.phase." ~ job.phase) }}{% if job.locked %}<br><span class="unit">{{ t("cd.err.locked") }}</span>{% endif %}</td>
+    <td>{% if job.cd_state in ["retry_wait", "awaiting_approval", "rejected", "present"] %}{{ t("cd.job." ~ job.cd_state) }}{% else %}{{ t("cd.phase." ~ job.phase) }}{% endif %}{% if job.reason %}<br><span class="unit">{{ t("cd.job." ~ job.reason) }}</span>{% endif %}{% if job.decided_by %}<br><span class="unit">{{ t("cd.job.decided_by") }} {{ job.decided_by }}</span>{% endif %}{% if job.locked %}<br><span class="unit">{{ t("cd.err.locked") }}</span>{% endif %}</td>
     <td>{{ job.when }}</td>
-    <td>{% if job.error_key %}{{ t(job.error_key) }} ({{ job.error }}){% endif %}{% if job.phase == "skipped" and job.message %} <span class="unit">({{ job.message }})</span>{% endif %}{% if job.phase == "done" and job.message %}<br><span class="unit">{{ job.message }}</span>{% endif %}</td>
+    <td>{% if job.error_key %}{{ t(job.error_key) }} ({{ job.error }}){% endif %}{% if job.phase == "skipped" and job.message %} <span class="unit">({{ job.message }})</span>{% endif %}{% if job.message and job.phase in ["done", "rejected", "present", "awaiting_approval", "retry_wait"] %}<br><span class="unit">{{ job.message }}</span>{% endif %}</td>
   </tr>
   {% endfor %}
   </tbody>

@@ -10,7 +10,7 @@ use sea_orm::{ConnectionTrait, DbBackend, Statement, Value};
 use serde::Serialize;
 
 use crate::error::{Error, Result};
-use crate::store::{BookRow, Store, now_ms};
+use crate::store::{BookRow, Store, VISIBLE, now_ms};
 
 /// What a profile has hidden.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -66,12 +66,20 @@ impl Store {
         let books = self
             .db
             .reader
-            .query_all_raw(stmt("SELECT b.id, b.title, a.name FROM profile_hidden h JOIN book b ON b.id = h.book_id JOIN author a ON a.id = b.author_id WHERE h.profile_id = ? ORDER BY a.name, b.title", [profile_id.into()]))
+            // Only books the profile may see: a book that is not (or no longer) released for it is not told by name.
+            .query_all_raw(stmt(
+                &format!("SELECT b.id, b.title, a.name FROM profile_hidden h JOIN profile p ON p.id = h.profile_id JOIN book b ON b.id = h.book_id JOIN author a ON a.id = b.author_id WHERE h.profile_id = ? AND {VISIBLE} ORDER BY a.name, b.title"),
+                [profile_id.into()],
+            ))
             .await?;
         let authors = self
             .db
             .reader
-            .query_all_raw(stmt("SELECT a.id, a.name, h.kind FROM profile_hidden h JOIN author a ON a.id = h.author_id WHERE h.profile_id = ? ORDER BY a.name, h.kind", [profile_id.into()]))
+            // Only authors with a book the profile may see, like the books above.
+            .query_all_raw(stmt(
+                &format!("SELECT a.id, a.name, h.kind FROM profile_hidden h JOIN profile p ON p.id = h.profile_id JOIN author a ON a.id = h.author_id WHERE h.profile_id = ? AND EXISTS (SELECT 1 FROM book b WHERE b.author_id = a.id AND {VISIBLE}) ORDER BY a.name, h.kind"),
+                [profile_id.into()],
+            ))
             .await?;
         Ok(Hidden {
             show_hidden: show == 1,
@@ -86,12 +94,30 @@ impl Store {
         Ok(())
     }
 
-    /// Hides a book for the profile, or shows it again. `false` if there is no such book.
+    /// Hides a book for the profile, or shows it again. `false` if there is no such book for this profile: a book it may not
+    /// see answers like one that does not exist, so hiding cannot be used to find out which books there are.
     pub async fn set_book_hidden(&self, profile_id: i64, book_id: i64, hidden: bool) -> Result<bool> {
-        let exists = self.db.reader.query_one_raw(stmt("SELECT 1 FROM book WHERE id = ?", [book_id.into()])).await?.is_some();
+        // Showing again works for whatever the profile itself hid (that tells it nothing new); hiding needs a book it may see.
+        let sql = if hidden {
+            format!("SELECT 1 FROM book b JOIN profile p ON p.id = ? WHERE b.id = ? AND {VISIBLE}")
+        } else {
+            "SELECT 1 FROM profile_hidden WHERE profile_id = ? AND book_id = ?".to_owned()
+        };
+        let exists = self.db.reader.query_one_raw(stmt(&sql, [profile_id.into(), book_id.into()])).await?.is_some();
         if !exists {
             return Ok(false);
         }
+        self.write_book_hidden(profile_id, book_id, hidden).await?;
+        Ok(true)
+    }
+
+    /// Hides a book for a profile, or shows it again, for an administrator (the MCP tool `hide_albums`): also a book the
+    /// profile cannot see yet, so it stays hidden when it is released later. The caller has checked that the book exists.
+    pub async fn admin_set_book_hidden(&self, profile_id: i64, book_id: i64, hidden: bool) -> Result<()> {
+        self.write_book_hidden(profile_id, book_id, hidden).await
+    }
+
+    async fn write_book_hidden(&self, profile_id: i64, book_id: i64, hidden: bool) -> Result<()> {
         if hidden {
             self.db
                 .writer
@@ -101,13 +127,29 @@ impl Store {
         } else {
             self.db.writer.execute_raw(stmt("DELETE FROM profile_hidden WHERE profile_id = ? AND book_id = ?", [profile_id.into(), book_id.into()])).await?;
         }
-        Ok(true)
+        Ok(())
     }
 
     /// Hides the books of an author or artist (by name) of one kind (`""` = both) for the profile, or shows them again. `false` if no
-    /// book of the library has this author.
+    /// book of the library that the profile may see has this author (so the name of an author of hidden books is not confirmed).
     pub async fn set_author_hidden(&self, profile_id: i64, author: &str, kind: &str, hidden: bool) -> Result<bool> {
-        let Some(row) = self.db.reader.query_one_raw(stmt("SELECT id FROM author WHERE name = ? COLLATE NOCASE", [author.trim().to_owned().into()])).await? else {
+        let Some(row) = self
+            .db
+            .reader
+            .query_one_raw(if hidden {
+                stmt(
+                    &format!("SELECT a.id FROM author a JOIN book b ON b.author_id = a.id JOIN profile p ON p.id = ? WHERE a.name = ? COLLATE NOCASE AND {VISIBLE} LIMIT 1"),
+                    [profile_id.into(), author.trim().to_owned().into()],
+                )
+            } else {
+                // Showing again: an author this profile hid, whatever it may see now.
+                stmt(
+                    "SELECT a.id FROM profile_hidden h JOIN author a ON a.id = h.author_id WHERE h.profile_id = ? AND a.name = ? COLLATE NOCASE LIMIT 1",
+                    [profile_id.into(), author.trim().to_owned().into()],
+                )
+            })
+            .await?
+        else {
             return Ok(false);
         };
         let author_id: i64 = row.try_get_by_index(0)?;
