@@ -515,6 +515,19 @@
   "cdEncoding": "Converting the audio…",
   "cdAddingToLibrary": "Adding the CD to the library…",
   "cdImportingTooltip": "Importing the CD",
+  "cdEndPresent": "This CD is in the library already (ejected): {album}",
+  "@cdEndPresent": {
+    "placeholders": {
+      "album": {
+        "type": "String"
+      }
+    }
+  },
+  "cdEndPresentPlain": "This CD is in the library already (ejected).",
+  "cdEndRejected": "The CD was rejected. Its files were deleted.",
+  "cdEndCancelled": "The import was cancelled.",
+  "cdWaitsApproval": "Waits for approval",
+  "cdWaitsRetry": "Read error: the CD is still in the drive",
   "cdEjectTooltip": "Eject CD",
   "cdNothingToEject": "There is nothing to eject.",
   "cdErrNoDrive": "The server has no CD drive.",

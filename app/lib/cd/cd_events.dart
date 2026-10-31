@@ -9,6 +9,10 @@ import 'package:flutter/foundation.dart';
 import 'cd_models.dart';
 
 /// State of a CD import job as the server holds it (`docs/spec-cd-import-api.md`, "Jobs").
+/// Where a job stands, as the app shows it: [running] (the server or an app works on it, a bar), [waitingApproval] and [waitingRetry]
+/// (a person must act, no bar) or [ended] (anything else, also a state this app does not know: it is never shown as running).
+enum CdJobKind { running, waitingApproval, waitingRetry, ended }
+
 class CdJobState {
   const CdJobState({
     required this.id,
@@ -26,12 +30,18 @@ class CdJobState {
     this.error,
     this.device,
     this.active = true,
+    this.cdState,
   });
 
   final String id;
 
-  /// `working`, `done` or `failed`.
+  /// The old word: `working`, `done` or `failed`; a newer server also sends `present`, `skipped`, `retry_wait`, `awaiting_approval`,
+  /// `rejected`.
   final String state;
+
+  /// The stored state of the server (`ripping`, `retry_wait`, `ripped`, `awaiting_approval`, `imported`, `rejected`, `present`,
+  /// `cancelled`, `failed`, `skipped`); null for an older server, which sends only [state].
+  final String? cdState;
 
   /// `ripping`, `encoding`, `uploading`, `placing`, `importing`, `done`, `failed`.
   final String? phase;
@@ -58,17 +68,45 @@ class CdJobState {
   final String? device;
   final bool active;
 
-  bool get finished => state == 'done' || state == 'failed';
+  /// The state that counts: `cd_state` when the server sends it, else the old `state`.
+  String get stateName => cdState ?? state;
+
+  /// The one place that says what a job is doing now. Only `ripping`/`working` (and the short `ripped`) with `active` not false is running;
+  /// `awaiting_approval` and `retry_wait` wait for a person; everything else, an unknown state too, has ended.
+  CdJobKind get kind {
+    switch (stateName) {
+      case 'ripping':
+      case 'working':
+      case 'ripped':
+        return active ? CdJobKind.running : CdJobKind.ended;
+      // The files are placed, but the library import still runs (the old word `working` says so).
+      case 'imported':
+        return state == 'working' && active ? CdJobKind.running : CdJobKind.ended;
+      case 'awaiting_approval':
+        return CdJobKind.waitingApproval;
+      case 'retry_wait':
+        return CdJobKind.waitingRetry;
+      default:
+        return CdJobKind.ended;
+    }
+  }
+
+  bool get running => kind == CdJobKind.running;
+  bool get waiting => kind == CdJobKind.waitingApproval || kind == CdJobKind.waitingRetry;
+  bool get finished => kind == CdJobKind.ended;
+
+  /// The job ended well: `done`, or `imported` (the old server says `done`).
+  bool get succeeded => finished && (stateName == 'done' || stateName == 'imported');
 
   /// The track being worked on, counted from 1: the server's `track` is the number of tracks done.
   int? get currentTrack {
     // With the list of the tracks the place is where the rip is (the track that is being read or checked), not how many are done: with
     // the second reading none is done while the first reading goes through the disc.
     final at = trackStates.indexWhere((s) => s.state == 'reading' || s.state == 'verifying');
-    if (!finished && at >= 0) return at + 1;
+    if (running && at >= 0) return at + 1;
     final t = track, n = tracksTotal;
     if (t == null || n == null || n <= 0) return null;
-    return finished ? n : (t + 1).clamp(1, n);
+    return finished ? (succeeded ? n : null) : (t + 1).clamp(1, n);
   }
 
   /// How far the whole job is, 0 to 1: the server's `fraction`, else the tracks done of all; null if neither is known.
@@ -82,6 +120,7 @@ class CdJobState {
   factory CdJobState.fromJson(Map<String, dynamic> j) => CdJobState(
     id: '${j['id']}',
     state: (j['state'] as String?) ?? 'working',
+    cdState: j['cd_state'] as String?,
     phase: j['phase'] as String?,
     fraction: (j['fraction'] as num?)?.toDouble(),
     track: j['track'] as int?,
@@ -102,6 +141,8 @@ class CdJobState {
       other is CdJobState &&
       other.id == id &&
       other.state == state &&
+      other.cdState == cdState &&
+      other.active == active &&
       other.phase == phase &&
       other.fraction == fraction &&
       other.track == track &&
@@ -116,6 +157,8 @@ class CdJobState {
   int get hashCode => Object.hash(
     id,
     state,
+    cdState,
+    active,
     phase,
     fraction,
     track,
@@ -207,10 +250,23 @@ class CdJobTracker extends ValueNotifier<Map<String, CdJobState>> {
   bool _started = false;
 
   /// Jobs not yet finished.
-  List<CdJobState> get open => [
-    for (final j in value.values)
-      if (!j.finished) j,
-  ];
+  List<CdJobState> get open {
+    final list = [
+      for (final j in value.values)
+        if (!j.finished) j,
+    ];
+    // Running jobs first, then the ones that wait for a person; the newest (highest id) first in each group.
+    list.sort((a, b) {
+      final k = (a.running ? 0 : 1).compareTo(b.running ? 0 : 1);
+      if (k != 0) return k;
+      final x = int.tryParse(a.id), y = int.tryParse(b.id);
+      return x != null && y != null ? y.compareTo(x) : b.id.compareTo(a.id);
+    });
+    return list;
+  }
+
+  /// The jobs that really run now (not the ones that wait for a person).
+  List<CdJobState> get running => [for (final j in open) if (j.running) j];
 
   void start() {
     if (_started || _disposed) return;

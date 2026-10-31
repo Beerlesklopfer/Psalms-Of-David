@@ -9,8 +9,9 @@ import 'cd_events.dart';
 import 'cd_models.dart';
 import 'cd_ports.dart';
 
-/// `present`: the disc is in the library already; the dialog offers a check and repair, not an import.
-enum CdPhase { identifying, present, confirm, starting, running, done, failed, cancelled }
+/// `present`: the disc is in the library already; the dialog offers a check and repair, not an import. `ended`: the job we follow ended
+/// in a state that is neither a success nor an error (`present`, `rejected`); the dialog says which, from [CdImportController.job].
+enum CdPhase { identifying, present, confirm, starting, running, done, failed, cancelled, ended }
 
 /// Time between two direct questions about the running job, as a safety net for the event channel.
 const Duration kCdJobPoll = Duration(seconds: 10);
@@ -472,12 +473,14 @@ class CdImportController extends ChangeNotifier {
     job = j;
     if (j.finished) {
       _poll?.cancel();
-      if (j.state == 'done') {
+      if (j.stateName == 'present' || j.stateName == 'rejected') {
+        phase = CdPhase.ended;
+      } else if (j.succeeded) {
         phase = CdPhase.done;
         // A job can end well and still carry a hint: `unreadable_track` (some tracks were left out), `locked`.
         doneNote = j.error;
         doneDetail = j.message;
-      } else if (j.error == 'cancelled' || j.error == 'client') {
+      } else if (j.stateName == 'cancelled' || j.error == 'cancelled' || j.error == 'client') {
         phase = CdPhase.cancelled;
       } else {
         phase = CdPhase.failed;

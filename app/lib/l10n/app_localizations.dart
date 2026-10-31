@@ -1808,6 +1808,42 @@ abstract class AppLocalizations {
   /// **'Importing the CD'**
   String get cdImportingTooltip;
 
+  /// No description provided for @cdEndPresent.
+  ///
+  /// In en, this message translates to:
+  /// **'This CD is in the library already (ejected): {album}'**
+  String cdEndPresent(String album);
+
+  /// No description provided for @cdEndPresentPlain.
+  ///
+  /// In en, this message translates to:
+  /// **'This CD is in the library already (ejected).'**
+  String get cdEndPresentPlain;
+
+  /// No description provided for @cdEndRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD was rejected. Its files were deleted.'**
+  String get cdEndRejected;
+
+  /// No description provided for @cdEndCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'The import was cancelled.'**
+  String get cdEndCancelled;
+
+  /// No description provided for @cdWaitsApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'Waits for approval'**
+  String get cdWaitsApproval;
+
+  /// No description provided for @cdWaitsRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Read error: the CD is still in the drive'**
+  String get cdWaitsRetry;
+
   /// No description provided for @cdEjectTooltip.
   ///
   /// In en, this message translates to:

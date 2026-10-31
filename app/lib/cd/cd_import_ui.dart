@@ -13,6 +13,7 @@ import 'cd_errors.dart';
 import 'cd_import_controller.dart';
 import 'cd_kit.dart';
 import 'cd_models.dart';
+import 'cd_progress_bar.dart' show cdEndText, cdWaitText;
 
 /// The two CD symbols of the library, left of the refresh button: import and eject. What they
 /// show comes from the server (its drive and its jobs), on every platform.
@@ -54,7 +55,7 @@ class _CdActionsState extends State<CdActions> {
       listenable: Listenable.merge([widget.kit.drives, widget.kit.tracker]),
       builder: (context, _) {
         final state = widget.kit.drives.value;
-        final running = widget.kit.tracker.open;
+        final running = widget.kit.tracker.running;
         final importing = state.ripping || running.isNotEmpty;
         final importable = state.importable;
         final ejectable = state.ejectable;
@@ -178,7 +179,10 @@ class _CdImportDialogState extends State<CdImportDialog> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final ended =
-        c.phase == CdPhase.done || c.phase == CdPhase.failed || c.phase == CdPhase.cancelled;
+        c.phase == CdPhase.done ||
+        c.phase == CdPhase.failed ||
+        c.phase == CdPhase.cancelled ||
+        c.phase == CdPhase.ended;
     return AlertDialog(
       title: Text(l.cdImportButton),
       content: SizedBox(width: 440, child: SingleChildScrollView(child: _body(l))),
@@ -245,8 +249,13 @@ class _CdImportDialogState extends State<CdImportDialog> {
         return _form(l);
       case CdPhase.starting:
         return _progress(l.cdStarting, null);
+      case CdPhase.ended:
+        return Text(cdEndText(l, c.job!), key: const Key('cd-ended'));
       case CdPhase.running:
         final j = c.job;
+        if (j != null && j.waiting) {
+          return Text(cdWaitText(l, j), key: const Key('cd-waiting'));
+        }
         final text = switch (j?.phase) {
           'encoding' => l.cdEncoding,
           'uploading' || 'placing' || 'importing' => l.cdAddingToLibrary,
