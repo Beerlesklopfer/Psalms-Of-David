@@ -1630,6 +1630,26 @@ class AppLocalizationsEn extends AppLocalizations {
   String get offlineRetry => 'Try again';
 
   @override
+  String get offlineStay => 'Stay offline';
+
+  @override
+  String get offlineProbeTitle => 'Look for the server';
+
+  @override
+  String get offlineProbeHint =>
+      'While you stay offline, the app looks for the server on a WLAN or cable at this interval and goes online by itself when it answers.';
+
+  @override
+  String periodSeconds(int count) {
+    return '$count s';
+  }
+
+  @override
+  String periodMinutes(int count) {
+    return '$count min';
+  }
+
+  @override
   String get offlineNeedsNetwork =>
       'This page needs the server. It is back as soon as you are online.';
 

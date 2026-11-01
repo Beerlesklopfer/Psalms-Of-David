@@ -54,11 +54,24 @@ class OfflineBanner extends StatelessWidget {
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSecondaryContainer),
                 ),
               ),
-              if (onSync != null && !offline.manual)
-                TextButton(
-                  key: const ValueKey('offline-retry'),
-                  onPressed: offline.syncing ? null : onSync,
-                  child: Text(l.offlineRetry),
+              if (!offline.manual)
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (onSync != null)
+                      TextButton(
+                        key: const ValueKey('offline-retry'),
+                        onPressed: offline.syncing ? null : onSync,
+                        child: Text(l.offlineRetry),
+                      ),
+                    // Away from home: stop asking for a server that is not there; the lists keep to the downloaded titles.
+                    TextButton(
+                      key: const ValueKey('offline-stay'),
+                      onPressed: offline.stayUntilWifi,
+                      child: Text(l.offlineStay),
+                    ),
+                  ],
                 ),
             ],
           ),
@@ -138,6 +151,21 @@ class OfflineCard extends StatelessWidget {
                     subtitle: Text(l.offlineSettingHint),
                     value: controller.manual,
                     onChanged: controller.setManual,
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    key: const ValueKey('offline-probe'),
+                    leading: Icon(Icons.wifi_find_outlined, color: cs.primary),
+                    title: Text(l.offlineProbeTitle),
+                    subtitle: Text(l.offlineProbeHint),
+                    trailing: DropdownButton<int>(
+                      value: kProbePeriods.contains(controller.probeSeconds) ? controller.probeSeconds : kDefaultProbeSeconds,
+                      onChanged: (v) => v == null ? null : controller.setProbeSeconds(v),
+                      items: [
+                        for (final sec in kProbePeriods)
+                          DropdownMenuItem(value: sec, child: Text(sec < 60 ? l.periodSeconds(sec) : l.periodMinutes(sec ~/ 60))),
+                      ],
+                    ),
                   ),
                   const Divider(height: 1),
                   ListTile(

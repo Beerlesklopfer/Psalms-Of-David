@@ -3,6 +3,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -165,6 +167,8 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   String? _playlistsVersion;
   String? _hiddenVersion;
   Timer? _libraryTimer;
+  Timer? _probeTimer;
+  int _probeEvery = 0;
   MprisService? _mpris;
 
   @override
@@ -208,6 +212,36 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _player.setOfflineView(_offline.active);
     if (_wasManual && !_offline.manual) unawaited(_reloadLibrary(force: true));
     _wasManual = _offline.manual;
+    _armProbe();
+  }
+
+  /// "Stay offline" waits for the server: at the chosen period the app looks, on a WLAN or cable only, whether it answers. A foreign WLAN
+  /// does not end the mode, because the server is not there; the own one does.
+  void _armProbe() {
+    final want = _offline.untilWifi && _api != null;
+    if (!want) {
+      _probeTimer?.cancel();
+      _probeTimer = null;
+      _probeEvery = 0;
+      return;
+    }
+    if (_probeTimer != null && _probeEvery == _offline.probeSeconds) return;
+    _probeTimer?.cancel();
+    _probeEvery = _offline.probeSeconds;
+    _probeTimer = Timer.periodic(Duration(seconds: _probeEvery), (_) => unawaited(_probe()));
+  }
+
+  Future<void> _probe() async {
+    final api = _api;
+    if (api == null || !_offline.untilWifi) return;
+    try {
+      final now = await Connectivity().checkConnectivity();
+      if (!now.contains(ConnectivityResult.wifi) && !now.contains(ConnectivityResult.ethernet)) return;
+      await api.libraryVersions();
+    } on Object {
+      return;
+    }
+    if (mounted && identical(api, _api)) _offline.leaveOnWifi();
   }
 
   /// Sends the changes made without the server. True if the server took or refused any (the library is then loaded again).
@@ -501,6 +535,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _voice.stopListening();
     _libraryTimer?.cancel();
+    _probeTimer?.cancel();
     _retryTimer?.cancel();
     _offline.removeListener(_onOfflineChanged);
     _offline.dispose();

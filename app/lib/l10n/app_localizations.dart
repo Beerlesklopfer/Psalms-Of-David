@@ -2816,6 +2816,36 @@ abstract class AppLocalizations {
   /// **'Try again'**
   String get offlineRetry;
 
+  /// No description provided for @offlineStay.
+  ///
+  /// In en, this message translates to:
+  /// **'Stay offline'**
+  String get offlineStay;
+
+  /// No description provided for @offlineProbeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Look for the server'**
+  String get offlineProbeTitle;
+
+  /// No description provided for @offlineProbeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'While you stay offline, the app looks for the server on a WLAN or cable at this interval and goes online by itself when it answers.'**
+  String get offlineProbeHint;
+
+  /// No description provided for @periodSeconds.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} s'**
+  String periodSeconds(int count);
+
+  /// No description provided for @periodMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} min'**
+  String periodMinutes(int count);
+
   /// No description provided for @offlineNeedsNetwork.
   ///
   /// In en, this message translates to:
