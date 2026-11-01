@@ -81,6 +81,26 @@ class OfflineBanner extends StatelessWidget {
   }
 }
 
+/// The bar of the offline mode above [child], the whole app (the pages and what is opened over them). While the bar is shown it takes the
+/// top inset, so [child] does not make room for it a second time.
+class OfflineFrame extends StatelessWidget {
+  const OfflineFrame({super.key, required this.child, this.onSync});
+
+  final Widget child;
+  final VoidCallback? onSync;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = OfflineScope.maybeOf(context)?.active ?? false;
+    return Column(
+      children: [
+        OfflineBanner(onSync: onSync),
+        Expanded(child: active ? MediaQuery.removePadding(context: context, removeTop: true, child: child) : child),
+      ],
+    );
+  }
+}
+
 /// A page that needs the server (podcasts, radio): offline it says so instead of its content.
 class OnlineOnly extends StatelessWidget {
   const OnlineOnly({super.key, required this.child});

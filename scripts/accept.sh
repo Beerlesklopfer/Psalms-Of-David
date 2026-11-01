@@ -72,6 +72,6 @@ click 1230 124                                 # "Stay offline" (second button o
 shot stay-offline 2
 click 232 488                                  # the album, offline: it is on the device
 shot album-offline 2
-click 408 646                                  # the second title: it plays without the server
+click 408 676                                  # the second title (the bar of the offline mode pushed the page down by 30): it plays without the server
 shot playing-offline 4
 echo "pictures in $out"

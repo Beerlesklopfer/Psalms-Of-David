@@ -482,17 +482,29 @@ void main() {
       final offline = OfflineController();
       await tester.pumpWidget(PlayerScope(
         controller: PlayerController(demoItems),
-        child: MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: const Locale('en'),
-          home: Shell(offline: offline),
+        // As in the app: the bar is above the navigator, so it is above the pages that are opened over the frame too.
+        child: OfflineScope(
+          controller: offline,
+          child: MaterialApp(
+            builder: (context, child) => OfflineFrame(child: child ?? const SizedBox.shrink()),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('en'),
+            home: Shell(offline: offline),
+          ),
         ),
       ));
       expect(find.byKey(const ValueKey('offline-banner')), findsNothing);
       offline.setUnreachable(true);
       await tester.pump();
       expect(find.byKey(const ValueKey('offline-banner')), findsOneWidget);
+      // A page opened over the frame (an album) has the bar too.
+      Navigator.of(tester.element(find.byType(Shell))).push(MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('opened over'))));
+      await tester.pumpAndSettle();
+      expect(find.text('opened over'), findsOneWidget);
+      expect(find.byKey(const ValueKey('offline-banner')), findsOneWidget);
+      Navigator.of(tester.element(find.text('opened over'))).pop();
+      await tester.pumpAndSettle();
       // Podcasts show what is on the device (nothing here), Radio needs the server.
       await tester.tap(find.text('Podcasts').first);
       await tester.pump();

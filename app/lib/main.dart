@@ -573,7 +573,14 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
             address: widget.demo ? null : _credentials.load()?.address,
             child: ProfileScope(
             controller: _profile,
+            child: OfflineScope(
+            controller: _offline,
             child: MaterialApp(
+            // The bar of the offline mode sits above every page, also above the ones that are opened over the frame (an album).
+            builder: (context, child) => OfflineFrame(
+              onSync: widget.demo ? null : () => unawaited(_retryOnline()),
+              child: child ?? const SizedBox.shrink(),
+            ),
             onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
             debugShowCheckedModeBanner: false,
             locale: widget.locale,
@@ -612,6 +619,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
                 onSync: widget.demo ? null : _retryOnline,
               ),
             },
+          ),
           ),
           ),
           ),
@@ -754,14 +762,11 @@ class _ShellState extends State<Shell> {
     ];
     final wide = MediaQuery.sizeOf(context).width >= 800;
     final body = IndexedStack(index: _index, children: _pages);
-    // The bar of the offline mode sits above the pages, over the whole width.
-    final banner = OfflineBanner(onSync: widget.onSync == null ? null : () => unawaited(widget.onSync!()));
 
     if (wide) {
       return Scaffold(
         body: Column(
           children: [
-            banner,
             Expanded(
               child: Row(
                 children: [
@@ -815,7 +820,7 @@ class _ShellState extends State<Shell> {
     }
 
     return Scaffold(
-      body: Column(children: [banner, Expanded(child: body)]),
+      body: body,
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
