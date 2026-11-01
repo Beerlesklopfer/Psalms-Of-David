@@ -297,6 +297,13 @@ class PlaylistController extends ChangeNotifier {
   PlaylistApi? api;
   final PlaylistStore? store;
 
+  /// Set by the app: whether a track of a playlist is to be offered now. Offline it is true only for the tracks on the device, so the playlist
+  /// does not list what would fail for want of the server. Null: everything is offered.
+  bool Function(Track)? offers;
+
+  /// The offline mode changed: the playlists show what is on the device, or everything again.
+  void offlineChanged() => notifyListeners();
+
   List<PlaylistSummary> lists = [];
   final Map<int, Playlist> details = {};
   final Map<int, ({int partId, Duration position})> _resume = {};
@@ -508,19 +515,22 @@ class PlaylistController extends ChangeNotifier {
     kind: kPlaylistKind,
     tracks: [
       for (final e in p.available)
-        Track(
-          disc: 1,
-          number: e.position,
-          title: e.title,
-          length: e.duration,
-          partId: e.partId,
-          itemId: e.bookId == null ? null : '${e.bookId}',
-          bookTitle: e.bookTitle,
-          bookAuthor: e.bookAuthor,
-          plays: e.plays,
-          lastPlayedAt: e.lastPlayedAt,
-        ),
+        if (offers == null || offers!(_trackOf(e)))
+          _trackOf(e),
     ],
+  );
+
+  Track _trackOf(PlaylistEntry e) => Track(
+    disc: 1,
+    number: e.position,
+    title: e.title,
+    length: e.duration,
+    partId: e.partId,
+    itemId: e.bookId == null ? null : '${e.bookId}',
+    bookTitle: e.bookTitle,
+    bookAuthor: e.bookAuthor,
+    plays: e.plays,
+    lastPlayedAt: e.lastPlayedAt,
   );
 
   /// Where to go on in [p]: the track and place that were left, else the start.

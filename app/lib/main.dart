@@ -195,6 +195,12 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
       ..removeBook = _player.removeBookLocally;
     _wasManual = _offline.manual;
     _offline.addListener(_onOfflineChanged);
+    // A playlist offers offline only the tracks that are on the device (found in the library by book and part: the entry knows no format).
+    _playlists.offers = (t) {
+      if (_offline.active != true) return true;
+      final real = _player.fullLibrary.where((b) => b.id == t.itemId).firstOrNull?.tracks.where((x) => x.partId == t.partId).firstOrNull;
+      return real != null && _player.isTrackDownloaded(real);
+    };
     // The media keys of the keyboard and the sound menu of the desktop (Linux): the player announces itself on the session bus.
     if (Platform.isLinux && !widget.demo) {
       unawaited(MprisService.start(_player).then((s) => _mpris = s));
@@ -210,6 +216,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   /// The lists follow the offline mode; switching it off sends what waited and loads the library again.
   void _onOfflineChanged() {
     _player.setOfflineView(_offline.active);
+    _playlists.offlineChanged();
     if (_wasManual && !_offline.manual) unawaited(_reloadLibrary(force: true));
     _wasManual = _offline.manual;
     _armProbe();

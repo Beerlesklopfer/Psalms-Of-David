@@ -316,6 +316,19 @@ void main() {
       expect(p.entries.length, 3);
     });
 
+    test('offline the playlist offers only the tracks that are on the device', () {
+      final p = Playlist(
+        id: 3,
+        name: 'Car trip',
+        entries: [entry(41, 1, 880, 'Chapter 1'), entry(43, 2, 900, 'Song', bookId: 20)],
+      );
+      var offline = true;
+      c.offers = (t) => !offline || t.partId == 900;
+      expect(c.bookOf(p).tracks.map((t) => t.partId), [900]);
+      offline = false;
+      expect(c.bookOf(p).tracks.map((t) => t.partId), [880, 900], reason: 'online everything is offered again');
+    });
+
     test('where the list was left is found again by the part, also after a reorder', () {
       final p = Playlist(
         id: 3,
