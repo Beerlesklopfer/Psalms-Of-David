@@ -12,7 +12,7 @@
   {% endfor %}
   {% if pager.page < pager.pages %}<a class="btn outline" rel="next" href="{{ page_url }}{{ pager.next }}" aria-label="{{ t('pager.next') }}">&rsaquo;</a>{% else %}<span class="btn outline disabled" aria-hidden="true">&rsaquo;</span>{% endif %}
   <form class="pager-size" method="get" action="{{ list_path }}">
-    {% if pager.q %}<input type="hidden" name="q" value="{{ pager.q }}">{% endif %}{% if pager.problems %}<input type="hidden" name="problems" value="1">{% endif %}{% if pager.label %}<input type="hidden" name="label" value="{{ pager.label }}">{% endif %}
+    {% if pager.q %}<input type="hidden" name="q" value="{{ pager.q }}">{% endif %}{% if pager.problems %}<input type="hidden" name="problems" value="1">{% endif %}{% if pager.new %}<input type="hidden" name="new" value="1">{% endif %}{% if pager.label %}<input type="hidden" name="label" value="{{ pager.label }}">{% endif %}
     <label>{{ t("pager.size") }} <select name="per" data-autosubmit>{% for n in pager.sizes %}<option value="{{ n }}"{% if n == pager.per %} selected{% endif %}>{{ n }}</option>{% endfor %}{% if pager.per not in pager.sizes %}<option value="{{ pager.per }}" selected>{{ pager.per }}</option>{% endif %}</select></label>
     <noscript><button type="submit" class="btn outline">OK</button></noscript>
   </form>

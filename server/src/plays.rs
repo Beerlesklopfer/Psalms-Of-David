@@ -130,6 +130,12 @@ impl Store {
         Ok(())
     }
 
+    /// The books added since `since_ms` (the "New" filter of the administration lists: what the family finds new, whoever has started it).
+    pub async fn book_ids_added_since(&self, since_ms: i64) -> Result<std::collections::HashSet<i64>> {
+        let rows = self.db.reader.query_all_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT id FROM book WHERE added_at >= ?", [since_ms.into()])).await?;
+        rows.into_iter().map(|r| Ok(r.try_get_by_index(0)?)).collect()
+    }
+
     /// How many days a book counts as new (the setting `new_days`; 30 if it is missing or not a number).
     pub async fn new_days(&self) -> Result<i64> {
         Ok(self.setting("new_days").await?.and_then(|v| v.trim().parse::<i64>().ok()).filter(|n| (1..=3650).contains(n)).unwrap_or(30))

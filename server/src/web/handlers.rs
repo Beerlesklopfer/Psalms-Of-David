@@ -125,6 +125,8 @@ pub struct PageQuery {
     q: Option<String>,
     /// Only the books with a problem (`1`).
     problems: Option<String>,
+    /// Only the books that are new (`1`).
+    new: Option<String>,
     /// Only the books with this label.
     label: Option<String>,
     /// The page of the list (from 1) and how many books it holds (10 to 500; the setting `list_page_size` when absent).
@@ -436,7 +438,7 @@ fn page_size_cookie(n: usize, secure: bool) -> HeaderValue {
 
 async fn media_page(state: &AppState, s: &AdminSession, q: &PageQuery, headers: &HeaderMap, kind: &str) -> Response {
     let (per, remember) = page_size(q, headers);
-    let mut res = render(state.ui.books(&state.store, view_for(s, q), state.library.as_deref(), kind, q.q.as_deref(), q.problems.as_deref() == Some("1"), q.label.as_deref().map(str::trim).filter(|l| !l.is_empty()), q.page, per).await);
+    let mut res = render(state.ui.books(&state.store, view_for(s, q), state.library.as_deref(), kind, q.q.as_deref(), q.problems.as_deref() == Some("1"), q.new.as_deref() == Some("1"), q.label.as_deref().map(str::trim).filter(|l| !l.is_empty()), q.page, per).await);
     if let (true, Some(n)) = (remember, per) {
         res.headers_mut().append(header::SET_COOKIE, page_size_cookie(n, state.secure_cookie));
     }
@@ -2422,7 +2424,7 @@ pub struct UserQuery {
 }
 
 pub async fn schedule_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<UserQuery>) -> Response {
-    let page = PageQuery { msg: q.msg, next: None, tab: None, q: None, problems: None, label: None, page: None, per: None };
+    let page = PageQuery { msg: q.msg, next: None, tab: None, q: None, problems: None, new: None, label: None, page: None, per: None };
     match state.ui.schedule(&state.store, view_for(&s, &page), q.user).await {
         Ok(Some(html)) => Html(html).into_response(),
         Ok(None) => plain_failure(StatusCode::NOT_FOUND, "err.not_found", s.lang, s.htmx),

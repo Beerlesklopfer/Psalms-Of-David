@@ -2473,6 +2473,13 @@ async fn music_and_narrators_are_imported_and_shown() {
     assert!(only.contains("Winter der Welt") && only.contains("checked"), "{only}");
     let none = send(&a, get("/admin/music?problems=1&q=zzzunknownzzz", &ob)).await.body;
     assert!(!none.contains("<tr id=\"book-"), "no row: {none}");
+    // The filter "New": a book just added is in it, one added long ago is not.
+    assert!(books_page.contains("name=\"new\""), "{books_page}");
+    let fresh = send(&a, get("/admin/books?new=1", &ob)).await.body;
+    assert!(fresh.contains("Winter der Welt"), "{fresh}");
+    a.store.backdate_book(book.id, 40 * 24 * 3_600_000).await.unwrap();
+    let old = send(&a, get("/admin/books?new=1", &ob)).await.body;
+    assert!(!old.contains("<tr id=\"book-"), "an old book is not new: {old}");
 
     // The tags window asks for an author and a narrator for a book, an artist for an album.
     let w = send(&a, get(&format!("/admin/rpc/book.tags_form?id={}", book.id), &o)).await.body;

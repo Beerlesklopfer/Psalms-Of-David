@@ -17,6 +17,7 @@
   {% if searched %}<a class="btn outline" href="/admin/{{ 'music' if kind == 'music' else 'books' }}">{{ t("ui.cancel") }}</a>{% endif %}
   <div class="search-filters">
   <label class="check-inline{% if problem_count is defined and problem_count == 0 and not only_problems %} disabled{% endif %}"><input type="checkbox" name="problems" value="1"{% if only_problems %} checked{% endif %}{% if problem_count is defined and problem_count == 0 and not only_problems %} disabled{% endif %}> <span class="problem-mark small" aria-hidden="true">!</span> {{ t("books.only_problems") }}{% if problem_count is defined %} ({{ problem_count }}){% endif %}</label>
+  <label class="check-inline{% if new_count == 0 and not only_new %} disabled{% endif %}"><input type="checkbox" name="new" value="1"{% if only_new %} checked{% endif %}{% if new_count == 0 and not only_new %} disabled{% endif %}> <span class="badge">{{ t("books.new_badge") }}</span> {{ t("books.only_new") | replace("{days}", new_days) }} ({{ new_count }})</label>
   <input type="hidden" name="label" value="{{ label }}">
   <details class="label-pick"><summary>{{ t("books.filter_label") }}{% if label %}: {{ label }}{% endif %}</summary>
     <div class="label-pick-list">{% for l in label_names %}<label><input type="checkbox" data-label="{{ l.name }}"{% if l.name|lower in label_selected %} checked{% endif %}> {{ l.name }} ({{ l.books }})</label>{% endfor %}</div>

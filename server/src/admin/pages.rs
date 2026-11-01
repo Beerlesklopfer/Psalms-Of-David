@@ -845,7 +845,7 @@ impl AdminUi {
 
     /// The list of albums of one kind: `audiobook` or `music`.
     #[allow(clippy::too_many_arguments)]
-    pub async fn books<'a>(&self, store: &Store, view: impl Into<View<'a>>, library: Option<&std::path::Path>, kind: &str, query: Option<&str>, only_problems: bool, label: Option<&str>, page: Option<usize>, per: Option<usize>) -> Result<String> {
+    pub async fn books<'a>(&self, store: &Store, view: impl Into<View<'a>>, library: Option<&std::path::Path>, kind: &str, query: Option<&str>, only_problems: bool, only_new: bool, label: Option<&str>, page: Option<usize>, per: Option<usize>) -> Result<String> {
         let all: Vec<_> = store.admin_book_rows().await?.into_iter().filter(|b| b.kind == kind).collect();
         // The completions: every title, author and narrator once, sorted.
         let mut words: Vec<String> = all.iter().flat_map(|b| [Some(b.title.clone()), Some(b.author.clone()), b.narrator.clone()]).flatten().filter(|w| !w.trim().is_empty()).collect();
@@ -875,6 +875,11 @@ impl AdminUi {
         };
         let all: Vec<_> = if only_problems { all.into_iter().filter(|b| gaps.contains_key(&b.id) || nocover.contains(&b.id)).collect() } else { all };
         let nocover: Vec<String> = nocover.iter().map(i64::to_string).collect();
+        // "New": added within the days of the setting `new_days`, the same window the apps use for their section "New".
+        let new_days = store.new_days().await?;
+        let new_ids = store.book_ids_added_since(crate::now_ms() - new_days * 24 * 3_600_000).await?;
+        let new_count = all.iter().filter(|b| new_ids.contains(&b.id)).count();
+        let all: Vec<_> = if only_new { all.into_iter().filter(|b| new_ids.contains(&b.id)).collect() } else { all };
         let books: Vec<_> = match needle {
             Some(_) => all.into_iter().filter(|b| matcher.matches_book(&b.title, &b.author, b.narrator.as_deref()) || matcher.matches_barcode(b.barcode.as_deref())).collect(),
             None => all,
@@ -919,6 +924,9 @@ impl AdminUi {
             if only_problems {
                 pairs.push(("problems", "1".to_owned()));
             }
+            if only_new {
+                pairs.push(("new", "1".to_owned()));
+            }
             if let Some(l) = label {
                 pairs.push(("label", l.to_owned()));
             }
@@ -930,8 +938,8 @@ impl AdminUi {
         // The numbers of the pages to link: the first, the last and a few around the current one.
         let shown: Vec<usize> = (1..=pages).filter(|n| *n == 1 || *n == pages || n.abs_diff(page) <= 2).collect();
         let numbers: Vec<serde_json::Value> = shown.iter().enumerate().map(|(i, n)| serde_json::json!({ "n": n, "gap": i > 0 && n - shown[i - 1] > 1 })).collect();
-        let pager = serde_json::json!({ "page": page, "pages": pages, "per": per, "total": total, "from": if total == 0 { 0 } else { from + 1 }, "to": to, "base": base, "numbers": numbers, "prev": page.saturating_sub(1).max(1), "next": (page + 1).min(pages), "default_per": default_per, "sizes": [10, 25, 50, 100, 250, 500], "q": needle.unwrap_or(""), "problems": only_problems, "label": label.unwrap_or("") });
-        self.render("books.html", context! { books => Serde(books), items => Serde(items), tree => mode != "flat", kind => kind, words => words, q => query.unwrap_or_default(), searched => needle.is_some() || only_problems || label.is_some(), label => label.unwrap_or_default(), label_selected => label.map(|l| l.split(',').map(|c| c.trim().to_lowercase()).collect::<Vec<_>>()).unwrap_or_default(), label_names => Serde(label_names), label_texts => Serde(label_texts), search_error => search_error, only_problems => only_problems, problem_count => problem_count, pager => Serde(pager), members => Serde(members), seen => Serde(seen), owners => Serde(owners_list(store).await?), gaps => Serde(gaps), nocover => Serde(nocover), dupes => Serde(dupes), ignores => Serde(rules), access => crate::access::current(store).await.map(Serde), ..view.into().context() })
+        let pager = serde_json::json!({ "page": page, "pages": pages, "per": per, "total": total, "from": if total == 0 { 0 } else { from + 1 }, "to": to, "base": base, "numbers": numbers, "prev": page.saturating_sub(1).max(1), "next": (page + 1).min(pages), "default_per": default_per, "sizes": [10, 25, 50, 100, 250, 500], "q": needle.unwrap_or(""), "problems": only_problems, "new": only_new, "label": label.unwrap_or("") });
+        self.render("books.html", context! { books => Serde(books), items => Serde(items), tree => mode != "flat", kind => kind, words => words, q => query.unwrap_or_default(), searched => needle.is_some() || only_problems || only_new || label.is_some(), label => label.unwrap_or_default(), label_selected => label.map(|l| l.split(',').map(|c| c.trim().to_lowercase()).collect::<Vec<_>>()).unwrap_or_default(), label_names => Serde(label_names), label_texts => Serde(label_texts), search_error => search_error, only_problems => only_problems, problem_count => problem_count, only_new => only_new, new_count => new_count, new_days => new_days, pager => Serde(pager), members => Serde(members), seen => Serde(seen), owners => Serde(owners_list(store).await?), gaps => Serde(gaps), nocover => Serde(nocover), dupes => Serde(dupes), ignores => Serde(rules), access => crate::access::current(store).await.map(Serde), ..view.into().context() })
     }
 
     /// The titles of one album, for the list that opens under it.
@@ -2042,7 +2050,7 @@ impl Paging {
         serde_json::json!({
             "path": path, "page": self.page, "pages": self.pages, "per": self.per, "total": self.total, "from": if self.total == 0 { 0 } else { self.from + 1 }, "to": self.to,
             "base": base, "numbers": numbers, "prev": self.page.saturating_sub(1).max(1), "next": (self.page + 1).min(self.pages), "default_per": self.default_per, "sizes": PAGE_SIZES,
-            "q": query.unwrap_or(""), "problems": false, "label": "",
+            "q": query.unwrap_or(""), "problems": false, "new": false, "label": "",
         })
     }
 }
