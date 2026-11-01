@@ -780,8 +780,14 @@ async fn stream(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>,
     } else {
         path
     };
+    // A whole-file request (a download) gets the SHA-256 of what is sent, so the app can check the file; a range request (playing) does not.
+    let whole = !req.headers().contains_key(header::RANGE);
+    let digest = if whole { file_digest(&s, &t, &path, as_mp3).await } else { None };
     let res = ServeFile::new(path).oneshot(req).await.map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal"))?;
     let mut res = res.map(axum::body::Body::new).into_response();
+    if let Some(hex) = digest.filter(|_| res.status() == StatusCode::OK).and_then(|h| HeaderValue::from_str(&h).ok()) {
+        res.headers_mut().insert(SHA256_HEADER, hex);
+    }
     // The mime type is what the database knows of the file (read from the file itself), the extension only the fallback.
     if res.status().is_success() {
         let mime = served_mime;
@@ -790,6 +796,54 @@ async fn stream(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>,
         }
     }
     Ok(res)
+}
+
+/// The header of a whole-file answer that carries the SHA-256 (hex) of the file sent.
+pub const SHA256_HEADER: &str = "x-content-sha256";
+
+/// The SHA-256 of the file [path] that is sent for [t]. An original is hashed once and the hash kept with the size and time it belongs to
+/// (a file changed since is hashed again); the MP3 made for a device is a cache file and is hashed as it is. None if the file cannot be read:
+/// the answer is then sent without a hash, and the app has only the length to check.
+async fn file_digest(s: &ApiState, t: &track::Model, path: &Path, transcoded: bool) -> Option<String> {
+    use sea_orm::{ConnectionTrait, DbBackend, Statement};
+    let meta = tokio::fs::metadata(path).await.ok()?;
+    let mtime = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64;
+    let size = meta.len() as i64;
+    if !transcoded && !t.sha256.is_empty() && t.hashed_mtime == mtime && t.hashed_size == size {
+        return Some(t.sha256.clone());
+    }
+    let owned = path.to_path_buf();
+    let hex = tokio::task::spawn_blocking(move || sha256_of_file(&owned)).await.ok()?.ok()?;
+    if !transcoded {
+        let _ = s
+            .store
+            .db
+            .writer
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE track SET sha256 = ?, hashed_mtime = ?, hashed_size = ? WHERE id = ?",
+                [hex.clone().into(), mtime.into(), size.into(), t.id.into()],
+            ))
+            .await;
+    }
+    Some(hex)
+}
+
+/// The SHA-256 of a file as lower-case hex, read in blocks.
+pub(crate) fn sha256_of_file(path: &Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 256 * 1024];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
 /// The value of `as` in the query of a stream request (`?as=mp3`).

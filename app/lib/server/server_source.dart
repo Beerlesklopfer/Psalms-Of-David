@@ -3,6 +3,8 @@
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:crypto/crypto.dart';
+
 import '../audio/file_formats.dart';
 import '../m3u.dart';
 import '../models.dart';
@@ -36,6 +38,10 @@ abstract class MediaSource {
 
   /// Deletes the file of [track] from the device. The server keeps it.
   Future<void> removeDownload(Track track) async {}
+
+  /// Compares the downloaded file of [track] with the hash of the server and deletes it if they differ, so that it is fetched again.
+  /// True if the file is good (or cannot be checked: no server, no hash); false if it was deleted.
+  Future<bool> verifyDownloaded(Track track) async => true;
 
   /// What the downloads take on this device.
   Future<({int files, int bytes})> storageUsed() async => (files: 0, bytes: 0);
@@ -92,6 +98,25 @@ class ServerSource implements MediaSource {
 
   @override
   bool isDownloaded(Track track) => _anyFileOf(track)?.existsSync() ?? false;
+
+  @override
+  Future<bool> verifyDownloaded(Track track) async {
+    final id = track.partId;
+    if (track.url != null || id == null) return true;
+    final file = _fileOf(track);
+    if (!file.existsSync()) return true;
+    try {
+      final expected = await api.partDigest(id, asMp3: needsTranscode(track.format, track.transcode));
+      if (expected == null || expected.isEmpty) return true;
+      final got = (await sha256.bind(file.openRead()).first).toString();
+      if (got == expected.toLowerCase()) return true;
+      await file.delete();
+      return false;
+    } on ApiException {
+      // No answer or no right (offline, outside the schedule): the file stays as it is.
+      return true;
+    }
+  }
 
   @override
   Future<void> removeDownload(Track track) async {
@@ -202,7 +227,8 @@ class ServerSource implements MediaSource {
       final part = partialFileFor(file);
       final sink = part.openWrite();
       try {
-        await res.pipe(sink);
+        await res.timeout(kDownloadIdleTimeout).pipe(sink);
+        await verifyDownload(part, expectedLength: res.contentLength);
       } on Object {
         if (part.existsSync()) await part.delete();
         rethrow;

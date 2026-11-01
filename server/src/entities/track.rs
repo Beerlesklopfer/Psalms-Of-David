@@ -22,6 +22,10 @@ pub struct Model {
     pub bitrate_kbps: i64,
     pub sample_rate: i64,
     pub channels: i64,
+    /// The SHA-256 (hex) of the file as it was when `hashed_mtime`/`hashed_size` were taken; empty until a download asked for it.
+    pub sha256: String,
+    pub hashed_mtime: i64,
+    pub hashed_size: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -469,7 +469,7 @@ mod tests {
     }
 
     fn t(disc: i64, file: &str) -> track::Model {
-        track::Model { id: 0, book_id: 1, disc, number: 1, title: String::new(), file: file.into(), duration_ms: 0, size_bytes: 0, mtime: 0, format: String::new(), codec: String::new(), mime_type: String::new(), bitrate_kbps: 0, sample_rate: 0, channels: 0 }
+        track::Model { id: 0, book_id: 1, disc, number: 1, title: String::new(), file: file.into(), duration_ms: 0, size_bytes: 0, mtime: 0, format: String::new(), codec: String::new(), mime_type: String::new(), bitrate_kbps: 0, sample_rate: 0, channels: 0, sha256: String::new(), hashed_mtime: 0, hashed_size: 0 }
     }
 
     #[test]

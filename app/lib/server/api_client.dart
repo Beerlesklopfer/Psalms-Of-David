@@ -313,12 +313,22 @@ class ApiClient implements FeedApi, BarcodeApi {
     final partial = partialFileFor(dest);
     final sink = partial.openWrite();
     try {
-      await res.pipe(sink);
+      // A connection that goes silent ends the download instead of hanging for ever.
+      await res.timeout(kDownloadIdleTimeout).pipe(sink);
+      await verifyDownload(partial, expectedLength: res.contentLength, expectedSha256: res.headers.value(kSha256Header));
     } catch (_) {
       if (partial.existsSync()) partial.deleteSync();
       rethrow;
     }
     await partial.rename(dest.path);
+  }
+
+  /// The SHA-256 (hex) the server has of the file of a part, from a HEAD request: nothing is transferred. Null if the server sends none.
+  Future<String?> partDigest(int partId, {bool asMp3 = false}) async {
+    final res = await _send('HEAD', _uri('/api/v1/parts/$partId/stream', asMp3 ? {'as': 'mp3'} : null));
+    await res.drain<void>();
+    if (res.statusCode != 200) await _fail(res);
+    return res.headers.value(kSha256Header);
   }
 
   /// Sends a request and returns the response without reading it.
@@ -357,6 +367,24 @@ class ApiClient implements FeedApi, BarcodeApi {
     } on Object {
       return const [];
     }
+  }
+}
+
+/// The header of a whole-file answer of the server that carries the SHA-256 (hex) of the file.
+const kSha256Header = 'x-content-sha256';
+
+/// How long a download may be silent before it counts as broken.
+const kDownloadIdleTimeout = Duration(seconds: 60);
+
+/// Checks a finished download before it gets its name: not empty, as long as the server said, and with the hash the server sent (when it
+/// sent one). Throws [HttpException] otherwise, and the caller drops the file.
+Future<void> verifyDownload(File file, {int expectedLength = -1, String? expectedSha256}) async {
+  final length = await file.length();
+  if (length == 0) throw const HttpException('the download is empty');
+  if (expectedLength >= 0 && length != expectedLength) throw HttpException('the download is cut off ($length of $expectedLength bytes)');
+  if (expectedSha256 != null && expectedSha256.isNotEmpty) {
+    final got = (await sha256.bind(file.openRead()).first).toString();
+    if (got != expectedSha256.toLowerCase()) throw const HttpException('the download does not match its hash');
   }
 }
 

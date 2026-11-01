@@ -70,6 +70,8 @@ class FakeSource implements MediaSource {
 
   @override
   Future<void> removeDownload(Track track) async {}
+  @override
+  Future<bool> verifyDownloaded(Track track) async => true;
 
   @override
   Future<({int files, int bytes})> storageUsed() async => (files: 0, bytes: 0);
@@ -225,6 +227,30 @@ void main() {
       expect(OfflineController(store: store).manual, true, reason: 'still on after a restart');
       c.setManual(false);
       expect(OfflineController(store: store).manual, false);
+    });
+
+    test('the period of the look for the server is kept', () {
+      final store = OfflineSettingsStore(File('${dir.path}/probe.json'));
+      expect(OfflineController(store: store).probeSeconds, kDefaultProbeSeconds);
+      OfflineController(store: store).setProbeSeconds(300);
+      expect(OfflineController(store: store).probeSeconds, 300);
+      final c = OfflineController(store: store)..stayUntilWifi();
+      expect(OfflineController(store: store).probeSeconds, 300, reason: 'writing the mode keeps the period');
+      c.setManual(false);
+      expect(OfflineController(store: store).probeSeconds, 300);
+    });
+
+    test('"stay offline" ends when the server answers on a WLAN, the own switch does not', () {
+      final store = OfflineSettingsStore(File('${dir.path}/until.json'));
+      final c = OfflineController(store: store)..stayUntilWifi();
+      expect(c.active, true);
+      expect(OfflineController(store: store).untilWifi, true, reason: 'kept over a restart');
+      expect(c.leaveOnWifi(), true);
+      expect(c.active, false);
+      expect(OfflineController(store: store).untilWifi, false);
+      c.setManual(true);
+      expect(c.leaveOnWifi(), false);
+      expect(c.manual, true);
     });
 
     test('the sending tells what the server refused (not the listening) and keeps it until it was seen', () async {
@@ -421,6 +447,11 @@ void main() {
       expect(find.textContaining('1 change waits for the server'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('offline-retry')));
       expect(retried, 1);
+      // Away from home: one tap keeps the app offline for good.
+      await tester.tap(find.byKey(const ValueKey('offline-stay')));
+      expect(offline.manual, isTrue);
+      expect(offline.untilWifi, isTrue);
+      offline.setManual(false);
       // The person's own switch: the bar says so and has no button to look for the server.
       offline.setUnreachable(false);
       offline.setManual(true);

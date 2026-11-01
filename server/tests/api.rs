@@ -171,6 +171,24 @@ async fn the_stream_serves_the_file_and_ranges() {
     assert_eq!(part.status, StatusCode::PARTIAL_CONTENT);
     assert_eq!(part.bytes, whole.bytes[250..500]);
     assert_eq!(part.headers.get(header::CONTENT_RANGE).unwrap(), "bytes 250-499/1000");
+    assert!(part.headers.get("x-content-sha256").is_none(), "a range (playing) carries no hash");
+}
+
+#[tokio::test]
+async fn a_download_carries_the_hash_of_the_file() {
+    use sha2::{Digest, Sha256};
+    let hex = |bytes: &[u8]| Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let a = api().await;
+    let anna = a.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    let token = pair(&a, anna, 1).await;
+    let (_, track) = add_book(&a, "Shown", Some(0)).await;
+    let uri = format!("/api/v1/parts/{track}/stream");
+
+    let first = call(&a, "GET", &uri, Some(&token), None, None).await;
+    assert_eq!(first.headers.get("x-content-sha256").unwrap().to_str().unwrap(), hex(&first.bytes));
+    // The second answer comes from the kept hash and is the same.
+    let again = call(&a, "GET", &uri, Some(&token), None, None).await;
+    assert_eq!(again.headers.get("x-content-sha256"), first.headers.get("x-content-sha256"));
 }
 
 #[tokio::test]

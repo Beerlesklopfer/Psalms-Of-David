@@ -285,6 +285,29 @@ class PlayerController extends ChangeNotifier {
     return position.inMilliseconds / t.length.inMilliseconds;
   }
 
+  /// The full book of [shown] (the offline view may have cut it down to the downloaded tracks); [shown] itself if there is no other.
+  Book _fullOf(Book shown) => fullLibrary.where((b) => b.id == shown.id).firstOrNull ?? shown;
+
+  /// The place of the track [index] of [shown] in the full book: what is remembered counts in the full book, so that it still fits when the
+  /// offline view shows fewer tracks.
+  int _fullIndex(Book shown, int index) {
+    final full = _fullOf(shown);
+    if (identical(full, shown) || index < 0 || index >= shown.tracks.length) return index;
+    final at = full.tracks.indexWhere((t) => t.partId != null && t.partId == shown.tracks[index].partId);
+    return at < 0 ? index : at;
+  }
+
+  /// The place in [shown] of the track that is remembered at [stored] of the full book; null if that track is not in [shown] (not downloaded).
+  int? _shownIndex(Book shown, int stored) {
+    if (shown.tracks.isEmpty || stored < 0) return null;
+    final full = _fullOf(shown);
+    // Nothing was cut: the index counts as it is, and one past the end (the book got shorter) is the last part.
+    if (full.tracks.length == shown.tracks.length) return stored.clamp(0, shown.tracks.length - 1);
+    if (stored >= full.tracks.length) return null;
+    final at = shown.tracks.indexWhere((t) => t.partId != null && t.partId == full.tracks[stored].partId);
+    return at < 0 ? null : at;
+  }
+
   /// Fraction of the whole book, 0 to 1.
   double progressOf(Book b) {
     final int index;
@@ -295,7 +318,9 @@ class PlayerController extends ChangeNotifier {
     } else {
       final r = _resume[b.id];
       if (r == null) return 0;
-      index = r.track;
+      final shown = _shownIndex(b, r.track);
+      if (shown == null) return 0;
+      index = shown;
       pos = r.position;
     }
     var done = pos;
@@ -336,13 +361,21 @@ class PlayerController extends ChangeNotifier {
   Future<void> downloadBook(Book b) async {
     final s = source;
     if (s == null || !s.canDownload || downloads.containsKey(b.id)) return;
-    final todo = b.tracks.where((t) => t.partId != null && !s.isDownloaded(t)).toList();
-    final total = b.tracks.length;
-    var done = total - todo.length;
     downloadError = null;
-    downloads[b.id] = (done: done, total: total);
+    final total = b.tracks.length;
+    downloads[b.id] = (done: 0, total: total);
     notifyListeners();
     try {
+      // What is on the device is compared with the server first (online only): a corrupt file is dropped and fetched again.
+      if (_offline?.active != true) {
+        for (final t in b.tracks) {
+          if (t.partId != null && s.isDownloaded(t)) await s.verifyDownloaded(t);
+        }
+      }
+      final todo = b.tracks.where((t) => t.partId != null && !s.isDownloaded(t)).toList();
+      var done = total - todo.length;
+      downloads[b.id] = (done: done, total: total);
+      if (!_disposed) notifyListeners();
       for (final t in todo) {
         if (_cancelled.remove(b.id) || _disposed) break;
         await s.fetchPart(t);
@@ -518,7 +551,7 @@ class PlayerController extends ChangeNotifier {
       final same = library.where((b) => b.id == openId).firstOrNull;
       if (same != null) {
         book = same;
-        if (trackIndex >= same.tracks.length) trackIndex = same.tracks.length - 1;
+        if (trackIndex >= same.tracks.length) trackIndex = same.tracks.isEmpty ? 0 : same.tracks.length - 1;
       } else {
         _send(const HaltCommand());
         book = library.isEmpty ? null : library.first;
@@ -566,14 +599,16 @@ class PlayerController extends ChangeNotifier {
     final fromDevice = mine == null ? null : find(mine.bookId);
     if (fromDevice != null && (fromServer == null || mine!.at >= loaded.lastAt)) {
       book = fromDevice;
-      trackIndex = mine!.track.clamp(0, fromDevice.tracks.length - 1);
-      position = mine.position;
+      final at = _shownIndex(fromDevice, mine!.track);
+      trackIndex = at ?? 0;
+      position = at == null ? Duration.zero : mine.position;
       return;
     }
     book = fromServer ?? (library.isEmpty ? null : library.first);
     final r = book == null ? null : _resume[book!.id];
-    trackIndex = r?.track ?? 0;
-    position = r?.position ?? Duration.zero;
+    final at = r == null || book == null ? null : _shownIndex(book!, r.track);
+    trackIndex = at ?? 0;
+    position = at == null ? Duration.zero : r!.position;
   }
 
   /// When this device last listened or opened something (ms since 1970), to tell whether another device went on after it.
@@ -589,7 +624,7 @@ class PlayerController extends ChangeNotifier {
       final b = library.where((b) => b.id == '${e['item_id']}').firstOrNull;
       if (b == null || b.id == book?.id && (playing || loading)) continue;
       final at = e['updated_at'];
-      final index = b.tracks.indexWhere((t) => t.partId == e['part_id']);
+      final index = _fullOf(b).tracks.indexWhere((t) => t.partId == e['part_id']);
       if (index < 0 || at is! int) continue;
       final r = (
         track: index,
@@ -617,7 +652,7 @@ class PlayerController extends ChangeNotifier {
               trackIndex != r.track ||
               (position - r.position).abs() > const Duration(seconds: 2))) {
         book = newest;
-        trackIndex = r.track.clamp(0, newest.tracks.length - 1);
+        trackIndex = _shownIndex(newest, r.track) ?? 0;
         position = r.position;
         _touchRecent(newest);
         _localAt = at;
@@ -666,8 +701,9 @@ class PlayerController extends ChangeNotifier {
       at = Duration.zero;
     } else {
       final r = _resume[b.id];
-      index = r?.track ?? 0;
-      at = r?.position ?? Duration.zero;
+      final shown = r == null ? null : _shownIndex(b, r.track);
+      index = shown ?? 0;
+      at = shown == null ? Duration.zero : r!.position;
     }
     if (start != null) at = start;
     _openBook(b, index, at);
@@ -791,7 +827,7 @@ class PlayerController extends ChangeNotifier {
         _queueProgress(e);
       case LastWritten():
         _localAt = e.atMs;
-        lastStore?.write(LastPlayed(bookId: e.bookId, track: e.trackIndex, position: Duration(milliseconds: e.positionMs), at: e.atMs));
+        lastStore?.write(LastPlayed(bookId: e.bookId, track: _known[e.bookId] == null ? e.trackIndex : _fullIndex(_known[e.bookId]!, e.trackIndex), position: Duration(milliseconds: e.positionMs), at: e.atMs));
       case PlaylistPosition():
         final b = _known[e.bookId];
         if (b != null && e.trackIndex < b.tracks.length) {
@@ -829,7 +865,7 @@ class PlayerController extends ChangeNotifier {
 
   void _saveResume() {
     final b = book;
-    if (b != null) _resume[b.id] = (track: trackIndex, position: position);
+    if (b != null) _resume[b.id] = (track: _fullIndex(b, trackIndex), position: position);
   }
 
   @override
