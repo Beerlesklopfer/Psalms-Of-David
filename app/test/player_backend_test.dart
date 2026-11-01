@@ -9,7 +9,7 @@ import 'package:psalm/audio/fake_backend.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
 
-Book _book({bool withFiles = true}) => Book(
+LibraryItem _book({bool withFiles = true}) => LibraryItem(
   id: 'b',
   title: 'Book',
   author: 'Author',
@@ -30,7 +30,7 @@ void main() {
   late Duration now;
   late FakeBackend backend;
 
-  PlayerController make(Book b) {
+  PlayerController make(LibraryItem b) {
     now = Duration.zero;
     backend = FakeBackend(clock: () => now, fileLength: const Duration(seconds: 20));
     return PlayerController([b], backend: backend);

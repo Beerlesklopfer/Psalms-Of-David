@@ -13,10 +13,10 @@ import 'hide_menu.dart';
 import 'playlists_screen.dart';
 import 'share_button.dart';
 
-class BookScreen extends StatelessWidget {
-  const BookScreen({super.key, required this.book});
+class ItemScreen extends StatelessWidget {
+  const ItemScreen({super.key, required this.book});
 
-  final Book book;
+  final LibraryItem book;
 
   @override
   Widget build(BuildContext context) {
@@ -149,7 +149,7 @@ class BookScreen extends StatelessWidget {
   }
 }
 
-extension on BookScreen {
+extension on ItemScreen {
   /// "Played 3 times · last played on 27 Oct 2026"; null if there is nothing to say.
   String? _playsLine(BuildContext context, PlayerController p) {
     final l = AppLocalizations.of(context);
@@ -164,7 +164,7 @@ extension on BookScreen {
 class _TrackTile extends StatelessWidget {
   const _TrackTile({required this.book, required this.track});
 
-  final Book book;
+  final LibraryItem book;
   final Track track;
 
   @override
@@ -213,7 +213,7 @@ class _TrackTile extends StatelessWidget {
 class DownloadButton extends StatelessWidget {
   const DownloadButton({super.key, required this.book});
 
-  final Book book;
+  final LibraryItem book;
 
   @override
   Widget build(BuildContext context) {
@@ -269,7 +269,7 @@ class DownloadButton extends StatelessWidget {
           ),
         IconButton(
           tooltip: l.tooltipDownload,
-          onPressed: () => p.downloadBook(book),
+          onPressed: () => p.downloadItem(book),
           icon: const Icon(Icons.download_for_offline_outlined),
         ),
       ],

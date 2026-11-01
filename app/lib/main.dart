@@ -94,12 +94,12 @@ AudioBackend? _openBackend() {
 
 /// Development aid: with `PSALM_DEMO_FILE=<audio file>` every demo track plays
 /// that file, so the player can be heard before the server delivers books.
-List<Book> _demoLibrary() {
+List<LibraryItem> _demoLibrary() {
   final file = Platform.environment['PSALM_DEMO_FILE'];
   if (file == null || file.isEmpty) return demoBooks;
   return [
     for (final b in demoBooks)
-      Book(
+      LibraryItem(
         id: b.id,
         title: b.title,
         author: b.author,
@@ -187,12 +187,12 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _labels
       ..offline = _offline
       ..bookOf = _bookOf
-      ..patchBook = _player.patchBook;
+      ..patchItem = _player.patchItem;
     _hiding
       ..offline = _offline
       ..bookOf = _bookOf
       ..booksNow = (() => _player.library)
-      ..removeBook = _player.removeBookLocally;
+      ..removeBook = _player.removeItemLocally;
     _wasManual = _offline.manual;
     _offline.addListener(_onOfflineChanged);
     // A playlist offers offline only the tracks that are on the device (found in the library by book and part: the entry knows no format).
@@ -211,7 +211,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _start();
   }
 
-  Book? _bookOf(String id) => _player.fullLibrary.where((b) => b.id == id).firstOrNull;
+  LibraryItem? _bookOf(String id) => _player.fullLibrary.where((b) => b.id == id).firstOrNull;
 
   /// The lists follow the offline mode; switching it off sends what waited and loads the library again.
   void _onOfflineChanged() {

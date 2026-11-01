@@ -15,7 +15,7 @@ import 'package:psalm/server/api_client.dart';
 
 import 'barcode_api_test.dart' show barcodeServer;
 
-Book _book(String id, {String? barcode}) => Book(
+LibraryItem _book(String id, {String? barcode}) => LibraryItem(
   id: id,
   title: 'Title $id',
   author: 'Artist $id',
@@ -57,13 +57,13 @@ void main() {
     player = PlayerController([_book('1', barcode: '4006381333931'), _book('2')]);
   });
 
-  Widget screen({BarcodeLookup? l, List<Book>? opened}) => _app(
+  Widget screen({BarcodeLookup? l, List<LibraryItem>? opened}) => _app(
     player,
     BarcodeScanScreen(lookup: l ?? lookup, useCamera: false, opener: (c, b) => opened?.add(b)),
   );
 
   testWidgets('found locally: the book is listed with an Open button, the server is not asked', (t) async {
-    final opened = <Book>[];
+    final opened = <LibraryItem>[];
     await t.pumpWidget(screen(opened: opened));
     await _check(t, '4006381 333931');
     expect(find.byKey(const Key('barcode-in-library')), findsOneWidget);

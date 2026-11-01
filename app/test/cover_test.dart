@@ -13,7 +13,7 @@ final Uint8List _png = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
 );
 
-Book _book({Uint8List? cover}) => Book(
+LibraryItem _book({Uint8List? cover}) => LibraryItem(
   id: '1',
   title: 'Kinder der Freiheit',
   author: 'Ken Follett',

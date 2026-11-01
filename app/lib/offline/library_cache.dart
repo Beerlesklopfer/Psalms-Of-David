@@ -89,7 +89,7 @@ Track _trackFromJson(Map<String, dynamic> j) => Track(
   labels: [for (final l in (j['labels'] as List? ?? const [])) l as String],
 );
 
-Map<String, Object?> bookToJson(Book b) => {
+Map<String, Object?> bookToJson(LibraryItem b) => {
   'id': b.id,
   'title': b.title,
   'author': b.author,
@@ -111,7 +111,7 @@ Map<String, Object?> bookToJson(Book b) => {
   'tracks': [for (final t in b.tracks) _trackToJson(t)],
 };
 
-Book bookFromJson(Map<String, dynamic> j, {List<int>? cover}) => Book(
+LibraryItem bookFromJson(Map<String, dynamic> j, {List<int>? cover}) => LibraryItem(
   id: j['id'] as String,
   title: j['title'] as String,
   author: j['author'] as String,

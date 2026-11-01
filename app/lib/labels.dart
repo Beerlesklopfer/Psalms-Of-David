@@ -7,7 +7,7 @@ import 'offline/offline_controller.dart';
 import 'server/api_client.dart';
 
 /// Classic tagging: free words on a book (prayer, school, holidays together). Everybody who sees the book sees them; the owner of the book and an
-/// administrator may set them. The server decides ([Book.canLabel]).
+/// administrator may set them. The server decides ([LibraryItem.canLabel]).
 abstract class LabelApi {
   /// Sets all labels of a book; returns the labels it has now.
   Future<List<String>> setLabels(int id, List<String> labels);
@@ -40,7 +40,7 @@ class LabelList {
 }
 
 /// The labels of the books in [books] (and of their titles) with the number of books that carry each, the most used first (then by name).
-List<(String, int)> labelCounts(Iterable<Book> books) {
+List<(String, int)> labelCounts(Iterable<LibraryItem> books) {
   final counts = <String, (String, int)>{};
   for (final b in books) {
     for (final l in b.allLabels) {
@@ -89,7 +89,7 @@ bool carriesAll(List<String> labels, Set<String> chosen) =>
     chosen.every((c) => labels.any((l) => l.toLowerCase() == c.toLowerCase()));
 
 /// The books that carry **all** the [chosen] labels (case ignored); all books when nothing is chosen.
-List<Book> filterByLabels(List<Book> books, Set<String> chosen) {
+List<LibraryItem> filterByLabels(List<LibraryItem> books, Set<String> chosen) {
   if (chosen.isEmpty) return books;
   final wanted = {for (final c in chosen) c.toLowerCase()};
   return [
@@ -101,7 +101,7 @@ List<Book> filterByLabels(List<Book> books, Set<String> chosen) {
 /// What to suggest while a label is typed: the labels in use that fit [typed] (the ones that begin with it first), without the ones already
 /// chosen, the most used first; the most used ones when nothing is typed. At most [limit].
 List<String> labelSuggestions(
-  Iterable<Book> books,
+  Iterable<LibraryItem> books,
   String typed,
   Iterable<String> chosen, {
   int limit = 8,
@@ -159,10 +159,10 @@ class LabelsController extends ChangeNotifier {
   OfflineController? offline;
 
   /// The book of this id as the app has it now (for the words that were there before a change).
-  Book? Function(String id)? bookOf;
+  LibraryItem? Function(String id)? bookOf;
 
   /// Changes the book of this id in the lists of the app.
-  void Function(String id, Book Function(Book) change)? patchBook;
+  void Function(String id, LibraryItem Function(LibraryItem) change)? patchItem;
 
   /// The code of the last refusal or failure, or null.
   String? error;
@@ -290,7 +290,7 @@ class LabelsController extends ChangeNotifier {
     final book = bookOf?.call(bookId);
     final (add, remove) = labelDelta(book?.labels ?? const [], labels);
     off.outbox.addLabels('book', id, add: add, remove: remove, title: book?.title ?? '');
-    patchBook?.call(bookId, (b) => b.copyWith(labels: labels));
+    patchItem?.call(bookId, (b) => b.copyWith(labels: labels));
     error = null;
     off.touch();
     notifyListeners();
@@ -304,7 +304,7 @@ class LabelsController extends ChangeNotifier {
     final before = book?.tracks.where((t) => t.partId == partId).firstOrNull?.labels ?? const <String>[];
     final (add, remove) = labelDelta(before, labels);
     off.outbox.addLabels('part', id, part: partId, add: add, remove: remove, title: book?.title ?? '');
-    patchBook?.call(bookId, (b) {
+    patchItem?.call(bookId, (b) {
       final tracks = [for (final t in b.tracks) t.partId == partId ? t.withLabels(labels) : t];
       final seen = <String>{};
       final union = [for (final t in tracks) for (final l in t.labels) if (seen.add(l.toLowerCase())) l];

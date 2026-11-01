@@ -27,7 +27,7 @@ class HomeScreen extends StatelessWidget {
     final p = PlayerScope.of(context);
     final wide = MediaQuery.sizeOf(context).width >= 800;
     // The shortcuts are the books listened to last, whatever their kind, the latest first.
-    final recent = p.recentBooks();
+    final recent = p.recentItems();
     // New for this user, as the server decides; no row at all if there is nothing.
     final fresh = p.newBooks();
 
@@ -90,14 +90,14 @@ class HomeScreen extends StatelessWidget {
 }
 
 /// A heading and the covers as tiles that break into lines, as in the library.
-List<Widget> _tiles(String title, List<Book> books, {String? badge}) => [
+List<Widget> _tiles(String title, List<LibraryItem> books, {String? badge}) => [
       SliverToBoxAdapter(child: SectionHeader(title)),
       SliverPadding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         sliver: SliverGrid.builder(
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 200, childAspectRatio: 0.74),
           itemCount: books.length,
-          itemBuilder: (_, i) => BookCard(book: books[i], badge: badge),
+          itemBuilder: (_, i) => ItemCard(book: books[i], badge: badge),
         ),
       ),
     ];
@@ -106,7 +106,7 @@ List<Widget> _tiles(String title, List<Book> books, {String? badge}) => [
 class _Shortcut extends StatelessWidget {
   const _Shortcut({required this.book});
 
-  final Book book;
+  final LibraryItem book;
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +116,7 @@ class _Shortcut extends StatelessWidget {
       borderRadius: BorderRadius.circular(6),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => openBook(context, book),
+        onTap: () => openItem(context, book),
         child: Row(
           children: [
             AspectRatio(aspectRatio: 1, child: Cover(book: book)),
@@ -143,7 +143,7 @@ class _Shortcut extends StatelessWidget {
 class _Resume extends StatelessWidget {
   const _Resume({required this.book});
 
-  final Book book;
+  final LibraryItem book;
 
   @override
   Widget build(BuildContext context) {
@@ -159,7 +159,7 @@ class _Resume extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () => openBook(context, book),
+          onTap: () => openItem(context, book),
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
@@ -212,7 +212,7 @@ class _Resume extends StatelessWidget {
 }
 
 /// A heading and a row of covers that scrolls sideways.
-List<Widget> _strip(String title, List<Book> books) => [
+List<Widget> _strip(String title, List<LibraryItem> books) => [
       SliverToBoxAdapter(child: SectionHeader(title)),
       SliverToBoxAdapter(
         child: SizedBox(
@@ -222,7 +222,7 @@ List<Widget> _strip(String title, List<Book> books) => [
             padding: const EdgeInsets.symmetric(horizontal: 10),
             itemCount: books.length,
             separatorBuilder: (_, _) => const SizedBox(width: 4),
-            itemBuilder: (_, i) => SizedBox(width: 156, child: BookCard(book: books[i])),
+            itemBuilder: (_, i) => SizedBox(width: 156, child: ItemCard(book: books[i])),
           ),
         ),
       ),

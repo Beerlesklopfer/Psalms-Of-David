@@ -25,7 +25,7 @@ String foldForSearch(String text) {
 /// The score of [book] for [query], or 0 if some word of the query is found nowhere (title, author, narrator, labels).
 /// A word in the title counts most, then the author, then a label; a whole word counts more than part of a word,
 /// and a title that equals the query wins over everything.
-int voiceScore(Book book, String query) {
+int voiceScore(LibraryItem book, String query) {
   final words = foldForSearch(query)
       .split(' ')
       .where((w) => w.isNotEmpty)
@@ -55,8 +55,8 @@ int voiceScore(Book book, String query) {
 }
 
 /// The books that match [query], best first (equal scores keep the order of [books]).
-List<Book> matchBooks(List<Book> books, String query) {
-  final scored = <(int, int, Book)>[];
+List<LibraryItem> matchBooks(List<LibraryItem> books, String query) {
+  final scored = <(int, int, LibraryItem)>[];
   for (var i = 0; i < books.length; i++) {
     final s = voiceScore(books[i], query);
     if (s > 0) scored.add((s, i, books[i]));
@@ -68,5 +68,5 @@ List<Book> matchBooks(List<Book> books, String query) {
 }
 
 /// The best match for [query], or null if nothing matches.
-Book? bestMatch(List<Book> books, String query) =>
+LibraryItem? bestMatch(List<LibraryItem> books, String query) =>
     matchBooks(books, query).firstOrNull;

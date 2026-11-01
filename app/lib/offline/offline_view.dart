@@ -9,8 +9,8 @@ import 'outbox.dart';
 
 /// What the offline view shows of [books]: the titles that are on the device. A book of which only some titles are downloaded keeps those;
 /// a book of which none is downloaded is left out. Radio stations and the like (no parts of their own) have nothing to download and go.
-List<Book> downloadedOnly(List<Book> books, bool Function(Track) isDownloaded) {
-  final out = <Book>[];
+List<LibraryItem> downloadedOnly(List<LibraryItem> books, bool Function(Track) isDownloaded) {
+  final out = <LibraryItem>[];
   for (final b in books) {
     if (b.isStream) continue;
     final kept = [for (final t in b.tracks) if (t.path != null || isDownloaded(t)) t];

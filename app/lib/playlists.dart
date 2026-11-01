@@ -507,7 +507,7 @@ class PlaylistController extends ChangeNotifier {
 
   /// The playlist as one virtual book: the available entries in order; the others are left out, not deleted.
   /// Every track keeps its own part and book, so progress goes to the real item as it always does.
-  Book bookOf(Playlist p) => Book(
+  LibraryItem bookOf(Playlist p) => LibraryItem(
     id: '$kPlaylistBookPrefix${p.id}',
     title: p.name,
     author: '',
@@ -534,7 +534,7 @@ class PlaylistController extends ChangeNotifier {
   );
 
   /// Where to go on in [p]: the track and place that were left, else the start.
-  ({int track, Duration position}) startOf(Playlist p, Book b) {
+  ({int track, Duration position}) startOf(Playlist p, LibraryItem b) {
     final r = _resume[p.id];
     if (r != null) {
       final i = b.tracks.indexWhere((t) => t.partId == r.partId);
@@ -544,7 +544,7 @@ class PlaylistController extends ChangeNotifier {
   }
 
   /// Remembers the place in a playlist that plays (by part, so a reordered list still finds it).
-  void remember(Book b, Track t, Duration position) {
+  void remember(LibraryItem b, Track t, Duration position) {
     if (b.kind != kPlaylistKind || t.partId == null) return;
     final id = int.tryParse(b.id.substring(kPlaylistBookPrefix.length));
     if (id == null) return;

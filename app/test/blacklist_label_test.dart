@@ -9,7 +9,7 @@ import 'package:psalm/screens/labels_ui.dart';
 
 import 'labels_test.dart' show FakeLabels;
 
-Book _book(String id, List<String> labels) => Book(
+LibraryItem _book(String id, List<String> labels) => LibraryItem(
   id: id,
   title: 'T$id',
   author: 'A',

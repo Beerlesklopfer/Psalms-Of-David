@@ -19,11 +19,11 @@ class ServerAddressScope extends InheritedWidget {
   bool updateShouldNotify(ServerAddressScope old) => old.address != address;
 }
 
-/// Passes a medium on through the share sheet of the system (title, creator and the address of the server). Shown only if the server allows it ([Book.canShare]: an administrator or a member).
+/// Passes a medium on through the share sheet of the system (title, creator and the address of the server). Shown only if the server allows it ([LibraryItem.canShare]: an administrator or a member).
 class ShareButton extends StatelessWidget {
   const ShareButton({super.key, required this.book, this.address, this.share = _share});
 
-  final Book book;
+  final LibraryItem book;
 
   /// `host:port` of the server (default: the connected one); without any the text carries no link.
   final String? address;

@@ -6,7 +6,7 @@ import 'format.dart';
 import 'l10n/app_localizations.dart';
 import 'models.dart';
 import 'player_controller.dart';
-import 'screens/book_screen.dart';
+import 'screens/item_screen.dart';
 import 'screens/hide_menu.dart';
 import 'screens/player_screen.dart';
 import 'theme.dart';
@@ -15,7 +15,7 @@ import 'theme.dart';
 class Cover extends StatelessWidget {
   const Cover({super.key, required this.book});
 
-  final Book book;
+  final LibraryItem book;
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +42,7 @@ class Cover extends StatelessWidget {
 class _DrawnCover extends StatelessWidget {
   const _DrawnCover({required this.book});
 
-  final Book book;
+  final LibraryItem book;
 
   @override
   Widget build(BuildContext context) {
@@ -117,9 +117,9 @@ class _DrawnCover extends StatelessWidget {
   }
 }
 
-void openBook(BuildContext context, Book book) {
+void openItem(BuildContext context, LibraryItem book) {
   Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => BookScreen(book: book)),
+    MaterialPageRoute<void>(builder: (_) => ItemScreen(book: book)),
   );
 }
 
@@ -138,10 +138,10 @@ class PlayedMark extends StatelessWidget {
   }
 }
 
-class BookCard extends StatelessWidget {
-  const BookCard({super.key, required this.book, this.badge});
+class ItemCard extends StatelessWidget {
+  const ItemCard({super.key, required this.book, this.badge});
 
-  final Book book;
+  final LibraryItem book;
 
   /// A small label on the corner of the cover (for example "New"); null for none.
   final String? badge;
@@ -152,7 +152,7 @@ class BookCard extends StatelessWidget {
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     final card = InkWell(
       borderRadius: BorderRadius.circular(6),
-      onTap: () => openBook(context, book),
+      onTap: () => openItem(context, book),
       // The choices about hiding (a book that is no item of the server has none).
       onLongPress: () => showHideSheet(context, book),
       child: Padding(
@@ -395,7 +395,7 @@ class MiniPlayer extends StatelessWidget {
     return LayoutBuilder(builder: (context, box) => _frame(context, p, book, box.maxWidth));
   }
 
-  Widget _frame(BuildContext context, PlayerController p, Book book, double width) {
+  Widget _frame(BuildContext context, PlayerController p, LibraryItem book, double width) {
     final l = AppLocalizations.of(context);
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;

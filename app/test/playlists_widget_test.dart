@@ -6,14 +6,14 @@ import 'package:psalm/l10n/app_localizations.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
 import 'package:psalm/playlists.dart';
-import 'package:psalm/screens/book_screen.dart';
+import 'package:psalm/screens/item_screen.dart';
 import 'package:psalm/screens/library_screen.dart';
 import 'package:psalm/screens/playlists_screen.dart';
 import 'package:psalm/server/api_client.dart';
 
 import 'playlist_fakes.dart';
 
-final _winter = Book(
+final _winter = LibraryItem(
   id: '17',
   title: 'Winter',
   author: 'Follett',
@@ -163,13 +163,13 @@ void main() {
   });
 
   group('add to playlist', () {
-    Future<void> openBook(
+    Future<void> openItem(
       WidgetTester tester, {
       Locale locale = const Locale('en'),
       bool scope = true,
     }) => pumpApp(
       tester,
-      BookScreen(book: _winter),
+      ItemScreen(book: _winter),
       locale: locale,
       scope: scope,
     );
@@ -177,18 +177,18 @@ void main() {
     testWidgets('the book and each title have the entry; without the server neither', (
       tester,
     ) async {
-      await openBook(tester, scope: false);
+      await openItem(tester, scope: false);
       expect(find.byKey(const Key('book-add-to-playlist-17')), findsNothing);
       expect(find.byKey(const Key('track-menu-880')), findsNothing);
       c.api = null;
-      await openBook(tester);
+      await openItem(tester);
       expect(
         find.byKey(const Key('book-add-to-playlist-17')),
         findsNothing,
         reason: 'no server, no playlists to change',
       );
       c.api = api;
-      await openBook(tester);
+      await openItem(tester);
       await tester.pump();
       expect(find.byKey(const Key('book-add-to-playlist-17')), findsOneWidget);
       expect(
@@ -204,7 +204,7 @@ void main() {
       api.add('Car trip');
       api.parts.removeWhere((k, v) => v.bookId != 17);
       await c.load();
-      await openBook(tester);
+      await openItem(tester);
       await tester.tap(find.byKey(const Key('book-add-to-playlist-17')));
       await tester.pumpAndSettle();
       expect(find.text('Car trip'), findsOneWidget);
@@ -221,7 +221,7 @@ void main() {
     ) async {
       api.add('Car trip');
       await c.load();
-      await openBook(tester);
+      await openItem(tester);
       await tester.tap(find.byKey(const Key('track-menu-881')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add to playlist'));
@@ -234,7 +234,7 @@ void main() {
     testWidgets(
       'New playlist… in the sheet: one field, Save / Cancel, then the list is made and the title is added',
       (tester) async {
-        await openBook(tester);
+        await openItem(tester);
         await tester.tap(find.byKey(const Key('track-menu-880')));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Add to playlist'));
@@ -254,7 +254,7 @@ void main() {
       api.add('Car trip');
       await c.load();
       api.failOnce = null;
-      await openBook(tester);
+      await openItem(tester);
       await tester.tap(find.byKey(const Key('book-add-to-playlist-17')));
       await tester.pumpAndSettle();
       api.failWith = ApiException(422, 'playlist_full');
@@ -267,7 +267,7 @@ void main() {
     testWidgets('German texts', (tester) async {
       api.add('Autofahrt');
       await c.load();
-      await openBook(tester, locale: const Locale('de'));
+      await openItem(tester, locale: const Locale('de'));
       expect(
         tester.widget<IconButton>(find.byKey(const Key('book-add-to-playlist-17'))).tooltip,
         'Zur Playlist hinzufügen',

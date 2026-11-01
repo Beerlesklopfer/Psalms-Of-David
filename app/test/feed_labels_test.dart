@@ -15,7 +15,7 @@ import 'library_filter_test.dart' show FakeFeeds;
 
 Widget _app(Widget home, {LabelsController? labels}) {
   final app = PlayerScope(
-    controller: PlayerController(const <Book>[]),
+    controller: PlayerController(const <LibraryItem>[]),
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,

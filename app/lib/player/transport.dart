@@ -10,7 +10,7 @@ import 'engine.dart';
 // The wire between the UI facade (`PlayerController`) and the playback state machine (`PlayerEngine`).
 //
 // Every message is plain data (ints, strings, bools, lists, maps) with `toMap`/`fromMap`, so that a later `IsolateTransport` can send
-// it. The only exception is [BookData.live]: the in-process transport hands the engine the live `Book` (so the identity of its tracks
+// it. The only exception is [LibraryItemData.live]: the in-process transport hands the engine the live `LibraryItem` (so the identity of its tracks
 // is kept for the source and the tests); it is never serialized, and the engine rebuilds the book from the data if it is null.
 
 /// The part of a [Track] that the engine reads.
@@ -104,13 +104,13 @@ class TrackData {
       };
 }
 
-/// The part of a [Book] that the engine reads: its id, kind, title and the tracks.
-class BookData {
-  BookData({required this.id, required this.title, required this.kind, required this.tracks, this.live});
+/// The part of a [LibraryItem] that the engine reads: its id, kind, title and the tracks.
+class LibraryItemData {
+  LibraryItemData({required this.id, required this.title, required this.kind, required this.tracks, this.live});
 
-  factory BookData.of(Book b) => BookData(id: b.id, title: b.title, kind: b.kind, tracks: [for (final t in b.tracks) TrackData.of(t)], live: b);
+  factory LibraryItemData.of(LibraryItem b) => LibraryItemData(id: b.id, title: b.title, kind: b.kind, tracks: [for (final t in b.tracks) TrackData.of(t)], live: b);
 
-  factory BookData.fromMap(Map<String, dynamic> m) => BookData(
+  factory LibraryItemData.fromMap(Map<String, dynamic> m) => LibraryItemData(
         id: m['id'] as String,
         title: m['title'] as String,
         kind: m['kind'] as String,
@@ -123,14 +123,14 @@ class BookData {
   final List<TrackData> tracks;
 
   /// In-process only, never serialized: the live book of the UI.
-  final Book? live;
+  final LibraryItem? live;
 
-  Book? _built;
+  LibraryItem? _built;
 
   /// The live book if there is one, else a book rebuilt from the data (the isolate case; built once, so its tracks keep their identity).
-  Book toBook() =>
+  LibraryItem toBook() =>
       live ??
-      (_built ??= Book(id: id, title: title, author: '', color: const Color(0xFF607D8B), kind: kind, tracks: [for (final t in tracks) t.toTrack()]));
+      (_built ??= LibraryItem(id: id, title: title, author: '', color: const Color(0xFF607D8B), kind: kind, tracks: [for (final t in tracks) t.toTrack()]));
 
   Map<String, dynamic> toMap() => {'id': id, 'title': title, 'kind': kind, 'tracks': [for (final t in tracks) t.toMap()]};
 }
@@ -146,7 +146,7 @@ sealed class PlayerCommand {
     switch (m['type'] as String) {
       case 'open':
         return OpenCommand(
-          BookData.fromMap((m['book'] as Map).cast<String, dynamic>()),
+          LibraryItemData.fromMap((m['book'] as Map).cast<String, dynamic>()),
           trackIndex: m['track'] as int?,
           startMs: m['start_ms'] as int?,
           forceReload: m['force_reload'] as bool? ?? false,
@@ -169,7 +169,7 @@ sealed class PlayerCommand {
         return SetSpeedCommand((m['speed'] as num).toDouble());
       case 'set_place':
         return SetPlaceCommand(
-          book: m['book'] == null ? null : BookData.fromMap((m['book'] as Map).cast<String, dynamic>()),
+          book: m['book'] == null ? null : LibraryItemData.fromMap((m['book'] as Map).cast<String, dynamic>()),
           clearBook: m['clear_book'] as bool? ?? false,
           trackIndex: m['track'] as int?,
           positionMs: m['position_ms'] as int?,
@@ -192,7 +192,7 @@ sealed class PlayerCommand {
 /// Opens a book and plays it; [startMs] is where in the track it begins. The UI has resolved the resume place already.
 class OpenCommand extends PlayerCommand {
   const OpenCommand(this.book, {this.trackIndex, this.startMs, this.forceReload = false});
-  final BookData book;
+  final LibraryItemData book;
   final int? trackIndex;
   final int? startMs;
 
@@ -262,7 +262,7 @@ class SetSpeedCommand extends PlayerCommand {
 /// Only the fields that are set change.
 class SetPlaceCommand extends PlayerCommand {
   const SetPlaceCommand({this.book, this.clearBook = false, this.trackIndex, this.positionMs});
-  final BookData? book;
+  final LibraryItemData? book;
   final bool clearBook;
   final int? trackIndex;
   final int? positionMs;

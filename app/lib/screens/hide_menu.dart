@@ -18,7 +18,7 @@ class HideAction {
 
 /// What can be done with [book] about hiding: the book, the author's books of its kind, everything by the author. Empty for a book that is
 /// no item of the server (an episode, a station, a playlist) and where there is no server.
-List<HideAction> hideActions(BuildContext context, Book book) {
+List<HideAction> hideActions(BuildContext context, LibraryItem book) {
   final c = HidingScope.maybeOf(context);
   final id = int.tryParse(book.id);
   if (c == null || !c.available || id == null || book.author.trim().isEmpty) return const [];
@@ -63,7 +63,7 @@ Future<void> _run(BuildContext context, HideAction a) async {
 class HideMenuButton extends StatelessWidget {
   const HideMenuButton({super.key, required this.book});
 
-  final Book book;
+  final LibraryItem book;
 
   @override
   Widget build(BuildContext context) {
@@ -87,7 +87,7 @@ class HideMenuButton extends StatelessWidget {
 }
 
 /// The same choices as a sheet at the bottom (a long press on a book in a list).
-Future<void> showHideSheet(BuildContext context, Book book) async {
+Future<void> showHideSheet(BuildContext context, LibraryItem book) async {
   final actions = hideActions(context, book);
   if (actions.isEmpty) return;
   final choice = await showModalBottomSheet<HideAction>(

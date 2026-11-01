@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/library_groups.dart';
 import 'package:psalm/models.dart';
 
-Book _b(String id, String title, String author, {String kind = 'music', String? genre, String? narrator}) => Book(
+LibraryItem _b(String id, String title, String author, {String kind = 'music', String? genre, String? narrator}) => LibraryItem(
   id: id,
   title: title,
   author: author,
@@ -54,7 +54,7 @@ void main() {
 
   test('a title inside an album is found too, with its place, and a hit on a track alone is not empty', () {
     Track t(int n, String title) => Track(disc: 1, number: n, title: title, length: const Duration(minutes: 3));
-    final book = Book(
+    final book = LibraryItem(
       id: '9',
       title: 'Spiele',
       author: 'Various',

@@ -13,7 +13,7 @@ class _Source extends MediaSource {
   @override
   Future<String> fetchPart(Track track) async => '/cache/${track.partId}.audio';
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {}
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished}) async {}
   @override
   Future<PassageHit?> resolvePassage(String text) async => null;
 }
@@ -22,7 +22,7 @@ void main() {
   testWidgets('with a track from the server the bar grows after the play button', (tester) async {
     var now = Duration.zero;
     final backend = FakeBackend(clock: () => now, fileLength: const Duration(minutes: 6));
-    final book = Book(
+    final book = LibraryItem(
       id: '1',
       title: 'B',
       author: 'A',

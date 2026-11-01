@@ -4,9 +4,9 @@ import 'models.dart';
 
 /// Music by genre: the genres of [order] first (the order of the administration), then the
 /// genres only the albums know, alphabetically, and the albums without a genre last under `null`.
-List<(String?, List<Book>)> groupByGenre(List<Book> books, List<String> order) {
-  final by = <String, List<Book>>{};
-  final none = <Book>[];
+List<(String?, List<LibraryItem>)> groupByGenre(List<LibraryItem> books, List<String> order) {
+  final by = <String, List<LibraryItem>>{};
+  final none = <LibraryItem>[];
   for (final b in books) {
     final g = b.genre;
     if (g == null || g.trim().isEmpty) {
@@ -27,7 +27,7 @@ List<(String?, List<Book>)> groupByGenre(List<Book> books, List<String> order) {
 class TrackHit {
   const TrackHit(this.book, this.index);
 
-  final Book book;
+  final LibraryItem book;
   final int index;
 
   Track get track => book.tracks[index];
@@ -41,7 +41,7 @@ const int kMaxTrackHits = 50;
 class SearchGroups {
   SearchGroups(this.albums, this.creators, this.narrators, [this.tracks = const []]);
 
-  final List<Book> albums;
+  final List<LibraryItem> albums;
   final List<String> creators;
   final List<String> narrators;
   final List<TrackHit> tracks;
@@ -49,7 +49,7 @@ class SearchGroups {
   bool get isEmpty => albums.isEmpty && creators.isEmpty && narrators.isEmpty && tracks.isEmpty;
 }
 
-SearchGroups searchGroups(List<Book> pool, String query) {
+SearchGroups searchGroups(List<LibraryItem> pool, String query) {
   final q = query.trim().toLowerCase();
   if (q.isEmpty) return SearchGroups(const [], const [], const []);
   bool has(String? s) => s != null && s.toLowerCase().contains(q);
@@ -79,9 +79,9 @@ SearchGroups searchGroups(List<Book> pool, String query) {
 /// Music (or any list) by owner: the owners alphabetically by nickname, each with their albums in the order given, and the albums that belong to
 /// nobody last under `null`. With no owner at all the result is one group `null`. The owner [first] (the signed-in person), if there is one,
 /// comes before the others.
-List<(String?, List<Book>)> groupByOwner(List<Book> books, {String? first}) {
-  final by = <String, List<Book>>{};
-  final none = <Book>[];
+List<(String?, List<LibraryItem>)> groupByOwner(List<LibraryItem> books, {String? first}) {
+  final by = <String, List<LibraryItem>>{};
+  final none = <LibraryItem>[];
   for (final b in books) {
     final o = b.owner;
     if (o == null || o.trim().isEmpty) {

@@ -22,13 +22,13 @@ enum MediaKind {
   live,
 }
 
-MediaKind mediaKindOf(BookData b, TrackData? t) {
+MediaKind mediaKindOf(LibraryItemData b, TrackData? t) {
   if (b.kind == 'radio' || (t?.live ?? false)) return MediaKind.live;
   if (episodeIdOf(b) != null) return MediaKind.episode;
   return MediaKind.track;
 }
 
-int? episodeIdOf(BookData b) => b.kind == 'podcast' && b.id.startsWith('ep:') ? int.tryParse(b.id.substring(3)) : null;
+int? episodeIdOf(LibraryItemData b) => b.kind == 'podcast' && b.id.startsWith('ep:') ? int.tryParse(b.id.substring(3)) : null;
 
 /// Why a track is being fetched and loaded.
 enum LoadReason { open, next, previous, skip, select, resume }
@@ -81,7 +81,7 @@ class Core {
     this.env = const Env(),
   });
 
-  final BookData? book;
+  final LibraryItemData? book;
   final int trackIndex;
   final int positionMs;
   final double speed;
@@ -130,7 +130,7 @@ class Core {
     Env? env,
   }) =>
       Core(
-        book: identical(book, _keep) ? this.book : book as BookData?,
+        book: identical(book, _keep) ? this.book : book as LibraryItemData?,
         trackIndex: trackIndex ?? this.trackIndex,
         positionMs: positionMs ?? this.positionMs,
         speed: speed ?? this.speed,
@@ -280,7 +280,7 @@ sealed class EngineEvent {
 
 class UserOpen extends EngineEvent {
   const UserOpen(super.nowMs, this.book, {this.trackIndex, this.startMs, this.forceReload = false});
-  final BookData book;
+  final LibraryItemData book;
   final int? trackIndex;
   final int? startMs;
   final bool forceReload;
@@ -327,7 +327,7 @@ class SetSpeed extends EngineEvent {
 /// The place was moved from outside without touching the sound (another device went on, the library changed).
 class SetPlace extends EngineEvent {
   const SetPlace(super.nowMs, {this.book, this.clearBook = false, this.trackIndex, this.positionMs});
-  final BookData? book;
+  final LibraryItemData? book;
   final bool clearBook;
   final int? trackIndex;
   final int? positionMs;
@@ -528,7 +528,7 @@ class SaveProgress extends Effect {
   const SaveProgress(this.book, this.trackIndex, this.positionMs, this.finished);
 
   /// The book as it was when the progress was decided (the state may already have moved on to another one).
-  final BookData book;
+  final LibraryItemData book;
   String get bookId => book.id;
   final int trackIndex;
   final int positionMs;
@@ -955,7 +955,7 @@ Transition _tick(EngineState s, Tick e) {
 }
 
 /// The progress as the outbox keeps it, or null for what has no place to keep (a station, a podcast that is not an episode, no ids).
-ProgressQueued? progressQueue(BookData b, TrackData t, int positionMs, bool finished) {
+ProgressQueued? progressQueue(LibraryItemData b, TrackData t, int positionMs, bool finished) {
   if (b.kind == 'radio') return null;
   final episode = episodeIdOf(b);
   if (episode != null) {

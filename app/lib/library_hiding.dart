@@ -92,10 +92,10 @@ class HidingController extends ChangeNotifier {
   OfflineController? offline;
 
   /// The book of this id as the app has it now.
-  Book? Function(String id)? bookOf;
+  LibraryItem? Function(String id)? bookOf;
 
   /// The books of the lists now.
-  Iterable<Book> Function()? booksNow;
+  Iterable<LibraryItem> Function()? booksNow;
 
   /// Takes a book out of the lists of the app.
   void Function(String id)? removeBook;
@@ -164,7 +164,7 @@ class HidingController extends ChangeNotifier {
       authors: hidden ? [...others, HiddenAuthor(id: -1, name: name, kind: kind)] : others,
     );
     if (hidden && !state.showHidden) {
-      for (final b in List.of(booksNow?.call() ?? const <Book>[])) {
+      for (final b in List.of(booksNow?.call() ?? const <LibraryItem>[])) {
         if (b.author.toLowerCase() == name.toLowerCase() && (kind.isEmpty || b.kind == kind)) removeBook?.call(b.id);
       }
     }

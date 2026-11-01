@@ -11,7 +11,7 @@ import 'package:psalm/player_controller.dart';
 import 'package:psalm/format.dart';
 
 import 'package:psalm/screens/about_screen.dart';
-import 'package:psalm/screens/book_screen.dart';
+import 'package:psalm/screens/item_screen.dart';
 import 'package:psalm/server/server_source.dart';
 
 /// A server that is a folder: fetching a part writes a file, so "downloaded" means "is there".
@@ -58,13 +58,13 @@ class _FolderSource extends MediaSource {
   }
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {}
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished}) async {}
 
   @override
   Future<PassageHit?> resolvePassage(String text) async => null;
 }
 
-Book _book() => Book(
+LibraryItem _book() => LibraryItem(
   id: '1',
   title: 'Winter der Welt',
   author: 'Ken Follett',
@@ -91,7 +91,7 @@ void main() {
       final d = p.downloads['1'];
       if (d != null) seen.add(d.done);
     });
-    await p.downloadBook(b);
+    await p.downloadItem(b);
 
     expect(source.fetched, 3, reason: 'the part that was there is not fetched again');
     expect(p.downloadedCount(b), 4);
@@ -112,12 +112,12 @@ void main() {
     }
 
     p.addListener(stopAtTwo);
-    await p.downloadBook(b);
+    await p.downloadItem(b);
     p.removeListener(stopAtTwo);
     expect(p.downloadedCount(b), 2);
     expect(p.downloads, isEmpty);
 
-    await p.downloadBook(b);
+    await p.downloadItem(b);
     expect(p.downloadedCount(b), 4);
     p.dispose();
   });
@@ -132,7 +132,7 @@ void main() {
         child: MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: BookScreen(book: b),
+          home: ItemScreen(book: b),
         ),
       ),
     );
@@ -156,7 +156,7 @@ void main() {
     final source = _FolderSource(dir);
     final b = _book();
     final p = PlayerController([b], source: source);
-    await p.downloadBook(b);
+    await p.downloadItem(b);
     await tester.pumpWidget(
       PlayerScope(
         controller: p,

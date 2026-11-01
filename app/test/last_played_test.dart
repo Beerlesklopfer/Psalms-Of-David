@@ -10,7 +10,7 @@ import 'package:psalm/player_controller.dart';
 import 'package:psalm/server/last_played.dart';
 import 'package:psalm/server/server_source.dart';
 
-Book _book(String id) => Book(
+LibraryItem _book(String id) => LibraryItem(
   id: id,
   title: 'Book $id',
   author: 'A',
@@ -26,7 +26,7 @@ class _Source extends MediaSource {
   Future<String> fetchPart(Track track) async => '/nowhere';
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {}
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished}) async {}
 
   @override
   Future<PassageHit?> resolvePassage(String text) async => null;

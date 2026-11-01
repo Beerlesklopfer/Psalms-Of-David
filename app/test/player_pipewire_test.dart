@@ -19,7 +19,7 @@ void main() {
       : null;
 
   test('PlayerController plays, pauses and moves on through PipeWire', skip: skip, () async {
-    final book = Book(
+    final book = LibraryItem(
       id: 'b',
       title: 'Book',
       author: 'Author',

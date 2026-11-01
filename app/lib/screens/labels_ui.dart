@@ -11,7 +11,7 @@ import '../player_controller.dart';
 class LabelsLine extends StatelessWidget {
   const LabelsLine({super.key, required this.book});
 
-  final Book book;
+  final LibraryItem book;
 
   @override
   Widget build(BuildContext context) {
@@ -46,10 +46,10 @@ class LabelsLine extends StatelessWidget {
   }
 }
 
-Future<void> showLabelEditor(BuildContext context, Book book) {
+Future<void> showLabelEditor(BuildContext context, LibraryItem book) {
   final controller = LabelsScope.maybeOf(context);
   if (controller == null) return Future.value();
-  final library = PlayerScope.maybeOf(context)?.library ?? const <Book>[];
+  final library = PlayerScope.maybeOf(context)?.library ?? const <LibraryItem>[];
   return showDialog<void>(
     context: context,
     builder: (_) => LabelEditor(
@@ -61,11 +61,11 @@ Future<void> showLabelEditor(BuildContext context, Book book) {
 }
 
 /// Opens the editor for the labels of one title of a book (its own; the ones of the album come on top).
-Future<void> showTrackLabelEditor(BuildContext context, Book book, Track track) {
+Future<void> showTrackLabelEditor(BuildContext context, LibraryItem book, Track track) {
   final controller = LabelsScope.maybeOf(context);
   final part = track.partId;
   if (controller == null || part == null) return Future.value();
-  final library = PlayerScope.maybeOf(context)?.library ?? const <Book>[];
+  final library = PlayerScope.maybeOf(context)?.library ?? const <LibraryItem>[];
   return showDialog<void>(
     context: context,
     builder: (_) => LabelEditor(
@@ -86,7 +86,7 @@ Future<void> showFeedLabelEditor(
 }) {
   final controller = LabelsScope.maybeOf(context);
   if (controller == null) return Future.value();
-  final library = PlayerScope.maybeOf(context)?.library ?? const <Book>[];
+  final library = PlayerScope.maybeOf(context)?.library ?? const <LibraryItem>[];
   return showDialog<void>(
     context: context,
     builder: (_) => LabelEditor(
@@ -163,11 +163,11 @@ class FeedLabelsLine extends StatelessWidget {
 class TrackLabels extends StatelessWidget {
   const TrackLabels({super.key, required this.book, required this.track});
 
-  final Book book;
+  final LibraryItem book;
   final Track track;
 
-  /// This user may set the labels of the title: the server says so for the book ([Book.canLabel]), and a server must be there to ask.
-  static bool editable(BuildContext context, Book book, Track track) {
+  /// This user may set the labels of the title: the server says so for the book ([LibraryItem.canLabel]), and a server must be there to ask.
+  static bool editable(BuildContext context, LibraryItem book, Track track) {
     final controller = LabelsScope.maybeOf(context);
     return book.canLabel && controller != null && controller.available && track.partId != null;
   }
@@ -199,7 +199,7 @@ class TrackLabels extends StatelessWidget {
 class TrackLabelsButton extends StatelessWidget {
   const TrackLabelsButton({super.key, required this.book, required this.track});
 
-  final Book book;
+  final LibraryItem book;
   final Track track;
 
   @override
@@ -238,7 +238,7 @@ class LabelEditor extends StatefulWidget {
   final String? title;
 
   /// The books that are known: the labels in use are suggested from them.
-  final List<Book> library;
+  final List<LibraryItem> library;
 
   /// More labels in use to suggest (the ones of podcasts and stations that no book carries).
   final List<String> extra;

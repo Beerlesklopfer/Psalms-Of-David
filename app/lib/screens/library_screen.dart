@@ -40,7 +40,7 @@ class LibraryScreen extends StatefulWidget {
 }
 
 class _LibraryScreenState extends State<LibraryScreen> {
-  Widget _grid(List<Book> books) => SliverPadding(
+  Widget _grid(List<LibraryItem> books) => SliverPadding(
     padding: const EdgeInsets.all(12),
     sliver: SliverGrid.builder(
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -48,7 +48,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         childAspectRatio: 0.74,
       ),
       itemCount: books.length,
-      itemBuilder: (_, i) => BookCard(book: books[i]),
+      itemBuilder: (_, i) => ItemCard(book: books[i]),
     ),
   );
 
@@ -64,7 +64,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     AppLocalizations l,
     String? me,
     String category,
-    List<Book> books,
+    List<LibraryItem> books,
     String Function(String) titleOf,
     String nobody,
   ) => [
@@ -102,7 +102,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool _other = false;
 
   /// Does the album fit the chosen genre (or are all genres chosen)?
-  bool _matchesGenre(Book b) {
+  bool _matchesGenre(LibraryItem b) {
     final g = (b.genre ?? '').trim();
     if (_other) return g.isEmpty;
     return _genre == null || g == _genre;
@@ -115,7 +115,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   /// The second row of chips under the categories, only for music: All, the genres in the order of
   /// the administration with the number of albums, and Other for albums without a genre.
-  Widget _genreChips(AppLocalizations l, List<(String?, List<Book>)> groups) {
+  Widget _genreChips(AppLocalizations l, List<(String?, List<LibraryItem>)> groups) {
     Widget chip(String label, bool selected, VoidCallback onTap, {Key? key}) => Padding(
       padding: const EdgeInsets.only(right: 8),
       child: FilterChip(
@@ -189,7 +189,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (_category == MediaCategory.radio) _radio ??= RadioController(widget.api);
     final playlists = PlaylistScope.maybeOf(context);
     final isMusic = _category == MediaCategory.music && shown != null && shown.isNotEmpty;
-    final groups = isMusic ? groupByGenre(shown, p.genres) : const <(String?, List<Book>)>[];
+    final groups = isMusic ? groupByGenre(shown, p.genres) : const <(String?, List<LibraryItem>)>[];
     // A chosen genre that is gone (a reload took the last album) falls back to All.
     if (isMusic &&
         (_other

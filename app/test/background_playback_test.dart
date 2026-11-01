@@ -21,7 +21,7 @@ class _Source extends MediaSource {
   }
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished}) async {
     progress.add('${track.partId}@${position.inSeconds}${finished ? ' finished' : ''}');
   }
 
@@ -29,7 +29,7 @@ class _Source extends MediaSource {
   Future<PassageHit?> resolvePassage(String text) async => null;
 }
 
-Book _book() => Book(
+LibraryItem _book() => LibraryItem(
   id: '1',
   title: 'Album',
   author: 'Artist',

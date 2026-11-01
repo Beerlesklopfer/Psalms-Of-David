@@ -24,7 +24,7 @@ class FakeSource extends MediaSource {
   }
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished}) async {
     progress.add('${book.id}/${track.partId}@${position.inSeconds}${finished ? ' finished' : ''}');
   }
 
@@ -32,7 +32,7 @@ class FakeSource extends MediaSource {
   Future<PassageHit?> resolvePassage(String text) async => passage;
 }
 
-Book _book(String id, int firstPart) => Book(
+LibraryItem _book(String id, int firstPart) => LibraryItem(
   id: id,
   title: 'Book $id',
   author: 'A',
@@ -149,7 +149,7 @@ class _Failing extends MediaSource {
   @override
   Future<String> fetchPart(Track track) => Future.error(Exception('network'));
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {}
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished}) async {}
   @override
   Future<PassageHit?> resolvePassage(String text) async => null;
 }

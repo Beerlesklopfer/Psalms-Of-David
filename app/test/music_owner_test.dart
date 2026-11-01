@@ -11,7 +11,7 @@ import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
 import 'package:psalm/screens/library_screen.dart';
 
-Book _music(String id, String title, {String? owner, String? genre}) => Book(
+LibraryItem _music(String id, String title, {String? owner, String? genre}) => LibraryItem(
   id: id,
   title: title,
   author: 'Band $id',
@@ -40,7 +40,7 @@ Widget _app(PlayerController p, Locale locale, {LibraryFolds? folds}) => PlayerS
   ),
 );
 
-Book _audio(String id, String title, {String? owner}) => Book(
+LibraryItem _audio(String id, String title, {String? owner}) => LibraryItem(
   id: id,
   title: title,
   author: 'Author $id',

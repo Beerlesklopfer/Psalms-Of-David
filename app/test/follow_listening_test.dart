@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
 
-Book _book(String id) => Book(
+LibraryItem _book(String id) => LibraryItem(
       id: id,
       title: 'Book $id',
       author: 'A',

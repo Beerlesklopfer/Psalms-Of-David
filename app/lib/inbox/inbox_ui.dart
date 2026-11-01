@@ -267,7 +267,7 @@ class _InboxScreenState extends State<InboxScreen> {
   void _openAlbum(InboxItem item) {
     final l = AppLocalizations.of(context);
     final byId = {
-      for (final b in widget.player?.fullLibrary ?? const <Book>[]) b.id: b,
+      for (final b in widget.player?.fullLibrary ?? const <LibraryItem>[]) b.id: b,
     };
     final book = byId['${item.albumId}'];
     if (book == null) {
@@ -275,7 +275,7 @@ class _InboxScreenState extends State<InboxScreen> {
           .showSnackBar(SnackBar(content: Text(l.inboxAlbumNotFound)));
       return;
     }
-    openBook(context, book);
+    openItem(context, book);
   }
 
   @override

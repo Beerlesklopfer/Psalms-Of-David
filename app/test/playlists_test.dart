@@ -345,7 +345,7 @@ void main() {
         entries: [entry(43, 1, 900, 'Song', bookId: 20), entry(41, 2, 880, 'Chapter 1')],
       );
       expect(c.startOf(reordered, c.bookOf(reordered)).track, 0);
-      final realBook = Book(
+      final realBook = LibraryItem(
         id: '17',
         title: 'x',
         author: 'y',
@@ -365,7 +365,7 @@ void main() {
     test(
       'the shown book is the one of the track that plays; the position of a playlist is passed on',
       () {
-        final real = Book(
+        final real = LibraryItem(
           id: '20',
           title: 'Album',
           author: 'Band',
@@ -383,7 +383,7 @@ void main() {
           ),
         );
         final p = PlayerController([real]);
-        Book? got;
+        LibraryItem? got;
         Duration? at;
         p.onPlaylistPosition = (b, t, pos) {
           got = b;
@@ -475,7 +475,7 @@ void main() {
     test('a book and a playlist: only the parts on the device, relative paths, the file goes with the download', () async {
       final source = _FakeSource();
       final p = PlayerController([], source: source);
-      final book = Book(
+      final book = LibraryItem(
         id: '17',
         title: 'Winter',
         author: 'Follett',
@@ -485,7 +485,7 @@ void main() {
           Track(disc: 1, number: 2, title: 'Two', length: Duration(seconds: 200), partId: 881),
         ],
       );
-      await p.downloadBook(book);
+      await p.downloadItem(book);
       expect(source.files['book-17'], hasLength(2));
       expect(source.files['book-17']!.first.path, '880.audio');
       expect(source.files['book-17']!.first.artist, 'Follett');
@@ -501,7 +501,7 @@ void main() {
           ],
         ),
       );
-      await p.downloadBook(pl);
+      await p.downloadItem(pl);
       expect(source.files['playlist-3']!.map((e) => (e.path, e.artist)), [
         ('881.audio', 'Follett'),
         ('900.audio', 'Band'),
@@ -515,7 +515,7 @@ void main() {
     test('a partly downloaded book lists what is there', () async {
       final source = _FakeSource()..have.add(880);
       final p = PlayerController([], source: source);
-      final book = Book(
+      final book = LibraryItem(
         id: '17',
         title: 'Winter',
         author: 'Follett',
@@ -526,7 +526,7 @@ void main() {
         ],
       );
       source.failOn = 881;
-      await p.downloadBook(book);
+      await p.downloadItem(book);
       expect(source.files['book-17']!.map((e) => e.path), ['880.audio']);
       p.dispose();
     });
@@ -535,7 +535,7 @@ void main() {
       final p = PlayerController([]);
       expect(
         p.m3uNameOf(
-          Book(
+          LibraryItem(
             id: 'ep:5',
             title: 'e',
             author: 'a',
@@ -548,7 +548,7 @@ void main() {
       );
       expect(
         p.m3uNameOf(
-          Book(
+          LibraryItem(
             id: 'st:5',
             title: 's',
             author: 'a',
@@ -698,7 +698,7 @@ class _FakeSource extends MediaSource {
 
   @override
   Future<void> saveProgress(
-    Book book,
+    LibraryItem book,
     Track track,
     Duration position, {
     required bool finished,

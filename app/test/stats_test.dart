@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/l10n/app_localizations.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
-import 'package:psalm/screens/book_screen.dart';
+import 'package:psalm/screens/item_screen.dart';
 import 'package:psalm/screens/home_screen.dart';
 import 'package:psalm/screens/player_screen.dart';
 import 'package:psalm/server/api_client.dart';
@@ -79,7 +79,7 @@ Future<(HttpServer, ApiClient)> _server({Object? newBody, bool stats = true, boo
   return (server, ApiClient(address: 'localhost:${server.port}'));
 }
 
-Book _book(String id, {int plays = 0, List<int> trackPlays = const [0, 0], DateTime? last}) => Book(
+LibraryItem _book(String id, {int plays = 0, List<int> trackPlays = const [0, 0], DateTime? last}) => LibraryItem(
   id: id,
   title: 'Title $id',
   author: 'Author $id',
@@ -172,7 +172,7 @@ void main() {
     testWidgets('the book page marks played tracks only', (tester) async {
       final b = _book('1', trackPlays: [2, 0]);
       final p = PlayerController([b]);
-      await tester.pumpWidget(_app(p, BookScreen(book: b)));
+      await tester.pumpWidget(_app(p, ItemScreen(book: b)));
       expect(find.byKey(const ValueKey('played-mark')), findsOneWidget);
       expect(find.byTooltip('Played'), findsOneWidget);
       final icon = tester.widget<Icon>(find.byKey(const ValueKey('played-mark')));
@@ -216,7 +216,7 @@ void main() {
     testWidgets('English with plural and date', (tester) async {
       final b = _book('1', plays: 3, last: last);
       final p = PlayerController([b]);
-      await tester.pumpWidget(_app(p, BookScreen(book: b)));
+      await tester.pumpWidget(_app(p, ItemScreen(book: b)));
       expect(find.text('Played 3 times · last played on Oct 27, 2026'), findsOneWidget);
       p.dispose();
     });
@@ -224,7 +224,7 @@ void main() {
     testWidgets('once', (tester) async {
       final b = _book('1', plays: 1, last: last);
       final p = PlayerController([b]);
-      await tester.pumpWidget(_app(p, BookScreen(book: b)));
+      await tester.pumpWidget(_app(p, ItemScreen(book: b)));
       expect(find.textContaining('Played once ·'), findsOneWidget);
       p.dispose();
     });
@@ -232,7 +232,7 @@ void main() {
     testWidgets('German with date', (tester) async {
       final b = _book('1', plays: 3, last: last);
       final p = PlayerController([b]);
-      await tester.pumpWidget(_app(p, BookScreen(book: b), locale: 'de'));
+      await tester.pumpWidget(_app(p, ItemScreen(book: b), locale: 'de'));
       expect(find.textContaining('3-mal vollständig gehört · zuletzt gespielt am '), findsOneWidget);
       expect(find.textContaining('2026'), findsWidgets);
       p.dispose();
@@ -241,7 +241,7 @@ void main() {
     testWidgets('nothing played: no line', (tester) async {
       final b = _book('1');
       final p = PlayerController([b]);
-      await tester.pumpWidget(_app(p, BookScreen(book: b)));
+      await tester.pumpWidget(_app(p, ItemScreen(book: b)));
       expect(find.byKey(const ValueKey('plays-line')), findsNothing);
       p.dispose();
     });
@@ -268,7 +268,7 @@ void main() {
         lessThan(tester.getTopLeft(badges.at(1)).dx),
         reason: 'the first card is the first id of the server',
       );
-      final firstCard = find.ancestor(of: badges.at(0), matching: find.byType(BookCard));
+      final firstCard = find.ancestor(of: badges.at(0), matching: find.byType(ItemCard));
       expect(find.descendant(of: firstCard, matching: find.text('Title 3')), findsWidgets);
       p.dispose();
     });

@@ -13,18 +13,18 @@ TrackData _t(int n, {String? path, int? part, String? url, bool live = false, St
     TrackData(disc: 1, number: n, title: 'T$n', lengthMs: len, path: path, partId: part, url: url, live: live, format: format, itemId: '7');
 
 /// A book of the server: three tracks, fetched through the source (no path).
-final _server = BookData(id: '7', title: 'Book', kind: 'audiobook', tracks: [_t(1, part: 11), _t(2, part: 12), _t(3, part: 13)]);
+final _server = LibraryItemData(id: '7', title: 'Book', kind: 'audiobook', tracks: [_t(1, part: 11), _t(2, part: 12), _t(3, part: 13)]);
 
 /// A book with files on the device.
-final _files = BookData(id: '8', title: 'Files', kind: 'audiobook', tracks: [_t(1, path: '/a.mp3'), _t(2, path: '/b.mp3')]);
+final _files = LibraryItemData(id: '8', title: 'Files', kind: 'audiobook', tracks: [_t(1, path: '/a.mp3'), _t(2, path: '/b.mp3')]);
 
 /// A podcast episode (`ep:5`): one track, fetched through the source.
-final _episode = BookData(id: 'ep:5', title: 'Episode', kind: 'podcast', tracks: [_t(1, url: 'http://x/e.mp3', len: 600000)]);
+final _episode = LibraryItemData(id: 'ep:5', title: 'Episode', kind: 'podcast', tracks: [_t(1, url: 'http://x/e.mp3', len: 600000)]);
 
 /// A radio station: a live track, no length.
-final _radio = BookData(id: 'r1', title: 'Station', kind: 'radio', tracks: [_t(1, url: 'http://x/live', live: true, len: 0)]);
+final _radio = LibraryItemData(id: 'r1', title: 'Station', kind: 'radio', tracks: [_t(1, url: 'http://x/live', live: true, len: 0)]);
 
-Core _core(BookData? b, {int index = 0, int pos = 0, String? loaded, Env env = _env, int lastReport = _now}) =>
+Core _core(LibraryItemData? b, {int index = 0, int pos = 0, String? loaded, Env env = _env, int lastReport = _now}) =>
     Core(book: b, trackIndex: index, positionMs: pos, loadedKey: loaded, env: env, lastReportMs: lastReport, lastWrittenMs: _now);
 
 Observation _obs(int pos, [BackendState s = BackendState.playing, AudioErrorKind k = AudioErrorKind.generic, String? msg]) =>
@@ -187,7 +187,7 @@ void main() {
 
     test('a format this platform cannot play is Unplayable and nothing is loaded', () {
       runsOnApple = () => true;
-      final book = BookData(id: '9', title: 'Ogg', kind: 'audiobook', tracks: [_t(1, part: 1, format: 'ogg')]);
+      final book = LibraryItemData(id: '9', title: 'Ogg', kind: 'audiobook', tracks: [_t(1, part: 1, format: 'ogg')]);
       final r = transition(Paused(_core(book)), const UserToggle(_now));
       expect(r.state, isA<Unplayable>());
       expect(r.state.wantsPlay, isFalse);
@@ -351,7 +351,7 @@ void main() {
 
   group('gapless', () {
     const g = Env(hasBackend: true, hasSource: true, gapless: true);
-    Core gc(BookData b, {int index = 0, int pos = 0, String? queued, Env env = g}) =>
+    Core gc(LibraryItemData b, {int index = 0, int pos = 0, String? queued, Env env = g}) =>
         _core(b, index: index, pos: pos, loaded: '${b.id}:$index', env: env).copyWith(queuedKey: queued);
 
     test('a tick in the window queues a next file that is on the device at once', () {

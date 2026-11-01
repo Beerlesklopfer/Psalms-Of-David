@@ -124,7 +124,7 @@ class PsalmAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   /// The "now playing" of one track: the title of the track, the book as album, its author as artist and the picture.
-  MediaItem _itemOf(Book book, PlayerController p) {
+  MediaItem _itemOf(LibraryItem book, PlayerController p) {
     final track = p.track!;
     final stream = track.live || book.isStream;
     return MediaItem(
@@ -142,7 +142,7 @@ class PsalmAudioHandler extends BaseAudioHandler with SeekHandler {
   Uri? _coverUri;
 
   /// The notification reads the picture from a file: one per book, the older one is removed.
-  Uri? _coverFile(Book book) {
+  Uri? _coverFile(LibraryItem book) {
     final bytes = book.cover;
     if (bytes == null || bytes.isEmpty) return null;
     if (_coverKey == book.id && _coverUri != null) return _coverUri;

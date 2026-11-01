@@ -18,7 +18,7 @@ class _Source extends MediaSource {
   Future<String> fetchPart(Track track) async => '/cache/${track.partId}.audio';
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished}) async {
     progress.add('${track.partId}@${position.inSeconds}${finished ? ' finished' : ''}');
   }
 
@@ -26,7 +26,7 @@ class _Source extends MediaSource {
   Future<PassageHit?> resolvePassage(String text) async => null;
 }
 
-Book _book({String id = '1', bool files = false}) => Book(
+LibraryItem _book({String id = '1', bool files = false}) => LibraryItem(
   id: id,
   title: 'Album $id',
   author: 'Artist',

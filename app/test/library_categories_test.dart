@@ -5,12 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/l10n/app_localizations.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
-import 'package:psalm/screens/book_screen.dart';
+import 'package:psalm/screens/item_screen.dart';
 import 'package:psalm/screens/home_screen.dart';
 import 'package:psalm/screens/library_screen.dart';
 import 'package:psalm/screens/search_screen.dart';
 
-Book _book(String id, String title, {String kind = 'audiobook', String? narrator}) => Book(
+LibraryItem _book(String id, String title, {String kind = 'audiobook', String? narrator}) => LibraryItem(
   id: id,
   title: title,
   author: 'Author $id',
@@ -69,7 +69,7 @@ void main() {
 
   testWidgets('the book page names the narrator', (tester) async {
     final p = PlayerController([_book('1', 'Winter der Welt', narrator: 'Philipp Schepmann')]);
-    await tester.pumpWidget(_app(p, BookScreen(book: p.library.first)));
+    await tester.pumpWidget(_app(p, ItemScreen(book: p.library.first)));
     expect(find.text('Read by Philipp Schepmann'), findsOneWidget);
     p.dispose();
   });
@@ -107,7 +107,7 @@ void main() {
 
   testWidgets('for music the extra line is the artist, not "read by"', (tester) async {
     final p = PlayerController([_book('1', 'Thea', kind: 'music', narrator: 'Thea Eichholz-Müller')]);
-    await tester.pumpWidget(_app(p, BookScreen(book: p.library.first)));
+    await tester.pumpWidget(_app(p, ItemScreen(book: p.library.first)));
     expect(find.text('Artist: Thea Eichholz-Müller'), findsOneWidget);
     expect(find.textContaining('Read by'), findsNothing);
     p.dispose();
@@ -137,11 +137,11 @@ void main() {
     await tester.pumpWidget(_app(p, const HomeScreen()));
     expect(find.text('Recently listened'), findsOneWidget);
     expect(find.textContaining(', Papa'), findsNothing, reason: 'no name without a server');
-    expect(p.recentBooks().map((b) => b.id), ['3', '1'], reason: 'the latest first, any kind, only what exists');
+    expect(p.recentItems().map((b) => b.id), ['3', '1'], reason: 'the latest first, any kind, only what exists');
 
     // Opening a book puts it in front at once; at most six are shown.
     p.open(p.library[1]);
-    expect(p.recentBooks().map((b) => b.id), ['2', '3', '1']);
+    expect(p.recentItems().map((b) => b.id), ['2', '3', '1']);
     p.userName = 'Papa';
     p.notifyListeners();
     await tester.pump();

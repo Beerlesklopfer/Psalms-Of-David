@@ -8,7 +8,7 @@ import '../models.dart';
 import '../player_controller.dart';
 import '../playlists.dart';
 import '../widgets.dart';
-import 'book_screen.dart';
+import 'item_screen.dart';
 
 /// Gives the screens the playlists of the profile. Without it (demo, tests) nothing about playlists is shown.
 class PlaylistScope extends InheritedNotifier<PlaylistController> {
@@ -350,7 +350,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     );
   }
 
-  Widget _entry(BuildContext context, AppLocalizations l, Playlist list, Book book, int i) {
+  Widget _entry(BuildContext context, AppLocalizations l, Playlist list, LibraryItem book, int i) {
     final e = list.entries[i];
     final cs = Theme.of(context).colorScheme;
     final index = e.available

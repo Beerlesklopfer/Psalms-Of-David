@@ -12,7 +12,7 @@ void main() {
   testWidgets('the bar grows while the player plays', (tester) async {
     var now = Duration.zero;
     final backend = FakeBackend(clock: () => now, fileLength: const Duration(minutes: 6));
-    final book = Book(
+    final book = LibraryItem(
       id: '1',
       title: 'B',
       author: 'A',

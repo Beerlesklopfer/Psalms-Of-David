@@ -6,7 +6,7 @@ import 'package:psalm/l10n/app_localizations.dart';
 import 'package:psalm/labels.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
-import 'package:psalm/screens/book_screen.dart';
+import 'package:psalm/screens/item_screen.dart';
 import 'package:psalm/screens/library_screen.dart';
 import 'package:psalm/server/api_client.dart';
 
@@ -64,7 +64,7 @@ class FakeLabels implements LabelApi {
   }
 }
 
-Book _book(String id, String title, {List<String> labels = const [], bool can = false}) => Book(
+LibraryItem _book(String id, String title, {List<String> labels = const [], bool can = false}) => LibraryItem(
   id: id,
   title: title,
   author: 'Autor $id',
@@ -74,7 +74,7 @@ Book _book(String id, String title, {List<String> labels = const [], bool can = 
   tracks: const [Track(disc: 1, number: 1, title: 'Eins', length: Duration(minutes: 5))],
 );
 
-Widget _app(Widget home, List<Book> library, {LabelsController? labels}) {
+Widget _app(Widget home, List<LibraryItem> library, {LabelsController? labels}) {
   final app = MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
@@ -158,12 +158,12 @@ void main() {
       'shows the labels to everybody, and offers the editor only to the owner or an administrator',
       (tester) async {
         final mine = _book('1', 'Eins', labels: ['Gebet'], can: true);
-        await tester.pumpWidget(_app(BookScreen(book: mine), library, labels: c));
+        await tester.pumpWidget(_app(ItemScreen(book: mine), library, labels: c));
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('label-chip-Gebet')), findsOneWidget);
         expect(find.byKey(const ValueKey('labels-edit')), findsOneWidget);
         final other = _book('1', 'Eins', labels: ['Gebet']);
-        await tester.pumpWidget(_app(BookScreen(book: other), library, labels: c));
+        await tester.pumpWidget(_app(ItemScreen(book: other), library, labels: c));
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('label-chip-Gebet')), findsOneWidget);
         expect(find.byKey(const ValueKey('labels-edit')), findsNothing);
@@ -177,7 +177,7 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
         final mine = _book('1', 'Eins', labels: ['Gebet'], can: true);
-        await tester.pumpWidget(_app(BookScreen(book: mine), library, labels: c));
+        await tester.pumpWidget(_app(ItemScreen(book: mine), library, labels: c));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('labels-edit')));
         await tester.pumpAndSettle();
@@ -227,7 +227,7 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
         final mine = _book('1', 'Eins', can: true);
-        await tester.pumpWidget(_app(BookScreen(book: mine), library, labels: c));
+        await tester.pumpWidget(_app(ItemScreen(book: mine), library, labels: c));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('labels-edit')));
         await tester.pumpAndSettle();
@@ -250,7 +250,7 @@ void main() {
   });
 
   group('labels of single titles', () {
-    Book withTitles({bool can = false, List<String> bookLabels = const []}) => Book(
+    LibraryItem withTitles({bool can = false, List<String> bookLabels = const []}) => LibraryItem(
       id: '1',
       title: 'Eins',
       author: 'Autor 1',
@@ -288,12 +288,12 @@ void main() {
       tester.view.physicalSize = const Size(1000, 2400);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      await tester.pumpWidget(_app(BookScreen(book: withTitles()), library, labels: c));
+      await tester.pumpWidget(_app(ItemScreen(book: withTitles()), library, labels: c));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('track-label-11-Stille')), findsOneWidget);
       expect(find.byKey(const ValueKey('track-labels-edit-11')), findsNothing, reason: 'not the owner');
 
-      await tester.pumpWidget(_app(BookScreen(book: withTitles(can: true)), library, labels: c));
+      await tester.pumpWidget(_app(ItemScreen(book: withTitles(can: true)), library, labels: c));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('track-labels-edit-12')));
       await tester.pumpAndSettle();

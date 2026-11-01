@@ -6,7 +6,7 @@ import 'package:psalm/l10n/app_localizations.dart';
 import 'package:psalm/library_hiding.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
-import 'package:psalm/screens/book_screen.dart';
+import 'package:psalm/screens/item_screen.dart';
 import 'package:psalm/screens/library_screen.dart';
 import 'package:psalm/screens/settings_screen.dart';
 import 'package:psalm/server/api_client.dart';
@@ -59,7 +59,7 @@ class FakeHiding implements HidingApi {
   }
 }
 
-Book _book({bool hidden = false, String kind = 'audiobook'}) => Book(
+LibraryItem _book({bool hidden = false, String kind = 'audiobook'}) => LibraryItem(
   id: '5',
   title: 'Der Hobbit',
   author: 'Tolkien',
@@ -69,7 +69,7 @@ Book _book({bool hidden = false, String kind = 'audiobook'}) => Book(
   tracks: const [Track(disc: 1, number: 1, title: 'Eins', length: Duration(minutes: 5))],
 );
 
-Widget _app(Widget home, {HidingController? hiding, Book? book}) {
+Widget _app(Widget home, {HidingController? hiding, LibraryItem? book}) {
   final app = MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
@@ -142,7 +142,7 @@ void main() {
     ) async {
       await tester.pumpWidget(
         _app(
-          BookScreen(book: _book()),
+          ItemScreen(book: _book()),
           hiding: c,
           book: _book(),
         ),
@@ -161,7 +161,7 @@ void main() {
     testWidgets('the book page says whom the book belongs to, when it belongs to somebody', (
       tester,
     ) async {
-      Book owned(String? owner) => Book(
+      LibraryItem owned(String? owner) => LibraryItem(
         id: '5',
         title: 'Der Hobbit',
         author: 'Tolkien',
@@ -169,11 +169,11 @@ void main() {
         color: const Color(0xFF6E1F2B),
         tracks: const [Track(disc: 1, number: 1, title: 'Eins', length: Duration(minutes: 5))],
       );
-      await tester.pumpWidget(_app(BookScreen(book: owned('Beerchen')), book: owned('Beerchen')));
+      await tester.pumpWidget(_app(ItemScreen(book: owned('Beerchen')), book: owned('Beerchen')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('owner-line')), findsOneWidget);
       expect(find.text('Owner: Beerchen'), findsOneWidget);
-      await tester.pumpWidget(_app(BookScreen(book: owned(null)), book: owned(null)));
+      await tester.pumpWidget(_app(ItemScreen(book: owned(null)), book: owned(null)));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('owner-line')), findsNothing);
     });
@@ -183,7 +183,7 @@ void main() {
     ) async {
       await tester.pumpWidget(
         _app(
-          BookScreen(book: _book(hidden: true)),
+          ItemScreen(book: _book(hidden: true)),
           hiding: c,
           book: _book(hidden: true),
         ),
@@ -195,7 +195,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.calls, ['book:5:false']);
       // Demo mode, tests: no controller, no menu.
-      await tester.pumpWidget(_app(BookScreen(book: _book()), book: _book()));
+      await tester.pumpWidget(_app(ItemScreen(book: _book()), book: _book()));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('hide-menu')), findsNothing);
     });
@@ -206,7 +206,7 @@ void main() {
       await tester.pumpWidget(
         _app(
           Scaffold(
-            body: SizedBox(width: 200, child: BookCard(book: _book(hidden: true))),
+            body: SizedBox(width: 200, child: ItemCard(book: _book(hidden: true))),
           ),
           hiding: c,
           book: _book(hidden: true),
@@ -222,7 +222,7 @@ void main() {
             .opacity,
         0.5,
       );
-      await tester.longPress(find.byType(BookCard));
+      await tester.longPress(find.byType(ItemCard));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('hide-sheet-hide-book')));
       await tester.pumpAndSettle();

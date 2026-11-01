@@ -49,7 +49,7 @@ abstract class MediaSource {
   /// Deletes every downloaded part.
   Future<void> removeAllDownloads() async {}
 
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished});
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished});
 
   Future<PassageHit?> resolvePassage(String text);
 
@@ -240,7 +240,7 @@ class ServerSource implements MediaSource {
   }
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) {
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished}) {
     // An episode goes back to the account's own state; a radio station has no position.
     if (book.kind == 'podcast') return api.putEpisodeState(int.parse(book.id.substring(3)), position, finished: finished);
     if (book.isStream) return Future.value();
@@ -328,7 +328,7 @@ class LoadedLibrary {
   /// The genres of the list, in the order of the administration (music is shown by them).
   final List<String> genres;
 
-  final List<Book> books;
+  final List<LibraryItem> books;
   final Map<String, ({int track, Duration position})> resume;
 }
 
@@ -422,13 +422,13 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
     }
   }));
   final coverOf = {for (var i = 0; i < items.length; i++) items[i]['id'] as int: covers[i]};
-  final books = <Book>[];
+  final books = <LibraryItem>[];
   final resume = <String, ({int track, Duration position})>{};
   for (final d in details) {
     final id = d['id'] as int;
     final parts = (d['parts'] as List).cast<Map<String, dynamic>>();
     if (parts.isEmpty) continue;
-    books.add(Book(
+    books.add(LibraryItem(
       id: '$id',
       title: d['title'] as String,
       author: d['creator'] as String,

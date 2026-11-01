@@ -15,7 +15,7 @@ import '../widgets.dart';
 import 'qr_scan_screen.dart';
 
 /// Opens a book; a parameter so that a test need not build the book screen.
-typedef BookOpener = void Function(BuildContext context, Book book);
+typedef BookOpener = void Function(BuildContext context, LibraryItem book);
 
 /// "Is this CD in the family library?" The person holds a CD and scans its barcode with the camera (phones and the Mac) or types the digits
 /// (everywhere, and as the fallback where the camera does not work). The local library is asked first (it works offline); when it does not have
@@ -62,7 +62,7 @@ class _Hit {
   final String title;
   final String creator;
   final String kind;
-  final Book? book;
+  final LibraryItem? book;
 }
 
 class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
@@ -123,7 +123,7 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
     setState(() => _busy = true);
     final l = AppLocalizations.of(context);
     final player = PlayerScope.maybeOf(context);
-    final library = player?.fullLibrary ?? const <Book>[];
+    final library = player?.fullLibrary ?? const <LibraryItem>[];
     final byId = {for (final b in library) b.id: b};
     var hits = [
       for (final b in booksWithBarcode(library, code))
@@ -170,7 +170,7 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
         note: note,
         onOpen: (b) {
           Navigator.of(sheet).pop();
-          (widget.opener ?? openBook)(context, b);
+          (widget.opener ?? openItem)(context, b);
         },
       ),
     );
@@ -311,7 +311,7 @@ class _ResultSheet extends StatelessWidget {
   final String code;
   final List<_Hit> hits;
   final String? note;
-  final void Function(Book book) onOpen;
+  final void Function(LibraryItem book) onOpen;
 
   @override
   Widget build(BuildContext context) {

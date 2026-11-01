@@ -64,7 +64,7 @@ void main() {
 
   test('the speed reaches the sound engine and stays across loads', () {
     final backend = FakeBackend();
-    final book = Book(
+    final book = LibraryItem(
       id: 'b',
       title: 'Book',
       author: 'Author',
@@ -85,7 +85,7 @@ void main() {
 
   test('a radio station is played by the engine from its address and does not end at once', () async {
     final backend = FakeBackend();
-    final station = Book(
+    final station = LibraryItem(
       id: 'st:1',
       title: 'Station',
       author: '',
@@ -185,7 +185,7 @@ class _AddressSource extends MediaSource {
   Future<String> fetchPart(Track track) async => track.url!;
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {}
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished}) async {}
 
   @override
   Future<PassageHit?> resolvePassage(String text) async => null;

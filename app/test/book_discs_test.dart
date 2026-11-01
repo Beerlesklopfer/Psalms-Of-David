@@ -5,10 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/l10n/app_localizations.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
-import 'package:psalm/screens/book_screen.dart';
+import 'package:psalm/screens/item_screen.dart';
 
 /// A book of which CD 3 has not been imported (yet): the CDs are 1, 2 and 4.
-Book _gappy() => Book(
+LibraryItem _gappy() => LibraryItem(
   id: '1',
   title: 'Sturz der Titanen',
   author: 'Ken Follett',
@@ -19,12 +19,12 @@ Book _gappy() => Book(
   ],
 );
 
-Widget _app(Book book) => PlayerScope(
+Widget _app(LibraryItem book) => PlayerScope(
   controller: PlayerController([book]),
   child: MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
-    home: BookScreen(book: book),
+    home: ItemScreen(book: book),
   ),
 );
 

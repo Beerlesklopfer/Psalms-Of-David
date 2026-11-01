@@ -80,7 +80,7 @@ class FakeSource implements MediaSource {
   Future<void> removeAllDownloads() async {}
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished}) async {
     final fail = progressFails;
     if (fail != null) throw fail;
     progress.add('${book.id}/${track.partId} ${position.inSeconds}');
@@ -99,7 +99,7 @@ class FakeSource implements MediaSource {
 Track _t(int part, String title, {List<String> labels = const []}) =>
     Track(disc: 1, number: part % 100, title: title, length: const Duration(minutes: 5), partId: part, labels: labels);
 
-Book _book(String id, String title, List<Track> tracks, {List<String> labels = const [], String author = 'Autor', String kind = 'audiobook', bool can = true}) => Book(
+LibraryItem _book(String id, String title, List<Track> tracks, {List<String> labels = const [], String author = 'Autor', String kind = 'audiobook', bool can = true}) => LibraryItem(
   id: id,
   title: title,
   author: author,
@@ -302,10 +302,10 @@ void main() {
     test('a change of a book made on the device shows at once, in the offline view too', () {
       final p = PlayerController(all, source: FakeSource({11, 12}));
       p.setOfflineView(true);
-      p.patchBook('1', (b) => b.copyWith(labels: ['Gebet']));
+      p.patchItem('1', (b) => b.copyWith(labels: ['Gebet']));
       expect(p.library.single.labels, ['Gebet']);
       expect(p.fullLibrary.firstWhere((b) => b.id == '1').labels, ['Gebet']);
-      p.removeBookLocally('1');
+      p.removeItemLocally('1');
       expect(p.library, isEmpty);
       expect(p.fullLibrary.any((b) => b.id == '1'), false);
     });
@@ -315,7 +315,7 @@ void main() {
       expect(cache.read(), isNull);
       final lib = LoadedLibrary(
         [
-          Book(id: '5', title: 'Fünf', author: 'A', color: const Color(0xFF123456), cover: Uint8List.fromList([1, 2, 3]), labels: const ['x'], trackLabels: const ['y'], canLabel: true, tracks: [_t(51, 'a', labels: const ['y'])]),
+          LibraryItem(id: '5', title: 'Fünf', author: 'A', color: const Color(0xFF123456), cover: Uint8List.fromList([1, 2, 3]), labels: const ['x'], trackLabels: const ['y'], canLabel: true, tracks: [_t(51, 'a', labels: const ['y'])]),
           _book('6', 'Sechs', [_t(61, 'b')]),
         ],
         {'5': (track: 0, position: const Duration(seconds: 42))},
@@ -355,7 +355,7 @@ void main() {
         ..api = api
         ..offline = offline
         ..bookOf = ((id) => p.fullLibrary.where((b) => b.id == id).firstOrNull)
-        ..patchBook = p.patchBook;
+        ..patchItem = p.patchItem;
       expect(await labels.save('1', ['Alt', 'Gebet']), true);
       expect(await labels.save('1', ['Gebet', 'Schule']), true);
       expect(api.calls, isEmpty, reason: 'nothing goes to the server offline');
@@ -378,7 +378,7 @@ void main() {
         ..api = api
         ..offline = offline
         ..bookOf = ((id) => p.fullLibrary.where((b) => b.id == id).firstOrNull)
-        ..patchBook = p.patchBook;
+        ..patchItem = p.patchItem;
       expect(await labels.save('1', ['Gebet']), true);
       expect(offline.outbox.entries.single.add, ['Gebet']);
       // A refusal of the server is no waiting: it is shown as it is.
@@ -395,7 +395,7 @@ void main() {
         ..offline = offline
         ..bookOf = ((id) => p.fullLibrary.where((b) => b.id == id).firstOrNull)
         ..booksNow = (() => p.library)
-        ..removeBook = p.removeBookLocally;
+        ..removeBook = p.removeItemLocally;
       expect(await hiding.hideBook('1', true), true);
       expect([for (final b in p.library) b.id], ['2', '3']);
       expect(hiding.state.books.single.title, 'Eins');

@@ -6,13 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/voice/voice_match.dart';
 
-Book book(
+LibraryItem book(
   String id,
   String title,
   String author, {
   List<String> labels = const [],
   String? narrator,
-}) => Book(
+}) => LibraryItem(
   id: id,
   title: title,
   author: author,

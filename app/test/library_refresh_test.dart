@@ -9,7 +9,7 @@ import 'package:psalm/player_controller.dart';
 import 'package:psalm/server/server_source.dart';
 import 'package:psalm/widgets.dart';
 
-Book _book(String id, {int tracks = 3}) => Book(
+LibraryItem _book(String id, {int tracks = 3}) => LibraryItem(
   id: id,
   title: 'Book $id',
   author: 'A',

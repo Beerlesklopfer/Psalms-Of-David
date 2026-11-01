@@ -7,7 +7,7 @@ import 'package:psalm/models.dart';
 import 'package:psalm/offline/library_cache.dart';
 import 'package:psalm/server/server_source.dart';
 
-Book _book(String id, {String? barcode}) => Book(
+LibraryItem _book(String id, {String? barcode}) => LibraryItem(
   id: id,
   title: 'T$id',
   author: 'A',

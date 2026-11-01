@@ -24,7 +24,7 @@ class _Source extends MediaSource {
   Future<String> fetchPart(Track track) async => '/tmp/none';
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished}) async {
     reports.add('${book.id} ${position.inSeconds} $finished');
     if (failWith != null) throw failWith!;
   }

@@ -55,7 +55,7 @@ String? scannedGtin(String raw, {bool upcE = false}) {
 }
 
 /// The books whose barcode is the same product as [code] (compared as GTIN-14, so UPC-A and EAN-13 with a leading 0 match).
-List<Book> booksWithBarcode(Iterable<Book> books, String code) {
+List<LibraryItem> booksWithBarcode(Iterable<LibraryItem> books, String code) {
   final wanted = toGtin14(cleanBarcode(code));
   return [
     for (final b in books)

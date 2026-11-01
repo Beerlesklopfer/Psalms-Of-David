@@ -43,7 +43,7 @@ class _Source extends MediaSource {
 
   @override
   Future<void> saveProgress(
-    Book book,
+    LibraryItem book,
     Track track,
     Duration position, {
     required bool finished,

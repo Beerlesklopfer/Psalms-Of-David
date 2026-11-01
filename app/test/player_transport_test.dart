@@ -11,7 +11,7 @@ import 'package:psalm/player/engine.dart';
 import 'package:psalm/player/transport.dart';
 import 'package:psalm/player_controller.dart';
 
-Book _book() => Book(
+LibraryItem _book() => LibraryItem(
       id: '7',
       title: 'Book',
       author: 'A',
@@ -21,7 +21,7 @@ Book _book() => Book(
 
 void main() {
   test('every command and event survives toMap, JSON and fromMap', () {
-    final b = BookData.of(_book());
+    final b = LibraryItemData.of(_book());
     final commands = <PlayerCommand>[
       OpenCommand(b, trackIndex: 1, startMs: 5, forceReload: true),
       const ToggleCommand(),
@@ -70,7 +70,7 @@ void main() {
     final backend = FakeBackend();
     final events = <PlayerEvent>[];
     final t = InProcessTransport((emit) => PlayerEngine(backend: backend, emit: emit), roundTrip: true)..onEvent = events.add;
-    t.send(OpenCommand(BookData.of(_book()), trackIndex: 1, startMs: 1000));
+    t.send(OpenCommand(LibraryItemData.of(_book()), trackIndex: 1, startMs: 1000));
     final snap = events.whereType<PlayerSnapshot>().last;
     expect((snap.bookId, snap.trackIndex, snap.playing, snap.loading), ('7', 1, true, false));
     expect(backend.state, BackendState.playing);

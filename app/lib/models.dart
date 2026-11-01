@@ -39,7 +39,7 @@ class Track {
   /// `mp3` when the server can make an MP3 of the file for a device that cannot play its format (`?as=mp3`); null otherwise (and from an older server).
   final String? transcode;
 
-  /// The labels of this title of its own (the ones of its album come on top, see [Book.labels]).
+  /// The labels of this title of its own (the ones of its album come on top, see [LibraryItem.labels]).
   final List<String> labels;
 
   /// The id of the book (item) this part belongs to, when the track is in a playlist: progress goes to it. Null
@@ -93,8 +93,8 @@ class Track {
   );
 }
 
-class Book {
-  const Book({
+class LibraryItem {
+  const LibraryItem({
     required this.id,
     required this.title,
     required this.author,
@@ -190,7 +190,7 @@ class Book {
   List<int> get discNumbers => (tracks.map((t) => t.disc).toSet().toList()..sort());
 
   /// The same book with other titles, labels or hiding: what the offline view and a change made without the server need.
-  Book copyWith({List<Track>? tracks, List<String>? labels, List<String>? trackLabels, bool? hidden}) => Book(
+  LibraryItem copyWith({List<Track>? tracks, List<String>? labels, List<String>? trackLabels, bool? hidden}) => LibraryItem(
     id: id,
     title: title,
     author: author,

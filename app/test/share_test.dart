@@ -10,7 +10,7 @@ import 'package:psalm/screens/share_button.dart';
 
 import 'labels_test.dart' show FakeLabels;
 
-Book _book({required bool can}) => Book(
+LibraryItem _book({required bool can}) => LibraryItem(
   id: '1',
   title: 'Eins',
   author: 'Autor',

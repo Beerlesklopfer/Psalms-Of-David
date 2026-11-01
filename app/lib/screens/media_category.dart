@@ -11,7 +11,7 @@ enum MediaCategory { all, music, audiobooks, podcasts, radio, playlists, videos,
 
 extension MediaCategoryBooks on MediaCategory {
   /// The books of this category, or null for a category David does not manage yet.
-  List<Book>? pick(List<Book> library) => switch (this) {
+  List<LibraryItem>? pick(List<LibraryItem> library) => switch (this) {
         MediaCategory.all => library,
         MediaCategory.music => library.where((b) => b.kind == 'music').toList(),
         MediaCategory.audiobooks => library.where((b) => b.kind == 'audiobook').toList(),

@@ -25,43 +25,43 @@ List<Track> _tracks(List<int> perDisc) {
   return out;
 }
 
-final demoBooks = <Book>[
-  Book(
+final demoBooks = <LibraryItem>[
+  LibraryItem(
     id: 'follett-kinder-der-freiheit',
     title: 'Kinder der Freiheit',
     author: 'Ken Follett',
     color: const Color(0xFF6E1F2B),
     tracks: _tracks([17, 17, 18]),
   ),
-  Book(
+  LibraryItem(
     id: 'goethe-faust',
     title: 'Faust',
     author: 'Johann Wolfgang von Goethe',
     color: const Color(0xFF1F2F4D),
     tracks: _tracks([10, 10]),
   ),
-  Book(
+  LibraryItem(
     id: 'fontane-effi-briest',
     title: 'Effi Briest',
     author: 'Theodor Fontane',
     color: const Color(0xFF2C4A3E),
     tracks: _tracks([12, 12, 12]),
   ),
-  Book(
+  LibraryItem(
     id: 'storm-schimmelreiter',
     title: 'Der Schimmelreiter',
     author: 'Theodor Storm',
     color: const Color(0xFF3B4150),
     tracks: _tracks([8]),
   ),
-  Book(
+  LibraryItem(
     id: 'luther-psalmen',
     title: 'Die Psalmen',
     author: 'Martin Luther',
     color: const Color(0xFF4A2B3D),
     tracks: _tracks([15]),
   ),
-  Book(
+  LibraryItem(
     id: 'eichendorff-taugenichts',
     title: 'Aus dem Leben eines Taugenichts',
     author: 'Joseph von Eichendorff',

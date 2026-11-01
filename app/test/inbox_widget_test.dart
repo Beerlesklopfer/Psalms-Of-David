@@ -21,7 +21,7 @@ import 'inbox_fakes.dart';
 const _approver = CdRights(mayInsert: true, noApproval: true, mayApprove: true);
 const _starter = CdRights(mayInsert: true);
 
-Book _book(String id) => Book(
+LibraryItem _book(String id) => LibraryItem(
   id: id,
   title: 'Sturz der Titanen',
   author: 'Ken Follett',

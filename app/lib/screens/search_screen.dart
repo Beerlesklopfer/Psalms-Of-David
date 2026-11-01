@@ -89,9 +89,9 @@ class _SearchScreenState extends State<SearchScreen> {
     // Labels chosen and nothing typed: the books with those labels are the hits.
     final byLabels = query.isEmpty && _labels.isNotEmpty;
     final found = byLabels
-        ? SearchGroups(pool ?? const <Book>[], const [], const [])
-        : searchGroups(pool ?? const <Book>[], query);
-    final authors = {for (final b in pool ?? const <Book>[]) b.author}.toList()..sort();
+        ? SearchGroups(pool ?? const <LibraryItem>[], const [], const [])
+        : searchGroups(pool ?? const <LibraryItem>[], query);
+    final authors = {for (final b in pool ?? const <LibraryItem>[]) b.author}.toList()..sort();
     // The podcasts and stations that fit: the name contains the text and they carry all chosen labels; with nothing typed and no label none are listed.
     final feedsOn = withFeeds && (query.isNotEmpty || _labels.isNotEmpty);
     bool fits(String name, List<String> labels) =>
@@ -230,7 +230,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   leading: SizedBox.square(dimension: 48, child: Cover(book: b)),
                   title: Text(b.title),
                   subtitle: Text(b.author),
-                  onTap: () => openBook(context, b),
+                  onTap: () => openItem(context, b),
                 );
               },
             ),

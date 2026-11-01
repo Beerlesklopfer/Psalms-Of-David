@@ -5,9 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/l10n/app_localizations.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
-import 'package:psalm/screens/book_screen.dart';
+import 'package:psalm/screens/item_screen.dart';
 
-Book _book({String? blurb}) => Book(
+LibraryItem _book({String? blurb}) => LibraryItem(
   id: '1',
   title: 'Kinder der Freiheit',
   author: 'Ken Follett',
@@ -16,12 +16,12 @@ Book _book({String? blurb}) => Book(
   blurb: blurb,
 );
 
-Widget _app(Book book) => PlayerScope(
+Widget _app(LibraryItem book) => PlayerScope(
   controller: PlayerController([book]),
   child: MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
-    home: BookScreen(book: book),
+    home: ItemScreen(book: book),
   ),
 );
 

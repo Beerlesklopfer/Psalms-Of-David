@@ -45,13 +45,13 @@ class PlayerController extends ChangeNotifier {
   PlayerEngine? get _engine => switch (_transport) { InProcessTransport(:final engine) => engine, _ => null };
 
   /// What the lists show: the library of the server, or in the offline view the downloaded titles of it.
-  List<Book> library;
+  List<LibraryItem> library;
 
-  List<Book>? _full;
+  List<LibraryItem>? _full;
   bool _offlineView = false;
 
   /// The whole library of the server (what [library] is when the app is online).
-  List<Book> get fullLibrary => _full ?? library;
+  List<LibraryItem> get fullLibrary => _full ?? library;
 
   /// Offline mode: set by the app; the progress of the listening then waits in its outbox for the server.
   OfflineController? get offline => _offline;
@@ -84,11 +84,11 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<Book> _visible(List<Book> all) => _offlineView && source != null ? downloadedOnly(all, source!.isDownloaded) : all;
+  List<LibraryItem> _visible(List<LibraryItem> all) => _offlineView && source != null ? downloadedOnly(all, source!.isDownloaded) : all;
 
   /// Changes a book of the library on this device (labels set without the server, a title with new labels): the change shows at once.
-  void patchBook(String id, Book Function(Book) change) {
-    List<Book> apply(List<Book> list) => [for (final b in list) b.id == id ? change(b) : b];
+  void patchItem(String id, LibraryItem Function(LibraryItem) change) {
+    List<LibraryItem> apply(List<LibraryItem> list) => [for (final b in list) b.id == id ? change(b) : b];
     _full = apply(fullLibrary);
     library = apply(library);
     if (book?.id == id) book = library.where((b) => b.id == id).firstOrNull ?? change(book!);
@@ -96,7 +96,7 @@ class PlayerController extends ChangeNotifier {
   }
 
   /// Takes a book out of the lists (hidden without the server; the server decides when it is back).
-  void removeBookLocally(String id) {
+  void removeItemLocally(String id) {
     _full = [for (final b in fullLibrary) if (b.id != id) b];
     library = [for (final b in library) if (b.id != id) b];
     notifyListeners();
@@ -145,7 +145,7 @@ class PlayerController extends ChangeNotifier {
 
   // ---- The mirror of the engine: set by its snapshots, changed by the commands below -------------------
 
-  Book? _book;
+  LibraryItem? _book;
   int _trackIndex = 0;
   bool _playing = false;
   double _speed = 1.0;
@@ -160,18 +160,18 @@ class PlayerController extends ChangeNotifier {
   bool _sentWrites = false;
 
   /// The books handed to the engine, by id, so that an event about a book that is no longer open finds it.
-  final Map<String, Book> _known = {};
+  final Map<String, LibraryItem> _known = {};
 
-  Book? get book => _book;
+  LibraryItem? get book => _book;
 
   /// Setting the book (tests, library changes) moves the place of the engine without touching the sound.
-  set book(Book? value) {
+  set book(LibraryItem? value) {
     _book = value;
     if (value == null) {
       _send(const SetPlaceCommand(clearBook: true));
     } else {
       _known[value.id] = value;
-      _send(SetPlaceCommand(book: BookData.of(value)));
+      _send(SetPlaceCommand(book: LibraryItemData.of(value)));
     }
   }
 
@@ -228,18 +228,18 @@ class PlayerController extends ChangeNotifier {
 
   Track? get track => book?.tracks[trackIndex];
 
-  void Function(Book book, Track track, Duration position)? _onPlaylistPosition;
+  void Function(LibraryItem book, Track track, Duration position)? _onPlaylistPosition;
 
   /// Called when the place in a playlist is written down (for the playlists to remember it); null elsewhere.
-  void Function(Book book, Track track, Duration position)? get onPlaylistPosition => _onPlaylistPosition;
-  set onPlaylistPosition(void Function(Book book, Track track, Duration position)? value) {
+  void Function(LibraryItem book, Track track, Duration position)? get onPlaylistPosition => _onPlaylistPosition;
+  set onPlaylistPosition(void Function(LibraryItem book, Track track, Duration position)? value) {
     _onPlaylistPosition = value;
     _syncEnv();
   }
 
   /// The book to show for what plays: for a playlist the book of the track that plays now (its cover, its
   /// author), so a change across the border of two books shows the right one; else [book].
-  Book? get shownBook {
+  LibraryItem? get shownBook {
     final b = book, t = track;
     if (b == null || b.kind != kPlaylistKind || t == null) return b;
     return library.where((x) => x.id == t.itemId).firstOrNull ?? b;
@@ -286,11 +286,11 @@ class PlayerController extends ChangeNotifier {
   }
 
   /// The full book of [shown] (the offline view may have cut it down to the downloaded tracks); [shown] itself if there is no other.
-  Book _fullOf(Book shown) => fullLibrary.where((b) => b.id == shown.id).firstOrNull ?? shown;
+  LibraryItem _fullOf(LibraryItem shown) => fullLibrary.where((b) => b.id == shown.id).firstOrNull ?? shown;
 
   /// The place of the track [index] of [shown] in the full book: what is remembered counts in the full book, so that it still fits when the
   /// offline view shows fewer tracks.
-  int _fullIndex(Book shown, int index) {
+  int _fullIndex(LibraryItem shown, int index) {
     final full = _fullOf(shown);
     if (identical(full, shown) || index < 0 || index >= shown.tracks.length) return index;
     final at = full.tracks.indexWhere((t) => t.partId != null && t.partId == shown.tracks[index].partId);
@@ -298,7 +298,7 @@ class PlayerController extends ChangeNotifier {
   }
 
   /// The place in [shown] of the track that is remembered at [stored] of the full book; null if that track is not in [shown] (not downloaded).
-  int? _shownIndex(Book shown, int stored) {
+  int? _shownIndex(LibraryItem shown, int stored) {
     if (shown.tracks.isEmpty || stored < 0) return null;
     final full = _fullOf(shown);
     // Nothing was cut: the index counts as it is, and one past the end (the book got shorter) is the last part.
@@ -309,7 +309,7 @@ class PlayerController extends ChangeNotifier {
   }
 
   /// Fraction of the whole book, 0 to 1.
-  double progressOf(Book b) {
+  double progressOf(LibraryItem b) {
     final int index;
     final Duration pos;
     if (b.id == book?.id) {
@@ -355,10 +355,10 @@ class PlayerController extends ChangeNotifier {
 
   bool isTrackDownloaded(Track t) => source?.isDownloaded(t) ?? false;
 
-  int downloadedCount(Book b) => b.tracks.where(isTrackDownloaded).length;
+  int downloadedCount(LibraryItem b) => b.tracks.where(isTrackDownloaded).length;
 
   /// Fetches every part of [b] that is not on the device yet, one after the other.
-  Future<void> downloadBook(Book b) async {
+  Future<void> downloadItem(LibraryItem b) async {
     final s = source;
     if (s == null || !s.canDownload || downloads.containsKey(b.id)) return;
     downloadError = null;
@@ -398,7 +398,7 @@ class PlayerController extends ChangeNotifier {
 
   /// The name of the playlist file (without the ending) next to the downloads of [b]: one per book, one per
   /// playlist. Null for what is not kept as parts (episodes, stations).
-  String? m3uNameOf(Book b) {
+  String? m3uNameOf(LibraryItem b) {
     if (b.kind == kPlaylistKind) return 'playlist-${b.id.substring(kPlaylistBookPrefix.length)}';
     if (b.kind == 'podcast' || b.isStream) return null;
     return 'book-${b.id}';
@@ -406,7 +406,7 @@ class PlayerController extends ChangeNotifier {
 
   /// Writes the extended M3U of [b] again: the parts that are on the device, in order, with paths relative to
   /// the folder. With no part left the file is removed. Called when parts come in and when the download goes.
-  Future<void> _writePlaylistFile(Book b) async {
+  Future<void> _writePlaylistFile(LibraryItem b) async {
     final s = source;
     final name = m3uNameOf(b);
     if (s == null || name == null) return;
@@ -424,12 +424,12 @@ class PlayerController extends ChangeNotifier {
   }
 
   /// Stops a running download after the part that is coming in.
-  void cancelDownload(Book b) {
+  void cancelDownload(LibraryItem b) {
     if (downloads.containsKey(b.id)) _cancelled.add(b.id);
   }
 
   /// Deletes the downloaded parts of [b] from the device.
-  Future<void> removeDownload(Book b) async {
+  Future<void> removeDownload(LibraryItem b) async {
     final s = source;
     if (s == null) return;
     for (final t in b.tracks) {
@@ -450,7 +450,7 @@ class PlayerController extends ChangeNotifier {
   List<FamilyMember> heard = const [];
 
   /// The books of the library that [m] listened to lately, the latest first (unknown ids are skipped).
-  List<Book> booksOf(FamilyMember m) => [
+  List<LibraryItem> booksOf(FamilyMember m) => [
         for (final id in m.bookIds)
           for (final b in library.where((b) => b.id == id).take(1)) b,
       ];
@@ -467,7 +467,7 @@ class PlayerController extends ChangeNotifier {
   }
 
   /// The books of [newIds] that are in the library, in the order of the server. Unknown ids are skipped.
-  List<Book> newBooks() => [
+  List<LibraryItem> newBooks() => [
         for (final id in newIds)
           for (final b in library.where((b) => b.id == id).take(1)) b,
       ];
@@ -477,11 +477,11 @@ class PlayerController extends ChangeNotifier {
   final Set<String> _heard = {};
 
   /// Has this user heard track [index] of [b] to the end: the server says so, or it happened just now.
-  bool isTrackPlayed(Book b, int index) =>
+  bool isTrackPlayed(LibraryItem b, int index) =>
       (index >= 0 && index < b.tracks.length && b.tracks[index].plays > 0) || _heard.contains('${b.id}:$index');
 
   /// How often [b] was heard as a whole. The server knows; a book finished just now counts once at least.
-  int playsOf(Book b) {
+  int playsOf(LibraryItem b) {
     if (b.plays > 0 || b.tracks.isEmpty) return b.plays;
     return [for (var i = 0; i < b.tracks.length; i++) i].every((i) => isTrackPlayed(b, i)) ? 1 : 0;
   }
@@ -490,14 +490,14 @@ class PlayerController extends ChangeNotifier {
   /// date here, so the home page shows a book at once when it is opened.
   final List<String> recentIds = [];
 
-  void _touchRecent(Book b) {
+  void _touchRecent(LibraryItem b) {
     recentIds
       ..remove(b.id)
       ..insert(0, b.id);
   }
 
   /// The books listened to last, the latest first, at most [count].
-  List<Book> recentBooks([int count = 6]) => [
+  List<LibraryItem> recentItems([int count = 6]) => [
         for (final id in recentIds)
           for (final b in library.where((b) => b.id == id).take(1)) b,
       ].take(count).toList();
@@ -594,7 +594,7 @@ class PlayerController extends ChangeNotifier {
   /// known (or the book is gone) the first book of the library is shown.
   void _openWhereLeftOff(LoadedLibrary loaded) {
     final mine = lastStore?.read();
-    Book? find(String id) => library.where((b) => b.id == id).firstOrNull;
+    LibraryItem? find(String id) => library.where((b) => b.id == id).firstOrNull;
     final fromServer = loaded.lastBookId == null ? null : find(loaded.lastBookId!);
     final fromDevice = mine == null ? null : find(mine.bookId);
     if (fromDevice != null && (fromServer == null || mine!.at >= loaded.lastAt)) {
@@ -677,20 +677,20 @@ class PlayerController extends ChangeNotifier {
     final index = b?.tracks.indexWhere((t) => t.partId == hit.partId) ?? -1;
     if (b == null || index < 0) return false;
     _saveResume();
-    _openBook(b, index, hit.position, forceReload: true);
+    _openItem(b, index, hit.position, forceReload: true);
     return true;
   }
 
   /// Hands a book to the engine and plays it from [index] at [start].
-  void _openBook(Book b, int index, Duration start, {bool forceReload = false}) {
+  void _openItem(LibraryItem b, int index, Duration start, {bool forceReload = false}) {
     _book = b;
     _known[b.id] = b;
-    _send(OpenCommand(BookData.of(b), trackIndex: index, startMs: start.inMilliseconds, forceReload: forceReload));
+    _send(OpenCommand(LibraryItemData.of(b), trackIndex: index, startMs: start.inMilliseconds, forceReload: forceReload));
     notifyListeners();
   }
 
   /// Opens a book and plays it; [start] is where in the track it begins (an episode goes on where the account stopped).
-  void open(Book b, {int? track, Duration? start}) {
+  void open(LibraryItem b, {int? track, Duration? start}) {
     _localAt = DateTime.now().millisecondsSinceEpoch;
     _saveResume();
     _touchRecent(b);
@@ -706,7 +706,7 @@ class PlayerController extends ChangeNotifier {
       at = shown == null ? Duration.zero : r!.position;
     }
     if (start != null) at = start;
-    _openBook(b, index, at);
+    _openItem(b, index, at);
   }
 
   void toggle() {
@@ -723,7 +723,7 @@ class PlayerController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    final last = recentBooks(1).firstOrNull;
+    final last = recentItems(1).firstOrNull;
     if (last != null) open(last);
   }
 

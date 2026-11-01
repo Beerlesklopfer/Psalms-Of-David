@@ -10,11 +10,11 @@ import 'package:psalm/audio/file_formats.dart';
 import 'package:psalm/l10n/app_localizations.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
-import 'package:psalm/screens/book_screen.dart';
+import 'package:psalm/screens/item_screen.dart';
 import 'package:psalm/server/api_client.dart';
 import 'package:psalm/server/server_source.dart';
 
-Book _book() => Book(
+LibraryItem _book() => LibraryItem(
   id: '1',
   title: 'Caipiranha',
   author: 'Duo Camillo',
@@ -39,7 +39,7 @@ Widget _app(PlayerController p) => PlayerScope(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
     locale: const Locale('en'),
-    home: BookScreen(book: p.library.first),
+    home: ItemScreen(book: p.library.first),
   ),
 );
 
@@ -48,7 +48,7 @@ class _Source extends MediaSource {
   Future<String> fetchPart(Track track) async => '/cache/${track.partId}.audio';
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {}
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished}) async {}
 
   @override
   Future<PassageHit?> resolvePassage(String text) async => null;
@@ -128,7 +128,7 @@ void main() {
   test('on the iPhone a track with an MP3 on offer is played, and the message stays only if the server cannot make it', () async {
     runsOnApple = () => true;
     const ogg = Track(disc: 1, number: 1, title: 'Der neue Himmel', length: Duration(minutes: 3), partId: 10, format: 'ogg', transcode: 'mp3');
-    Book book() => Book(id: '1', title: 'Caipiranha', author: 'Duo Camillo', color: const Color(0xFF6E1F2B), tracks: const [ogg]);
+    LibraryItem book() => LibraryItem(id: '1', title: 'Caipiranha', author: 'Duo Camillo', color: const Color(0xFF6E1F2B), tracks: const [ogg]);
 
     final backend = FakeBackend();
     final p = PlayerController([book()], backend: backend, source: _Source());
@@ -203,7 +203,7 @@ class _FailingSource extends MediaSource {
   Future<String> fetchPart(Track track) => Future.error(ApiException(422, 'transcode_failed'));
 
   @override
-  Future<void> saveProgress(Book book, Track track, Duration position, {required bool finished}) async {}
+  Future<void> saveProgress(LibraryItem book, Track track, Duration position, {required bool finished}) async {}
 
   @override
   Future<PassageHit?> resolvePassage(String text) async => null;

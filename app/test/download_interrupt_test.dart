@@ -15,7 +15,7 @@ import 'package:psalm/server/server_source.dart';
 final _body = List<int>.generate(200 * 1024, (i) => i % 251);
 final _hash = sha256.convert(_body).toString();
 
-Book _book() => Book(
+LibraryItem _book() => LibraryItem(
   id: '1',
   title: 'Album',
   author: 'X',
@@ -76,7 +76,7 @@ void main() {
       // Run 1
       final s1 = ServerSource(api(), dir);
       final p1 = PlayerController([b], source: s1);
-      final run1 = p1.downloadBook(b);
+      final run1 = p1.downloadItem(b);
       if (failMode == 'hang') {
         await Future<void>.delayed(const Duration(seconds: 1)); // "app closed" while part 2 is half there
       } else {
@@ -90,7 +90,7 @@ void main() {
       ServerSource.dropPartials(dir);
       final s2 = ServerSource(api(), dir);
       final p2 = PlayerController([b], source: s2);
-      await p2.downloadBook(b).timeout(const Duration(seconds: 10));
+      await p2.downloadItem(b).timeout(const Duration(seconds: 10));
       // ignore: avoid_print
       print('[$failMode] after run2: ${dir.listSync().map((e) => '${e.uri.pathSegments.last}:${(e as File).lengthSync()}').toList()} error=${p2.downloadError}');
 
@@ -118,7 +118,7 @@ void main() {
     final b = _book();
     final s = ServerSource(ApiClient(address: '127.0.0.1:${server.port}', token: 't'), dir);
     final p = PlayerController([b], source: s);
-    await p.downloadBook(b);
+    await p.downloadItem(b);
     expect(s.isDownloaded(b.tracks[0]), isTrue);
     expect(s.isDownloaded(b.tracks[1]), isFalse);
     expect(s.isDownloaded(b.tracks[2]), isFalse);
@@ -137,12 +137,12 @@ void main() {
     final b = _book();
     final s = ServerSource(ApiClient(address: '127.0.0.1:${server.port}', token: 't'), dir);
     final p = PlayerController([b], source: s);
-    await p.downloadBook(b);
+    await p.downloadItem(b);
     expect(p.downloadedCount(b), 3);
     // Same size, other content: only the hash can tell.
     final bad = File(await s.fetchPart(b.tracks[1]));
     bad.writeAsBytesSync(List<int>.filled(_body.length, 7));
-    await p.downloadBook(b);
+    await p.downloadItem(b);
     expect(bad.readAsBytesSync(), _body, reason: 'the corrupt part was fetched again');
     expect(File(await s.fetchPart(b.tracks[0])).readAsBytesSync(), _body, reason: 'a good part stays');
   });

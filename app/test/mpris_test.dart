@@ -7,7 +7,7 @@ import 'package:psalm/audio/mpris.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
 
-Book _book() => Book(
+LibraryItem _book() => LibraryItem(
   id: '7',
   title: 'Winter der Welt',
   author: 'Ken Follett',

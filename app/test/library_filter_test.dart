@@ -12,7 +12,7 @@ import 'package:psalm/screens/search_screen.dart';
 import 'package:psalm/server/api_client.dart';
 import 'package:psalm/server/server_source.dart';
 
-Book _book(String id, String kind, {String? genre}) => Book(
+LibraryItem _book(String id, String kind, {String? genre}) => LibraryItem(
   id: id,
   title: 'Title $id',
   author: 'Artist',
@@ -84,7 +84,7 @@ void main() {
   final all = find.byKey(const Key('genre-all'));
   final other = find.byKey(const Key('genre-other'));
 
-  PlayerController music({List<Book>? books, List<String> genres = const ['Rock', 'Jazz']}) {
+  PlayerController music({List<LibraryItem>? books, List<String> genres = const ['Rock', 'Jazz']}) {
     final p = PlayerController(
       books ??
           [
