@@ -29,7 +29,7 @@ class PlayerController extends ChangeNotifier {
     _transport.onEvent = _onEvent;
     final b = backend;
     if (b != null && b.bufferAdjustable) b.setBufferSeconds(playbackStore?.readBufferSeconds() ?? kBufferDefaultSeconds);
-    showBookTime = playbackStore?.readShowBookTime() ?? false;
+    showItemTime = playbackStore?.readShowItemTime() ?? false;
     // Demo: the first book has already been listened to.
     if (library.isEmpty) return;
     book = library.first;
@@ -113,11 +113,11 @@ class PlayerController extends ChangeNotifier {
   final PlaybackSettingsStore? playbackStore;
 
   /// The time of the mini player (and its bar) is the time of the whole book (CD), not of the track that plays. The listener switches it by a tap.
-  bool showBookTime = false;
+  bool showItemTime = false;
 
   void toggleTimeScope() {
-    showBookTime = !showBookTime;
-    playbackStore?.writeShowBookTime(showBookTime);
+    showItemTime = !showItemTime;
+    playbackStore?.writeShowItemTime(showItemTime);
     notifyListeners();
   }
 
@@ -168,7 +168,7 @@ class PlayerController extends ChangeNotifier {
   set book(LibraryItem? value) {
     _book = value;
     if (value == null) {
-      _send(const SetPlaceCommand(clearBook: true));
+      _send(const SetPlaceCommand(clearItem: true));
     } else {
       _known[value.id] = value;
       _send(SetPlaceCommand(book: LibraryItemData.of(value)));
@@ -239,7 +239,7 @@ class PlayerController extends ChangeNotifier {
 
   /// The book to show for what plays: for a playlist the book of the track that plays now (its cover, its
   /// author), so a change across the border of two books shows the right one; else [book].
-  LibraryItem? get shownBook {
+  LibraryItem? get shownItem {
     final b = book, t = track;
     if (b == null || b.kind != kPlaylistKind || t == null) return b;
     return library.where((x) => x.id == t.itemId).firstOrNull ?? b;
@@ -261,7 +261,7 @@ class PlayerController extends ChangeNotifier {
   Duration get bookTotal => book?.total ?? Duration.zero;
 
   /// Jumps to a place in the whole book: to the track that holds it, and to the place in it.
-  void seekBook(Duration to) {
+  void seekItem(Duration to) {
     final b = book;
     if (b == null || b.tracks.isEmpty) return;
     var rest = to < Duration.zero ? Duration.zero : to;
@@ -414,7 +414,7 @@ class PlayerController extends ChangeNotifier {
     for (final t in b.tracks) {
       final path = s.relativePath(t);
       if (path == null) continue;
-      entries.add(M3uEntry(duration: t.live ? null : t.length, artist: t.bookAuthor ?? b.author, title: t.title, path: path));
+      entries.add(M3uEntry(duration: t.live ? null : t.length, artist: t.itemAuthor ?? b.author, title: t.title, path: path));
     }
     try {
       await s.writeM3u(name, entries);
@@ -450,8 +450,8 @@ class PlayerController extends ChangeNotifier {
   List<FamilyMember> heard = const [];
 
   /// The books of the library that [m] listened to lately, the latest first (unknown ids are skipped).
-  List<LibraryItem> booksOf(FamilyMember m) => [
-        for (final id in m.bookIds)
+  List<LibraryItem> itemsOf(FamilyMember m) => [
+        for (final id in m.itemIds)
           for (final b in library.where((b) => b.id == id).take(1)) b,
       ];
 
@@ -595,7 +595,7 @@ class PlayerController extends ChangeNotifier {
   void _openWhereLeftOff(LoadedLibrary loaded) {
     final mine = lastStore?.read();
     LibraryItem? find(String id) => library.where((b) => b.id == id).firstOrNull;
-    final fromServer = loaded.lastBookId == null ? null : find(loaded.lastBookId!);
+    final fromServer = loaded.lastItemId == null ? null : find(loaded.lastItemId!);
     final fromDevice = mine == null ? null : find(mine.bookId);
     if (fromDevice != null && (fromServer == null || mine!.at >= loaded.lastAt)) {
       book = fromDevice;

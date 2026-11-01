@@ -23,9 +23,9 @@ Widget _app(PlayerController p, Widget child) => PlayerScope(
 );
 
 void main() {
-  bookTests();
+  itemTests();
   testWidgets('the thin bar of the mini player is a seek bar: a tap jumps there', (tester) async {
-    final p = PlayerController(demoBooks)..seek(Duration.zero);
+    final p = PlayerController(demoItems)..seek(Duration.zero);
     await tester.pumpWidget(_app(p, const SeekBar(compact: true)));
     final box = tester.getRect(find.byType(Slider));
     await tester.tapAt(Offset(box.left + box.width * 0.75, box.center.dy));
@@ -36,7 +36,7 @@ void main() {
   });
 
   testWidgets('dragging follows the finger and the jump is made when it is let go', (tester) async {
-    final p = PlayerController(demoBooks)..seek(Duration.zero);
+    final p = PlayerController(demoItems)..seek(Duration.zero);
     await tester.pumpWidget(_app(p, const SeekBar()));
     final box = tester.getRect(find.byType(Slider));
     final gesture = await tester.startGesture(Offset(box.left + 20, box.center.dy));
@@ -55,7 +55,7 @@ void main() {
   });
 
   testWidgets('the mini player has it, and without a book there is nothing', (tester) async {
-    final p = PlayerController(demoBooks);
+    final p = PlayerController(demoItems);
     await tester.pumpWidget(_app(p, const MiniPlayer()));
     expect(find.byType(SeekBar), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsNothing, reason: 'no display-only bar any more');
@@ -67,9 +67,9 @@ void main() {
   });
 }
 
-void bookTests() {
+void itemTests() {
   testWidgets('the bar of the mini player covers the whole book and jumps across tracks', (tester) async {
-    final p = PlayerController(demoBooks)
+    final p = PlayerController(demoItems)
       ..seek(Duration.zero)
       ..toggleTimeScope(); // the time of the whole CD (the default is the time of the track)
     final book = p.book!;
@@ -91,34 +91,34 @@ void bookTests() {
   });
 
   testWidgets('a tap on the time of the mini player switches between the track and the whole CD', (tester) async {
-    final p = PlayerController(demoBooks)..seek(const Duration(seconds: 30));
+    final p = PlayerController(demoItems)..seek(const Duration(seconds: 30));
     await tester.pumpWidget(_app(p, const MiniPlayer()));
     // The track is the default: its position and its length.
-    expect(p.showBookTime, isFalse);
+    expect(p.showItemTime, isFalse);
     expect(find.text('${formatDuration(p.position)} / ${formatDuration(p.track!.length)}'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('time-scope')));
     await tester.pump();
-    expect(p.showBookTime, isTrue);
+    expect(p.showItemTime, isTrue);
     expect(find.text('${formatDuration(p.bookPosition)} / ${formatDuration(p.bookTotal)}'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('time-scope')));
     await tester.pump();
-    expect(p.showBookTime, isFalse);
+    expect(p.showItemTime, isFalse);
     p.dispose();
   });
 
   test('a place in the book is a track and a place in it', () {
-    final p = PlayerController(demoBooks);
+    final p = PlayerController(demoItems);
     final b = p.book!;
-    p.seekBook(Duration.zero);
+    p.seekItem(Duration.zero);
     expect((p.trackIndex, p.position), (0, Duration.zero));
     final first = b.tracks[0].length;
-    p.seekBook(first + const Duration(seconds: 5));
+    p.seekItem(first + const Duration(seconds: 5));
     expect((p.trackIndex, p.position), (1, const Duration(seconds: 5)));
     expect(p.bookPosition, first + const Duration(seconds: 5));
-    p.seekBook(b.total * 2);
+    p.seekItem(b.total * 2);
     expect(p.trackIndex, b.tracks.length - 1);
     expect(p.position, b.tracks.last.length, reason: 'beyond the end is the end');
-    p.seekBook(const Duration(days: -1));
+    p.seekItem(const Duration(days: -1));
     expect((p.trackIndex, p.position), (0, Duration.zero));
     p.dispose();
   });

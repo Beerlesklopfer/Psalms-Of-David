@@ -98,7 +98,7 @@ void main() {
     tearDown(() => p.dispose());
 
     test('to the server, with its id (before, an episode was never reported: it has no part)', () {
-      p.open(_episode(5).asBook('Kinderfunk'), start: const Duration(seconds: 42));
+      p.open(_episode(5).asItem('Kinderfunk'), start: const Duration(seconds: 42));
       p.flush();
       expect(source.reports, contains('ep:5 42 false'));
       p.toggle();
@@ -107,7 +107,7 @@ void main() {
     test('offline it waits in the outbox, and so does a report that finds no connection', () async {
       final offline = OfflineController(manual: true);
       p.offline = offline;
-      p.open(_episode(5).asBook('Kinderfunk'), start: const Duration(seconds: 42));
+      p.open(_episode(5).asItem('Kinderfunk'), start: const Duration(seconds: 42));
       p.flush();
       expect(source.reports, isEmpty, reason: 'nothing is asked of the server');
       expect([for (final e in offline.outbox.entries) (e.kind, e.data['id'], e.data['position_ms'])], [(OutboxChange.episode, 5, 42000)]);
@@ -128,7 +128,7 @@ void main() {
       final downloads = PodcastDownloads(cache: Directory('${dir.path}/parts'), fetcher: FakeFetcher());
       p.podcastDownloads = downloads;
       await downloads.download(_episode(5), const Podcast(id: 1, title: 'Kinderfunk', description: '', approved: true, unheard: 0));
-      p.open(_episode(5).asBook('Kinderfunk'), start: const Duration(seconds: 42));
+      p.open(_episode(5).asItem('Kinderfunk'), start: const Duration(seconds: 42));
       p.flush();
       expect(downloads.entryOf(5)?.positionMs, 42000);
       p.toggle();

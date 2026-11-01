@@ -27,7 +27,7 @@ class PlayerScreen extends StatelessWidget {
       return Scaffold(body: Center(child: Text(l.nothingSelected)));
     }
     // In a playlist the book of the track that plays now (its cover, author and title).
-    final shown = p.shownBook ?? book;
+    final shown = p.shownItem ?? book;
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
 
@@ -98,7 +98,7 @@ class PlayerScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              const SeekBar(wholeBook: true),
+              const SeekBar(wholeItem: true),
               ],
               const SizedBox(height: 8),
               Row(

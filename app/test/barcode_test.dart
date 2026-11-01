@@ -64,10 +64,10 @@ void main() {
 
   test('books are matched by GTIN-14, so UPC-A and EAN-13 with a leading 0 meet', () {
     final books = [_book('1', barcode: '0036000291452'), _book('2', barcode: '4006381333931'), _book('3'), _book('4', barcode: '')];
-    expect([for (final b in booksWithBarcode(books, '036000291452')) b.id], ['1']);
-    expect([for (final b in booksWithBarcode(books, '0036000291452')) b.id], ['1']);
-    expect([for (final b in booksWithBarcode(books, '4006381 333931')) b.id], ['2']);
-    expect(booksWithBarcode(books, '96385074'), isEmpty);
+    expect([for (final b in itemsWithBarcode(books, '036000291452')) b.id], ['1']);
+    expect([for (final b in itemsWithBarcode(books, '0036000291452')) b.id], ['1']);
+    expect([for (final b in itemsWithBarcode(books, '4006381 333931')) b.id], ['2']);
+    expect(itemsWithBarcode(books, '96385074'), isEmpty);
   });
 
   test('the answer of the server is read, invalid and found', () {
@@ -88,10 +88,10 @@ void main() {
   });
 
   test('the barcode survives the offline cache, and an old cache without it still loads', () {
-    final json = bookToJson(_book('5', barcode: '4006381333931'));
-    expect(bookFromJson(json).barcode, '4006381333931');
+    final json = itemToJson(_book('5', barcode: '4006381333931'));
+    expect(itemFromJson(json).barcode, '4006381333931');
     json.remove('barcode');
-    expect(bookFromJson(json).barcode, isNull);
+    expect(itemFromJson(json).barcode, isNull);
     final lib = LoadedLibrary([_book('5', barcode: '96385074')], const {});
     final back = libraryFromJson(libraryToJson(lib), (_) => null);
     expect(back.books.single.barcode, '96385074');

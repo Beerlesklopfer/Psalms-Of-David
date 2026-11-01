@@ -21,8 +21,8 @@ PlaylistEntry entry(
         title: title,
         duration: Duration(seconds: seconds),
         bookId: bookId,
-        bookTitle: book,
-        bookAuthor: author,
+        itemTitle: book,
+        itemAuthor: author,
       )
     : PlaylistEntry(entryId: entryId, position: position, available: false);
 
@@ -127,8 +127,8 @@ class FakePlaylistApi implements PlaylistApi {
           title: e.title,
           duration: e.duration,
           bookId: e.bookId,
-          bookTitle: e.bookTitle,
-          bookAuthor: e.bookAuthor,
+          itemTitle: e.itemTitle,
+          itemAuthor: e.itemAuthor,
         ),
     ];
     return lists[id] = p.copyWith(entries: numbered);

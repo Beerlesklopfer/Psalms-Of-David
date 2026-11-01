@@ -74,7 +74,7 @@ class Episode {
 
   /// The episode as something the player plays: one track, from the publisher. Its id says which episode it is,
   /// so the position goes back to the server.
-  LibraryItem asBook(String podcast) => LibraryItem(
+  LibraryItem asItem(String podcast) => LibraryItem(
         id: 'ep:$id',
         title: title,
         author: podcast,
@@ -114,7 +114,7 @@ class Station {
   final bool canLabel;
 
   /// The station as something the player plays: a live stream without an end.
-  LibraryItem asBook({Uint8List? logo}) => LibraryItem(
+  LibraryItem asItem({Uint8List? logo}) => LibraryItem(
         id: 'st:$id',
         title: name,
         author: '',

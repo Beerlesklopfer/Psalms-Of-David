@@ -326,9 +326,9 @@ class SetSpeed extends EngineEvent {
 
 /// The place was moved from outside without touching the sound (another device went on, the library changed).
 class SetPlace extends EngineEvent {
-  const SetPlace(super.nowMs, {this.book, this.clearBook = false, this.trackIndex, this.positionMs});
+  const SetPlace(super.nowMs, {this.book, this.clearItem = false, this.trackIndex, this.positionMs});
   final LibraryItemData? book;
-  final bool clearBook;
+  final bool clearItem;
   final int? trackIndex;
   final int? positionMs;
 }
@@ -723,7 +723,7 @@ Transition _step(EngineState s, EngineEvent e) {
       return _to(s.withCore(c.copyWith(speed: e.speed)), [if (c.useBackend) SetBackendSpeed(e.speed)]);
     case SetPlace():
       var core = c.copyWith(
-        book: e.clearBook ? null : (e.book ?? c.book),
+        book: e.clearItem ? null : (e.book ?? c.book),
         trackIndex: e.trackIndex,
         positionMs: e.positionMs,
       );

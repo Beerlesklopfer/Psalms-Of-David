@@ -28,7 +28,7 @@ Map<String, DBusValue> playerProperties(PlayerController p) {
     if (book != null) 'xesam:artist': DBusArray.string([book.author]),
     if (book?.coverUrl != null) 'mpris:artUrl': DBusString(book!.coverUrl!),
   };
-  final hasBook = book != null;
+  final hasItem = book != null;
   return {
     'PlaybackStatus': DBusString(status),
     'Metadata': DBusDict.stringVariant(metadata),
@@ -37,11 +37,11 @@ Map<String, DBusValue> playerProperties(PlayerController p) {
     'MaximumRate': DBusDouble(3.0),
     'Volume': DBusDouble(1.0),
     'Position': DBusInt64(p.position.inMicroseconds),
-    'CanGoNext': DBusBoolean(hasBook && p.trackIndex < book.tracks.length - 1),
-    'CanGoPrevious': DBusBoolean(hasBook),
-    'CanPlay': DBusBoolean(hasBook),
-    'CanPause': DBusBoolean(hasBook),
-    'CanSeek': DBusBoolean(hasBook),
+    'CanGoNext': DBusBoolean(hasItem && p.trackIndex < book.tracks.length - 1),
+    'CanGoPrevious': DBusBoolean(hasItem),
+    'CanPlay': DBusBoolean(hasItem),
+    'CanPause': DBusBoolean(hasItem),
+    'CanSeek': DBusBoolean(hasItem),
     'CanControl': DBusBoolean(true),
   };
 }

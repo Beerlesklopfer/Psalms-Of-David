@@ -89,8 +89,8 @@ class PlaylistEntry {
     this.plays = 0,
     this.lastPlayedAt,
     this.bookId,
-    this.bookTitle = '',
-    this.bookAuthor = '',
+    this.itemTitle = '',
+    this.itemAuthor = '',
   });
 
   /// The id of the entry (for removing and ordering); not the id of the part.
@@ -107,8 +107,8 @@ class PlaylistEntry {
 
   /// The book the part belongs to.
   final int? bookId;
-  final String bookTitle;
-  final String bookAuthor;
+  final String itemTitle;
+  final String itemAuthor;
 
   factory PlaylistEntry.fromJson(Map<String, dynamic> j) {
     final part = j['part'] as Map<String, dynamic>?;
@@ -124,8 +124,8 @@ class PlaylistEntry {
       plays: (part?['plays'] as int?) ?? 0,
       lastPlayedAt: dateFromMs(part?['last_played_at']),
       bookId: book?['id'] as int?,
-      bookTitle: (book?['title'] as String?) ?? '',
-      bookAuthor: (book?['author'] as String?) ?? '',
+      itemTitle: (book?['title'] as String?) ?? '',
+      itemAuthor: (book?['author'] as String?) ?? '',
     );
   }
 
@@ -142,7 +142,7 @@ class PlaylistEntry {
             'last_played_at': lastPlayedAt?.millisecondsSinceEpoch,
           }
         : null,
-    'book': available ? {'id': bookId, 'title': bookTitle, 'author': bookAuthor} : null,
+    'book': available ? {'id': bookId, 'title': itemTitle, 'author': itemAuthor} : null,
   };
 }
 
@@ -457,8 +457,8 @@ class PlaylistController extends ChangeNotifier {
                 plays: e.plays,
                 lastPlayedAt: e.lastPlayedAt,
                 bookId: e.bookId,
-                bookTitle: e.bookTitle,
-                bookAuthor: e.bookAuthor,
+                itemTitle: e.itemTitle,
+                itemAuthor: e.itemAuthor,
               ),
           ],
         ),
@@ -487,8 +487,8 @@ class PlaylistController extends ChangeNotifier {
           plays: x.plays,
           lastPlayedAt: x.lastPlayedAt,
           bookId: x.bookId,
-          bookTitle: x.bookTitle,
-          bookAuthor: x.bookAuthor,
+          itemTitle: x.itemTitle,
+          itemAuthor: x.itemAuthor,
         ),
     ];
     details[id] = d.copyWith(entries: numbered);
@@ -507,7 +507,7 @@ class PlaylistController extends ChangeNotifier {
 
   /// The playlist as one virtual book: the available entries in order; the others are left out, not deleted.
   /// Every track keeps its own part and book, so progress goes to the real item as it always does.
-  LibraryItem bookOf(Playlist p) => LibraryItem(
+  LibraryItem itemOf(Playlist p) => LibraryItem(
     id: '$kPlaylistBookPrefix${p.id}',
     title: p.name,
     author: '',
@@ -527,8 +527,8 @@ class PlaylistController extends ChangeNotifier {
     length: e.duration,
     partId: e.partId,
     itemId: e.bookId == null ? null : '${e.bookId}',
-    bookTitle: e.bookTitle,
-    bookAuthor: e.bookAuthor,
+    itemTitle: e.itemTitle,
+    itemAuthor: e.itemAuthor,
     plays: e.plays,
     lastPlayedAt: e.lastPlayedAt,
   );

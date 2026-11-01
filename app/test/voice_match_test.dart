@@ -45,7 +45,7 @@ void main() {
   });
 
   test('title matches rank before author and label matches', () {
-    final ranked = matchBooks(books, 'Weihnachten').map((b) => b.id).toList();
+    final ranked = matchItems(books, 'Weihnachten').map((b) => b.id).toList();
     expect(ranked.take(2), ['1', '2']);
     expect(ranked.last, '4');
   });

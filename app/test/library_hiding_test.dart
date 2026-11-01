@@ -34,7 +34,7 @@ class FakeHiding implements HidingApi {
     if (refuse != null) throw refuse!;
     final books = [
       ...current.books.where((b) => b.id != id),
-      if (hidden) HiddenBook(id: id, title: 'Der Hobbit', author: 'Tolkien'),
+      if (hidden) HiddenItem(id: id, title: 'Der Hobbit', author: 'Tolkien'),
     ];
     return current = HiddenState(
       showHidden: current.showHidden,

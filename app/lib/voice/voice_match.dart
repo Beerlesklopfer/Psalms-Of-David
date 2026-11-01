@@ -55,7 +55,7 @@ int voiceScore(LibraryItem book, String query) {
 }
 
 /// The books that match [query], best first (equal scores keep the order of [books]).
-List<LibraryItem> matchBooks(List<LibraryItem> books, String query) {
+List<LibraryItem> matchItems(List<LibraryItem> books, String query) {
   final scored = <(int, int, LibraryItem)>[];
   for (var i = 0; i < books.length; i++) {
     final s = voiceScore(books[i], query);
@@ -69,4 +69,4 @@ List<LibraryItem> matchBooks(List<LibraryItem> books, String query) {
 
 /// The best match for [query], or null if nothing matches.
 LibraryItem? bestMatch(List<LibraryItem> books, String query) =>
-    matchBooks(books, query).firstOrNull;
+    matchItems(books, query).firstOrNull;

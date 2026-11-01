@@ -77,7 +77,7 @@ class HomeScreen extends StatelessWidget {
         if (fresh.isNotEmpty) ..._tiles(l.sectionNew, fresh, badge: l.badgeNew),
         // One row for every other member of the family: what they listened to lately.
         for (final m in p.heard)
-          if (p.booksOf(m).isNotEmpty) ..._strip(l.sectionHeardBy(m.name), p.booksOf(m)),
+          if (p.itemsOf(m).isNotEmpty) ..._strip(l.sectionHeardBy(m.name), p.itemsOf(m)),
         // The media time of the family as line charts: one for every member who listened lately, the own first.
         for (final m in p.family) ...[
           SliverToBoxAdapter(child: SectionHeader(m.me ? l.sectionMyMediaTime : l.sectionMediaTimeOf(m.name))),

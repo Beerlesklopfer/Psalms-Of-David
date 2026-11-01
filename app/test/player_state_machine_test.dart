@@ -233,7 +233,7 @@ void main() {
       final i = transition(Idle(_core(null)), SetPlace(_now, book: _server, trackIndex: 1, positionMs: 5));
       expect(i.state, isA<Paused>());
       expect(i.state.core.trackIndex, 1);
-      expect(transition(i.state, const SetPlace(_now, clearBook: true)).state, isA<Idle>());
+      expect(transition(i.state, const SetPlace(_now, clearItem: true)).state, isA<Idle>());
       final h = transition(Playing(_core(_files, loaded: '8:0')), const Halt(_now));
       expect(h.state, isA<Paused>());
       expect(h.state.core.loadedKey, isNull);

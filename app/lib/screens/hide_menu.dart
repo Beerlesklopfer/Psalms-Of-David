@@ -25,15 +25,15 @@ List<HideAction> hideActions(BuildContext context, LibraryItem book) {
   final l = AppLocalizations.of(context);
   final name = book.author;
   final kind = book.kind == 'music' ? 'music' : 'audiobook';
-  final bookHidden = book.hidden;
+  final itemHidden = book.hidden;
   final kindEntry = c.state.authorEntry(name, kind);
   final allEntry = c.state.authorEntry(name, '');
   return [
     HideAction(
       key: 'hide-book',
-      label: bookHidden ? l.showBook : l.hideBook,
-      icon: bookHidden ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-      run: () => c.hideBook(book.id, !bookHidden),
+      label: itemHidden ? l.showBook : l.hideBook,
+      icon: itemHidden ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+      run: () => c.hideBook(book.id, !itemHidden),
     ),
     HideAction(
       key: 'hide-kind',

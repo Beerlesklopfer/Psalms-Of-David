@@ -96,9 +96,9 @@ AudioBackend? _openBackend() {
 /// that file, so the player can be heard before the server delivers books.
 List<LibraryItem> _demoLibrary() {
   final file = Platform.environment['PSALM_DEMO_FILE'];
-  if (file == null || file.isEmpty) return demoBooks;
+  if (file == null || file.isEmpty) return demoItems;
   return [
-    for (final b in demoBooks)
+    for (final b in demoItems)
       LibraryItem(
         id: b.id,
         title: b.title,
@@ -186,13 +186,13 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     if (!widget.demo) _player.podcastDownloads = PodcastDownloads.standard();
     _labels
       ..offline = _offline
-      ..bookOf = _bookOf
+      ..itemOf = _bookOf
       ..patchItem = _player.patchItem;
     _hiding
       ..offline = _offline
-      ..bookOf = _bookOf
-      ..booksNow = (() => _player.library)
-      ..removeBook = _player.removeItemLocally;
+      ..itemOf = _bookOf
+      ..itemsNow = (() => _player.library)
+      ..removeItem = _player.removeItemLocally;
     _wasManual = _offline.manual;
     _offline.addListener(_onOfflineChanged);
     // A playlist offers offline only the tracks that are on the device (found in the library by book and part: the entry knows no format).

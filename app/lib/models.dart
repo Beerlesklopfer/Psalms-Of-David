@@ -24,8 +24,8 @@ class Track {
     this.plays = 0,
     this.lastPlayedAt,
     this.itemId,
-    this.bookTitle,
-    this.bookAuthor,
+    this.itemTitle,
+    this.itemAuthor,
     this.labels = const [],
     this.format,
     this.mime,
@@ -47,8 +47,8 @@ class Track {
   final String? itemId;
 
   /// The title and author of that book, for a track in a playlist.
-  final String? bookTitle;
-  final String? bookAuthor;
+  final String? itemTitle;
+  final String? itemAuthor;
 
   /// How often this user heard the track to its end (from the server); 0 if never or unknown.
   final int plays;
@@ -87,8 +87,8 @@ class Track {
     plays: plays,
     lastPlayedAt: lastPlayedAt,
     itemId: itemId,
-    bookTitle: bookTitle,
-    bookAuthor: bookAuthor,
+    itemTitle: itemTitle,
+    itemAuthor: itemAuthor,
     labels: labels,
   );
 }
@@ -118,7 +118,7 @@ class LibraryItem {
     this.year,
   });
 
-  /// The barcode (EAN/UPC digits) of the CD or book as the server holds it; null if none is known. Looked up by [booksWithBarcode].
+  /// The barcode (EAN/UPC digits) of the CD or book as the server holds it; null if none is known. Looked up by [itemsWithBarcode].
   final String? barcode;
 
   /// The year of the release as the tags of the files say; null if they do not say.

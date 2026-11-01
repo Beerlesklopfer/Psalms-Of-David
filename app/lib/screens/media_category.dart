@@ -9,7 +9,7 @@ import '../models.dart';
 /// that it is clear they are coming; David does not manage them yet.
 enum MediaCategory { all, music, audiobooks, podcasts, radio, playlists, videos, ebooks, hidden }
 
-extension MediaCategoryBooks on MediaCategory {
+extension MediaCategoryItems on MediaCategory {
   /// The books of this category, or null for a category David does not manage yet.
   List<LibraryItem>? pick(List<LibraryItem> library) => switch (this) {
         MediaCategory.all => library,

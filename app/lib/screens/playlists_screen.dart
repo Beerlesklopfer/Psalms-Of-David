@@ -247,7 +247,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
 
   Future<void> _play(Playlist list, {int? entryIndex}) async {
     final p = PlayerScope.of(context);
-    final book = c.bookOf(list);
+    final book = c.itemOf(list);
     if (book.tracks.isEmpty) return;
     if (entryIndex != null) {
       p.open(book, track: entryIndex);
@@ -304,7 +304,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       listenable: Listenable.merge([c, p]),
       builder: (context, _) {
         final list = c.details[widget.id];
-        final book = list == null ? null : c.bookOf(list);
+        final book = list == null ? null : c.itemOf(list);
         return Scaffold(
           appBar: AppBar(
             title: Text(list?.name ?? ''),
@@ -364,7 +364,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       leading: ReorderableDragStartListener(index: i, child: const Icon(Icons.drag_handle)),
       title: Text(e.available ? e.title : l.playlistUnavailable, style: e.available ? null : grey),
       subtitle: e.available
-          ? Text([e.bookTitle, e.bookAuthor].where((s) => s.isNotEmpty).join(' · '))
+          ? Text([e.itemTitle, e.itemAuthor].where((s) => s.isNotEmpty).join(' · '))
           : null,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,

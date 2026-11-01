@@ -136,7 +136,7 @@ class EpisodeTile extends StatelessWidget {
         if (size != null && size > 0) formatBytes(l.localeName, size),
       ].join(' · ')),
       trailing: EpisodeDownloadButton(episode: e, podcast: podcast),
-      onTap: () => p.open(e.asBook(podcast.title), start: e.finished ? Duration.zero : e.position),
+      onTap: () => p.open(e.asItem(podcast.title), start: e.finished ? Duration.zero : e.position),
     );
   }
 }

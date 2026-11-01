@@ -69,7 +69,7 @@ class PlayerEngine {
       case SetSpeedCommand():
         _dispatch(SetSpeed(now, c.speed));
       case SetPlaceCommand():
-        _dispatch(SetPlace(now, book: c.book, clearBook: c.clearBook, trackIndex: c.trackIndex, positionMs: c.positionMs));
+        _dispatch(SetPlace(now, book: c.book, clearItem: c.clearItem, trackIndex: c.trackIndex, positionMs: c.positionMs));
       case HaltCommand():
         _dispatch(Halt(now));
       case ClearHeardCommand():
@@ -207,7 +207,7 @@ class PlayerEngine {
 
   /// Fetches the file of the current track, then loads it, if the player is still on that track by then.
   Future<void> _fetchAndLoad(FetchAndLoad fx) async {
-    final book = _state.core.book!.toBook();
+    final book = _state.core.book!.toItem();
     final t = book.tracks[fx.trackIndex];
     bool stale() => _disposed || _state.core.key != fx.key;
     try {
@@ -232,7 +232,7 @@ class PlayerEngine {
 
   void _save(SaveProgress fx) {
     final data = fx.book;
-    final book = data.toBook();
+    final book = data.toItem();
     final t = book.tracks[fx.trackIndex];
     _source!.saveProgress(book, t, Duration(milliseconds: fx.positionMs), finished: fx.finished).catchError((Object e) {
       if (e is ApiException && e.code == 'network') {
@@ -246,7 +246,7 @@ class PlayerEngine {
     final data = _state.core.book;
     if (data == null) return;
     final key = '${data.id}:${fx.trackIndex}';
-    _source!.fetchPart(data.toBook().tracks[fx.trackIndex]).then<void>((path) {
+    _source!.fetchPart(data.toItem().tracks[fx.trackIndex]).then<void>((path) {
       if (!_disposed && _state.core.env.gapless) _dispatch(PrefetchReady(_now(), key, path));
     }, onError: (Object _) => _dispatch(PrefetchFailed(_now(), key)));
   }

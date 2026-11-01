@@ -66,7 +66,7 @@ void main() {
     final laterElsewhere = make()
       ..attachServer(
         _Source(),
-        LoadedLibrary(books, {'3': (track: 3, position: const Duration(minutes: 2))}, lastBookId: '3', lastAt: 5000),
+        LoadedLibrary(books, {'3': (track: 3, position: const Duration(minutes: 2))}, lastItemId: '3', lastAt: 5000),
       );
     expect(laterElsewhere.book!.id, '3');
     expect((laterElsewhere.trackIndex, laterElsewhere.position), (3, const Duration(minutes: 2)));
@@ -74,7 +74,7 @@ void main() {
 
     // (closing the first player wrote its own state; put the old one back)
     store.write(LastPlayed(bookId: '2', track: 1, position: const Duration(minutes: 1), at: 1000));
-    final laterHere = make()..attachServer(_Source(), LoadedLibrary(books, {}, lastBookId: '3', lastAt: 500));
+    final laterHere = make()..attachServer(_Source(), LoadedLibrary(books, {}, lastItemId: '3', lastAt: 500));
     expect(laterHere.book!.id, '2');
     laterHere.dispose();
   });

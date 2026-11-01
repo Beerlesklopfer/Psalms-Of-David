@@ -33,7 +33,7 @@ void main() {
       const PreviousCommand(),
       const SetSpeedCommand(1.5),
       SetPlaceCommand(book: b, trackIndex: 1, positionMs: 2),
-      const SetPlaceCommand(clearBook: true),
+      const SetPlaceCommand(clearItem: true),
       const HaltCommand(),
       const ClearHeardCommand(),
       const SetEnvCommand(offlineActive: true, writesLast: false),

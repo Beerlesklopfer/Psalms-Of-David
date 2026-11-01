@@ -89,7 +89,7 @@ Track _trackFromJson(Map<String, dynamic> j) => Track(
   labels: [for (final l in (j['labels'] as List? ?? const [])) l as String],
 );
 
-Map<String, Object?> bookToJson(LibraryItem b) => {
+Map<String, Object?> itemToJson(LibraryItem b) => {
   'id': b.id,
   'title': b.title,
   'author': b.author,
@@ -111,7 +111,7 @@ Map<String, Object?> bookToJson(LibraryItem b) => {
   'tracks': [for (final t in b.tracks) _trackToJson(t)],
 };
 
-LibraryItem bookFromJson(Map<String, dynamic> j, {List<int>? cover}) => LibraryItem(
+LibraryItem itemFromJson(Map<String, dynamic> j, {List<int>? cover}) => LibraryItem(
   id: j['id'] as String,
   title: j['title'] as String,
   author: j['author'] as String,
@@ -135,9 +135,9 @@ LibraryItem bookFromJson(Map<String, dynamic> j, {List<int>? cover}) => LibraryI
 );
 
 Map<String, Object?> libraryToJson(LoadedLibrary lib) => {
-  'books': [for (final b in lib.books) bookToJson(b)],
+  'books': [for (final b in lib.books) itemToJson(b)],
   'resume': {for (final e in lib.resume.entries) e.key: {'track': e.value.track, 'position_ms': e.value.position.inMilliseconds}},
-  'last_book': lib.lastBookId,
+  'last_book': lib.lastItemId,
   'last_at': lib.lastAt,
   'user': lib.userName,
   'recent': lib.recent,
@@ -146,7 +146,7 @@ Map<String, Object?> libraryToJson(LoadedLibrary lib) => {
 };
 
 LoadedLibrary libraryFromJson(Map<String, dynamic> j, List<int>? Function(String id) coverOf) {
-  final books = [for (final b in (j['books'] as List)) bookFromJson(b as Map<String, dynamic>, cover: coverOf((b as Map)['id'] as String))];
+  final books = [for (final b in (j['books'] as List)) itemFromJson(b as Map<String, dynamic>, cover: coverOf((b as Map)['id'] as String))];
   final resume = <String, ({int track, Duration position})>{
     for (final e in ((j['resume'] as Map?) ?? const {}).entries)
       e.key as String: (track: (e.value as Map)['track'] as int, position: Duration(milliseconds: (e.value as Map)['position_ms'] as int)),
@@ -154,7 +154,7 @@ LoadedLibrary libraryFromJson(Map<String, dynamic> j, List<int>? Function(String
   return LoadedLibrary(
     books,
     resume,
-    lastBookId: j['last_book'] as String?,
+    lastItemId: j['last_book'] as String?,
     lastAt: j['last_at'] as int? ?? 0,
     userName: j['user'] as String?,
     recent: [for (final r in (j['recent'] as List? ?? const [])) r as String],

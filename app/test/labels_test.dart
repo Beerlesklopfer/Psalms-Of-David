@@ -250,12 +250,12 @@ void main() {
   });
 
   group('labels of single titles', () {
-    LibraryItem withTitles({bool can = false, List<String> bookLabels = const []}) => LibraryItem(
+    LibraryItem withTitles({bool can = false, List<String> itemLabels = const []}) => LibraryItem(
       id: '1',
       title: 'Eins',
       author: 'Autor 1',
       color: const Color(0xFF6E1F2B),
-      labels: bookLabels,
+      labels: itemLabels,
       canLabel: can,
       trackLabels: const ['Stille'],
       tracks: const [
@@ -272,7 +272,7 @@ void main() {
     );
 
     test('a book is found by the labels of its titles, and they are counted once', () {
-      final b = withTitles(bookLabels: ['stille', 'Gebet']);
+      final b = withTitles(itemLabels: ['stille', 'Gebet']);
       expect(b.allLabels, ['stille', 'Gebet'], reason: 'case is ignored, no doubles');
       expect(labelCounts([b, withTitles()]), [('stille', 2), ('Gebet', 1)]);
       final books = [withTitles(), _book('2', 'Zwei', labels: ['Gebet'])];

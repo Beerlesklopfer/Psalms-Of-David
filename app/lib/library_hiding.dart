@@ -7,15 +7,15 @@ import 'offline/offline_controller.dart';
 import 'server/api_client.dart' show ApiException;
 
 /// A book that this profile hid (`docs/spec-library-hiding.md`).
-class HiddenBook {
-  const HiddenBook({required this.id, required this.title, required this.author});
+class HiddenItem {
+  const HiddenItem({required this.id, required this.title, required this.author});
 
   final int id;
   final String title;
   final String author;
 
-  factory HiddenBook.fromJson(Map<String, dynamic> j) =>
-      HiddenBook(id: j['id'] as int, title: j['title'] as String, author: j['author'] as String);
+  factory HiddenItem.fromJson(Map<String, dynamic> j) =>
+      HiddenItem(id: j['id'] as int, title: j['title'] as String, author: j['author'] as String);
 }
 
 /// An author or artist whose books of one kind this profile hid. [kind] is `audiobook`, `music`, or empty for both.
@@ -38,7 +38,7 @@ class HiddenState {
   const HiddenState({this.showHidden = false, this.books = const [], this.authors = const []});
 
   final bool showHidden;
-  final List<HiddenBook> books;
+  final List<HiddenItem> books;
   final List<HiddenAuthor> authors;
 
   bool get isEmpty => books.isEmpty && authors.isEmpty;
@@ -56,7 +56,7 @@ class HiddenState {
     showHidden: j['show_hidden'] == true,
     books: [
       for (final b in (j['books'] as List? ?? const []))
-        HiddenBook.fromJson(b as Map<String, dynamic>),
+        HiddenItem.fromJson(b as Map<String, dynamic>),
     ],
     authors: [
       for (final a in (j['authors'] as List? ?? const []))
@@ -92,13 +92,13 @@ class HidingController extends ChangeNotifier {
   OfflineController? offline;
 
   /// The book of this id as the app has it now.
-  LibraryItem? Function(String id)? bookOf;
+  LibraryItem? Function(String id)? itemOf;
 
   /// The books of the lists now.
-  Iterable<LibraryItem> Function()? booksNow;
+  Iterable<LibraryItem> Function()? itemsNow;
 
   /// Takes a book out of the lists of the app.
-  void Function(String id)? removeBook;
+  void Function(String id)? removeItem;
 
   /// The code of the last refusal or failure, or null.
   String? error;
@@ -125,7 +125,7 @@ class HidingController extends ChangeNotifier {
   Future<bool> hideBook(String bookId, bool hidden) {
     final id = int.tryParse(bookId);
     if (id == null) return Future.value(false);
-    return _change((a) => a.hideBook(id, hidden), keep: () => _keepBook(bookId, id, hidden));
+    return _change((a) => a.hideBook(id, hidden), keep: () => _keepItem(bookId, id, hidden));
   }
 
   Future<bool> hideAuthor(String name, String kind, bool hidden) =>
@@ -133,18 +133,18 @@ class HidingController extends ChangeNotifier {
 
   /// Keeps "hide this book" for the server and shows the effect now: the book leaves the lists (unless hidden books are shown), the list of the
   /// hidden ones has it. The server decides when the lists are loaded again.
-  bool _keepBook(String bookId, int id, bool hidden) {
+  bool _keepItem(String bookId, int id, bool hidden) {
     final off = offline;
     if (off == null) return false;
-    final book = bookOf?.call(bookId);
-    off.outbox.addHideBook(id, hidden, title: book?.title ?? '');
+    final book = itemOf?.call(bookId);
+    off.outbox.addHideItem(id, hidden, title: book?.title ?? '');
     final others = [for (final b in state.books) if (b.id != id) b];
     state = HiddenState(
       showHidden: state.showHidden,
-      books: hidden ? [...others, HiddenBook(id: id, title: book?.title ?? '', author: book?.author ?? '')] : others,
+      books: hidden ? [...others, HiddenItem(id: id, title: book?.title ?? '', author: book?.author ?? '')] : others,
       authors: state.authors,
     );
-    if (hidden && !state.showHidden) removeBook?.call(bookId);
+    if (hidden && !state.showHidden) removeItem?.call(bookId);
     error = null;
     off.touch();
     _notify();
@@ -164,8 +164,8 @@ class HidingController extends ChangeNotifier {
       authors: hidden ? [...others, HiddenAuthor(id: -1, name: name, kind: kind)] : others,
     );
     if (hidden && !state.showHidden) {
-      for (final b in List.of(booksNow?.call() ?? const <LibraryItem>[])) {
-        if (b.author.toLowerCase() == name.toLowerCase() && (kind.isEmpty || b.kind == kind)) removeBook?.call(b.id);
+      for (final b in List.of(itemsNow?.call() ?? const <LibraryItem>[])) {
+        if (b.author.toLowerCase() == name.toLowerCase() && (kind.isEmpty || b.kind == kind)) removeItem?.call(b.id);
       }
     }
     error = null;

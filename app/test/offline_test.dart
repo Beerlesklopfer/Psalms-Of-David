@@ -130,7 +130,7 @@ void main() {
       final file = File('${dir.path}/outbox.json');
       final box = Outbox(file)
         ..addLabels('book', 1, add: ['Gebet'], title: 'Eins')
-        ..addHideBook(2, true, title: 'Zwei')
+        ..addHideItem(2, true, title: 'Zwei')
         ..addProgress(item: 3, part: 30, positionMs: 5000, finished: false, at: 100);
       final again = Outbox(file);
       expect([for (final e in again.entries) e.kind], [OutboxChange.labels, OutboxChange.hideBook, OutboxChange.progress]);
@@ -138,7 +138,7 @@ void main() {
       expect(again.entries.first.title, 'Eins');
       expect(again.length, box.length);
       // A new change goes behind the old ones, also after the restart.
-      again.addHideBook(9, true);
+      again.addHideItem(9, true);
       expect(again.entries.last.seq, greaterThan(again.entries[2].seq));
     });
 
@@ -164,8 +164,8 @@ void main() {
 
     test('the last state of a hidden book wins, and only the newest listening position of a book stays', () {
       final box = Outbox.memory()
-        ..addHideBook(1, true)
-        ..addHideBook(1, false)
+        ..addHideItem(1, true)
+        ..addHideItem(1, false)
         ..addHideAuthor('Meier', '', true)
         ..addHideAuthor('meier', '', false)
         ..addProgress(item: 5, part: 50, positionMs: 1000, finished: false, at: 10)
@@ -180,7 +180,7 @@ void main() {
     test('the replay sends in order, drops what the server refuses and tells it, and goes on', () async {
       final box = Outbox.memory()
         ..addLabels('book', 1, add: ['A'], title: 'Eins')
-        ..addHideBook(2, true, title: 'Zwei')
+        ..addHideItem(2, true, title: 'Zwei')
         ..addLabels('part', 3, part: 33, add: ['B'], title: 'Drei')
         ..addProgress(item: 4, part: 44, positionMs: 7000, finished: true, at: 1234);
       final api = FakeOutboxApi()
@@ -199,9 +199,9 @@ void main() {
 
     test('a server that cannot be reached keeps the rest, and the next round goes on from there', () async {
       final box = Outbox.memory()
-        ..addHideBook(1, true)
-        ..addHideBook(2, true)
-        ..addHideBook(3, true);
+        ..addHideItem(1, true)
+        ..addHideItem(2, true)
+        ..addHideItem(3, true);
       final api = FakeOutboxApi()..failures['hide book 2 true'] = ApiException(0, 'network');
       final r = await box.replay(api);
       expect(r.complete, false);
@@ -256,7 +256,7 @@ void main() {
     test('the sending tells what the server refused (not the listening) and keeps it until it was seen', () async {
       final c = OfflineController();
       c.outbox
-        ..addHideBook(1, true, title: 'Eins')
+        ..addHideItem(1, true, title: 'Eins')
         ..addProgress(item: 2, part: 20, positionMs: 1, finished: false);
       final api = FakeOutboxApi()
         ..failures['hide book 1 true'] = ApiException(403, 'forbidden')
@@ -319,7 +319,7 @@ void main() {
           _book('6', 'Sechs', [_t(61, 'b')]),
         ],
         {'5': (track: 0, position: const Duration(seconds: 42))},
-        lastBookId: '5',
+        lastItemId: '5',
         lastAt: 99,
         userName: 'Anna',
         recent: const ['5'],
@@ -336,7 +336,7 @@ void main() {
       expect(back.books[0].tracks.single.labels, ['y']);
       expect(back.books[0].canLabel, true);
       expect(back.resume['5']!.position, const Duration(seconds: 42));
-      expect((back.lastBookId, back.lastAt, back.userName), ('5', 99, 'Anna'));
+      expect((back.lastItemId, back.lastAt, back.userName), ('5', 99, 'Anna'));
       expect(back.recent, ['5']);
       expect(back.genres, ['Rock']);
       expect(back.newIds, ['6']);
@@ -354,7 +354,7 @@ void main() {
       final labels = LabelsController()
         ..api = api
         ..offline = offline
-        ..bookOf = ((id) => p.fullLibrary.where((b) => b.id == id).firstOrNull)
+        ..itemOf = ((id) => p.fullLibrary.where((b) => b.id == id).firstOrNull)
         ..patchItem = p.patchItem;
       expect(await labels.save('1', ['Alt', 'Gebet']), true);
       expect(await labels.save('1', ['Gebet', 'Schule']), true);
@@ -377,7 +377,7 @@ void main() {
       final labels = LabelsController()
         ..api = api
         ..offline = offline
-        ..bookOf = ((id) => p.fullLibrary.where((b) => b.id == id).firstOrNull)
+        ..itemOf = ((id) => p.fullLibrary.where((b) => b.id == id).firstOrNull)
         ..patchItem = p.patchItem;
       expect(await labels.save('1', ['Gebet']), true);
       expect(offline.outbox.entries.single.add, ['Gebet']);
@@ -393,9 +393,9 @@ void main() {
       final p = PlayerController([_book('1', 'Eins', [_t(11, 'a')], author: 'Meier'), _book('2', 'Zwei', [_t(21, 'a')], author: 'Meier'), _book('3', 'Drei', [_t(31, 'a')], author: 'Müller')]);
       final hiding = HidingController()
         ..offline = offline
-        ..bookOf = ((id) => p.fullLibrary.where((b) => b.id == id).firstOrNull)
-        ..booksNow = (() => p.library)
-        ..removeBook = p.removeItemLocally;
+        ..itemOf = ((id) => p.fullLibrary.where((b) => b.id == id).firstOrNull)
+        ..itemsNow = (() => p.library)
+        ..removeItem = p.removeItemLocally;
       expect(await hiding.hideBook('1', true), true);
       expect([for (final b in p.library) b.id], ['2', '3']);
       expect(hiding.state.books.single.title, 'Eins');
@@ -439,7 +439,7 @@ void main() {
       await tester.pumpWidget(_app(OfflineBanner(onSync: () => retried++), offline: offline));
       expect(find.byKey(const ValueKey('offline-banner')), findsNothing);
       offline.setUnreachable(true);
-      offline.outbox.addHideBook(1, true);
+      offline.outbox.addHideItem(1, true);
       offline.touch();
       await tester.pump();
       expect(find.byKey(const ValueKey('offline-banner')), findsOneWidget);
@@ -473,7 +473,7 @@ void main() {
     testWidgets('the app: offline the bar is on top and the pages that need the server say so', (tester) async {
       final offline = OfflineController();
       await tester.pumpWidget(PlayerScope(
-        controller: PlayerController(demoBooks),
+        controller: PlayerController(demoItems),
         child: MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,

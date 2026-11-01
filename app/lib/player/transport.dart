@@ -128,7 +128,7 @@ class LibraryItemData {
   LibraryItem? _built;
 
   /// The live book if there is one, else a book rebuilt from the data (the isolate case; built once, so its tracks keep their identity).
-  LibraryItem toBook() =>
+  LibraryItem toItem() =>
       live ??
       (_built ??= LibraryItem(id: id, title: title, author: '', color: const Color(0xFF607D8B), kind: kind, tracks: [for (final t in tracks) t.toTrack()]));
 
@@ -170,7 +170,7 @@ sealed class PlayerCommand {
       case 'set_place':
         return SetPlaceCommand(
           book: m['book'] == null ? null : LibraryItemData.fromMap((m['book'] as Map).cast<String, dynamic>()),
-          clearBook: m['clear_book'] as bool? ?? false,
+          clearItem: m['clear_book'] as bool? ?? false,
           trackIndex: m['track'] as int?,
           positionMs: m['position_ms'] as int?,
         );
@@ -261,14 +261,14 @@ class SetSpeedCommand extends PlayerCommand {
 /// Moves the place without touching the sound: the library changed, another device went on, the UI restores a place.
 /// Only the fields that are set change.
 class SetPlaceCommand extends PlayerCommand {
-  const SetPlaceCommand({this.book, this.clearBook = false, this.trackIndex, this.positionMs});
+  const SetPlaceCommand({this.book, this.clearItem = false, this.trackIndex, this.positionMs});
   final LibraryItemData? book;
-  final bool clearBook;
+  final bool clearItem;
   final int? trackIndex;
   final int? positionMs;
   @override
   Map<String, dynamic> toMap() =>
-      {'type': 'set_place', 'book': book?.toMap(), 'clear_book': clearBook, 'track': trackIndex, 'position_ms': positionMs};
+      {'type': 'set_place', 'book': book?.toMap(), 'clear_book': clearItem, 'track': trackIndex, 'position_ms': positionMs};
 }
 
 /// Stops the sound and forgets the loaded track (the server or the library changed under it).

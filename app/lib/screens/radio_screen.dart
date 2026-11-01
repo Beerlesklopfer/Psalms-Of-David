@@ -155,7 +155,7 @@ class RadioBody extends StatelessWidget {
                   ? () async {
                       // The logo is fetched once; without one the cover is drawn.
                       final logo = await StationLogos.load(s.logoUrl);
-                      p.open(s.asBook(logo: logo));
+                      p.open(s.asItem(logo: logo));
                     }
                   : null,
             );

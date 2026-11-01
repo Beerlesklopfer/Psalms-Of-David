@@ -47,9 +47,9 @@ class PlaybackSettingsStore {
   void writeBufferSeconds(int seconds) => _write({..._read(), 'buffer_seconds': seconds});
 
   /// The time in the mini player: of the whole book (CD), or of the track that plays; the track when nothing is stored.
-  bool readShowBookTime() => _read()['show_book_time'] == true;
+  bool readShowItemTime() => _read()['show_book_time'] == true;
 
-  void writeShowBookTime(bool value) => _write({..._read(), 'show_book_time': value});
+  void writeShowItemTime(bool value) => _write({..._read(), 'show_book_time': value});
 
   /// The colour scheme: "system", "light" or "dark"; dark when nothing (or nothing usable) is stored.
   ThemeMode readThemeMode() => switch (_read()['theme_mode']) {

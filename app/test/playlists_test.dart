@@ -64,8 +64,8 @@ void main() {
           a.title,
           a.duration,
           a.bookId,
-          a.bookTitle,
-          a.bookAuthor,
+          a.itemTitle,
+          a.itemAuthor,
         ),
         (41, true, 880, 'Chapter 2', const Duration(minutes: 4), 17, 'Winter', 'Follett'),
       );
@@ -305,7 +305,7 @@ void main() {
           entry(43, 3, 900, 'Song', bookId: 20, book: 'Album', author: 'Band'),
         ],
       );
-      final b = c.bookOf(p);
+      final b = c.itemOf(p);
       expect((b.id, b.kind, b.title), ('pl:3', 'playlist', 'Car trip'));
       expect(b.tracks.map((t) => t.title), [
         'Chapter 1',
@@ -324,9 +324,9 @@ void main() {
       );
       var offline = true;
       c.offers = (t) => !offline || t.partId == 900;
-      expect(c.bookOf(p).tracks.map((t) => t.partId), [900]);
+      expect(c.itemOf(p).tracks.map((t) => t.partId), [900]);
       offline = false;
-      expect(c.bookOf(p).tracks.map((t) => t.partId), [880, 900], reason: 'online everything is offered again');
+      expect(c.itemOf(p).tracks.map((t) => t.partId), [880, 900], reason: 'online everything is offered again');
     });
 
     test('where the list was left is found again by the part, also after a reorder', () {
@@ -335,7 +335,7 @@ void main() {
         name: 'Car trip',
         entries: [entry(41, 1, 880, 'Chapter 1'), entry(43, 2, 900, 'Song', bookId: 20)],
       );
-      final b = c.bookOf(p);
+      final b = c.itemOf(p);
       expect(c.startOf(p, b), (track: 0, position: Duration.zero));
       c.remember(b, b.tracks[1], const Duration(seconds: 30));
       expect(c.startOf(p, b), (track: 1, position: const Duration(seconds: 30)));
@@ -344,8 +344,8 @@ void main() {
         name: 'Car trip',
         entries: [entry(43, 1, 900, 'Song', bookId: 20), entry(41, 2, 880, 'Chapter 1')],
       );
-      expect(c.startOf(reordered, c.bookOf(reordered)).track, 0);
-      final realBook = LibraryItem(
+      expect(c.startOf(reordered, c.itemOf(reordered)).track, 0);
+      final realItem = LibraryItem(
         id: '17',
         title: 'x',
         author: 'y',
@@ -353,7 +353,7 @@ void main() {
         tracks: const [],
       );
       c.remember(
-        realBook,
+        realItem,
         const Track(disc: 1, number: 1, title: 't', length: Duration.zero, partId: 5),
         Duration.zero,
       );
@@ -375,7 +375,7 @@ void main() {
           ],
         );
         final pl = PlaylistController();
-        final book = pl.bookOf(
+        final book = pl.itemOf(
           Playlist(
             id: 3,
             name: 'Car trip',
@@ -390,7 +390,7 @@ void main() {
           at = pos;
         };
         p.open(book, track: 0, start: const Duration(seconds: 7));
-        expect(p.shownBook?.id, '20');
+        expect(p.shownItem?.id, '20');
         expect(p.book?.id, 'pl:3');
         p.flush();
         expect((got?.id, at), ('pl:3', const Duration(seconds: 7)));
@@ -409,7 +409,7 @@ void main() {
       });
       final api = ApiClient(address: 'localhost:${server.port}', token: 't');
       final source = ServerSource(api, Directory.systemTemp.createTempSync('c'));
-      final book = PlaylistController().bookOf(
+      final book = PlaylistController().itemOf(
         Playlist(id: 3, name: 'Car trip', entries: [entry(41, 1, 900, 'Song', bookId: 20)]),
       );
       await source.saveProgress(
@@ -491,7 +491,7 @@ void main() {
       expect(source.files['book-17']!.first.artist, 'Follett');
       expect(source.files['book-17']!.map((e) => e.title), ['One', 'Two']);
 
-      final pl = PlaylistController().bookOf(
+      final pl = PlaylistController().itemOf(
         Playlist(
           id: 3,
           name: 'Car trip',

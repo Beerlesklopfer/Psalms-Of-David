@@ -15,7 +15,7 @@ import '../widgets.dart';
 import 'qr_scan_screen.dart';
 
 /// Opens a book; a parameter so that a test need not build the book screen.
-typedef BookOpener = void Function(BuildContext context, LibraryItem book);
+typedef ItemOpener = void Function(BuildContext context, LibraryItem book);
 
 /// "Is this CD in the family library?" The person holds a CD and scans its barcode with the camera (phones and the Mac) or types the digits
 /// (everywhere, and as the fallback where the camera does not work). The local library is asked first (it works offline); when it does not have
@@ -39,7 +39,7 @@ class BarcodeScanScreen extends StatefulWidget {
   /// Given by a test; otherwise the screen makes (and disposes) its own, which looks for product barcodes only.
   final MobileScannerController? controller;
   final ScannerViewBuilder? viewBuilder;
-  final BookOpener? opener;
+  final ItemOpener? opener;
 
   static Future<void> route(BuildContext context, {BarcodeLookup? lookup}) =>
       Navigator.of(context).push<void>(
@@ -126,7 +126,7 @@ class _BarcodeScanScreenState extends State<BarcodeScanScreen> {
     final library = player?.fullLibrary ?? const <LibraryItem>[];
     final byId = {for (final b in library) b.id: b};
     var hits = [
-      for (final b in booksWithBarcode(library, code))
+      for (final b in itemsWithBarcode(library, code))
         _Hit(title: b.title, creator: b.author, kind: b.kind, book: b),
     ];
     String? note;

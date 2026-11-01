@@ -296,7 +296,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 onTap: () async {
                   final p = PlayerScope.of(context);
                   final logo = await StationLogos.load(s.logoUrl);
-                  p.open(s.asBook(logo: logo));
+                  p.open(s.asItem(logo: logo));
                 },
               );
             },

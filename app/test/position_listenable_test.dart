@@ -9,7 +9,7 @@ void main() {
   testWidgets(
     'a tick moves the position listenable without notifying the controller',
     (tester) async {
-      final p = PlayerController(demoBooks)..toggle();
+      final p = PlayerController(demoItems)..toggle();
       var coarse = 0;
       p.addListener(() => coarse++);
       final seen = <Duration>[];
@@ -33,7 +33,7 @@ void main() {
   testWidgets('only the widget on the position listenable rebuilds on a tick', (
     tester,
   ) async {
-    final p = PlayerController(demoBooks)..toggle();
+    final p = PlayerController(demoItems)..toggle();
     var coarseBuilds = 0, positionBuilds = 0;
     await tester.pumpWidget(
       Directionality(

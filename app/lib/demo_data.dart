@@ -25,7 +25,7 @@ List<Track> _tracks(List<int> perDisc) {
   return out;
 }
 
-final demoBooks = <LibraryItem>[
+final demoItems = <LibraryItem>[
   LibraryItem(
     id: 'follett-kinder-der-freiheit',
     title: 'Kinder der Freiheit',

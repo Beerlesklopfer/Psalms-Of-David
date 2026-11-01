@@ -274,11 +274,11 @@ class ServerSource implements MediaSource {
 
 /// One member of the family and the books they listened to lately, the latest first.
 class FamilyMember {
-  const FamilyMember({required this.id, required this.name, required this.bookIds});
+  const FamilyMember({required this.id, required this.name, required this.itemIds});
 
   final int id;
   final String name;
-  final List<String> bookIds;
+  final List<String> itemIds;
 }
 
 /// The media time of one member of the family: the milliseconds listened on each of the last [days] days (the last is today), per kind of
@@ -300,7 +300,7 @@ class FamilyTime {
 
 /// The library of the signed-in user as the app's models, and where to resume.
 class LoadedLibrary {
-  LoadedLibrary(this.books, this.resume, {this.lastBookId, this.lastAt = 0, this.userName, this.recent = const [], this.genres = const [], this.newIds = const [], this.family = const [], this.heard = const [], this.shareListening = true, this.mayHideListening = true});
+  LoadedLibrary(this.books, this.resume, {this.lastItemId, this.lastAt = 0, this.userName, this.recent = const [], this.genres = const [], this.newIds = const [], this.family = const [], this.heard = const [], this.shareListening = true, this.mayHideListening = true});
 
   /// What the other members of the family listened to lately (the rows of the home page); empty for a server that does not tell.
   final List<FamilyMember> heard;
@@ -317,7 +317,7 @@ class LoadedLibrary {
   /// The nickname of the signed-in user, for the greeting; null if the server did not tell.
 
   /// The book the user listened to last on any device, and when (ms since 1970), from the server.
-  final String? lastBookId;
+  final String? lastItemId;
   final int lastAt;
   final String? userName;
   final List<String> recent;
@@ -351,7 +351,7 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
   try {
     heard = [
       for (final m in await api.familyListening())
-        FamilyMember(id: m['user_id'] as int, name: '${m['name']}', bookIds: [for (final i in m['items'] as List) '${(i as Map)['item_id']}']),
+        FamilyMember(id: m['user_id'] as int, name: '${m['name']}', itemIds: [for (final i in m['items'] as List) '${(i as Map)['item_id']}']),
     ];
   } on Object {
     // an older server has no such list; the rows are optional
@@ -375,14 +375,14 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
     // an older server has no charts; they are optional
   }
   // The most recently listened book first; a failure here only means no "last book" is known.
-  String? lastBookId;
+  String? lastItemId;
   var lastAt = 0;
   var recentIds = <String>[];
   try {
     final recent = await api.continueListening();
     recentIds = [for (final r in recent) '${r['item_id']}'];
     if (recent.isNotEmpty) {
-      lastBookId = '${recent.first['item_id']}';
+      lastItemId = '${recent.first['item_id']}';
       lastAt = recent.first['updated_at'] as int;
     }
   } on Object {
@@ -473,7 +473,7 @@ Future<LoadedLibrary> loadLibrary(ApiClient api) async {
       }
     }
   }
-  return LoadedLibrary(books, resume, lastBookId: lastBookId, lastAt: lastAt, userName: userName, recent: recentIds, genres: genres, newIds: newIds, family: family, heard: heard, shareListening: shareListening, mayHideListening: mayHideListening);
+  return LoadedLibrary(books, resume, lastItemId: lastItemId, lastAt: lastAt, userName: userName, recent: recentIds, genres: genres, newIds: newIds, family: family, heard: heard, shareListening: shareListening, mayHideListening: mayHideListening);
 }
 
 extension on List<Map<String, dynamic>> {

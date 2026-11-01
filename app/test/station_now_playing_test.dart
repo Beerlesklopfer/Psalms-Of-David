@@ -63,18 +63,18 @@ void main() {
 
   test('a station carries its logo as cover and as address for the desktop', () {
     final logo = Uint8List.fromList([1, 2, 3]);
-    final book = station.asBook(logo: logo);
+    final book = station.asItem(logo: logo);
     expect(book.cover, logo);
     expect(book.coverUrl, 'https://stream.example.org/logo.png');
-    expect(station.asBook().cover, isNull, reason: 'without a fetched picture the cover is drawn');
+    expect(station.asItem().cover, isNull, reason: 'without a fetched picture the cover is drawn');
   });
 
   testWidgets(
     'the title the station announces shows in the player, the mini player and the sound menu',
     (tester) async {
       final backend = _StationBackend();
-      final p = PlayerController([station.asBook()], backend: backend, source: _Source());
-      p.open(station.asBook());
+      final p = PlayerController([station.asItem()], backend: backend, source: _Source());
+      p.open(station.asItem());
       await tester.pump(const Duration(milliseconds: 100));
       expect(p.nowPlaying, isNull, reason: 'nothing announced yet');
       expect(
@@ -111,7 +111,7 @@ void main() {
 
   testWidgets('the card shows artist, track and what the station says about itself, and waits when there is nothing yet', (tester) async {
     final backend = _StationBackend();
-    final p = PlayerController([station.asBook()], backend: backend, source: _Source());
+    final p = PlayerController([station.asItem()], backend: backend, source: _Source());
     Future<void> show() => tester.pumpWidget(
       PlayerScope(
         controller: p,
@@ -122,7 +122,7 @@ void main() {
         ),
       ),
     );
-    p.open(station.asBook());
+    p.open(station.asItem());
     await tester.pump(const Duration(milliseconds: 100));
     await show();
     expect(find.text('Waiting for the information of the station …'), findsOneWidget);

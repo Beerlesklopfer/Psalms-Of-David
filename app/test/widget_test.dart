@@ -9,7 +9,7 @@ import 'package:psalm/player_controller.dart';
 void main() {
   group('PlayerController', () {
     test('skip crosses track boundaries', () {
-      final p = PlayerController(demoBooks);
+      final p = PlayerController(demoItems);
       p.seek(p.track!.length - const Duration(seconds: 5));
       final before = p.trackIndex;
       p.skip(const Duration(seconds: 30));
@@ -19,7 +19,7 @@ void main() {
     });
 
     test('skipping back at the start of a track goes to the previous track', () {
-      final p = PlayerController(demoBooks);
+      final p = PlayerController(demoItems);
       p.seek(Duration.zero);
       final before = p.trackIndex;
       p.skip(const Duration(seconds: -10));
@@ -28,9 +28,9 @@ void main() {
     });
 
     test('progress of a book that is not playing is remembered', () {
-      final p = PlayerController(demoBooks);
-      final first = demoBooks.first;
-      final other = demoBooks[1];
+      final p = PlayerController(demoItems);
+      final first = demoItems.first;
+      final other = demoItems[1];
       p.open(first, track: 3);
       p.open(other);
       expect(p.progressOf(first), greaterThan(0));

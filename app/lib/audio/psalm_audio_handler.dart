@@ -69,7 +69,7 @@ class PsalmAudioHandler extends BaseAudioHandler with SeekHandler {
   void _publish() {
     final p = _player;
     if (p == null) return;
-    final book = p.shownBook, track = p.track;
+    final book = p.shownItem, track = p.track;
     if (book == null || track == null) {
       if (_shown != null) {
         _shown = null;

@@ -159,7 +159,7 @@ class LabelsController extends ChangeNotifier {
   OfflineController? offline;
 
   /// The book of this id as the app has it now (for the words that were there before a change).
-  LibraryItem? Function(String id)? bookOf;
+  LibraryItem? Function(String id)? itemOf;
 
   /// Changes the book of this id in the lists of the app.
   void Function(String id, LibraryItem Function(LibraryItem) change)? patchItem;
@@ -266,7 +266,7 @@ class LabelsController extends ChangeNotifier {
   Future<bool> save(String bookId, List<String> labels) async {
     final id = int.tryParse(bookId);
     if (id == null) return false;
-    if (offline?.active == true) return _keepBook(bookId, id, labels);
+    if (offline?.active == true) return _keepItem(bookId, id, labels);
     final a = api;
     if (a == null) return false;
     try {
@@ -276,7 +276,7 @@ class LabelsController extends ChangeNotifier {
       notifyListeners();
       return true;
     } on ApiException catch (e) {
-      if (e.code == 'network' && _keepBook(bookId, id, labels)) return true;
+      if (e.code == 'network' && _keepItem(bookId, id, labels)) return true;
       error = e.code;
       notifyListeners();
       return false;
@@ -284,10 +284,10 @@ class LabelsController extends ChangeNotifier {
   }
 
   /// Keeps the new labels of a book for the server, as a delta against what the app showed, and shows them now.
-  bool _keepBook(String bookId, int id, List<String> labels) {
+  bool _keepItem(String bookId, int id, List<String> labels) {
     final off = offline;
     if (off == null) return false;
-    final book = bookOf?.call(bookId);
+    final book = itemOf?.call(bookId);
     final (add, remove) = labelDelta(book?.labels ?? const [], labels);
     off.outbox.addLabels('book', id, add: add, remove: remove, title: book?.title ?? '');
     patchItem?.call(bookId, (b) => b.copyWith(labels: labels));
@@ -300,7 +300,7 @@ class LabelsController extends ChangeNotifier {
   bool _keepTrack(String bookId, int id, int partId, List<String> labels) {
     final off = offline;
     if (off == null) return false;
-    final book = bookOf?.call(bookId);
+    final book = itemOf?.call(bookId);
     final before = book?.tracks.where((t) => t.partId == partId).firstOrNull?.labels ?? const <String>[];
     final (add, remove) = labelDelta(before, labels);
     off.outbox.addLabels('part', id, part: partId, add: add, remove: remove, title: book?.title ?? '');

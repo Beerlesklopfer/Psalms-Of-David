@@ -30,7 +30,7 @@ Widget _app(PlayerController p, Widget child, {double width = 800}) => PlayerSco
 
 void main() {
   testWidgets('the mini player has previous, back, forward, next and a speed menu', (tester) async {
-    final p = PlayerController(demoBooks)..seek(const Duration(minutes: 1));
+    final p = PlayerController(demoItems)..seek(const Duration(minutes: 1));
     await tester.pumpWidget(_app(p, const MiniPlayer()));
     final before = p.trackIndex;
     final at = p.position;
@@ -54,7 +54,7 @@ void main() {
   });
 
   testWidgets('on a narrow screen only play and pause stay', (tester) async {
-    final p = PlayerController(demoBooks)..seek(Duration.zero);
+    final p = PlayerController(demoItems)..seek(Duration.zero);
     await tester.pumpWidget(_app(p, const MiniPlayer(), width: 400));
     expect(find.byTooltip('Next track'), findsNothing);
     expect(find.byTooltip('Forward 30 seconds'), findsNothing);

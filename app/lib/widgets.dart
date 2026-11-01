@@ -318,12 +318,12 @@ class FoldHeader extends StatelessWidget {
 /// reporting the old position; the jump is made when it is let go. [compact] is the
 /// thin one at the bottom edge of the mini player.
 class SeekBar extends StatefulWidget {
-  const SeekBar({super.key, this.compact = false, this.wholeBook = false});
+  const SeekBar({super.key, this.compact = false, this.wholeItem = false});
 
   final bool compact;
 
   /// The bar covers the whole book, not only the track that is playing.
-  final bool wholeBook;
+  final bool wholeItem;
 
   @override
   State<SeekBar> createState() => _SeekBarState();
@@ -339,7 +339,7 @@ class _SeekBarState extends State<SeekBar> {
     final track = p.track;
     if (track == null || track.live) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
-    final length = widget.wholeBook ? p.bookTotal : track.length;
+    final length = widget.wholeItem ? p.bookTotal : track.length;
     final max = length.inMilliseconds.toDouble().clamp(1.0, double.infinity);
     // Only the slider follows the position; the rest of the bar depends on the coarse state.
     final slider = ValueListenableBuilder<Duration>(
@@ -364,7 +364,7 @@ class _SeekBarState extends State<SeekBar> {
   }
 
   Widget _slider(PlayerController p, double max) {
-    final now = widget.wholeBook ? p.bookPosition : p.position;
+    final now = widget.wholeItem ? p.bookPosition : p.position;
     final value = (_held ?? now.inMilliseconds.toDouble()).clamp(0.0, max);
     return Slider(
       value: value,
@@ -374,7 +374,7 @@ class _SeekBarState extends State<SeekBar> {
       onChangeEnd: (v) {
         setState(() => _held = null);
         final to = Duration(milliseconds: v.round());
-        widget.wholeBook ? p.seekBook(to) : p.seek(to);
+        widget.wholeItem ? p.seekItem(to) : p.seek(to);
       },
     );
   }
@@ -412,7 +412,7 @@ class MiniPlayer extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
                 children: [
-                  SizedBox.square(dimension: 44, child: Cover(book: p.shownBook ?? book)),
+                  SizedBox.square(dimension: 44, child: Cover(book: p.shownItem ?? book)),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -439,7 +439,7 @@ class MiniPlayer extends StatelessWidget {
                   ),
                   // Played and total time: of the track, or (a tap switches) of the whole book (CD).
                   Tooltip(
-                    message: p.showBookTime ? l.tooltipTimeBook : l.tooltipTimeTrack,
+                    message: p.showItemTime ? l.tooltipTimeBook : l.tooltipTimeTrack,
                     child: GestureDetector(
                       key: const ValueKey('time-scope'),
                       behavior: HitTestBehavior.opaque,
@@ -451,7 +451,7 @@ class MiniPlayer extends StatelessWidget {
                           builder: (context, _, _) => Text(
                             p.track?.live == true
                                 ? l.radioLive
-                                : p.showBookTime
+                                : p.showItemTime
                                     ? '${formatDuration(p.bookPosition)} / ${formatDuration(p.bookTotal)}'
                                     : '${formatDuration(p.position)} / ${formatDuration(p.track!.length)}',
                             style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontFeatures: const [FontFeature.tabularFigures()]),
@@ -502,7 +502,7 @@ class MiniPlayer extends StatelessWidget {
                 ],
               ),
             ),
-            SeekBar(compact: true, wholeBook: p.showBookTime),
+            SeekBar(compact: true, wholeItem: p.showItemTime),
           ],
         ),
       ),

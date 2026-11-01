@@ -198,7 +198,7 @@ class Outbox {
   }
 
   /// A book hidden or shown again: the last state counts.
-  void addHideBook(int id, bool hidden, {String title = '', int? at}) {
+  void addHideItem(int id, bool hidden, {String title = '', int? at}) {
     _replace('hide_book:$id', OutboxChange.hideBook, {'id': id, 'hidden': hidden, 'title': title}, at ?? DateTime.now().millisecondsSinceEpoch);
   }
 
