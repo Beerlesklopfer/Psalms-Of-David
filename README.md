@@ -68,7 +68,7 @@ was du gerade brauchst.
   übergeben, der Tunnel selbst fehlt noch.
 - **Auto:** Hintergrund und Sperrbildschirm laufen; der Medienbaum für Android Auto und CarPlay ist nicht gebaut
   (`docs/spec-car.md`).
-- **Plattformen:** Android auf einem echten Telefon, Windows (siehe unten).
+- **Plattformen:** Android wird auf einem echten Telefon getestet (offen: Sperrbildschirm), Windows (siehe unten).
 - **Pakete:** signierte Pakete und Releases (`docs/releasing.md`).
 - **Weitere Medien:** E-Books und Videos zeigt die App als Kategorie, David verwaltet sie noch nicht
   (`docs/spec-ebooks.md` und `docs/spec-video.md`, Entwürfe).
@@ -113,7 +113,7 @@ Als Rückfallebene bleiben fertige Server: Audiobookshelf für Hörbücher, Navi
 | Plattform | Stand |
 |---|---|
 | Linux (Desktop, Server) | Ton über PipeWire (`audio/`), Server `david` läuft; hier wird zuerst gebaut |
-| Android | läuft im Emulator (Debug- und Release-APK); noch nicht auf einem echten Telefon geprüft, nicht veröffentlicht |
+| Android | läuft im Emulator (Debug- und Release-APK) und wird auf einem Telefon aktiv getestet; bekannt: der Sperrbildschirm zeigt die Steuerung angeblich nicht (siehe Issues); nicht veröffentlicht |
 | iPhone, iPad | zwei Apps (zwei Bundle-IDs), Testbuilds über TestFlight; auf einem Gerät ausprobiert (Siri, `docs/spec-voice.md`) |
 | macOS | App als `.zip`/`.dmg` aus der CI; der Server läuft mit launchd (`docs/releasing.md`) |
 | Windows | später; der Dienstcode des Servers ist geschrieben, gebaut und getestet, aber nicht auf dem Zielsystem geprüft |
