@@ -10,6 +10,7 @@
 # person (or by Claude): the script stops at the first step that fails (no window, the app died) and prints where the pictures are.
 # The scenario ends with the server started again: the script waits (up to 200 s) until the bar of the offline mode is gone, which the app does
 # by itself at its period (60 s) and tells from the colour of the bar; ACCEPT_DEBUG=1 prints the pixel it looks at.
+# ACCEPT_LANG=en_US.UTF-8 runs the whole scenario in English (default de_DE.UTF-8), to look at the texts of the other language.
 # The app runs in the X11 window system (GDK_BACKEND=x11, under Wayland through XWayland), where xdotool can click. Needs xdotool, ImageMagick
 # (import) and ffmpeg. Run it on a desktop of its own or leave mouse and keyboard alone meanwhile; with Xvfb (xvfb-run) it needs no screen.
 set -euo pipefail
@@ -30,21 +31,28 @@ demo=server/target/debug/examples/serve_demo
 app=app/build/linux/x64/release/bundle/psalm
 [ -x "$demo" ] && [ -x "$app" ] || { echo "build first: scripts/accept.sh --build" >&2; exit 2; }
 
-server_pid= app_pid=
-cleanup() { [ -n "$app_pid" ] && kill "$app_pid" 2>/dev/null || true; [ -n "$server_pid" ] && kill "$server_pid" 2>/dev/null || true; rm -rf "$work"; }
+server_pid= app_pid= proxy_pid=
+cleanup() { [ -n "$proxy_pid" ] && kill "$proxy_pid" 2>/dev/null || true; [ -n "$app_pid" ] && kill "$app_pid" 2>/dev/null || true; [ -n "$server_pid" ] && kill "$server_pid" 2>/dev/null || true; rm -rf "$work"; }
 trap cleanup EXIT
 
 ffmpeg -loglevel error -f lavfi -i "sine=frequency=440:duration=30" -q:a 6 "$work/tone.mp3"
 # The server keeps its data in $work/demo, so that it can be started again as the same server (the app stays paired).
 start_server() {
-    DEMO_KEEP_DIR="$work/demo" DEMO_TRACKS=3 "$demo" "127.0.0.1:$port" "$work/tone.mp3" "$work/pairing" >>"$work/server.log" 2>&1 &
+    DEMO_ADDRESS="127.0.0.1:$port" DEMO_KEEP_DIR="$work/demo" DEMO_TRACKS=3 "$demo" "127.0.0.1:$((port + 1))" "$work/tone.mp3" "$work/pairing" >>"$work/server.log" 2>&1 &
     server_pid=$!
     for _ in $(seq 1 60); do [ -s "$work/pairing" ] && break; sleep 0.5; done
     [ -s "$work/pairing" ] || { echo "the demo server did not start" >&2; exit 1; }
 }
+# The app talks to the server through a relay (scripts/accept-proxy.py), which can slow the answers down and be killed: a download cut in the middle.
+start_proxy() {
+    python3 scripts/accept-proxy.py "$port" "$((port + 1))" "$1" &
+    proxy_pid=$!
+    sleep 1
+}
 start_server
+start_proxy 0
 
-GDK_BACKEND=x11 PSALM_DATA_DIR="$work/app" "$app" "$(cat "$work/pairing")" >"$work/app.log" 2>&1 &
+LC_ALL="${ACCEPT_LANG:-de_DE.UTF-8}" LANGUAGE="${ACCEPT_LANG%%_*}" GDK_BACKEND=x11 PSALM_DATA_DIR="$work/app" "$app" "$(cat "$work/pairing")" >"$work/app.log" 2>&1 &
 app_pid=$!
 win=
 for _ in $(seq 1 60); do
@@ -78,8 +86,14 @@ click 666 604                                  # "Connect"
 shot home 4
 click 232 458                                  # the album "Bible" (3 titles)
 shot album 2
+kill "$proxy_pid"; start_proxy 15000           # the answers come slowly: about 7 s a title
 click 989 494                                  # download the album
-shot downloaded 4
+shot downloading 4
+kill "$proxy_pid"; proxy_pid=                  # the connection breaks in the middle of the album
+shot download-cut 8
+start_proxy 0                                  # the connection is back; the album is downloaded again, the whole files kept and the cut one fetched
+click 989 494
+shot downloaded 8
 click 54 98                                    # back
 kill "$server_pid"; server_pid=                # the server goes away
 shot server-gone 38                            # the look at the server runs every 30 s
