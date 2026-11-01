@@ -78,6 +78,13 @@ class PlayerController extends ChangeNotifier {
         book = same;
         trackIndex = i;
       }
+    } else if (openId != null && !playing && !loading) {
+      // The open item is not on the device and nothing plays: it goes, with the "continue" card and the bar of the player, as in `_load`.
+      // What plays is not interrupted.
+      _send(const HaltCommand());
+      book = library.firstOrNull;
+      trackIndex = 0;
+      position = Duration.zero;
     } else if (book == null && library.isNotEmpty) {
       book = library.first;
     }

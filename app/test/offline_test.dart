@@ -299,6 +299,14 @@ void main() {
       expect(p.library.length, 4);
     });
 
+    test('an open item that is not on the device goes from the player offline when nothing plays', () {
+      final p = PlayerController(all, source: FakeSource({11, 12}));
+      p.book = all[2]; // "Nichts": no part on the device
+      p.setOfflineView(true);
+      expect(p.book?.id, '1', reason: 'the continue card does not offer what is not there');
+      expect(p.trackIndex, 0);
+    });
+
     test('a change of a book made on the device shows at once, in the offline view too', () {
       final p = PlayerController(all, source: FakeSource({11, 12}));
       p.setOfflineView(true);
