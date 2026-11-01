@@ -10,6 +10,8 @@ iPhone/iPad und macOS.
 
 ![Psalms: Startseite mit Weiterhören und Neu](site/screenshot-home-de.png)
 
+![David: Verwaltung im Browser, CD-Import](site/screenshot-admin-cd.png)
+
 **Auf einen Blick**
 
 - Hörbücher, Musik, Podcasts und Radio vom eigenen Rechner, ohne Cloud und ohne Konto bei einem Dienst.
