@@ -27,7 +27,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = dir.path().join("data");
     let library = dir.path().join("library");
     std::fs::create_dir_all(library.join("Test/Bible"))?;
-    std::fs::copy(&audio, library.join("Test/Bible/01.mp3"))?;
+    // DEMO_TRACKS=3 makes the book of three titles (the same audio three times) for trying downloads; the default is one, as the app tests expect.
+    let count: usize = std::env::var("DEMO_TRACKS").ok().and_then(|v| v.parse().ok()).filter(|n| (1..=99).contains(n)).unwrap_or(1);
+    for n in 1..=count {
+        std::fs::copy(&audio, library.join(format!("Test/Bible/{n:02}.mp3")))?;
+    }
 
     david_server::app::create_data_dir(&data_dir)?;
     let tls = if david_server::tls::wanted(listen) { Some(ensure_certificate(&data_dir, listen)?) } else { None };
@@ -45,19 +49,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             title: "Bible".into(),
             folder: "Test/Bible".into(),
             recommended_age: None,
-            tracks: vec![FoundTrack {
-                disc: 1,
-                number: 1,
-                title: "Gospel of John".into(),
-                file: "01.mp3".into(),
-                duration_ms: 30_000,
-                size_bytes: std::fs::metadata(&audio)?.len() as i64,
-                mtime: 0,
-                format: "mp3".into(),
-                codec: "mpeg".into(),
-                mime_type: "audio/mpeg".into(),
-                ..Default::default()
-            }],
+            tracks: (1..=count)
+                .map(|n| FoundTrack {
+                    disc: 1,
+                    number: n as i64,
+                    title: if n == 1 { "Gospel of John".into() } else { format!("Chapter {n}") },
+                    file: format!("{n:02}.mp3"),
+                    duration_ms: 30_000,
+                    size_bytes: std::fs::metadata(&audio).map(|m| m.len() as i64).unwrap_or(0),
+                    mtime: 0,
+                    format: "mp3".into(),
+                    codec: "mpeg".into(),
+                    mime_type: "audio/mpeg".into(),
+                    ..Default::default()
+                })
+                .collect(),
         }])
         .await?;
     let book = store.find_book("Test/Bible").await?.ok_or("book")?;

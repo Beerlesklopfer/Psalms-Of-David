@@ -33,7 +33,7 @@ cleanup() { [ -n "$app_pid" ] && kill "$app_pid" 2>/dev/null || true; [ -n "$ser
 trap cleanup EXIT
 
 ffmpeg -loglevel error -f lavfi -i "sine=frequency=440:duration=30" -q:a 6 "$work/tone.mp3"
-"$demo" "127.0.0.1:$port" "$work/tone.mp3" "$work/pairing" >"$work/server.log" 2>&1 &
+DEMO_TRACKS=3 "$demo" "127.0.0.1:$port" "$work/tone.mp3" "$work/pairing" >"$work/server.log" 2>&1 &
 server_pid=$!
 for _ in $(seq 1 60); do [ -s "$work/pairing" ] && break; sleep 0.5; done
 [ -s "$work/pairing" ] || { echo "the demo server did not start" >&2; exit 1; }
@@ -61,8 +61,17 @@ click() { xdotool mousemove $((ox + $1)) $((oy + $2)) click 1; }
 shot connect 3
 click 666 604                                  # "Connect"
 shot home 4
+click 232 458                                  # the album "Bible" (3 titles)
+shot album 2
+click 989 494                                  # download the album
+shot downloaded 4
+click 54 98                                    # back
 kill "$server_pid"; server_pid=                # the server goes away
 shot server-gone 38                            # the look at the server runs every 30 s
 click 1230 124                                 # "Stay offline" (second button of the bar)
 shot stay-offline 2
+click 232 488                                  # the album, offline: it is on the device
+shot album-offline 2
+click 408 646                                  # the second title: it plays without the server
+shot playing-offline 4
 echo "pictures in $out"
