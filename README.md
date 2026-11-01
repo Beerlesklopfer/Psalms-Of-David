@@ -6,6 +6,19 @@ iPhone/iPad und macOS.
 - **David** ist der Server (Bibliothek, Profile, Hörfortschritt, Verwaltung im Browser).
 - **Psalms** ist die App (Programm- und Paketname `psalm`). Zusammen sind sie das Paar aus dem Namen: David und seine Psalmen.
 
+**Website:** <https://beerlesklopfer.github.io/Psalms-Of-David/> (Download, Datenschutz, Support, Bilder der App).
+
+![Psalms: Startseite mit Weiterhören und Neu](site/screenshot-home-de.png)
+
+**Auf einen Blick**
+
+- Hörbücher, Musik, Podcasts und Radio vom eigenen Rechner, ohne Cloud und ohne Konto bei einem Dienst.
+- Ein Profil pro Familienmitglied: eigener Hörfortschritt, Altersgrenzen, Wochenplan mit Hörzeit für Kinder.
+- Apps für Linux, Android, iPhone, iPad und macOS; die Hörposition wandert mit.
+- Herunterladen zum Hören ohne Netz; unterwegs „Offline bleiben“ mit den geladenen Titeln.
+- Audio-CDs im Laufwerk des Servers einlesen, Tags und Cover im Browser pflegen.
+- Freie Software (AGPL), Server in Rust, App in Flutter.
+
 **Für alle, die nur zuhören:** Wer David betreut, gibt dir einen Code. Mit dem verbindest du dieses Gerät einmal, danach hörst du alles,
 was für dich freigegeben ist. Die Hörbücher, die Musik, die Podcasts und das Radio liegen zunächst nicht in der App, sondern auf dem
 Computer zu Hause, auf dem David läuft; das entlastet den Speicher deines Geräts. Möchtest du Musik mitnehmen, lädst du nur herunter,

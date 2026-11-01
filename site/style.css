@@ -27,3 +27,8 @@ html:not([data-l]) div[lang="en"] { border-top: 1px solid var(--line); margin-to
 nav { flex-wrap: wrap; align-items: center; justify-content: flex-end; }
 code { font-size: .9em; }
 header a.home { display: inline-flex; }
+
+.shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; margin: 1rem 0; }
+.shots figure { margin: 0; }
+.shots img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; display: block; }
+.shots figcaption, .note { color: var(--muted, #8a8794); font-size: .9rem; margin-top: .35rem; }
