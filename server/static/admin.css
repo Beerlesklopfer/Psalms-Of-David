@@ -630,7 +630,9 @@ td.actions form { display: inline-block; margin: 0 .25rem .25rem 0; }
 .cd-live tr[data-state="unverified"] td:last-child { color: var(--warn); font-weight: 600; }
 .cd-search { margin: .75rem 0; }
 .cd-search-row { margin-top: .25rem; justify-content: flex-start; border-top: 0; padding-top: 0; }
-.cd-search-row input { flex: 1 1 16rem; max-width: 28rem; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }
+.cd-search { display: block; }
+.cd-search label { display: block; }
+.cd-search-row input { flex: 1 1 auto; min-width: 0; width: 100%; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }
 
 /* The log of the imports: the short columns do not break, the book and the message have the room. */
 .cd-log { table-layout: auto; }

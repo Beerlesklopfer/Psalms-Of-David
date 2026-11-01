@@ -135,7 +135,16 @@ pub fn search_url(base: &str, words: &str) -> String {
     // The characters of the search syntax are taken out; the words go into the title and the artist alike.
     let clean: String = words.chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == '\'' || c == '-' { c } else { ' ' }).collect();
     let clean = clean.split_whitespace().collect::<Vec<_>>().join(" ");
-    let query = format!("release:({clean}) OR artist:({clean})");
+    // Every word has to be in the title or in the artist (a title and an author typed together fit, and a text of several words must not
+    // find everything that has one of them); the whole text as a phrase in the title ranks first.
+    let mut words: Vec<&str> = Vec::new();
+    for w in clean.split(' ').filter(|w| !w.is_empty()) {
+        if !words.iter().any(|x| x.eq_ignore_ascii_case(w)) {
+            words.push(w);
+        }
+    }
+    let every = words.iter().map(|w| format!("(release:{w} OR artist:{w})")).collect::<Vec<_>>().join(" AND ");
+    let query = if words.len() > 1 { format!("release:\"{clean}\"^4 OR ({every})") } else { every };
     format!("{base}/ws/2/release/?query={}&limit=15&fmt=json", encode(&query))
 }
 
@@ -506,6 +515,17 @@ mod tests {
         assert!(found.iter().all(|c| !c.release_id.is_empty() && !c.title.is_empty() && c.tracks.is_empty() && !c.disc_id_matched), "{found:?}");
         assert_eq!((found[0].title.as_str(), found[0].author.as_str()), ("Bach", "Bach"));
         assert!(found[0].discs_total >= 1);
+    }
+
+    #[test]
+    fn a_search_of_several_words_needs_every_word_and_ranks_the_phrase_first() {
+        let q = |w: &str| {
+            let url = search_url("https://mb", w);
+            let raw = url.split("query=").nth(1).unwrap().split('&').next().unwrap().to_owned();
+            raw.replace("%20", " ").replace("%3A", ":").replace("%22", "\"").replace("%28", "(").replace("%29", ")").replace("%5E", "^")
+        };
+        assert_eq!(q("let god be god"), "release:\"let god be god\"^4 OR ((release:let OR artist:let) AND (release:god OR artist:god) AND (release:be OR artist:be))");
+        assert_eq!(q("Bach"), "(release:Bach OR artist:Bach)");
     }
 
     /// Against the real MusicBrainz (`cargo test -- --ignored`): the address of a search is accepted and the answer is read.
