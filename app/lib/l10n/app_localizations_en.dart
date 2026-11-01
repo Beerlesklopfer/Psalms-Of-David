@@ -1637,7 +1637,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get offlineProbeHint =>
-      'While you stay offline, the app looks for the server on a WLAN or cable at this interval and goes online by itself when it answers.';
+      'While you stay offline, the app looks for the server at this interval (not over mobile data) and goes online by itself when it answers.';
 
   @override
   String periodSeconds(int count) {

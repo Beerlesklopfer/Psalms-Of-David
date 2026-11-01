@@ -669,7 +669,7 @@
   "offlineRetry": "Erneut versuchen",
   "offlineStay": "Offline bleiben",
   "offlineProbeTitle": "Nach dem Server suchen",
-  "offlineProbeHint": "Solange du offline bleibst, sucht die App in diesem Abstand im WLAN oder am Kabel nach dem Server und geht von selbst online, wenn er antwortet.",
+  "offlineProbeHint": "Solange du offline bleibst, sucht die App in diesem Abstand (nicht über Mobilfunk) nach dem Server und geht von selbst online, wenn er antwortet.",
   "periodSeconds": "{count} s",
   "periodMinutes": "{count} Min.",
   "offlineNeedsNetwork": "Diese Seite braucht den Server. Sie ist wieder da, sobald du online bist.",

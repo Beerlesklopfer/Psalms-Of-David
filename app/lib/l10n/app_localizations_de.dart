@@ -1656,7 +1656,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get offlineProbeHint =>
-      'Solange du offline bleibst, sucht die App in diesem Abstand im WLAN oder am Kabel nach dem Server und geht von selbst online, wenn er antwortet.';
+      'Solange du offline bleibst, sucht die App in diesem Abstand (nicht über Mobilfunk) nach dem Server und geht von selbst online, wenn er antwortet.';
 
   @override
   String periodSeconds(int count) {

@@ -222,8 +222,8 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     _armProbe();
   }
 
-  /// "Stay offline" waits for the server: at the chosen period the app looks, on a WLAN or cable only, whether it answers. A foreign WLAN
-  /// does not end the mode, because the server is not there; the own one does.
+  /// "Stay offline" waits for the server: at the chosen period the app looks, not on mobile data, whether it answers. A foreign WLAN
+  /// does not end the mode, because the server is not there; the own one does (and a VPN to it).
   void _armProbe() {
     final want = _offline.untilWifi && _api != null;
     if (!want) {
@@ -241,9 +241,17 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   Future<void> _probe() async {
     final api = _api;
     if (api == null || !_offline.untilWifi) return;
+    // The kind of network is a hint: where it cannot be asked (a desktop without a network manager) the answer of the server decides alone.
+    List<ConnectivityResult>? now;
     try {
-      final now = await Connectivity().checkConnectivity();
-      if (!now.contains(ConnectivityResult.wifi) && !now.contains(ConnectivityResult.ethernet)) return;
+      now = await Connectivity().checkConnectivity();
+    } on Object {
+      now = null;
+    }
+    // Not on mobile data: a WLAN, a cable, or a VPN or bridge (which is how a desktop or a phone away from home reaches the server).
+    const unmetered = {ConnectivityResult.wifi, ConnectivityResult.ethernet, ConnectivityResult.vpn, ConnectivityResult.other};
+    if (now != null && !now.any(unmetered.contains)) return;
+    try {
       await api.libraryVersions();
     } on Object {
       return;

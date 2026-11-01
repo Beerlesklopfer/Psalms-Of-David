@@ -32,7 +32,7 @@ class OfflineSettingsStore {
 
   bool read() => _all()['offline'] == true;
 
-  /// Whether the offline mode ends by itself when the server can be reached on a WLAN or cable (see [OfflineController.stayUntilWifi]).
+  /// Whether the offline mode ends by itself when the server can be reached, not over mobile data (see [OfflineController.stayUntilWifi]).
   bool readUntilWifi() => _all()['until_wifi'] == true;
 
   /// Seconds between two looks for the server while the offline mode waits for it; null if never set.
@@ -98,7 +98,7 @@ class OfflineController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// "Stay offline" of the bar: offline now, and back online when the device is on a WLAN or cable and the server answers.
+  /// "Stay offline" of the bar: offline now, and back online when the server answers (not over mobile data).
   void stayUntilWifi() {
     manual = true;
     untilWifi = true;

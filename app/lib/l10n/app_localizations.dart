@@ -2831,7 +2831,7 @@ abstract class AppLocalizations {
   /// No description provided for @offlineProbeHint.
   ///
   /// In en, this message translates to:
-  /// **'While you stay offline, the app looks for the server on a WLAN or cable at this interval and goes online by itself when it answers.'**
+  /// **'While you stay offline, the app looks for the server at this interval (not over mobile data) and goes online by itself when it answers.'**
   String get offlineProbeHint;
 
   /// No description provided for @periodSeconds.

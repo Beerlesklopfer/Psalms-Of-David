@@ -984,7 +984,7 @@
   "offlineRetry": "Try again",
   "offlineStay": "Stay offline",
   "offlineProbeTitle": "Look for the server",
-  "offlineProbeHint": "While you stay offline, the app looks for the server on a WLAN or cable at this interval and goes online by itself when it answers.",
+  "offlineProbeHint": "While you stay offline, the app looks for the server at this interval (not over mobile data) and goes online by itself when it answers.",
   "periodSeconds": "{count} s",
   "@periodSeconds": {"placeholders": {"count": {"type": "int"}}},
   "periodMinutes": "{count} min",
