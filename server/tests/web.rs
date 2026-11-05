@@ -1222,6 +1222,8 @@ async fn a_pin_reset_by_an_administrator_signs_out_the_browsers_but_not_the_devi
 async fn wrong_current_pins_count_towards_the_lock() {
     let a = app().await;
     let (_, cookie, csrf) = member_session(&a).await;
+    // A long wait, so that a slow machine (the hashing of a debug build on CI) does not let it run out before the right PIN comes.
+    a.store.save_settings(&[("pin_backoff_s".to_owned(), "600".to_owned())]).await.unwrap();
     let o = Opts { cookie: Some(&cookie), ..Default::default() };
     let body = form(&[("csrf", &csrf), ("current", "000000"), ("new", "445566"), ("repeat", "445566")]);
     for _ in 0..5 {
