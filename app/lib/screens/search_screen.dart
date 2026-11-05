@@ -11,6 +11,7 @@ import '../podcasts.dart';
 import '../offline/offline_controller.dart';
 import '../server/api_client.dart';
 import 'barcode_scan_screen.dart';
+import 'item_screen.dart';
 import '../station_logo.dart';
 import '../widgets.dart';
 import 'labels_ui.dart';
@@ -230,6 +231,8 @@ class _SearchScreenState extends State<SearchScreen> {
                   leading: SizedBox.square(dimension: 48, child: Cover(book: b)),
                   title: Text(b.title),
                   subtitle: Text(b.author),
+                  // The same download as on the page of the album.
+                  trailing: DownloadButton(book: b),
                   onTap: () => openItem(context, b),
                 );
               },
@@ -241,13 +244,8 @@ class _SearchScreenState extends State<SearchScreen> {
               itemCount: found.tracks.length,
               itemBuilder: (context, i) {
                 final hit = found.tracks[i];
-                return ListTile(
-                  key: ValueKey('search-track-${hit.book.id}-$i'),
-                  leading: SizedBox.square(dimension: 48, child: Cover(book: hit.book)),
-                  title: Text(hit.track.title),
-                  subtitle: Text('${hit.book.title} · ${hit.book.author}'),
-                  onTap: () => p.open(hit.book, track: hit.index),
-                );
+                // The tile of the album page: it plays the track (and checks the format), and leads to the album.
+                return TrackTile(key: ValueKey('search-track-${hit.book.id}-$i'), book: hit.book, track: hit.track, inSearch: true);
               },
             ),
           ],

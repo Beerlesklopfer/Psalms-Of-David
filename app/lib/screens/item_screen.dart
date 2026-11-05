@@ -138,7 +138,7 @@ class ItemScreen extends StatelessWidget {
               for (final disc in book.discNumbers) ...[
                 SectionHeader(l.discLabel(disc)),
                 for (final t in book.tracks.where((t) => t.disc == disc))
-                  _TrackTile(book: book, track: t),
+                  TrackTile(book: book, track: t),
               ],
               const SizedBox(height: 24),
             ],
@@ -161,11 +161,15 @@ extension on ItemScreen {
   }
 }
 
-class _TrackTile extends StatelessWidget {
-  const _TrackTile({required this.book, required this.track});
+/// One track: tap plays it (or says that this platform cannot), with its labels, the played mark, its length and "add to playlist".
+/// The same tile serves the page of the album and the hits of the search; there ([inSearch]) it shows the cover and the album, and a
+/// button leads to the album.
+class TrackTile extends StatelessWidget {
+  const TrackTile({super.key, required this.book, required this.track, this.inSearch = false});
 
   final LibraryItem book;
   final Track track;
+  final bool inSearch;
 
   @override
   Widget build(BuildContext context) {
@@ -174,22 +178,35 @@ class _TrackTile extends StatelessWidget {
     final index = book.tracks.indexOf(track);
     final active = p.book?.id == book.id && p.trackIndex == index;
     return ListTile(
-      dense: true,
+      dense: !inSearch,
       selected: active,
       selectedColor: cs.primary,
-      leading: SizedBox(
-        width: 28,
-        child: active
-            ? Icon(Icons.graphic_eq, color: cs.primary)
-            : Text('${track.number}', textAlign: TextAlign.end),
-      ),
+      leading: inSearch
+          ? SizedBox.square(dimension: 48, child: Cover(book: book))
+          : SizedBox(
+              width: 28,
+              child: active
+                  ? Icon(Icons.graphic_eq, color: cs.primary)
+                  : Text('${track.number}', textAlign: TextAlign.end),
+            ),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [Text(track.title), TrackLabels(book: book, track: track)],
+        children: [
+          Text(track.title),
+          if (inSearch) Text('${book.title} · ${book.author}', style: Theme.of(context).textTheme.bodySmall),
+          TrackLabels(book: book, track: track),
+        ],
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (inSearch)
+            IconButton(
+              key: ValueKey('open-album-${book.id}-${track.number}'),
+              tooltip: AppLocalizations.of(context).tooltipOpenAlbum,
+              icon: const Icon(Icons.album_outlined),
+              onPressed: () => openItem(context, book),
+            ),
           TrackLabelsButton(book: book, track: track),
           if (p.isTrackPlayed(book, index)) ...const [PlayedMark(), SizedBox(width: 8)],
           Text(formatDuration(track.length)),
