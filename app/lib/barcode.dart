@@ -1,5 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import 'dart:typed_data';
+
 import 'models.dart';
 
 /// Only the digits of [text]: a code pasted with spaces or hyphens ("4006381 333931", "4-006381-333931") becomes plain digits.
@@ -129,4 +131,9 @@ typedef BarcodeLookup = Future<BarcodeAnswer> Function(String code);
 /// What the screens need to ask the server for a barcode; [ApiClient] implements it next to [FeedApi].
 abstract class BarcodeApi {
   Future<BarcodeAnswer> barcodeLookup(String code);
+}
+
+/// Makes a picture the cover of an album on the server (`PUT /api/v1/items/{id}/cover`): the owner and an administrator may.
+abstract class CoverApi {
+  Future<void> putCover(int itemId, Uint8List jpeg);
 }

@@ -190,13 +190,13 @@ class LibraryItem {
   List<int> get discNumbers => (tracks.map((t) => t.disc).toSet().toList()..sort());
 
   /// The same book with other titles, labels or hiding: what the offline view and a change made without the server need.
-  LibraryItem copyWith({List<Track>? tracks, List<String>? labels, List<String>? trackLabels, bool? hidden}) => LibraryItem(
+  LibraryItem copyWith({List<Track>? tracks, List<String>? labels, List<String>? trackLabels, bool? hidden, Uint8List? cover}) => LibraryItem(
     id: id,
     title: title,
     author: author,
     color: color,
     tracks: tracks ?? this.tracks,
-    cover: cover,
+    cover: cover ?? this.cover,
     coverUrl: coverUrl,
     blurb: blurb,
     kind: kind,

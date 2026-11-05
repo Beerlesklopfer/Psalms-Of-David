@@ -15,6 +15,7 @@
 //! | `GET /api/v1/items/{id}` | parts, the blurb (`description`), progress and whether it may be used now |
 //! | `GET /api/v1/barcode/{code}` | is this EAN/UPC in the library? `{code, gtin, found, items[]}`; `422 invalid_barcode` for a wrong length or check digit |
 //! | `GET /api/v1/items/{id}/cover` | the product picture: `cover.jpg` (or `.png`, `folder.jpg`) in the item's folder, else the picture embedded in its first file; `404` if there is none |
+//! | `PUT /api/v1/items/{id}/cover` | a picture (JPEG or PNG, at most 8 MiB) becomes the cover: the folder file and embedded in every track; the owner and an administrator |
 //! | `GET /api/v1/continue` | unfinished items, latest first |
 //! | `GET /api/v1/parts/{id}/stream` | the file of a part, with `Range` support |
 //! | `PUT /api/v1/progress` | stores the listening position |
@@ -80,7 +81,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/v1/labels", get(all_labels))
         .route("/api/v1/labels/{name}", put(rename_label).delete(delete_label))
         .route("/api/v1/new", get(new_items))
-        .route("/api/v1/items/{id}/cover", get(item_cover))
+        .route("/api/v1/items/{id}/cover", get(item_cover).put(put_item_cover).layer(axum::extract::DefaultBodyLimit::max(crate::tags::MAX_COVER_BYTES + 1)))
         .route("/api/v1/continue", get(continue_listening))
         .route("/api/v1/parts/{id}/stream", get(stream))
         .route("/api/v1/progress", put(put_progress))
@@ -653,6 +654,81 @@ async fn bible_resolve(State(s): State<ApiState>, d: Device, Query(q): Query<Res
     Ok(Json(json!({ "reference": reference, "matches": matches })))
 }
 
+/// The folder of a book from one of its tracks: the track may lie in a disc folder below it (`CD 1/01.mp3`), so the folder is as many
+/// steps up as the stored name has parts.
+pub(crate) fn book_dir_of(stored: &str, path: &Path) -> Option<PathBuf> {
+    path.ancestors().nth(stored.split('/').count()).map(Path::to_path_buf)
+}
+
+/// Makes `bytes` the cover of a book: the picture file of its folder (`cover.jpg` or `cover.png`, the other cover files removed, since the
+/// file of the folder wins over the embedded pictures) and the picture embedded in every file. A file that cannot take the embedded copy
+/// (read-only for the service, an odd tag) does not undo the rest. Returns the file name, how many files took it and the first error. Blocking.
+pub(crate) fn replace_cover(dir: &Path, files: &[PathBuf], bytes: &[u8], mime: &'static str) -> std::result::Result<(&'static str, usize, Option<String>), String> {
+    for old in COVER_FILES {
+        let _ = std::fs::remove_file(dir.join(old));
+    }
+    let name = if mime == "image/png" { "cover.png" } else { "cover.jpg" };
+    std::fs::write(dir.join(name), bytes).map_err(|e| format!("{name}: {e}"))?;
+    let (mut embedded, mut first_error) = (0, None);
+    for path in files {
+        match crate::tags::write_cover(path, bytes, mime) {
+            Ok(()) => embedded += 1,
+            Err(e) => {
+                first_error.get_or_insert_with(|| e.to_string());
+            }
+        }
+    }
+    Ok((name, embedded, first_error))
+}
+
+/// `PUT /api/v1/items/{id}/cover`: a picture (the body, JPEG or PNG by its first bytes, at most 8 MiB) becomes the cover of the album, as
+/// the folder file and embedded in every track: a photo of the case taken with the phone. The owner of the album and an administrator may
+/// (the right of the labels, `can_label`). `200 {"folder_file","embedded_in","of_files"}`; `403 forbidden`, `404 not_found`, `413 cover_size`,
+/// `415 cover_type` (WebP and anything that is no JPEG or PNG), `422 cover_none` (empty), `409 files_missing`, `507 no_space`.
+async fn put_item_cover(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, body: axum::body::Bytes) -> ApiResult<Json<Value>> {
+    if !s.store.visible_books(d.user_id).await?.iter().any(|b| b.id == id) {
+        return Err(ApiError(StatusCode::NOT_FOUND, "not_found"));
+    }
+    let row = s.store.admin_book_row(id).await?.ok_or(ApiError(StatusCode::NOT_FOUND, "not_found"))?;
+    if !(d.role == Role::Admin || (d.role == Role::Member && row.owner_id == Some(d.user_id))) {
+        return Err(ApiError(StatusCode::FORBIDDEN, "forbidden"));
+    }
+    if body.is_empty() {
+        return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "cover_none"));
+    }
+    if body.len() > crate::tags::MAX_COVER_BYTES {
+        return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "cover_size"));
+    }
+    let mime = crate::profile::sniff_image(&body).filter(|m| *m != "image/webp").ok_or(ApiError(StatusCode::UNSUPPORTED_MEDIA_TYPE, "cover_type"))?;
+    let folder = s.store.book_folder(id).await?.ok_or(ApiError(StatusCode::NOT_FOUND, "not_found"))?;
+    let missing = || ApiError(StatusCode::CONFLICT, "files_missing");
+    let mut files = Vec::new();
+    let mut dir = None;
+    for t in s.store.tracks_of(id).await? {
+        let path = resolve(&s.store, s.library.as_deref(), &folder, &t.file).await.ok_or_else(missing)?;
+        dir = dir.or_else(|| book_dir_of(&t.file, &path));
+        files.push(path);
+    }
+    let dir = dir.ok_or_else(missing)?;
+    let need = (body.len() as u64).saturating_mul(files.len() as u64 + 1);
+    if !crate::diskspace::fits(&dir, need, crate::diskspace::reserve(&s.store).await) {
+        return Err(ApiError(StatusCode::INSUFFICIENT_STORAGE, "no_space"));
+    }
+    let (count, size) = (files.len(), body.len());
+    let (name, embedded, first_error) = tokio::task::spawn_blocking(move || replace_cover(&dir, &files, &body, mime))
+        .await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal"))?
+        .map_err(|e| {
+            tracing::warn!(album = id, error = %e, "the cover could not be written");
+            ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal")
+        })?;
+    let who = s.store.profile_name(d.user_id).await?.unwrap_or_default();
+    tracing::info!(album = id, user = %who, bytes = size, files = count, embedded, first_error = ?first_error, "cover set from the app");
+    s.store.log_tag_change(&format!("app: {who}"), id, name, "Picture", "", "picture from the app").await?;
+    s.store.rescan_soon();
+    Ok(Json(json!({ "folder_file": name, "embedded_in": embedded, "of_files": count })))
+}
+
 /// File names that hold the cover of a folder, in order of preference.
 pub(crate) const COVER_FILES: [&str; 6] = ["cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png"];
 
@@ -663,9 +739,7 @@ pub(crate) async fn find_cover(store: &Store, library: Option<&Path>, id: i64) -
     let b = book::Entity::find_by_id(id).one(&store.db.reader).await.ok()??;
     let first = store.tracks_of(id).await.ok()?.into_iter().next()?;
     let file = resolve(store, library, &b.folder, &first.file).await?;
-    // The folder of the book: the track may lie in a disc folder below it (`CD 1/01.mp3`).
-    let depth = first.file.split('/').count();
-    let book_dir = file.ancestors().nth(depth).map(Path::to_path_buf);
+    let book_dir = book_dir_of(&first.file, &file);
     tokio::task::spawn_blocking(move || {
         let folders: Vec<PathBuf> = book_dir.into_iter().chain(file.parent().map(Path::to_path_buf)).collect();
         folders.iter().find_map(|d| cover_in(d)).or_else(|| crate::tags::embedded_cover(&file))

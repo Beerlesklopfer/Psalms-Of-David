@@ -83,7 +83,7 @@ class PairResult {
 /// of the server is checked against the certificate and the trust of the system. With a fingerprint the
 /// connection is HTTPS and only the server whose certificate has exactly this
 /// fingerprint is accepted; no other certificate is, whoever signed it.
-class ApiClient implements FeedApi, BarcodeApi {
+class ApiClient implements FeedApi, BarcodeApi, CoverApi {
   ApiClient({required this.address, this.fingerprint, this.ca = false, this.token, HttpClient? client})
       : _http = client ?? _pinnedClient(fingerprint, ca);
 
@@ -267,6 +267,13 @@ class ApiClient implements FeedApi, BarcodeApi {
   }
 
   Future<Map<String, dynamic>> item(int id) async => await _json('GET', '/api/v1/items/$id') as Map<String, dynamic>;
+
+  @override
+  Future<void> putCover(int itemId, Uint8List jpeg) async {
+    final res = await sendBytes('PUT', '/api/v1/items/$itemId/cover', jpeg, contentType: 'image/jpeg');
+    if (res.statusCode >= 400) await _fail(res);
+    await res.drain<void>();
+  }
 
   /// The product picture of an item, or null if it has none (or may not be seen).
   Future<Uint8List?> cover(int itemId) async {

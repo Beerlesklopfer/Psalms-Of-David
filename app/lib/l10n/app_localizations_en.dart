@@ -773,6 +773,30 @@ class AppLocalizationsEn extends AppLocalizations {
       'MusicBrainz knows no release with exactly this Disc ID. Choose a match only if it is this CD, or type the details.';
 
   @override
+  String get coverChange => 'Change the cover';
+
+  @override
+  String get coverCamera => 'Photograph the case';
+
+  @override
+  String get coverGallery => 'Choose a picture';
+
+  @override
+  String get coverChanged => 'The cover is changed.';
+
+  @override
+  String coverFailed(String code) {
+    return 'The cover could not be changed ($code).';
+  }
+
+  @override
+  String get coverDenied =>
+      'The app may not use the camera or the pictures. Allow it in the settings of the device.';
+
+  @override
+  String get coverNoPicture => 'That is no picture.';
+
+  @override
   String get cdBarcode => 'EAN / UPC (back of the case)';
 
   @override

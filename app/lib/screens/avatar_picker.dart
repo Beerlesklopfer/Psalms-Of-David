@@ -9,8 +9,15 @@ import 'package:image_picker/image_picker.dart';
 import '../profile.dart';
 
 /// The camera and the photos of a phone (image_picker); on a computer, where there is no camera to offer, a file chooser (file_selector).
+/// For a profile picture the front camera and 1024 pixels; for the cover of an album ([PlatformAvatarPicker.cover]) the camera on the back
+/// and more pixels, since the case is photographed.
 class PlatformAvatarPicker implements AvatarPicker {
-  const PlatformAvatarPicker();
+  const PlatformAvatarPicker({this.frontCamera = true, this.maxSide = 1024});
+
+  const PlatformAvatarPicker.cover() : this(frontCamera: false, maxSide: 2000);
+
+  final bool frontCamera;
+  final double maxSide;
 
   static bool get _phone => Platform.isAndroid || Platform.isIOS;
 
@@ -23,10 +30,10 @@ class PlatformAvatarPicker implements AvatarPicker {
       if (_phone) {
         final file = await ImagePicker().pickImage(
           source: source == AvatarSource.camera ? ImageSource.camera : ImageSource.gallery,
-          maxWidth: 1024,
-          maxHeight: 1024,
+          maxWidth: maxSide,
+          maxHeight: maxSide,
           imageQuality: 90,
-          preferredCameraDevice: CameraDevice.front,
+          preferredCameraDevice: frontCamera ? CameraDevice.front : CameraDevice.rear,
         );
         return await file?.readAsBytes();
       }

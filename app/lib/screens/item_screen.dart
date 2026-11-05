@@ -8,6 +8,7 @@ import '../l10n/app_localizations.dart';
 import '../models.dart';
 import '../player_controller.dart';
 import '../widgets.dart';
+import 'cover_editor.dart';
 import 'labels_ui.dart';
 import 'hide_menu.dart';
 import 'playlists_screen.dart';
@@ -34,6 +35,7 @@ class ItemScreen extends StatelessWidget {
         actions: [
           // Books of the server only (an episode or a station is no item of the library).
           if (int.tryParse(book.id) != null) AddToPlaylistButton(bookId: int.parse(book.id)),
+          ChangeCoverButton(book: book),
           ShareButton(book: book),
           HideMenuButton(book: book),
         ],
@@ -46,7 +48,8 @@ class ItemScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             children: [
               Center(
-                child: SizedBox.square(dimension: 220, child: Cover(book: book)),
+                // The book as the player has it now: a cover changed on this page shows at once.
+                child: SizedBox.square(dimension: 220, child: Cover(book: p.fullLibrary.where((b) => b.id == book.id).firstOrNull ?? book)),
               ),
               const SizedBox(height: 20),
               Text(book.title, style: text.headlineMedium),

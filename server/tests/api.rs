@@ -502,6 +502,76 @@ async fn the_picture_embedded_in_the_first_file_is_the_fallback() {
     assert_eq!((r.status, r.bytes), (StatusCode::OK, PNG.to_vec()));
 }
 
+/// A PUT with raw bytes as the body.
+async fn put_bytes(a: &Api, uri: &str, token: &str, bytes: Vec<u8>) -> Reply {
+    let req = Request::builder().method("PUT").uri(uri).header(header::AUTHORIZATION, format!("Bearer {token}")).header(header::CONTENT_TYPE, "application/octet-stream").body(Body::from(bytes)).unwrap();
+    let (parts, body) = a.router.clone().oneshot(req).await.unwrap().into_parts();
+    Reply { status: parts.status, headers: parts.headers, bytes: to_bytes(body, 1024 * 1024).await.unwrap().to_vec() }
+}
+
+#[tokio::test]
+async fn the_owner_or_an_administrator_sets_the_cover_from_a_photo_and_it_is_the_folder_file_and_embedded() {
+    if !common::audio::ffmpeg_available() {
+        eprintln!("ffmpeg is not installed; skipping");
+        return;
+    }
+    let a = api().await;
+    let anna = a.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    let ben = a.store.create_user(NewProfile::new("Ben", Role::Member)).await.unwrap();
+    let (ta, tb) = (pair(&a, anna, 1).await, pair(&a, ben, 2).await);
+    let b = book("Author", "Photo", &[2]);
+    let folder = a.library.path().join(&b.folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    for t in &b.tracks {
+        common::audio::make_mp3(&folder.join(&t.file), &[("title", "T")]);
+    }
+    // A picture that was there before, of a lower rank: the new one wins.
+    std::fs::write(folder.join("folder.jpg"), [0xFF, 0xD8, 0xFF, 0xE0, 0, 0]).unwrap();
+    let files: Vec<_> = b.tracks.iter().map(|t| folder.join(&t.file)).collect();
+    let name = b.folder.clone();
+    a.store.import_books(vec![b]).await.unwrap();
+    let id = a.store.find_book(&name).await.unwrap().unwrap().id;
+    a.store.release_book(id, 0).await.unwrap();
+    assert!(a.store.set_book_owner(id, Some(anna)).await.unwrap());
+    let uri = format!("/api/v1/items/{id}/cover");
+
+    // Somebody else's album, an empty body, WebP or no picture at all are refused, and nothing is written.
+    assert_eq!(put_bytes(&a, &uri, &tb, PNG.to_vec()).await.status, StatusCode::FORBIDDEN);
+    // Only adults: a child may not change a cover, not even of an album that is its own.
+    let kim = a.store.create_user(NewProfile::child("Kim", 18, Schedule::always())).await.unwrap();
+    let tk = pair(&a, kim, 4).await;
+    assert!(a.store.set_book_owner(id, Some(kim)).await.unwrap());
+    assert_eq!(put_bytes(&a, &uri, &tk, PNG.to_vec()).await.status, StatusCode::FORBIDDEN);
+    assert!(a.store.set_book_owner(id, Some(anna)).await.unwrap());
+    assert_eq!(put_bytes(&a, &uri, &ta, Vec::new()).await.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let webp = [b"RIFF".as_slice(), &[0, 0, 0, 0], b"WEBPVP8 "].concat();
+    assert_eq!(put_bytes(&a, &uri, &ta, webp).await.status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(put_bytes(&a, &uri, &ta, b"not a picture".to_vec()).await.status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    let mut big = PNG.to_vec();
+    big.resize(david_server::tags::MAX_COVER_BYTES + 1, 0);
+    assert_eq!(put_bytes(&a, &uri, &ta, big).await.status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert!(!folder.join("cover.png").exists());
+
+    // The owner: the folder file and every track, and the app gets it back.
+    let r = put_bytes(&a, &uri, &ta, PNG.to_vec()).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    let answer: Value = serde_json::from_slice(&r.bytes).unwrap();
+    assert_eq!((answer["folder_file"].as_str(), answer["embedded_in"].as_u64(), answer["of_files"].as_u64()), (Some("cover.png"), Some(2), Some(2)));
+    assert!(!folder.join("folder.jpg").exists(), "the older cover file is gone");
+    for f in &files {
+        assert_eq!(david_server::tags::embedded_cover(f).map(|(_, b)| b), Some(PNG.to_vec()), "{}", f.display());
+    }
+    assert_eq!(call(&a, "GET", &uri, Some(&ta), None, None).await.bytes, PNG.to_vec());
+    let log = a.store.tag_changes(id, 10).await.unwrap();
+    assert!(log.iter().any(|c| c.field == "Picture" && c.token_name == "app: Anna"), "{log:?}");
+
+    // An administrator may too; a JPEG replaces the PNG.
+    let admin_token = pair(&a, a.admin, 3).await;
+    let jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xFF, 0xD9];
+    assert_eq!(put_bytes(&a, &uri, &admin_token, jpeg.clone()).await.status, StatusCode::OK);
+    assert!(folder.join("cover.jpg").exists() && !folder.join("cover.png").exists());
+}
+
 #[tokio::test]
 async fn the_cover_of_an_unreleased_item_does_not_exist_for_the_user() {
     let a = api().await;

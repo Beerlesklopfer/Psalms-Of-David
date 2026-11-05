@@ -1070,28 +1070,7 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             }
             let count = files.len();
             let size = bytes.len();
-            let (name, embedded, first_error) = tokio::task::spawn_blocking(move || -> Result<(&'static str, usize, Option<String>), String> {
-                // The picture file of the folder wins over the embedded ones, so there must be only one.
-                for old in crate::api::COVER_FILES {
-                    let _ = std::fs::remove_file(dir.join(old));
-                }
-                let name = if mime == "image/png" { "cover.png" } else { "cover.jpg" };
-                std::fs::write(dir.join(name), &bytes).map_err(|e| format!("{name}: {e}"))?;
-                // The folder picture is what the apps show; a file that cannot take the embedded copy
-                // (read-only for the service, an odd tag) does not undo it.
-                let (mut embedded, mut first_error) = (0, None);
-                for path in &files {
-                    match crate::tags::write_cover(path, &bytes, mime) {
-                        Ok(()) => embedded += 1,
-                        Err(e) => {
-                            first_error.get_or_insert_with(|| e.to_string());
-                        }
-                    }
-                }
-                Ok((name, embedded, first_error))
-            })
-            .await
-            .map_err(|e| e.to_string())??;
+            let (name, embedded, first_error) = tokio::task::spawn_blocking(move || crate::api::replace_cover(&dir, &files, &bytes, mime)).await.map_err(|e| e.to_string())??;
             tracing::info!(token = %token.name, album = id, %url, bytes = size, files = count, embedded, "cover fetched from an address");
             s.store.log_tag_change(&token.name, id, name, "Picture", "", &url).await.map_err(db)?;
             s.store.rescan_soon();
@@ -2270,9 +2249,7 @@ impl Album {
         if tracks.is_empty() {
             return Err("the album has no tracks".into());
         }
-        // The track may lie in a disc folder below the album folder (`CD 1/01.mp3`).
-        let depth = tracks[0].0.file.split('/').count();
-        let dir = tracks[0].1.ancestors().nth(depth).map(Path::to_path_buf);
+        let dir = crate::api::book_dir_of(&tracks[0].0.file, &tracks[0].1);
         Ok(Album { row, folder, dir, tracks })
     }
 }

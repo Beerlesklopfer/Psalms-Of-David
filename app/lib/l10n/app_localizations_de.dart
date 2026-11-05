@@ -781,6 +781,30 @@ class AppLocalizationsDe extends AppLocalizations {
       'MusicBrainz kennt keine Ausgabe mit genau dieser Disc-ID. Wähle einen Treffer nur, wenn es diese CD ist, oder trage die Angaben ein.';
 
   @override
+  String get coverChange => 'Cover ändern';
+
+  @override
+  String get coverCamera => 'Hülle fotografieren';
+
+  @override
+  String get coverGallery => 'Bild auswählen';
+
+  @override
+  String get coverChanged => 'Das Cover ist geändert.';
+
+  @override
+  String coverFailed(String code) {
+    return 'Das Cover konnte nicht geändert werden ($code).';
+  }
+
+  @override
+  String get coverDenied =>
+      'Die App darf die Kamera oder die Bilder nicht verwenden. Erlaube es in den Einstellungen des Geräts.';
+
+  @override
+  String get coverNoPicture => 'Das ist kein Bild.';
+
+  @override
   String get cdBarcode => 'EAN / UPC (Rückseite der Hülle)';
 
   @override

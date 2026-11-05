@@ -1412,6 +1412,48 @@ abstract class AppLocalizations {
   /// **'MusicBrainz knows no release with exactly this Disc ID. Choose a match only if it is this CD, or type the details.'**
   String get cdCandidateNear;
 
+  /// No description provided for @coverChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Change the cover'**
+  String get coverChange;
+
+  /// No description provided for @coverCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Photograph the case'**
+  String get coverCamera;
+
+  /// No description provided for @coverGallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a picture'**
+  String get coverGallery;
+
+  /// No description provided for @coverChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'The cover is changed.'**
+  String get coverChanged;
+
+  /// No description provided for @coverFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The cover could not be changed ({code}).'**
+  String coverFailed(String code);
+
+  /// No description provided for @coverDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'The app may not use the camera or the pictures. Allow it in the settings of the device.'**
+  String get coverDenied;
+
+  /// No description provided for @coverNoPicture.
+  ///
+  /// In en, this message translates to:
+  /// **'That is no picture.'**
+  String get coverNoPicture;
+
   /// No description provided for @cdBarcode.
   ///
   /// In en, this message translates to:
