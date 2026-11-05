@@ -1401,6 +1401,17 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
                 Err(code) => l.error = (*code).to_owned(),
             }
         });
+        // A failure: the folder of the disc is kept or removed, then the drive is free, and only then is the end told, so that a "Try again"
+        // right after a read error neither gets `busy` nor loses its folder to this task (the folder is named by the Disc ID). A good rip
+        // tells its end inside `run_rip` (the files are placed from the folder); its folder goes and the drive is free just after.
+        if let Err(code) = &outcome {
+            if RESUMABLE.contains(code) {
+                plan.touch();
+            } else {
+                let _ = std::fs::remove_dir_all(&plan.dir);
+            }
+            release_drive(&cd2, &device, job_id);
+        }
         if let Err(code) = &outcome {
             // A track that cannot be read or confirmed: the CD stays in the drive and the job waits for a new try (`retry_wait`); the finished
             // tracks stay in the resume folder. A cancel and a stop of the server have their own moves; everything else is a failure.
@@ -1422,20 +1433,13 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
                 Err(e) => tracing::warn!(job = job_id, error = e.code(), "the end of a rip could not be written to the job"),
             }
         }
-        // The finished tracks of a rip that stopped for a reason that a new try can mend stay for a resume; the rest goes.
-        match &outcome {
-            Err(code) if RESUMABLE.contains(code) => plan.touch(),
-            _ => {
-                let _ = std::fs::remove_dir_all(&plan.dir);
-            }
+        // The finished tracks of a rip that stopped for a reason that a new try can mend stay for a resume (above); a good rip leaves nothing.
+        if outcome.is_ok() {
+            let _ = std::fs::remove_dir_all(&plan.dir);
+            release_drive(&cd2, &device, job_id);
         }
-        {
-            let mut g = cd2.drives.lock();
-            g.running.remove(&device);
-            g.cancels.remove(&job_id);
-        }
-        // Open the tray after a good rip, if asked for and the tray is shut with the disc in.
-        if outcome.is_ok() && eject {
+        // Open the tray after a good rip, if asked for and the tray is shut with the disc in; not if a new rip of the drive started meanwhile.
+        if outcome.is_ok() && eject && !cd2.drives.lock().running.contains_key(&device) {
             let drives = cd2.drives.clone();
             let d = device.clone();
             let _ = tokio::task::spawn_blocking(move || drives.eject(&d)).await;
@@ -1875,6 +1879,15 @@ async fn run_rip(
         error: if !skipped.is_empty() { Some("unreadable_track".to_owned()) } else if !unverified.is_empty() { Some("unverified_track".to_owned()) } else { None },
     };
     crate::cdflow::conclude(store, cd, user_id, job_id, &meta, &set, root, kind, cover, staged, reserve, extra).await.map(|_| ()).map_err(|r| r.1)
+}
+
+/// The rip of `job_id` lets go of the drive (only its own entry: a rip started since keeps its own).
+fn release_drive(cd: &CdService, device: &str, job_id: i64) {
+    let mut g = cd.drives.lock();
+    if g.running.get(device) == Some(&job_id) {
+        g.running.remove(device);
+    }
+    g.cancels.remove(&job_id);
 }
 
 /// The size of the ring between the drive and the encoder: the seconds of the setting, or (0) the longest chosen track by the table of

@@ -221,7 +221,8 @@ fn give_mp3(e: &Env) {
 async fn wait_job(e: &Env, token: &str, id: i64) -> Value {
     for _ in 0..300 {
         let job = call(e, "GET", &format!("/api/v1/cd/import/{id}"), Some(token), None).await.json()["job"].clone();
-        if job["active"] == false {
+        // A good rip tells its end while it places the files; its folder goes and the drive is free just after: the test waits for that too.
+        if job["active"] == false && !e.cd.drives.is_ripping() {
             return job;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
