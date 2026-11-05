@@ -202,7 +202,7 @@ fn tool_list() -> Value {
         },
         {
             "name": "find_problems",
-            "description": "Looks for albums with faulty tags: missing artist, album, year, genre (music), narrator (audiobook) or cover; tracks that disagree on album or artist; stray spaces; gaps in track numbers; album tag unlike the title; titles with a CD number, underscores or a number prefix; an author that looks like a file name; files that an iPhone cannot play (unsupported_format_on_ios: Ogg Vorbis, Opus, WMA, APE; a hint, not an error). Returns only albums with problems; continue with next_offset.",
+            "description": "Looks for albums with faulty tags: missing artist, album, year, genre (music), narrator (audiobook) or cover; tracks that disagree on album or artist; stray spaces; gaps in track numbers; album tag unlike the title; titles with a CD number, underscores or a number prefix; tracks without a title (missing_track_titles) or with a placeholder such as Track 01, Titel 3, Piste 7 (placeholder_track_titles: what the CD import writes for a title it did not know; get_album lists the tracks); an author that looks like a file name; files that an iPhone cannot play (unsupported_format_on_ios: Ogg Vorbis, Opus, WMA, APE; a hint, not an error). Returns only albums with problems; continue with next_offset.",
             "inputSchema": { "type": "object", "properties": { "offset": { "type": "integer" }, "limit": { "type": "integer", "description": "Albums to look at, at most 200 (default 100)" } } }
         },
         {
@@ -2340,6 +2340,16 @@ fn parse_changes(fields: Option<&Value>) -> Result<Vec<(String, Vec<String>)>, S
     Ok(out)
 }
 
+/// A track title that names no piece: a word for "track" in some language, then at most a number ("Track 01", "Titel 3", "Audiotrack 05",
+/// "Piste 7", "Track", "Unknown").
+fn is_placeholder_title(title: &str) -> bool {
+    const WORDS: &[&str] = &["track", "titel", "title", "audiotrack", "piste", "pista", "traccia", "spur", "stück", "unbekannt", "unknown", "untitled"];
+    let t = title.trim().to_lowercase();
+    let word: String = t.chars().take_while(|c| c.is_alphabetic()).collect();
+    let rest = t[word.len()..].trim_start_matches(|c: char| c.is_whitespace() || matches!(c, '_' | '-' | '#' | '.'));
+    WORDS.contains(&word.as_str()) && rest.chars().all(|c| c.is_ascii_digit()) && rest.len() <= 3
+}
+
 /// What is wrong with the tags of an album (reads every file).
 fn problems_of(album: &Album) -> Vec<String> {
     let mut problems = Vec::new();
@@ -2408,6 +2418,14 @@ fn problems_of(album: &Album) -> Vec<String> {
     if author.contains(" - ") || author.contains('(') || author.contains('_') {
         problems.push("author_looks_like_a_file_name".into());
     }
+    // Track titles that say nothing: none at all, or a placeholder such as "Track 01" (what the CD import writes for a title it does not know).
+    let titles: Vec<Option<String>> = per_file.iter().map(|f| first(f, "TrackTitle")).collect();
+    if titles.iter().any(Option::is_none) {
+        problems.push("missing_track_titles".into());
+    }
+    if titles.iter().flatten().any(|t| is_placeholder_title(t)) {
+        problems.push("placeholder_track_titles".into());
+    }
     let stray = per_file.iter().flatten().flat_map(|(_, v)| v).any(|v| v != v.trim() || v.contains("  "));
     if stray {
         problems.push("stray_spaces".into());
@@ -2433,4 +2451,17 @@ fn problems_of(album: &Album) -> Vec<String> {
         problems.push("track_number_gaps".into());
     }
     problems
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_placeholder_title_names_no_piece() {
+        for t in ["Track 01", "track01", "Track", "Titel 3", "Audiotrack 05", "Piste 7", "Track #12", "Track_04", " TRACK 9 ", "Unknown", "Stück 2"] {
+            assert!(super::is_placeholder_title(t), "{t}");
+        }
+        for t in ["Track 1 (Remix)", "Titelmelodie", "Untitled Love Song", "Spur der Steine", "Piste 1234", "Lobgesang", "Title Track"] {
+            assert!(!super::is_placeholder_title(t), "{t}");
+        }
+    }
 }

@@ -174,6 +174,22 @@ async fn find_problems_names_what_is_wrong_and_skips_what_is_fine() {
     let of_good = albums.iter().find(|a| a["id"] == good);
     assert!(of_good.is_none_or(|a| !a["problems"].to_string().contains("missing_artist")), "{of_good:?}");
     assert!(found["next_offset"].is_null());
+    assert!(!problems.contains(&"placeholder_track_titles"), "\"x\" is a title: {problems:?}");
+}
+
+#[tokio::test]
+async fn find_problems_names_tracks_with_a_placeholder_title() {
+    if !ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let m = mcp().await;
+    let placeholder = album(&m, &[("title", "Track 01")]).await;
+    let t = m.store.create_mcp_token("llm", false, m.admin).await.unwrap();
+    let (err, found) = tool(&m, &t, "find_problems", json!({})).await;
+    assert!(!err, "{found}");
+    let of = found["albums_with_problems"].as_array().unwrap().iter().find(|a| a["id"] == placeholder).cloned().expect("listed");
+    assert!(of["problems"].to_string().contains("placeholder_track_titles"), "{of}");
 }
 
 #[tokio::test]
