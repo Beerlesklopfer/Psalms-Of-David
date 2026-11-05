@@ -227,6 +227,25 @@ mod tests {
         None
     }
 
+    /// david(8) names every command and every option of the help (the development switches are not in a release, nor in the page).
+    #[test]
+    fn the_manual_page_names_every_command_and_option() {
+        let page = include_str!("../packaging/man/david.8").replace("\\-", "-");
+        let help = USAGE;
+        let commands = help.split("Commands:").nth(1).and_then(|s| s.split("Options:").next()).unwrap_or_default();
+        let names: Vec<&str> = commands.lines().filter(|l| l.starts_with("  ") && !l.starts_with("   ")).filter_map(|l| l.split_whitespace().next()).collect();
+        assert!(names.len() >= 10, "{names:?}");
+        for n in names {
+            assert!(crate::system::names_in_bold(&page, n), "david(8) lacks the command {n}");
+        }
+        for opt in help.split_whitespace().filter(|w| w.starts_with("--")).map(|w| w.trim_end_matches(|c: char| !c.is_alphanumeric())) {
+            assert!(page.contains(opt), "david(8) lacks the option {opt}");
+        }
+        for var in help.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).filter(|w| w.starts_with("DAVID_")) {
+            assert!(page.contains(var), "david(8) lacks {var}");
+        }
+    }
+
     #[test]
     fn the_first_administrator_is_called_papa_unless_told_otherwise() {
         let Ok(Command::ResetPin { name, data_dir }) = parse(args("reset-pin --name Papa --data-dir /d"), no_env) else { panic!() };

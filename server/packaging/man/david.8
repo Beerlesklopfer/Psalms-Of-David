@@ -1,0 +1,296 @@
+.\" SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+.\" SPDX-License-Identifier: AGPL-3.0-or-later
+.TH DAVID 8 "November 2026" "david-server 0.1.0" "System Administration"
+.SH NAME
+david \- the David server: audiobook and music library of the family
+.SH SYNOPSIS
+.B david
+.I command
+.RI [ options ]
+.br
+.B david run
+.RB [ \-\-data\-dir
+.IR dir ]
+.RB [ \-\-listen
+.IR addr [, addr ...]]
+.RB [ \-\-mcp ]
+.RB [ \-\-no\-announce ]
+.RB [ \-\-log
+.IR level ]
+.RB [ \-\-tls\-cert
+.I file
+.B \-\-tls\-key
+.IR file ]
+.RB [ \-\-tls\-host
+.IR name ]
+.SH DESCRIPTION
+.B david
+serves the audiobooks and the music of a household to the apps of the family (Psalm), with a web
+administration, a Bible reader, podcasts, radio stations, playlists, the import of audio CDs from the
+drive of the server and, if switched on, an MCP endpoint for a language model that looks after the tags.
+.PP
+The packaged service
+.RB ( david.service )
+runs
+.B david run
+as root. At the start the server reads
+.BR /etc/david.toml ,
+gives the service user the rights on the library folders (POSIX ACLs), joins the extra groups of the
+file, hands the data folder to the service user and then drops to that user for good.
+.PP
+A value comes from, in this order: the command line, the environment, the file
+.BR /etc/david.toml ,
+the built\-in default. Everything that the family decides in the administration pages (import folders,
+rules, the settings of the CD import, profiles and rights) lives in the database, not in the file.
+.SH COMMANDS
+.TP
+.B run
+Run the server in the foreground until Ctrl\-C or SIGTERM. This is what the service starts.
+.TP
+.B init
+Create the first administrator before the first start. The PIN or password is asked twice on a
+terminal, or read as one line from standard input.
+.B \-\-name
+sets the name (default: Papa).
+.TP
+.B reset\-pin
+Set a new PIN or password for a user who forgot it;
+.BI \-\-name " NAME"
+is required. The user is signed out everywhere and any lock is lifted.
+.TP
+.B reindex
+Read the import folders again, like the switch \(lqImport now\(rq of the administration pages: new and
+changed files are read, albums whose files are gone are taken out. Also
+.BR "david \-\-reindex" .
+Run every hour by
+.BR david\-reindex.timer .
+The import has to be unlocked.
+.TP
+.B prune
+Only the tidying of
+.BR reindex :
+take the albums out of the library whose files are gone from the disk.
+.B \-\-dry\-run
+only lists them;
+.B \-\-force
+lifts the stop for a run that would remove more than a third of the albums (a disk that is not mounted
+looks like that).
+.TP
+.B renew\-cert
+Make a new server certificate with the current addresses and host name of this machine
+.RB ( \-\-data\-dir ", " \-\-listen ).
+The old one is kept as
+.BR cert.pem.old .
+Paired devices pin the certificate, so every device has to be paired again. Stop the server first.
+.TP
+.B export\-templates
+Write the built\-in page templates and the stylesheet to
+.BI \-\-to " DIR" ,
+as a starting point for templates of one's own (see
+.BR DAVID_TEMPLATES_DIR ).
+.TP
+.B version
+Show the version, the git revision and the build time.
+.TP
+.B help
+Show the usage.
+.TP
+.BR service ", " install ", " uninstall
+Windows only: the entry point of the service manager, and registering or removing the Windows service.
+.SH OPTIONS
+.TP
+.BI \-\-data\-dir " DIR"
+The folder of the database
+.RB ( david.db ),
+the certificate
+.RB ( tls/ )
+and the staging area of the CD import. Default
+.BR /var/lib/david .
+.TP
+.BI \-\-listen " ADDR" [, ADDR ...]
+Where the interface listens, default
+.BR 127.0.0.1:8484 .
+Several addresses, separated by commas, are served at the same time, for example
+.B 0.0.0.0:8484,[::]:8484
+(IPv4 and IPv6 are separate addresses; the packaged service listens on both). Anything but this
+machine speaks TLS, with a certificate the server makes itself unless
+.B \-\-tls\-cert
+is given; the pairing code of the apps carries its fingerprint.
+.TP
+.B \-\-no\-announce
+Do not announce the server on the network (mDNS). The apps then find it only by its address.
+.TP
+.B \-\-mcp
+Serve
+.B /mcp
+for a language model that looks at the library and corrects ID tags. Access needs a token made in the
+settings (LLM access); what the token may do depends on the profile that made it.
+.TP
+.BI \-\-log " LEVEL"
+.BR error ", " warn ", " info " (default), " debug " or " trace .
+.B debug
+is for David's own code; the libraries (the database queries) join in at
+.BR trace .
+Also a setting in the administration pages, where it changes at once.
+.TP
+.BI \-\-tls\-cert " FILE" "\fR,\fP \-\-tls\-key " FILE
+A certificate (PEM, with its chain) from a certificate authority, for example Let's Encrypt, and its
+private key, instead of the self\-made certificate. The service user has to be able to read both. A
+renewed certificate is loaded without a restart.
+.TP
+.BI \-\-tls\-host " NAME"
+The name that devices connect to with such a certificate: they then check the name, not a fingerprint,
+and the pairing code carries the name.
+.TP
+.BI \-\-name " NAME"
+The administrator for
+.BR init ,
+or the user for
+.BR reset\-pin .
+.TP
+.BI \-\-to " DIR"
+The target folder of
+.BR export\-templates .
+.TP
+.B \-\-dry\-run
+.BR prune :
+only say what would be removed.
+.TP
+.B \-\-force
+.BR prune :
+also when many albums are gone.
+.SH ENVIRONMENT
+.TP
+.B DAVID_CONFIG
+The configuration file to read instead of
+.BR /etc/david.toml .
+.TP
+.B DAVID_DATA_DIR
+Like
+.BR \-\-data\-dir .
+.TP
+.B DAVID_LISTEN
+Like
+.BR \-\-listen ,
+addresses separated by commas.
+.TP
+.B DAVID_MCP
+.B 1
+is like
+.BR \-\-mcp .
+.TP
+.B DAVID_LOG
+Like
+.BR \-\-log .
+.TP
+.BR DAVID_TLS_CERT ", " DAVID_TLS_KEY ", " DAVID_TLS_HOST
+Like
+.BR \-\-tls\-cert ", " \-\-tls\-key ", " \-\-tls\-host .
+.TP
+.B DAVID_TLS_RELOAD_S
+How often, in seconds, a renewed certificate is looked for (default 300).
+.TP
+.B DAVID_FEATURE_DOWNLOAD
+.BR 1 ", " true ", " yes " or " on
+switches on the hidden download feature (administrators may take the original files of the library);
+anything else switches it off, also against the file.
+.TP
+.B DAVID_TEMPLATES_DIR
+A folder with page templates that replace the built\-in ones. Also looked up:
+.BR /etc/david/templates ,
+.BR /usr/share/david/templates .
+.SH FILES
+.TP
+.B /etc/david.toml
+The settings of the machine; see
+.BR david.toml (5).
+.TP
+.B /var/lib/david/david.db
+The database: the library, the profiles, the settings of the pages, the logs.
+.TP
+.BR /var/lib/david/tls/cert.pem ", " key.pem
+The self\-made certificate of the server and its key.
+.TP
+.B /var/lib/david/library
+The default import folder of the package, owned by the service user.
+.TP
+.B /var/lib/david/cd\-import
+The staging area of the CD import: rips under way, interrupted rips that can be continued (for
+.B cd_resume_keep_hours
+of the CD settings) and CDs that wait for approval.
+.TP
+.BR /usr/lib/systemd/system/david.service ", " david\-reindex.service ", " david\-reindex.timer
+The service and the hourly
+.BR reindex .
+.TP
+.B /usr/lib/udev/rules.d/61\-david\-cdrom.rules
+Makes the kernel ask the CD drive only every 10 minutes whether the disc changed
+.RB ( events_poll_msecs ),
+because that question interrupts a rip. A new disc is then noticed late by the kernel; the server looks at
+the drive itself every
+.B cd_poll_seconds
+while
+.B cd_udev
+is off in the CD settings. A file of the same name in
+.B /etc/udev/rules.d
+replaces it.
+.SH SIGNALS
+.TP
+.BR SIGTERM ", " SIGINT
+Stop. A CD that is being read finishes the track it is on if that takes no more than 10 seconds, writes
+down what is finished and ends, so that the next start can continue it; the unit allows 60 seconds. A
+rip that was under way waits after the start until a person chooses to read it again or to give it up;
+it never goes on by itself.
+.SH NOTES
+The CD drive: the service user needs the group of the drive (usually
+.BR cdrom )
+in
+.B groups
+of
+.BR /etc/david.toml .
+A disc whose CD\-Text names the album, the performer and every track is filed under it, and MusicBrainz
+is not asked for it; otherwise MusicBrainz is asked once a contact address is set in the CD settings.
+.PP
+Folders outside
+.B /var/lib/david
+need a drop\-in that opens them in the sandbox of the unit
+.RB ( "systemctl edit david" ,
+.BR ReadWritePaths= ;
+.B ProtectHome=false
+for folders below
+.BR /home ).
+Port 8484 must be open in the firewall for the apps.
+.SH EXAMPLES
+First start of the package:
+.PP
+.RS
+.nf
+sudo \-u david env DAVID_DATA_DIR=/var/lib/david /usr/bin/david init \-\-name Papa
+sudo systemctl enable \-\-now david
+.fi
+.RE
+.PP
+Only on this machine, behind a reverse proxy:
+.PP
+.RS
+.nf
+sudo systemctl edit david
+  [Service]
+  Environment=DAVID_LISTEN=127.0.0.1:8484
+.fi
+.RE
+.PP
+See which albums a reindex would take out:
+.PP
+.RS
+.nf
+sudo \-u david env DAVID_DATA_DIR=/var/lib/david /usr/bin/david prune \-\-dry\-run
+.fi
+.RE
+.SH SEE ALSO
+.BR david.toml (5),
+.BR systemctl (1),
+.BR systemd.exec (5),
+.BR setfacl (1)
+.PP
+The FAQ and the specifications in the sources: https://github.com/Beerlesklopfer/Psalms\-Of\-David

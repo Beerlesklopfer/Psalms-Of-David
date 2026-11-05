@@ -1,0 +1,134 @@
+.\" SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+.\" SPDX-License-Identifier: AGPL-3.0-or-later
+.TH DAVID.TOML 5 "November 2026" "david-server 0.1.0" "File Formats"
+.SH NAME
+david.toml \- the settings of the machine for the David server
+.SH SYNOPSIS
+.B /etc/david.toml
+.SH DESCRIPTION
+The file holds what belongs to the machine: the account the server runs as, the rights on the
+library folders, where it listens, the data folder, the certificate, extra groups and hidden features.
+It is TOML. A missing file means the defaults; a key that the server does not know, or a value of the
+wrong type, stops the start with a message that names the file and the place.
+.PP
+A value comes from, in this order: the command line, the environment
+.RB ( DAVID_... ),
+this file, the built\-in default. Everything the family decides in the administration pages (import
+folders, rules, the CD settings, profiles and rights) lives in the database, not here.
+.PP
+Changes apply at the next start:
+.BR "systemctl restart david" .
+The package marks the file as configuration, so an update keeps it.
+.B DAVID_CONFIG
+names another file.
+.SH KEYS
+.TP
+.BR user " = " \(dq david \(dq
+The account the server runs as. The service starts as root, gives this user the rights on the library
+folders, hands it the data folder and drops to it for good.
+.TP
+.BR uid " = " \fIn\fP ", " gid " = " \fIn\fP
+The numeric IDs of the account. The package creates the account with them; without them the system
+picks its own. Set both before the first install if the IDs must be the same on every machine (a NAS
+that maps them).
+.TP
+.BR acl " = " true | false
+Give the user the rights on the audiobook and music folders at every start, with POSIX ACLs (like
+.B setfacl \-R \-m u:UID:rwX
+plus a default entry for new files). Needs the start as root. Default
+.BR true .
+.TP
+.BR data_dir " = " \(dq\fIpath\fP\(dq
+The folder of the database, the certificate and the staging area of the CD import. Default
+.BR /var/lib/david .
+Like
+.B \-\-data\-dir
+and
+.BR DAVID_DATA_DIR .
+.TP
+.BR listen " = " \(dq\fIaddr\fP\(dq " | [" \(dq\fIaddr\fP\(dq ", ...]"
+Where the interface listens: one address, or a list that is served at the same time. IPv4 and IPv6 are
+separate addresses. Default
+.BR 127.0.0.1:8484 ;
+the packaged service sets
+.B 0.0.0.0:8484
+and
+.B [::]:8484
+in its unit. Without addresses that can speak TLS (loopback only) there is no HTTPS.
+Like
+.B \-\-listen
+and
+.B DAVID_LISTEN
+(a list separated by commas there).
+.TP
+.BR mcp " = " true | false
+Serve
+.B /mcp
+for a language model that looks after the tags. Default
+.BR false .
+Access still needs a token made in the settings. Like
+.B \-\-mcp
+and
+.BR DAVID_MCP .
+.TP
+.BR log " = " \(dq\fIlevel\fP\(dq
+.BR error ", " warn ", " info " (default), " debug " or " trace .
+Also a setting in the pages, where it applies at once.
+.TP
+.BR tls_cert " = " \(dq\fIfile\fP\(dq ", " tls_key " = " \(dq\fIfile\fP\(dq
+A certificate from a certificate authority (Let's Encrypt, ...) instead of the self\-made one, both in
+PEM. The service user has to be able to read them (a group that may read the certificates, in
+.BR groups ).
+.TP
+.BR tls_host " = " \(dq\fIname\fP\(dq
+The name devices connect to with such a certificate: they check the name, not a fingerprint, and the
+pairing code carries the name.
+.TP
+.BR tls_reload_s " = " \fIseconds\fP
+How often a renewed certificate is looked for. Default 300. The certificate keys can also be set in the
+pages (Settings, Certificate); the flags,
+.B DAVID_TLS_*
+and this file win.
+.TP
+.BR groups " = [" \(dq\fIgroup\fP\(dq ", ...]"
+Groups the service is a member of in addition to those of its account, looked up by name when it starts
+as root; a group that does not exist is skipped with a message. For example
+.B ssl\-cert
+to read the certificates, or
+.B cdrom
+to use the CD drive. The server sets no rights on files that are not its own.
+.TP
+.B [features]
+Hidden features, off unless switched on here or by the environment. They are not settings of the pages
+and leave no trace in the interface while they are off.
+.RS
+.TP
+.BR download " = " true | false
+Administrators may take the original files of the library (one title, or an album as a ZIP archive).
+Every download is written to the change log.
+.B DAVID_FEATURE_DOWNLOAD
+wins over the file, also when it switches the feature off.
+.RE
+.SH EXAMPLE
+.nf
+user = "david"
+acl = true
+listen = ["0.0.0.0:8484", "[::]:8484"]
+mcp = true
+groups = ["cdrom"]
+
+[features]
+download = true
+.fi
+.SH FILES
+.TP
+.B /etc/david.toml
+This file.
+.TP
+.B /usr/lib/sysusers.d/david.conf
+Creates the account
+.BR david .
+.SH SEE ALSO
+.BR david (8),
+.BR systemctl (1),
+.BR setfacl (1)

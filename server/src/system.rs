@@ -108,6 +108,12 @@ impl Listen {
     }
 }
 
+/// Does a line in bold of a manual page (`.B`, `.BR` ...) name `word`? For the tests that keep the pages and the code together.
+#[cfg(test)]
+pub(crate) fn names_in_bold(page: &str, word: &str) -> bool {
+    page.lines().filter(|l| l.starts_with(".B")).any(|l| l.replace("\\-", "-").split(|c: char| c.is_whitespace() || matches!(c, '"' | ',')).any(|t| t == word))
+}
+
 /// The file to read: `DAVID_CONFIG`, else `/etc/david.toml`.
 pub fn file_path(env: impl Fn(&str) -> Option<String>) -> PathBuf {
     env("DAVID_CONFIG").map_or_else(|| PathBuf::from(DEFAULT_FILE), PathBuf::from)
@@ -327,6 +333,36 @@ pub use unix::become_service_user;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every key of the file (add a new one here, in the packaged file and in david.toml(5)): the file takes it, and the page names it.
+    #[test]
+    fn the_manual_page_names_every_key_of_the_file() {
+        const KEYS: &[(&str, &str)] = &[
+            ("user", "user = \"x\""),
+            ("uid", "uid = 1"),
+            ("gid", "gid = 1"),
+            ("acl", "acl = false"),
+            ("data_dir", "data_dir = \"/d\""),
+            ("listen", "listen = \"127.0.0.1:1\""),
+            ("mcp", "mcp = true"),
+            ("log", "log = \"info\""),
+            ("tls_cert", "tls_cert = \"/c\""),
+            ("tls_key", "tls_key = \"/k\""),
+            ("tls_host", "tls_host = \"h\""),
+            ("tls_reload_s", "tls_reload_s = 1"),
+            ("groups", "groups = [\"cdrom\"]"),
+            ("download", "[features]\ndownload = true"),
+        ];
+        let page = include_str!("../packaging/man/david.toml.5");
+        for (key, line) in KEYS {
+            assert!(toml::from_str::<FileConfig>(line).is_ok(), "the file does not take {line}");
+            assert!(names_in_bold(page, key), "david.toml(5) lacks the key {key}");
+        }
+        // A key that is not in the list is no key of the file: the list is complete when the defaults written out take no other.
+        let all = KEYS.iter().map(|(_, l)| *l).filter(|l| !l.starts_with('[')).collect::<Vec<_>>().join("\n");
+        assert!(toml::from_str::<FileConfig>(&all).is_ok());
+        assert!(page.contains(".B [features]"));
+    }
 
     #[test]
     fn the_nice_limit_is_raised_only_as_far_as_the_encoder_needs() {
