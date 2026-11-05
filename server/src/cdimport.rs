@@ -745,6 +745,11 @@ async fn cached(store: &Store, cd: &CdService, set: &CdSettings, key: &str, serv
 
 /// The Disc ID of a table of contents and the releases MusicBrainz knows for it (by ID, else by the table itself).
 pub async fn lookup(store: &Store, cd: &CdService, set: &CdSettings, toc: &Toc) -> std::result::Result<(String, Vec<Candidate>), Refusal> {
+    // A disc in a drive whose CD-Text names the album, the performer and every track is what its maker says it is: that is the one answer,
+    // and MusicBrainz is not asked (owner, 2026-11-05). It needs no contact address either.
+    if let Some(c) = cd.drives.cd_text_candidate(&musicbrainz::disc_id(toc)) {
+        return Ok((musicbrainz::disc_id(toc), vec![c]));
+    }
     if !set.lookup_ready {
         return Err(Refusal(409, "no_contact"));
     }
@@ -1064,7 +1069,8 @@ pub struct PlaceJob<'a> {
 /// Checks the files, names and tags them by the settings and moves them into the import folder. Nothing is left
 /// half done: when a file cannot be moved, the ones already moved are removed again.
 pub fn place(job: &PlaceJob) -> std::result::Result<Placed, Refusal> {
-    let (m, s) = (job.meta, job.settings);
+    let for_kind = job.settings.for_kind(job.kind);
+    let (m, s) = (job.meta, &for_kind);
     let internal = |why: &str, e: &dyn std::fmt::Display| {
         tracing::warn!(error = %e, "CD import: {why}");
         Refusal(500, "internal")

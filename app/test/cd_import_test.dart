@@ -112,6 +112,35 @@ void main() {
       c.dispose();
     });
 
+    test('a release found only by similar track lengths is offered, not filled in (server job 109)', () async {
+      const near = CdCandidate(author: 'S.C.U.', title: 'Brace Yo Delf', mbid: 'mb-9', discIdMatched: false);
+      final c = await ready(const [near]);
+      expect((c.phase, c.candidateOpen, c.author, c.title, c.canSave), (CdPhase.confirm, true, '', '', false));
+      expect(c.candidates.single.title, 'Brace Yo Delf');
+      expect(c.titleOf(1), '');
+      expect(server.lookups.where((l) => l.releaseId != null), isEmpty, reason: 'nothing is fetched until the person chooses');
+      c.selectCandidate(0);
+      expect((c.candidateOpen, c.author), (false, 'S.C.U.'));
+      c.dispose();
+    });
+
+    test('a CD that names itself (CD-Text) fills the form and offers no search', () async {
+      const own = CdCandidate(author: 'Christoph Zehendner', title: 'Er hört dein Gebet', trackTitles: ['Eins', 'Zwei', 'Drei'], fromCdText: true);
+      final c = await ready(const [own]);
+      expect((c.fromCdText, c.author, c.title, c.candidateOpen), (true, 'Christoph Zehendner', 'Er hört dein Gebet', false));
+      final asked = server.lookups.length;
+      await c.search('Zehendner');
+      expect(server.lookups.length, asked, reason: 'no search is sent for it');
+      expect(CdCandidate.fromJson(const {'title': 'T', 'source': 'cd_text'}).fromCdText, isTrue);
+      expect(CdCandidate.fromJson(const {'title': 'T', 'source': 'musicbrainz'}).fromCdText, isFalse);
+      c.dispose();
+    });
+
+    test('the disc_id_matched of the server is read; an older server without it counts as a match', () {
+      expect(CdCandidate.fromJson(const {'title': 'T', 'disc_id_matched': false}).discIdMatched, isFalse);
+      expect(CdCandidate.fromJson(const {'title': 'T'}).discIdMatched, isTrue);
+    });
+
     test('no match or a failing lookup: empty form, Save needs author and title', () async {
       server.lookupError = ApiException(409, 'no_contact');
       final c = make();

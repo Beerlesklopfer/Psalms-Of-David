@@ -394,6 +394,8 @@ class CdCandidate {
     this.narrator,
     this.year,
     this.audiobook = false,
+    this.discIdMatched = true,
+    this.fromCdText = false,
   });
 
   final String author;
@@ -410,6 +412,14 @@ class CdCandidate {
   /// The server's lookup says the release is an audiobook (`audiobook`).
   final bool audiobook;
 
+  /// The release has a disc with exactly this Disc ID (`disc_id_matched`). False for one found only by similar track lengths or by a search:
+  /// it can be another album, so it is offered but never filled in unasked. An older server without the field counts as a match.
+  final bool discIdMatched;
+
+  /// The details are the CD-Text of the disc (`source: "cd_text"`): what the maker wrote onto it. Then the server asks MusicBrainz
+  /// nothing for this CD, so there is no search either.
+  final bool fromCdText;
+
   factory CdCandidate.fromJson(Map<String, dynamic> j) => CdCandidate(
     author: (j['author'] as String?) ?? '',
     title: (j['title'] as String?) ?? '',
@@ -420,6 +430,8 @@ class CdCandidate {
     narrator: (j['narrators'] as List?)?.map((e) => '$e').join(', '),
     year: j['year'] as String?,
     audiobook: (j['audiobook'] as bool?) ?? false,
+    discIdMatched: (j['disc_id_matched'] as bool?) ?? true,
+    fromCdText: j['source'] == 'cd_text',
   );
 }
 

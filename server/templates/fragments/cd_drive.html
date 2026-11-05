@@ -137,21 +137,22 @@
   {% if drive.can_rip and drive.show_import %}
     {% if drive.lookup_error %}<p class="message">{{ t("cd.err." ~ drive.lookup_error) }} ({{ drive.lookup_error }})</p>{% endif %}
     {% if drive.candidates %}
-    <h3>{{ t("cd.drive.candidates") }}</h3>
+    <h3>{% if drive.cd_text %}{{ t("cd.drive.cd_text") }}{% else %}{{ t("cd.drive.candidates") }}{% endif %}</h3>
     <ul class="cd-candidates">
       {% for c in drive.candidates %}
-      <li>{{ c.author }}: {{ c.title }}{% if c.audiobook %} ({{ t("cd.opt.audiobook") }}){% endif %}{% if c.disc %}, {{ t("cd.col.disc") }} {{ c.disc }} / {{ c.discs_total }}{% endif %}
+      <li>{{ c.author }}: {{ c.title }}{% if c.audiobook %} ({{ t("cd.opt.audiobook") }}){% endif %}{% if c.disc %}, {{ t("cd.col.disc") }} {{ c.disc }} / {{ c.discs_total }}{% endif %}{% if not c.disc_id_matched %} <span class="unit">({{ t("cd.drive.near") }})</span>{% endif %}
         {% if busy %}<span class="unit">{{ t("cd.drive.use") }}</span>{% else %}<a href="/admin/cd" hx-get="/admin/rpc/cd.drive?pick={{ c.index }}{% if drive.mbq_param %}&{{ drive.mbq_param }}{% endif %}" hx-target="#cd-drive" hx-swap="outerHTML">{{ t("cd.drive.use") }}</a>{% endif %}</li>
       {% endfor %}
     </ul>
     {% elif not drive.lookup_error %}<p class="unit">{{ t("cd.drive.no_candidates") }}</p>{% endif %}
+    {% if drive.cd_text %}<p class="unit">{{ t("cd.drive.cd_text_note") }}</p>{% else %}
     <form class="cd-search" method="get" action="/admin/cd" hx-get="/admin/rpc/cd.drive" hx-target="#cd-drive" hx-swap="outerHTML" hx-include="this" role="search">
       <label class="unit" for="cd-mbq">{{ t("cd.search.label") }}</label>
       <div class="form-foot cd-search-row">
         <input id="cd-mbq" type="search" name="mbq" value="{{ drive.mbq }}" maxlength="200" autocomplete="off" placeholder="{{ t('cd.search.placeholder') }}"{% if busy %} disabled{% endif %}>
         <button type="submit" class="btn outline"{% if busy %} disabled{% endif %}>{{ t("cd.search.go") }}</button>
       </div>
-    </form>
+    </form>{% endif %}
     {% if drive.resume %}
     <div class="cd-resume" role="status">
       <p>{{ t("cd.resume.notice") | replace("{done}", drive.resume.done) | replace("{total}", drive.resume.total) | replace("{when}", drive.resume.when) }}

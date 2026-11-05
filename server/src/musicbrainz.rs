@@ -206,6 +206,37 @@ pub struct Candidate {
     /// MusicBrainz calls the release an audiobook (secondary type of its release group), or it has a speaker
     /// besides the author: a book to be filed as an audiobook.
     pub audiobook: bool,
+    /// The details come from the CD-Text of the disc, not from MusicBrainz (no release id, no cover).
+    pub from_cd_text: bool,
+}
+
+impl Candidate {
+    /// The details that the maker wrote onto the disc, as the one candidate (`numbers`: the audio tracks of the disc, `lengths` their
+    /// seconds). The Disc ID is the disc's own, so it counts as matched.
+    pub fn from_cd_text(text: &cdrip::cdtext::CdText, numbers: &[(u32, u32)]) -> Candidate {
+        let author = text.album_performer.clone().unwrap_or_default();
+        Candidate {
+            release_id: String::new(),
+            title: text.album_title.clone().unwrap_or_default(),
+            credits: vec![Credit { name: author.clone(), join: String::new() }],
+            author,
+            narrators: Vec::new(),
+            date: None,
+            year: None,
+            barcode: None,
+            language: None,
+            disc: Some(1),
+            discs_total: 1,
+            disc_id_matched: true,
+            tracks: numbers
+                .iter()
+                .map(|(n, secs)| CandTrack { number: *n, title: u8::try_from(*n).ok().and_then(|k| text.title_of(k)).unwrap_or_default().to_owned(), length_ms: Some(u64::from(*secs) * 1000) })
+                .collect(),
+            cover_available: false,
+            audiobook: false,
+            from_cd_text: true,
+        }
+    }
 }
 
 fn text(v: &Value, key: &str) -> Option<String> {
@@ -293,6 +324,7 @@ pub fn parse_release_of(release: &Value, disc_id: Option<&str>, track_count: Opt
         disc_id_matched: disc_id.is_some_and(|id| matched.is_some_and(|m| m.get("discs").and_then(Value::as_array).is_some_and(|d| d.iter().any(|d| d.get("id").and_then(Value::as_str) == Some(id))))),
         tracks,
         cover_available: release.get("cover-art-archive").and_then(|c| c.get("front")).and_then(Value::as_bool).unwrap_or(false),
+        from_cd_text: false,
     })
 }
 

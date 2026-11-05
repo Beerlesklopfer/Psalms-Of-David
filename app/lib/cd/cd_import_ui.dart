@@ -736,33 +736,37 @@ class _CdImportDialogState extends State<CdImportDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          c.lookupFound
+          c.fromCdText
+              ? l.cdFromCdText
+              : c.lookupFound
               ? l.cdFound
               : (c.lookupError != null ? cdErrorText(l, c.lookupError!) : l.cdNotFound),
           key: const Key('cd-lookup-note'),
         ),
         const SizedBox(height: 12),
         _resumeBlock(l),
-        // Not the right release: MusicBrainz can be searched by hand; what it finds is added to the matches.
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                key: const Key('cd-search'),
-                controller: _search,
-                decoration: InputDecoration(labelText: l.cdSearchLabel),
-                textInputAction: TextInputAction.search,
-                onSubmitted: c.searching ? null : c.search,
+        // Not the right release: MusicBrainz can be searched by hand; what it finds is added to the matches. Not for a CD that names
+        // itself (CD-Text): it is not looked up anywhere else.
+        if (!c.fromCdText)
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const Key('cd-search'),
+                  controller: _search,
+                  decoration: InputDecoration(labelText: l.cdSearchLabel),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: c.searching ? null : c.search,
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              key: const Key('cd-search-go'),
-              onPressed: c.searching ? null : () => c.search(_search.text),
-              child: Text(l.cdSearchGo),
-            ),
-          ],
-        ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                key: const Key('cd-search-go'),
+                onPressed: c.searching ? null : () => c.search(_search.text),
+                child: Text(l.cdSearchGo),
+              ),
+            ],
+          ),
         if (c.searchError != null)
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -772,12 +776,17 @@ class _CdImportDialogState extends State<CdImportDialog> {
             ),
           ),
         const SizedBox(height: 8),
-        if (c.candidates.length > 1)
+        if (c.candidateOpen)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(l.cdCandidateNear, key: const Key('cd-candidate-near')),
+          ),
+        if (c.candidates.length > 1 || c.candidateOpen)
           DropdownButtonFormField<int>(
             key: const Key('cd-candidate'),
             // Expanded: a long title is cut with "..." inside the field (without it the row overflowed, and a debug build draws the striped warning).
             isExpanded: true,
-            initialValue: c.candidateIndex,
+            initialValue: c.candidateIndex >= 0 ? c.candidateIndex : null,
             decoration: InputDecoration(labelText: l.cdCandidate),
             items: [
               for (var i = 0; i < c.candidates.length; i++)

@@ -119,7 +119,7 @@ class CdImportController extends ChangeNotifier {
 
   /// The title of the track [number] of the disc, from the lookup; empty if not known.
   String titleOf(int number) {
-    final c = candidates.isEmpty ? null : candidates.first;
+    final c = _chosen;
     final i = tracks.indexWhere((t) => t.number == number);
     if (c == null || i < 0 || i >= c.trackTitles.length) return '';
     return c.trackTitles[i].trim();
@@ -211,8 +211,17 @@ class CdImportController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  CdCandidate? get _candidate =>
-      lookupFound && candidates.isNotEmpty ? candidates[candidateIndex] : null;
+  CdCandidate? get _candidate => lookupFound ? _chosen : null;
+
+  /// The match the form was filled from; null while none is chosen (-1).
+  CdCandidate? get _chosen =>
+      candidateIndex >= 0 && candidateIndex < candidates.length ? candidates[candidateIndex] : null;
+
+  /// The lookup found releases, but none whose disc has exactly this Disc ID was filled in: the person has to choose one or type.
+  bool get candidateOpen => candidates.isNotEmpty && candidateIndex < 0;
+
+  /// The CD named itself (CD-Text): no search, the server would refuse it (`cd_text`).
+  bool get fromCdText => candidates.any((c) => c.fromCdText);
 
   /// Reads the server's settings and looks the disc up.
   Future<void> identify() async {
@@ -284,9 +293,12 @@ class CdImportController extends ChangeNotifier {
     lookupFound = candidates.isNotEmpty;
     trackTitles = List.filled(trackCount, '');
     selectAll();
-    if (lookupFound) {
+    // Only a release whose disc has exactly this Disc ID fills the form unasked. A near one (similar track lengths) can be another album
+    // altogether (server job 109: a CD of songs was offered as a hip-hop album): it is listed, and the person chooses.
+    if (lookupFound && candidates.first.discIdMatched) {
       selectCandidate(0);
     } else {
+      candidateIndex = -1;
       phase = CdPhase.confirm;
       _notify();
     }
@@ -302,7 +314,7 @@ class CdImportController extends ChangeNotifier {
   /// person chooses from the matches.
   Future<void> search(String words) async {
     final q = words.trim();
-    if (q.isEmpty || searching) return;
+    if (q.isEmpty || searching || fromCdText) return;
     searching = true;
     searchError = null;
     _notify();
@@ -312,7 +324,7 @@ class CdImportController extends ChangeNotifier {
         candidates = found;
         lookupFound = true;
         lookupError = null;
-        if (candidateIndex >= candidates.length) candidateIndex = 0;
+        if (candidateIndex >= candidates.length) candidateIndex = -1;
       } else {
         searchError = 'not_found';
       }

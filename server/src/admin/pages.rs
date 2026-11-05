@@ -443,6 +443,18 @@ struct CandView {
     disc: Option<u32>,
     discs_total: u32,
     tracks: Vec<String>,
+    /// The release has a disc with exactly this Disc ID; else it is a near one (by the table of contents) or one from a search.
+    disc_id_matched: bool,
+    /// The details are the CD-Text of the disc (MusicBrainz was not asked).
+    from_cd_text: bool,
+}
+
+/// The release that fills the form without being chosen: the only one, and only if its disc has exactly this Disc ID.
+fn taken_unasked(candidates: &[CandView]) -> Option<&CandView> {
+    match candidates {
+        [one] if one.disc_id_matched => Some(one),
+        _ => None,
+    }
 }
 
 /// The fields of the form that starts a rip.
@@ -467,6 +479,8 @@ struct DrivePanel {
     sig: String,
     jobs: Vec<ActiveJob>,
     candidates: Vec<CandView>,
+    /// The details are the CD-Text of the disc: no search, no other releases.
+    cd_text: bool,
     /// The words of a search by hand (kept while the panel is drawn again).
     mbq: String,
     /// The same as a part of a query string (`mbq=Bach%20Passion`), for the addresses of the links; empty without a search.
@@ -1576,7 +1590,8 @@ impl AdminUi {
         if let Some(d) = &ready
             && let Some(toc) = &d.table
         {
-            if set.lookup_ready {
+            // The CD-Text of the disc answers without a contact address; MusicBrainz needs one (`lookup` says `no_contact`).
+            {
                 match crate::cdimport::lookup(store, cd, &set, toc).await {
                     Ok((_, found)) => {
                         candidates = found
@@ -1592,13 +1607,16 @@ impl AdminUi {
                                 disc: c.disc,
                                 discs_total: c.discs_total,
                                 tracks: c.tracks.into_iter().map(|t| t.title).collect(),
+                                disc_id_matched: c.disc_id_matched,
+                                from_cd_text: c.from_cd_text,
                             })
                             .collect()
                     }
                     Err(r) => lookup_error = Some(r.1),
                 }
-                // Words typed by hand: the releases that MusicBrainz finds for them follow those that the disc found.
-                if !mbq.is_empty() {
+                // Words typed by hand: the releases that MusicBrainz finds for them follow those that the disc found. Not for a disc with a
+                // full CD-Text: it is not looked up anywhere else.
+                if !mbq.is_empty() && set.lookup_ready && !candidates.iter().any(|c: &CandView| c.from_cd_text) {
                     match crate::cdimport::search(store, cd, &set, &mbq).await {
                         Ok(found) => {
                             for c in found {
@@ -1614,6 +1632,8 @@ impl AdminUi {
                                         disc: c.disc,
                                         discs_total: c.discs_total,
                                         tracks: Vec::new(),
+                                        disc_id_matched: false,
+                                        from_cd_text: false,
                                     });
                                 }
                             }
@@ -1621,12 +1641,12 @@ impl AdminUi {
                         Err(r) => lookup_error = Some(r.1),
                     }
                 }
-            } else {
-                lookup_error = Some("no_contact");
             }
         }
-        // A release is taken over when it is chosen, or when MusicBrainz knows only one.
-        let chosen = pick.and_then(|i| candidates.get(i)).or(if candidates.len() == 1 { candidates.first() } else { None });
+        let cd_text = candidates.iter().any(|c| c.from_cd_text);
+        // A release is taken over when it is chosen, or when MusicBrainz knows only one whose disc has exactly this Disc ID. A near one (found by
+        // the table of contents) is offered but never taken over unasked: it can be another album with similar track lengths.
+        let chosen = pick.and_then(|i| candidates.get(i)).or_else(|| taken_unasked(&candidates));
         // A release that came from a search has no tracks yet: they are fetched when it is chosen (the disc with as many tracks as this CD).
         let fetched: Option<CandView> = match (chosen, &ready) {
             (Some(c), Some(d)) if c.tracks.is_empty() && !c.release_id.is_empty() && set.lookup_ready => {
@@ -1641,6 +1661,8 @@ impl AdminUi {
                         disc: full.disc,
                         discs_total: full.discs_total,
                         tracks: full.tracks.into_iter().map(|t| t.title).collect(),
+                        disc_id_matched: c.disc_id_matched,
+                        from_cd_text: false,
                     }),
                     Ok(None) => None,
                     Err(r) => {
@@ -1747,6 +1769,7 @@ impl AdminUi {
             sig,
             jobs,
             candidates,
+            cd_text,
             mbq_param: if mbq.is_empty() { String::new() } else { serde_urlencoded::to_string([("mbq", mbq.as_str())]).unwrap_or_default() },
             mbq,
             form,
@@ -1889,6 +1912,27 @@ pub async fn cd_preview(store: &Store, lang: Lang, field: &str, pattern: &str) -
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_a_lone_release_with_this_disc_id_fills_the_form_unasked() {
+        let cand = |index: usize, matched: bool| super::CandView {
+            index,
+            release_id: format!("r{index}"),
+            title: "T".into(),
+            author: "A".into(),
+            narrator: String::new(),
+            audiobook: false,
+            disc: matched.then_some(1),
+            discs_total: 1,
+            tracks: Vec::new(),
+            disc_id_matched: matched,
+            from_cd_text: false,
+        };
+        assert_eq!(super::taken_unasked(&[cand(0, true)]).map(|c| c.index), Some(0));
+        assert!(super::taken_unasked(&[cand(0, false)]).is_none(), "a near release (Job 109: another album) waits for a person");
+        assert!(super::taken_unasked(&[cand(0, true), cand(1, false)]).is_none());
+        assert!(super::taken_unasked(&[]).is_none());
+    }
+
     use super::*;
 
     #[test]

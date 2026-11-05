@@ -145,6 +145,7 @@ pub(crate) fn candidate_json(c: &musicbrainz::Candidate) -> Value {
         "cover": c.cover_available.then(|| c.release_id.clone()),
         "cover_available": c.cover_available,
         "audiobook": c.audiobook,
+        "source": if c.from_cd_text { "cd_text" } else { "musicbrainz" },
     })
 }
 
@@ -158,6 +159,11 @@ async fn lookup(State(s): State<ApiState>, d: Device, Json(req): Json<LookupRequ
         None => s.cd.drives.inserted_toc(&set.device).ok_or_else(|| err(409, "no_disc"))?,
     };
     let id = musicbrainz::disc_id(&toc);
+    // A disc with a full CD-Text is not looked up anywhere else: no search, no other release (`409 cd_text`).
+    let asks_more = req.release_id.is_some() || req.query.as_deref().is_some_and(|q| !q.trim().is_empty());
+    if asks_more && s.cd.drives.full_cd_text(&id).is_some() {
+        return Err(err(409, "cd_text"));
+    }
     let candidates = if let Some(mbid) = req.release_id.as_deref() {
         cdimport::release_for(&s.store, &s.cd, &set, mbid, toc.starts_lba.len()).await?.into_iter().collect()
     } else {

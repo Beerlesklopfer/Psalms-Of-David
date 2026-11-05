@@ -49,6 +49,11 @@ impl Fingerprint {
         // The ripper always writes ID3v2.4; `cd_id3_version` is applied when the files are placed.
         Fingerprint { format: set.format.clone(), bitrate_kbps: set.bitrate_kbps, sample_rate_hz: set.sample_rate_hz, channel_mode: set.channel_mode.clone(), quality: set.quality, tag_version: "2.4".into() }
     }
+
+    /// The fingerprint for a CD of this kind (`music` is encoded with at least the sample rate of the CD).
+    pub fn for_kind(&self, kind: &str) -> Fingerprint {
+        Fingerprint { sample_rate_hz: crate::cd_settings::sample_rate_for(self.sample_rate_hz, kind), ..self.clone() }
+    }
 }
 
 /// A track of the manifest.
@@ -109,7 +114,11 @@ pub fn read(dir: &Path) -> Option<Manifest> {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ResumeInfo {
     pub disc_id: String,
+    /// The tracks that a new start takes over: read and encoded, confirmed or not (see `tracks_unconfirmed`).
     pub tracks_done: Vec<u32>,
+    /// Of those, the tracks read only once so far (`encoded`): a new start takes the file over and reads the track a second time to confirm
+    /// it. A track whose second reading was cut off (a cancel, a restart) is here, though the job shows it as `failed`.
+    pub tracks_unconfirmed: Vec<u32>,
     /// The number of tracks the rip was for.
     pub tracks_total: usize,
     pub only: Vec<u32>,
@@ -123,13 +132,16 @@ pub fn info(dir: &Path, fingerprint: Option<&Fingerprint>, keep_hours: u64) -> O
     let m = read(dir)?;
     let mut done: Vec<u32> = m.tracks.iter().map(|t| t.number).collect();
     done.sort_unstable();
+    let mut unconfirmed: Vec<u32> = m.tracks.iter().filter(|t| t.state != "done").map(|t| t.number).collect();
+    unconfirmed.sort_unstable();
     Some(ResumeInfo {
         disc_id: m.disc_id.clone(),
         tracks_done: done,
+        tracks_unconfirmed: unconfirmed,
         tracks_total: m.only.len(),
         interrupted_at: m.updated_ms,
         keep_until: m.updated_ms + (keep_hours * 3600 * 1000) as i64,
-        settings_match: fingerprint.is_none_or(|f| *f == m.fingerprint),
+        settings_match: fingerprint.is_none_or(|f| f.for_kind(&m.kind) == m.fingerprint),
         only: m.only,
     })
 }
@@ -279,9 +291,23 @@ mod tests {
         let i = info(d.path(), Some(&manifest().fingerprint), 48).unwrap();
         assert_eq!((i.tracks_done.clone(), i.tracks_total, i.interrupted_at, i.settings_match), (vec![1], 3, 1000, true));
         assert_eq!(i.keep_until, 1000 + 48 * 3600 * 1000);
+        assert!(i.tracks_unconfirmed.is_empty());
+        // A track read once (its second reading was cut off) is taken over, and named as not confirmed yet.
+        let mut m = manifest();
+        m.tracks.push(Entry { number: 3, file: "03.mp3".into(), size: 10, sha1: String::new(), seconds: 120, state: "encoded".into() });
+        write(d.path(), &m).unwrap();
+        let i = info(d.path(), None, 48).unwrap();
+        assert_eq!((i.tracks_done, i.tracks_unconfirmed), (vec![1, 3], vec![3]));
+        write(d.path(), &manifest()).unwrap();
         let mut changed = manifest().fingerprint;
         changed.bitrate_kbps = 96;
         assert!(!info(d.path(), Some(&changed), 48).unwrap().settings_match);
+        // A rip of music was encoded at 44.1 kHz with a setting of 24 kHz: the same settings, so it can go on.
+        let mut music = manifest();
+        music.kind = "music".into();
+        music.fingerprint.sample_rate_hz = 44100;
+        write(d.path(), &music).unwrap();
+        assert!(info(d.path(), Some(&manifest().fingerprint), 48).unwrap().settings_match);
     }
 
     #[test]

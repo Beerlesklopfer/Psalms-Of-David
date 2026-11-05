@@ -769,6 +769,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cdCandidate => 'Match';
 
   @override
+  String get cdCandidateNear =>
+      'MusicBrainz knows no release with exactly this Disc ID. Choose a match only if it is this CD, or type the details.';
+
+  @override
+  String get tooltipOpenAlbum => 'Open album';
+
+  @override
+  String get cdFromCdText =>
+      'The CD names itself (CD-Text from its maker): album, performer and every title are filled in. MusicBrainz is not asked.';
+
+  @override
   String get cdSearchLabel =>
       'Not the right match? Search MusicBrainz (title, author)';
 

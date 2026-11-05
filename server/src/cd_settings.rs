@@ -20,6 +20,14 @@ use crate::store::Store;
 pub const FORMATS: &[(&str, &str)] = &[("mp3", "mp3")];
 pub const CHANNEL_MODES: &[&str] = &["joint_stereo", "stereo", "mono"];
 pub const SAMPLE_RATES: &[u32] = &[8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000];
+/// The sample rate of an audio CD. Music is never encoded below it (owner, 2026-11-05): the setting `cd_sample_rate_hz` (24 kHz by
+/// default, enough for speech) is for audiobooks; a higher setting stays.
+pub const CD_SAMPLE_RATE_HZ: u32 = 44100;
+
+/// The sample rate a CD of this kind is encoded with.
+pub fn sample_rate_for(setting: u32, kind: &str) -> u32 {
+    if kind == "music" { setting.max(CD_SAMPLE_RATE_HZ) } else { setting }
+}
 pub const ID3_VERSIONS: &[&str] = &["2.4", "2.3"];
 pub const TRACK_SCHEMES: &[&str] = &["disc_times_100", "plain"];
 pub const KINDS: &[&str] = &["audiobook", "music"];
@@ -416,6 +424,13 @@ pub fn clean(value: &str) -> String {
 }
 
 impl CdSettings {
+    /// The settings as they apply to a CD of this kind (`music`: at least the sample rate of the CD).
+    pub fn for_kind(&self, kind: &str) -> CdSettings {
+        let mut s = self.clone();
+        s.sample_rate_hz = sample_rate_for(s.sample_rate_hz, kind);
+        s
+    }
+
     /// Reads the settings. A value that is missing or fails its check falls back to the value of migration 0026.
     pub async fn load(store: &Store) -> Result<CdSettings> {
         let mut map: HashMap<&'static str, String> = HashMap::new();
@@ -535,6 +550,8 @@ mod tests {
             assert_eq!(validate("cd_bitrate_kbps", bad), None, "{bad}");
         }
         assert!(validate("cd_sample_rate_hz", "24000").is_some() && validate("cd_sample_rate_hz", "24001").is_none());
+        // Music is never encoded below the sample rate of the CD; audiobooks keep the setting, and a higher setting stays.
+        assert_eq!((sample_rate_for(24000, "music"), sample_rate_for(48000, "music"), sample_rate_for(24000, "audiobook")), (44100, 48000, 24000));
         assert!(validate("cd_channel_mode", "mono").is_some() && validate("cd_channel_mode", "quad").is_none());
         assert!(validate("cd_quality", "9").is_some() && validate("cd_quality", "10").is_none());
         assert!(validate("cd_id3_version", "2.3").is_some() && validate("cd_id3_version", "1.1").is_none());

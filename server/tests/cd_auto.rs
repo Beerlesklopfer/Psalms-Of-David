@@ -408,7 +408,7 @@ async fn nothing_is_started_for_two_releases_none_or_a_cd_that_is_there_and_each
 
     // A disc that is not an audio CD, and a drive the service may not use.
     e.drive.edit("/dev/fake0", |u| {
-        u.disc = Some(cdrive::fake::Disc { toc: cdrip::discid::TocInfo { tracks: vec![cdrip::discid::TocTrack { number: 1, start_lba: 0, is_audio: false }], leadout_lba: 1000 } });
+        u.disc = Some(cdrive::fake::Disc { toc: cdrip::discid::TocInfo { tracks: vec![cdrip::discid::TocTrack { number: 1, start_lba: 0, is_audio: false }], leadout_lba: 1000 }, cd_text: None });
         u.changed = true;
     });
     e.cd.refresh_drives("", true).await;
@@ -563,4 +563,52 @@ async fn a_turned_down_automatic_import_leaves_a_line_in_the_journal_with_the_re
 
 async fn sqlx_clear(e: &Env) {
     e.store.cd_cache_clear().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_cd_with_a_full_cd_text_is_filed_by_it_and_musicbrainz_is_not_asked_anywhere() {
+    if !have_ffmpeg() {
+        return;
+    }
+    let mut e = env().await;
+    let token = pair_admin(&mut e).await;
+    auto_on(&e).await;
+    give_mp3(&e);
+    let raw = cdrip::cdtext::encode_for_tests(&["Er hört dein Gebet", "Eins", "Zwei", "Drei"], &["Christoph Zehendner & Manfred Staiger", "\t", "\t", "\t"]);
+    let text = cdrip::cdtext::parse(&raw).unwrap();
+    e.drive.edit("/dev/fake0", |u| {
+        let mut d = david_server::cdrive::fake::disc_sectors(3, 150);
+        d.cd_text = Some(text.clone());
+        u.disc = Some(d);
+        u.tray_open = false;
+        u.changed = true;
+    });
+    e.cd.refresh_drives("", true).await;
+    assert_eq!(state(&e).cd_text.as_ref().and_then(|t| t.album_title.as_deref()), Some("Er hört dein Gebet"));
+
+    // The lookup of the app and the page: the one answer is the CD-Text; a search or another release is refused.
+    let r = call(&e, "POST", "/api/v1/cd/lookup", Some(&token), Some(json!({}))).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let list = r.json()["candidates"].as_array().unwrap().clone();
+    assert_eq!(list.len(), 1, "{list:?}");
+    assert_eq!((list[0]["source"].as_str(), list[0]["author"].as_str(), list[0]["title"].as_str()), (Some("cd_text"), Some("Christoph Zehendner & Manfred Staiger"), Some("Er hört dein Gebet")));
+    assert_eq!(list[0]["tracks"], json!(["Eins", "Zwei", "Drei"]));
+    assert_eq!(list[0]["disc_id_matched"], json!(true));
+    for body in [json!({ "query": "Zehendner" }), json!({ "release_id": RELEASE_ID })] {
+        assert_eq!(call(&e, "POST", "/api/v1/cd/lookup", Some(&token), Some(body)).await.code(), "cd_text");
+    }
+
+    // The automatic import files it under the CD-Text.
+    auto(&e, lib(&e)).await;
+    let mut job = None;
+    for _ in 0..300 {
+        job = e.store.cd_log(10).await.unwrap().into_iter().find(|j| j.device == "auto");
+        if job.as_ref().is_some_and(|j| !j.active) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let job = job.expect("the import started by itself");
+    assert_eq!((job.author.as_str(), job.album.as_str()), ("Christoph Zehendner & Manfred Staiger", "Er hört dein Gebet"), "{job:?}");
+    assert!(e.fake.asked().iter().all(|a| a.0 != Service::MusicBrainz), "MusicBrainz was asked: {:?}", e.fake.asked());
 }

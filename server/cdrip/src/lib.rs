@@ -7,6 +7,7 @@
 //! See `docs/spec-cd-ripping.md`.
 
 pub mod align;
+pub mod cdtext;
 pub mod discid;
 pub mod drive;
 pub mod encode;

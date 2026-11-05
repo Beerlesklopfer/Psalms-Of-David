@@ -122,7 +122,7 @@ States of one **rip job** (stored in the database, section 8): `waiting_for_driv
    1. *Already known in David:* a job or a book with the same Disc ID (a disc that was ripped before; it avoids a second ripping by mistake and offers "rip again").
    2. *MusicBrainz* `GET {musicbrainz_url}/ws/2/discid/{id}?inc=…&fmt=json`, and if the exact id is unknown the fuzzy form with `toc=1+<tracks>+<leadout>+<offsets…>` (documented at https://musicbrainz.org/doc/MusicBrainz_API; "toc" lookups return CD-format mediums by default and CD stubs are returned when there is no release; `cdstubs=no` turns that off). The owner's earlier `…/discid/-?toc=…` call is this form. The exact `inc=` values (artist credits, media, recordings) are **to be fixed in spike 2** from the live response. The reply gives release title, artist credit, the list of media with `position` and the number of media of the release. That is "CD n of N".
    3. *Cover:* `GET {coverart_url}/release/{mbid}/front-500` (also `-250`, `-1200`); the answer is a 307 redirect to archive.org and a 404 if the community has chosen no front image (https://musicbrainz.org/doc/Cover_Art_Archive/API). The existing downloader `fetch::download_image` (public addresses only, size limit, checks that it is a picture) is reused.
-   4. *CD-Text:* not in version 1 (the crate does not read it); see Open.
+   4. *CD-Text:* read by `cdrip::cdtext` with its own `SG_IO` command (the crate does not read it); a full one replaces the lookup (2026-11-05, see `spec-cd-import-api.md`, "CD-Text first").
    5. *By hand:* an empty form. For title text like `Foo (CD 2)`, the existing `relocate::strip_disc` splits title and disc number.
    MusicBrainz rules to follow (https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting): about **one request per second per IP**, excess requests get HTTP 503; every request needs a **User-Agent** with application name, version and a contact address, such as `Name/1.2.0 ( contact )`. So: one global rate limiter (queue, one request at a time, at least one second apart), User-Agent from a setting (`rip.user_agent_contact`) that is mandatory before lookups are enabled, and a short cache by Disc ID in the database so a retry does not ask again. No request is sent without the setting.
 5. **Confirm.** The page shows the guess (author, title, "CD n of N", cover, track list with durations, total size) as an editable form. Nothing is read from the disc beyond the TOC until the user presses *Save* (section 7).
@@ -322,7 +322,7 @@ Technical points not settled by sources:
 
 - Whether SG_IO `READ CD` works for an unprivileged group member on this kernel (spike 1).
 - The errno and sense values for a vanished drive, and whether the drive cache makes the second read useless (hardware tests).
-- CD-Text: whether it is worth a separate reader (own SG_IO call or a program such as libcdio's `cd-info`; not checked). The owner says it is often missing.
+- CD-Text: done 2026-11-05 with an own SG_IO call (`cdrip::cdtext`). Still open: Japanese (MS-JIS) and further languages (blocks 1 to 7) are not read.
 - Whether `mp3lame-encoder` lets joint stereo and CBR 64 kbit/s be set, and whether it builds in the packages without a system `libmp3lame` (it bundles LAME 3.100 and builds it statically, per the README of `mp3lame-sys`; the points that remain are checks 2 and 3 of spike 3 in section 3).
 - Whether the next import adds a new `CD n` folder to the existing book without losing id and progress.
 - The `CDROMEJECT` ioctl value, and whether `DeviceAllow` is needed under a hardened unit.

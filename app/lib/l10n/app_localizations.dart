@@ -1406,6 +1406,24 @@ abstract class AppLocalizations {
   /// **'Match'**
   String get cdCandidate;
 
+  /// No description provided for @cdCandidateNear.
+  ///
+  /// In en, this message translates to:
+  /// **'MusicBrainz knows no release with exactly this Disc ID. Choose a match only if it is this CD, or type the details.'**
+  String get cdCandidateNear;
+
+  /// No description provided for @tooltipOpenAlbum.
+  ///
+  /// In en, this message translates to:
+  /// **'Open album'**
+  String get tooltipOpenAlbum;
+
+  /// No description provided for @cdFromCdText.
+  ///
+  /// In en, this message translates to:
+  /// **'The CD names itself (CD-Text from its maker): album, performer and every title are filled in. MusicBrainz is not asked.'**
+  String get cdFromCdText;
+
   /// No description provided for @cdSearchLabel.
   ///
   /// In en, this message translates to:

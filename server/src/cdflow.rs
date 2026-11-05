@@ -411,7 +411,11 @@ impl Store {
             Move::ReadFailed(code) => set("error", code.clone().into()),
             Move::Fail(code) => set("error", code.clone().into()),
             Move::ImportFailed => set("error", "import_failed".to_owned().into()),
-            Move::Cancel => set("error", "cancelled".to_owned().into()),
+            Move::Cancel => {
+                set("error", "cancelled".to_owned().into());
+                // The message of an earlier move ("read again at the wish of ...") must not stay on a cancelled job.
+                set("message", if actor_name.is_empty() { "cancelled".to_owned() } else { format!("cancelled by {who}") }.into());
+            }
             Move::Interrupted => set("error", "interrupted".to_owned().into()),
             Move::Present | Move::Ripped | Move::Place => {}
         }

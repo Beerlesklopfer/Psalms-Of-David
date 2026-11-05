@@ -184,6 +184,13 @@ pub fn track_sectors(info: &TocInfo) -> Vec<(u8, u32)> {
 /// Sends a command without data through `SG_IO`; true if the drive reports good status.
 #[cfg(target_os = "linux")]
 fn sg_cmd(fd: i32, cdb: &[u8]) -> bool {
+    sg_io(fd, cdb, None).is_some()
+}
+
+/// Sends a command through `SG_IO`, with `data` filled by the drive when given. The number of bytes that came, if the drive
+/// reports good status.
+#[cfg(target_os = "linux")]
+pub(crate) fn sg_io(fd: i32, cdb: &[u8], data: Option<&mut [u8]>) -> Option<usize> {
     #[repr(C)]
     struct SgIoHdr {
         interface_id: i32,
@@ -210,14 +217,18 @@ fn sg_cmd(fd: i32, cdb: &[u8]) -> bool {
         info: u32,
     }
     let mut sense = [0u8; 32];
+    let (direction, len, ptr) = match data {
+        Some(buf) => (-3, buf.len() as u32, buf.as_mut_ptr()), // SG_DXFER_FROM_DEV
+        None => (-1, 0, std::ptr::null_mut()),                 // SG_DXFER_NONE
+    };
     let mut h = SgIoHdr {
         interface_id: b'S' as i32,
-        dxfer_direction: -1, // SG_DXFER_NONE
+        dxfer_direction: direction,
         cmd_len: cdb.len() as u8,
         mx_sb_len: 32,
         iovec_count: 0,
-        dxfer_len: 0,
-        dxferp: std::ptr::null_mut(),
+        dxfer_len: len,
+        dxferp: ptr,
         cmdp: cdb.as_ptr(),
         sbp: sense.as_mut_ptr(),
         timeout: 10_000,
@@ -236,7 +247,13 @@ fn sg_cmd(fd: i32, cdb: &[u8]) -> bool {
     };
     // SAFETY: `h` is a valid sg_io_hdr that lives through the call, as do the buffers it points to.
     let rc = unsafe { libc::ioctl(fd, SG_IO as _, &mut h as *mut SgIoHdr) };
-    rc == 0 && h.status == 0 && h.host_status == 0 && h.driver_status == 0
+    (rc == 0 && h.status == 0 && h.host_status == 0 && h.driver_status == 0).then(|| (len as i64 - i64::from(h.resid)).max(0) as usize)
+}
+
+/// Opens a drive for `SG_IO` (reading and writing, as `cd-da-reader` opens it; reading only if that is not allowed).
+#[cfg(target_os = "linux")]
+pub(crate) fn open_sg(device: &str) -> std::io::Result<std::fs::File> {
+    OpenOptions::new().read(true).write(true).custom_flags(O_NONBLOCK).open(device).or_else(|_| OpenOptions::new().read(true).custom_flags(O_NONBLOCK).open(device))
 }
 
 /// Bytes per second of audio on a CD, in kilobytes (the unit of "1x": 176 kB/s).

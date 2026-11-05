@@ -221,13 +221,15 @@ pub struct DriveState {
     pub denied: bool,
     /// A rip is running on it.
     pub ripping: bool,
+    /// What the maker wrote onto the disc (album, performer, track titles), read with the table of contents.
+    pub cd_text: Option<cdrip::cdtext::CdText>,
     #[serde(skip)]
     pub table: Option<Toc>,
 }
 
 impl DriveState {
     fn empty(device: &str) -> DriveState {
-        DriveState { device: device.to_owned(), tray: Tray::Unknown, medium: Medium::Unknown, tracks: 0, disc_id: None, toc: None, seconds: 0, track_list: Vec::new(), denied: false, ripping: false, table: None }
+        DriveState { device: device.to_owned(), tray: Tray::Unknown, medium: Medium::Unknown, tracks: 0, disc_id: None, toc: None, seconds: 0, track_list: Vec::new(), denied: false, ripping: false, cd_text: None, table: None }
     }
 }
 
@@ -285,6 +287,10 @@ pub trait DriveBackend: Send + Sync {
     fn reset_speed(&self, _device: &str) -> std::io::Result<()> {
         Ok(())
     }
+    /// The CD-Text of the disc in the drive (read once per new disc, after the table of contents).
+    fn cd_text(&self, _device: &str) -> Option<cdrip::cdtext::CdText> {
+        None
+    }
 }
 
 /// The real drives.
@@ -321,6 +327,10 @@ impl DriveBackend for SystemDrives {
 
     fn eject(&self, device: &str) -> std::io::Result<EjectOutcome> {
         cdrip::drive::eject(device)
+    }
+
+    fn cd_text(&self, device: &str) -> Option<cdrip::cdtext::CdText> {
+        cdrip::cdtext::read(device)
     }
 
     fn watch(&self) -> Option<Box<dyn Watcher>> {
@@ -447,6 +457,30 @@ impl Drives {
     }
 
     /// The table of contents of the audio CD in the drive named by `device` (empty = the first drive that has one).
+    /// The CD-Text of the disc with this Disc ID, if it is in a drive and has one.
+    pub fn cd_text_of(&self, disc_id: &str) -> Option<cdrip::cdtext::CdText> {
+        let g = self.lock();
+        g.states.iter().find(|s| s.disc_id.as_deref() == Some(disc_id) && s.medium == Medium::Audio).and_then(|s| s.cd_text.clone())
+    }
+
+    /// The CD-Text of the disc with this Disc ID when it names the album, the performer and every audio track: then it is the answer, and
+    /// MusicBrainz is not asked (the maker said what the CD is).
+    pub fn full_cd_text(&self, disc_id: &str) -> Option<cdrip::cdtext::CdText> {
+        let g = self.lock();
+        let s = g.states.iter().find(|s| s.disc_id.as_deref() == Some(disc_id) && s.medium == Medium::Audio)?;
+        let numbers: Vec<u8> = s.track_list.iter().filter_map(|t| u8::try_from(t.number).ok()).collect();
+        s.cd_text.clone().filter(|t| t.is_complete(&numbers))
+    }
+
+    /// The candidate of a full CD-Text (see `full_cd_text`), with the tracks and lengths of the disc.
+    pub fn cd_text_candidate(&self, disc_id: &str) -> Option<crate::musicbrainz::Candidate> {
+        let text = self.full_cd_text(disc_id)?;
+        let g = self.lock();
+        let s = g.states.iter().find(|s| s.disc_id.as_deref() == Some(disc_id))?;
+        let tracks: Vec<(u32, u32)> = s.track_list.iter().map(|t| (t.number, t.seconds)).collect();
+        Some(crate::musicbrainz::Candidate::from_cd_text(&text, &tracks))
+    }
+
     pub fn inserted_toc(&self, device: &str) -> Option<Toc> {
         let g = self.lock();
         g.states.iter().filter(|s| device.is_empty() || s.device == device).find_map(|s| s.table.clone().filter(|_| s.medium == Medium::Audio && s.tray == Tray::Closed))
@@ -484,7 +518,12 @@ impl Drives {
                 continue;
             }
             not_ready |= matches!(probe.status, DriveStatus::NotReady | DriveStatus::Unknown) && probe.access == Access::Ok;
-            states.push(state_of(device, &probe, old));
+            let mut st = state_of(device, &probe, old);
+            // A new audio disc: its CD-Text is read once, with the table of contents (an unchanged disc keeps what was read).
+            if probe.toc.is_some() && st.medium == Medium::Audio {
+                st.cd_text = self.backend.cd_text(device);
+            }
+            states.push(st);
         }
         let changed = states != before;
         if changed {
@@ -946,10 +985,9 @@ pub fn present_json(p: &crate::cdpresent::Present) -> serde_json::Value {
 /// The one release MusicBrainz knows for a disc, as the details of the book (author, title, CD number). Not a guess: with none or
 /// several the answer is why not.
 pub async fn unique_release(store: &Store, cd: &CdService, set: &CdSettings, toc: &crate::musicbrainz::Toc) -> Result<crate::musicbrainz::Candidate, (&'static str, String)> {
-    if !set.lookup_ready {
-        return Err(("no_contact", String::new()));
-    }
+    // The CD-Text of the disc answers without a contact address (inside `lookup`); MusicBrainz needs one.
     match cdimport::lookup(store, cd, set, toc).await {
+        Err(r) if r.1 == "no_contact" => Err(("no_contact", String::new())),
         Err(r) => Err(("lookup_failed", r.1.to_owned())),
         Ok((_, mut found)) => {
             // A release whose disc has exactly this Disc ID is the answer; the near ones (another pressing) count only when there is none.
@@ -1046,6 +1084,8 @@ enum RipOutcome {
 async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user_id: i64, req: RipRequest, dry: bool, again: Option<(i64, crate::cdflow::Actor)>) -> Result<RipOutcome, RipRefusal> {
     let set = CdSettings::load(store).await.map_err(|_| Refusal(500, "internal"))?;
     let kind = req.kind.clone().unwrap_or_else(|| set.target_kind.clone());
+    // From here on the settings as they apply to this kind (music: at least the sample rate of the CD), for the encoder, the resume and the dry run.
+    let set = set.for_kind(&kind);
     let wanted = req.device.clone().filter(|d| !d.is_empty()).unwrap_or_else(|| set.device.clone());
     // Look at the drives now, not at the last look: the disc may have been changed a second ago.
     cd.refresh_drives(&wanted, true).await;
@@ -1773,13 +1813,15 @@ async fn run_rip(
     if meta.tracks.is_empty() {
         return Err("unreadable_track");
     }
-    let cover = match (&meta.mbid, set.lookup_ready) {
+    // A disc with a full CD-Text asks MusicBrainz nothing, not for the cover nor for the EAN, even when a release id was sent along.
+    let mb_ok = set.lookup_ready && (disc_id.is_empty() || cd.drives.full_cd_text(disc_id).is_none());
+    let cover = match (&meta.mbid, mb_ok) {
         (Some(mbid), true) => cdimport::fetch_cover(store, cd, &set, mbid).await.ok().flatten(),
         _ => None,
     };
     // The EAN of the chosen release goes into the tags (best effort: a rip does not fail because MusicBrainz is not reachable).
     if meta.barcode.is_none()
-        && set.lookup_ready
+        && mb_ok
         && let Some(mbid) = &meta.mbid
         && let Ok(Some(release)) = cdimport::release_for(store, cd, &set, mbid, meta.tracks.len()).await
     {
@@ -1867,6 +1909,7 @@ pub mod fake {
 
     pub struct Disc {
         pub toc: TocInfo,
+        pub cd_text: Option<cdrip::cdtext::CdText>,
     }
 
     #[derive(Default)]
@@ -1914,7 +1957,7 @@ pub mod fake {
     /// A table of contents with `n` audio tracks of `sectors` sectors each (75 sectors are a second).
     pub fn disc_sectors(n: u8, sectors: u32) -> Disc {
         let tracks = (0..n).map(|i| cdrip::discid::TocTrack { number: i + 1, start_lba: u32::from(i) * sectors, is_audio: true }).collect();
-        Disc { toc: TocInfo { tracks, leadout_lba: u32::from(n) * sectors } }
+        Disc { toc: TocInfo { tracks, leadout_lba: u32::from(n) * sectors }, cd_text: None }
     }
 
     impl FakeDrives {
@@ -2042,6 +2085,10 @@ pub mod fake {
 
         fn watch(&self) -> Option<Box<dyn Watcher>> {
             self.watch_available.load(Ordering::Relaxed).then(|| Box::new(EventCounter(self.events.clone())) as Box<dyn Watcher>)
+        }
+
+        fn cd_text(&self, device: &str) -> Option<cdrip::cdtext::CdText> {
+            self.units.lock().unwrap().iter().find(|(d, _)| d == device).and_then(|(_, u)| u.disc.as_ref()).and_then(|d| d.cd_text.clone())
         }
 
         fn set_speed(&self, device: &str, times: u32) -> std::io::Result<()> {
