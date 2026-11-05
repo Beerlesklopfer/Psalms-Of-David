@@ -734,7 +734,8 @@ async fn disc_photos(State(s): State<ApiState>, d: Device, Query(q): Query<Photo
     let device = q.device.filter(|d| !d.is_empty()).unwrap_or(set.device);
     let toc = s.cd.drives.inserted_toc(&device).ok_or_else(|| err(409, "no_disc"))?;
     let disc_id = musicbrainz::disc_id(&toc);
-    let Json(mut out) = crate::api::photos_call(&s.cd.photos, &crate::photos::Owner::Disc(disc_id.clone()), &method, &body)?;
+    let by = s.store.profile_name(d.user_id).await?.unwrap_or_default();
+    let Json(mut out) = crate::api::photos_call(&s.cd.photos, &crate::photos::Owner::Disc(disc_id.clone()), &method, &body, &by)?;
     out["disc_id"] = json!(disc_id);
     Ok(Json(out))
 }

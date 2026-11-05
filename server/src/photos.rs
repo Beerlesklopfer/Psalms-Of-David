@@ -14,6 +14,8 @@ pub const MAX_PHOTOS: usize = 12;
 /// How long photos stay without a process that ends them.
 pub const KEEP_MS: i64 = 24 * 3600 * 1000;
 const JOB_FILE: &str = "job";
+/// Who took the photos (the profile of the device that sent the first).
+const BY_FILE: &str = "by";
 
 /// What the photos belong to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,6 +47,16 @@ pub struct Photo {
     pub bytes: u64,
 }
 
+/// Photos that wait for the language model: whose, how many, since when, who took them, and the rip that reads the disc (if one does).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Task {
+    pub owner: Owner,
+    pub photos: usize,
+    pub since_ms: i64,
+    pub by: String,
+    pub job: Option<i64>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Photos {
     base: PathBuf,
@@ -63,15 +75,18 @@ impl Photos {
         owner.dir_name().map(|n| self.base.join(n))
     }
 
-    /// Adds a photo (JPEG or PNG, already checked); its number. `Err("photo_limit")` when there are [`MAX_PHOTOS`] already,
+    /// Adds a photo (JPEG or PNG, already checked) that `by` took; its number. `Err("photo_limit")` when there are [`MAX_PHOTOS`] already,
     /// `Err("invalid_disc")` for an owner that cannot be a folder.
-    pub fn add(&self, owner: &Owner, bytes: &[u8], mime: &str) -> Result<u32, &'static str> {
+    pub fn add(&self, owner: &Owner, bytes: &[u8], mime: &str, by: &str) -> Result<u32, &'static str> {
         let dir = self.dir(owner).ok_or("invalid_disc")?;
         let list = self.list(owner);
         if list.len() >= MAX_PHOTOS {
             return Err("photo_limit");
         }
         std::fs::create_dir_all(&dir).map_err(|_| "internal")?;
+        if list.is_empty() && !by.is_empty() {
+            let _ = std::fs::write(dir.join(BY_FILE), by);
+        }
         let n = list.last().map_or(1, |p| p.n + 1);
         let part = dir.join(format!("{n:02}.part"));
         std::fs::write(&part, bytes).map_err(|_| "internal")?;
@@ -118,6 +133,38 @@ impl Photos {
         n
     }
 
+    /// Everything that has photos waiting: the tasks of the language model, oldest first.
+    pub fn backlog(&self) -> Vec<Task> {
+        let Ok(rd) = std::fs::read_dir(&self.base) else { return Vec::new() };
+        let mut out: Vec<Task> = rd
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                let owner = if let Some(id) = name.strip_prefix("disc-") {
+                    Owner::Disc(id.to_owned())
+                } else {
+                    Owner::Album(name.strip_prefix("album-")?.parse().ok()?)
+                };
+                let photos = self.list(&owner);
+                if photos.is_empty() {
+                    return None;
+                }
+                let since = std::fs::read_dir(e.path())
+                    .ok()?
+                    .flatten()
+                    .filter_map(|f| f.metadata().and_then(|m| m.modified()).ok())
+                    .min()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_millis() as i64);
+                let by = std::fs::read_to_string(e.path().join(BY_FILE)).unwrap_or_default();
+                let job = std::fs::read_to_string(e.path().join(JOB_FILE)).ok().and_then(|t| t.trim().parse().ok());
+                Some(Task { owner, photos: photos.len(), since_ms: since, by, job })
+            })
+            .collect();
+        out.sort_by_key(|t| t.since_ms);
+        out
+    }
+
     /// The rip `job_id` reads this disc: its end ends the photos of the disc.
     pub fn attach_job(&self, disc_id: &str, job_id: i64) {
         if let Some(dir) = self.dir(&Owner::Disc(disc_id.to_owned()))
@@ -161,12 +208,15 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let p = Photos::new(d.path());
         let disc = Owner::Disc("AM3Ds7LYFUg7YH7ywvK9zGrpNsU-".into());
-        assert_eq!(p.add(&disc, JPEG, "image/jpeg"), Ok(1));
-        assert_eq!(p.add(&disc, b"\x89PNG", "image/png"), Ok(2));
+        assert_eq!(p.add(&disc, JPEG, "image/jpeg", "Anna"), Ok(1));
+        assert_eq!(p.add(&disc, b"\x89PNG", "image/png", ""), Ok(2));
         assert_eq!(p.list(&disc).iter().map(|x| (x.n, x.mime)).collect::<Vec<_>>(), vec![(1, "image/jpeg"), (2, "image/png")]);
         assert_eq!(p.read(&disc, 1), Some(("image/jpeg", JPEG.to_vec())));
         assert!(p.list(&Owner::Album(3)).is_empty(), "each owner has its own");
+        let tasks = p.backlog();
+        assert_eq!(tasks.iter().map(|t| (t.owner.clone(), t.photos, t.by.as_str())).collect::<Vec<_>>(), vec![(disc.clone(), 2, "Anna")]);
         assert_eq!(p.discard(&disc), 2);
+        assert!(p.backlog().is_empty());
         assert!(p.list(&disc).is_empty());
     }
 
@@ -175,13 +225,13 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let p = Photos::new(d.path());
         for bad in ["../x", "a/b", "", "x y"] {
-            assert_eq!(p.add(&Owner::Disc(bad.into()), JPEG, "image/jpeg"), Err("invalid_disc"), "{bad}");
+            assert_eq!(p.add(&Owner::Disc(bad.into()), JPEG, "image/jpeg", ""), Err("invalid_disc"), "{bad}");
         }
         let a = Owner::Album(5);
         for _ in 0..MAX_PHOTOS {
-            p.add(&a, JPEG, "image/jpeg").unwrap();
+            p.add(&a, JPEG, "image/jpeg", "").unwrap();
         }
-        assert_eq!(p.add(&a, JPEG, "image/jpeg"), Err("photo_limit"));
+        assert_eq!(p.add(&a, JPEG, "image/jpeg", ""), Err("photo_limit"));
     }
 
     #[test]
@@ -189,8 +239,8 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let p = Photos::new(d.path());
         let (one, two) = (Owner::Disc("A".into()), Owner::Disc("B".into()));
-        p.add(&one, JPEG, "image/jpeg").unwrap();
-        p.add(&two, JPEG, "image/jpeg").unwrap();
+        p.add(&one, JPEG, "image/jpeg", "").unwrap();
+        p.add(&two, JPEG, "image/jpeg", "").unwrap();
         p.attach_job("A", 41);
         p.discard_job(40);
         assert_eq!(p.list(&one).len(), 1, "another job ends nothing");

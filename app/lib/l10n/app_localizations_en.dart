@@ -773,6 +773,28 @@ class AppLocalizationsEn extends AppLocalizations {
       'MusicBrainz knows no release with exactly this Disc ID. Choose a match only if it is this CD, or type the details.';
 
   @override
+  String get coverAndPhotos => 'Cover and photos';
+
+  @override
+  String get photoForAi => 'Photo for the assistant';
+
+  @override
+  String get photoForAiHint => 'It reads titles, times and the EAN from it';
+
+  @override
+  String photoAdded(int count) {
+    return 'Photo added ($count waiting for the assistant).';
+  }
+
+  @override
+  String cdPhotos(int count) {
+    return 'Photos of the case for the assistant: $count';
+  }
+
+  @override
+  String get cdPhotoAdd => 'Photograph the case';
+
+  @override
   String get coverChange => 'Change the cover';
 
   @override
@@ -942,6 +964,15 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get cdErrInvalidMeta =>
       'The server did not accept the author, title or numbers.';
+
+  @override
+  String get cdErrPhotoLimit => 'There are 12 photos of this CD already.';
+
+  @override
+  String get cdErrPhotoSize => 'The photo is too large.';
+
+  @override
+  String get cdErrPhotoUnavailable => 'No camera or pictures on this device.';
 
   @override
   String get cdErrInvalidBarcode =>

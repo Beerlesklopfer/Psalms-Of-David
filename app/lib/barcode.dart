@@ -136,4 +136,7 @@ abstract class BarcodeApi {
 /// Makes a picture the cover of an album on the server (`PUT /api/v1/items/{id}/cover`): the owner and an administrator may.
 abstract class CoverApi {
   Future<void> putCover(int itemId, Uint8List jpeg);
+
+  /// Adds a photo of the album for the language model (MCP `get_photos`, `POST /api/v1/items/{id}/photos`); how many there are now.
+  Future<int> addPhoto(int itemId, Uint8List jpeg);
 }

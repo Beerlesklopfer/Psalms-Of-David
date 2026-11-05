@@ -22,6 +22,15 @@ class _Server implements CoverApi {
     if (error != null) throw error!;
     sent.add((itemId, jpeg));
   }
+
+  final photos = <(int, Uint8List)>[];
+
+  @override
+  Future<int> addPhoto(int itemId, Uint8List jpeg) async {
+    if (error != null) throw error!;
+    photos.add((itemId, jpeg));
+    return photos.length;
+  }
 }
 
 class _Picker implements AvatarPicker {
@@ -71,7 +80,9 @@ void main() {
     await tester.pumpWidget(_app(p, ChangeCoverButton(book: p.library.first, api: server, picker: picker, prepare: prepare)));
     await tester.tap(find.byKey(const ValueKey('change-cover')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('cover-camera')));
+    await tester.tap(find.byKey(const ValueKey('use-cover')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('picture-camera')));
     await tester.pumpAndSettle();
     expect(picker.asked, [AvatarSource.camera]);
     expect(server.sent.single.$1, 7);
@@ -88,9 +99,29 @@ void main() {
     await tester.pumpWidget(_app(p, ChangeCoverButton(book: p.library.first, api: server, picker: picker, prepare: prepare)));
     await tester.tap(find.byKey(const ValueKey('change-cover')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('use-cover')));
+    await tester.pumpAndSettle();
     expect(picker.asked, [AvatarSource.gallery]);
     expect(p.library.first.cover, isNull);
     expect(find.text('The cover could not be changed (cover_size).'), findsOneWidget);
+    p.dispose();
+  });
+
+  testWidgets('a photo for the assistant goes to the photos of the album, larger, and leaves the cover alone', (tester) async {
+    final p = PlayerController([_album()]);
+    final server = _Server();
+    final big = Uint8List.fromList([0xFF, 0xD8, 0xFF, 1]);
+    await tester.pumpWidget(_app(p, ChangeCoverButton(book: p.library.first, api: server, picker: _Picker(), prepare: prepare, preparePhotoFor: (_) async => big)));
+    await tester.tap(find.byKey(const ValueKey('change-cover')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('use-photo')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('picture-gallery')));
+    await tester.pumpAndSettle();
+    expect(server.photos.single.$2, big);
+    expect(server.sent, isEmpty);
+    expect(p.library.first.cover, isNull);
+    expect(find.text('Photo added (1 waiting for the assistant).'), findsOneWidget);
     p.dispose();
   });
 
@@ -107,5 +138,7 @@ void main() {
     final back = img.decodeJpg(cover!)!;
     expect((back.width, back.height), (kCoverSide, 800));
     expect(await prepareCover(Uint8List.fromList([1, 2, 3])), isNull);
+    final forAi = img.decodeJpg((await preparePhoto(photo))!)!;
+    expect(forAi.width, kPhotoSide, reason: 'the small print stays readable');
   });
 }

@@ -162,6 +162,11 @@ fn tool_list() -> Value {
             "inputSchema": { "type": "object", "properties": { "id": id }, "required": ["id"] }
         },
         {
+            "name": "photo_tasks",
+            "description": "Your inbox of tasks: every CD and album for which a person took photos with the app and that waits for you, oldest first: kind (disc or album), disc_id or id, the album title, how many photos, since when (since_ms), who took them (by), whether the disc is in the drive now (in_drive) and the rip that reads it (job). For each: read the photos (get_photos), then for a disc in the drive fill the rip (cd_rip with titles, year, barcode, cover_photo; dry run first, the person says yes), for an album correct what the photos show (set_tags, set_cover_from_photo, dry run first) and discard_photos when you are done. A disc that is not in the drive cannot be ripped: say so. Read only.",
+            "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
             "name": "get_photos",
             "description": "The photos a person took with the app of a CD case or an album (front, back, booklet), as pictures, for you to read: the track titles and their times, the artist, the year, the EAN, the label. With id: the photos of that album; without: those of the disc in the drive of the server (or disc_id). Compare the times you read with the times of the disc (cd_drive) before you use the titles; say what you could not read instead of guessing. The photos serve one process and go when it ends (the rip of the disc, or discard_photos), after 24 hours at the latest. Read only; for a disc a token made by a profile that may put in CDs.",
             "inputSchema": { "type": "object", "properties": { "id": { "type": "integer", "description": "Album id; absent: the disc" }, "disc_id": { "type": "string", "description": "Disc ID (cd_drive); absent: the disc in the drive" }, "photo": { "type": "integer", "description": "Only this photo (its number)" } } }
@@ -487,6 +492,7 @@ fn example_of(tool: &str) -> Value {
         "set_tags" => json!({ "id": 12, "dry_run": true, "fields": { "AlbumTitle": "Back to the Street" } }),
         "set_cover_from_url" => json!({ "id": 12, "url": "https://example.org/cover.jpg" }),
         "get_photos" => json!({}),
+        "photo_tasks" => json!({}),
         "set_cover_from_photo" => json!({ "id": 12, "photo": 1 }),
         "discard_photos" => json!({ "id": 12 }),
         "cd_rip" => json!({ "author": "Ken Follett", "title": "Sturz der Titanen", "disc": 1, "discs_total": 12, "tracks": ["Teil 1", "Teil 2", "Teil 3"], "narrator": "Johannes Steck", "kind": "audiobook", "mbid": "b0ee0bdb-d1c0-4a39-8d8a-4b7d1b2d6e11", "dry_run": true }),
@@ -1106,6 +1112,29 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             s.store.log_tag_change(&token.name, id, name, "Picture", "", &url).await.map_err(db)?;
             s.store.rescan_soon();
             Ok(json!({ "folder_file": name, "bytes": size, "type": mime, "embedded_in": embedded, "of_files": count, "first_embed_error": first_error }))
+        }
+        "photo_tasks" => {
+            let set = crate::cd_settings::CdSettings::load(&s.store).await.map_err(db)?;
+            let (states, _) = s.cd.drives.snapshot();
+            let in_drive = crate::cdrive::pick_drive(&states, &set.device).and_then(|d| d.disc_id.clone());
+            let mut tasks = Vec::new();
+            for t in s.cd.photos.backlog() {
+                let mut j = json!({ "photos": t.photos, "since_ms": t.since_ms, "by": t.by, "job": t.job });
+                match &t.owner {
+                    crate::photos::Owner::Disc(id) => {
+                        j["kind"] = json!("disc");
+                        j["disc_id"] = json!(id);
+                        j["in_drive"] = json!(in_drive.as_deref() == Some(id.as_str()));
+                    }
+                    crate::photos::Owner::Album(id) => {
+                        j["kind"] = json!("album");
+                        j["id"] = json!(id);
+                        j["title"] = json!(s.store.admin_book_row(*id).await.map_err(db)?.map(|r| format!("{}: {}", r.author, r.title)));
+                    }
+                }
+                tasks.push(j);
+            }
+            Ok(json!({ "tasks": tasks }))
         }
         "get_photos" | "discard_photos" => {
             // An album by id, else a disc: the one named, or the one in the drive of the server.

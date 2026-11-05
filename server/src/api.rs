@@ -720,14 +720,15 @@ async fn may_edit_item(s: &ApiState, d: &Device, id: i64) -> ApiResult<()> {
 async fn item_photos(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, method: axum::http::Method, body: axum::body::Bytes) -> ApiResult<Json<Value>> {
     may_edit_item(&s, &d, id).await?;
     let owner = crate::photos::Owner::Album(id);
-    photos_call(&s.cd.photos, &owner, &method, &body)
+    let by = s.store.profile_name(d.user_id).await?.unwrap_or_default();
+    photos_call(&s.cd.photos, &owner, &method, &body, &by)
 }
 
 /// The three calls on the photos of an owner (list, add, discard).
-pub(crate) fn photos_call(photos: &crate::photos::Photos, owner: &crate::photos::Owner, method: &axum::http::Method, body: &[u8]) -> ApiResult<Json<Value>> {
+pub(crate) fn photos_call(photos: &crate::photos::Photos, owner: &crate::photos::Owner, method: &axum::http::Method, body: &[u8], by: &str) -> ApiResult<Json<Value>> {
     if *method == axum::http::Method::POST {
         let mime = picture_of(body, "photo")?;
-        photos.add(owner, body, mime).map_err(|code| match code {
+        photos.add(owner, body, mime, by).map_err(|code| match code {
             "photo_limit" => ApiError(StatusCode::CONFLICT, "photo_limit"),
             "invalid_disc" => ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_disc"),
             _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal"),

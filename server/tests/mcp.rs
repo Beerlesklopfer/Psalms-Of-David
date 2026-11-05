@@ -1489,10 +1489,13 @@ async fn a_photo_of_an_album_becomes_its_cover_and_the_photos_are_discarded_when
     let photos = david_server::photos::Photos::new(m._dir.path());
     let owner = david_server::photos::Owner::Album(id);
     const JPEG: &[u8] = &[0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xFF, 0xD9];
-    photos.add(&owner, JPEG, "image/jpeg").unwrap();
+    photos.add(&owner, JPEG, "image/jpeg", "Anna").unwrap();
     let t = m.store.create_mcp_token("llm", true, m.admin).await.unwrap();
     let (err, album_json) = tool(&m, &t, "get_album", json!({ "id": id })).await;
     assert!(!err && album_json["photos"].as_array().map(Vec::len) == Some(1), "{album_json}");
+    // The inbox of the model names the album, who took the photos and how many.
+    let (_, tasks) = tool(&m, &t, "photo_tasks", json!({})).await;
+    assert_eq!((tasks["tasks"][0]["kind"].as_str(), tasks["tasks"][0]["id"].as_i64(), tasks["tasks"][0]["photos"].as_u64(), tasks["tasks"][0]["by"].as_str()), (Some("album"), Some(id), Some(1), Some("Anna")), "{tasks}");
     let (err, set) = tool(&m, &t, "set_cover_from_photo", json!({ "id": id, "photo": 1 })).await;
     assert!(!err, "{set}");
     assert_eq!((set["folder_file"].as_str(), set["embedded_in"].as_u64()), (Some("cover.jpg"), Some(2)), "{set}");

@@ -1412,6 +1412,42 @@ abstract class AppLocalizations {
   /// **'MusicBrainz knows no release with exactly this Disc ID. Choose a match only if it is this CD, or type the details.'**
   String get cdCandidateNear;
 
+  /// No description provided for @coverAndPhotos.
+  ///
+  /// In en, this message translates to:
+  /// **'Cover and photos'**
+  String get coverAndPhotos;
+
+  /// No description provided for @photoForAi.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo for the assistant'**
+  String get photoForAi;
+
+  /// No description provided for @photoForAiHint.
+  ///
+  /// In en, this message translates to:
+  /// **'It reads titles, times and the EAN from it'**
+  String get photoForAiHint;
+
+  /// No description provided for @photoAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo added ({count} waiting for the assistant).'**
+  String photoAdded(int count);
+
+  /// No description provided for @cdPhotos.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos of the case for the assistant: {count}'**
+  String cdPhotos(int count);
+
+  /// No description provided for @cdPhotoAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Photograph the case'**
+  String get cdPhotoAdd;
+
   /// No description provided for @coverChange.
   ///
   /// In en, this message translates to:
@@ -1711,6 +1747,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The server did not accept the author, title or numbers.'**
   String get cdErrInvalidMeta;
+
+  /// No description provided for @cdErrPhotoLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'There are 12 photos of this CD already.'**
+  String get cdErrPhotoLimit;
+
+  /// No description provided for @cdErrPhotoSize.
+  ///
+  /// In en, this message translates to:
+  /// **'The photo is too large.'**
+  String get cdErrPhotoSize;
+
+  /// No description provided for @cdErrPhotoUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No camera or pictures on this device.'**
+  String get cdErrPhotoUnavailable;
 
   /// No description provided for @cdErrInvalidBarcode.
   ///

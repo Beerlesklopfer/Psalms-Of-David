@@ -82,6 +82,28 @@ class CdImportController extends ChangeNotifier {
 
   /// The EAN/UPC from the case, or of the chosen release; empty if none.
   String barcode = '';
+
+  /// Photos of the case for the assistant that wait on the server (the count of its last answer), the code of a failed upload, and whether
+  /// one is under way. The assistant reads the titles from them through MCP; they go when the rip of the disc ends.
+  int photoCount = 0;
+  String? photoError;
+  bool photoBusy = false;
+
+  Future<void> addPhoto(Uint8List jpeg) async {
+    if (photoBusy) return;
+    photoBusy = true;
+    photoError = null;
+    _notify();
+    try {
+      photoCount = await server.addPhoto(jpeg, device: drive.device);
+    } on ApiException catch (e) {
+      photoError = e.code;
+    } on Object {
+      photoError = 'network';
+    }
+    photoBusy = false;
+    _notify();
+  }
   String kind = CdDefaults.kind;
   bool eject = false;
 

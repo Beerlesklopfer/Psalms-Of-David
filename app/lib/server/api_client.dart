@@ -188,9 +188,9 @@ class ApiClient implements FeedApi, BarcodeApi, CoverApi {
   Future<void> logout() => _json('POST', '/api/v1/logout');
 
   /// Sends [bytes] as the body (a picture) and returns the response without reading it.
-  Future<HttpClientResponse> sendBytes(String method, String path, List<int> bytes, {required String contentType}) async {
+  Future<HttpClientResponse> sendBytes(String method, String path, List<int> bytes, {required String contentType, Map<String, String>? query}) async {
     try {
-      final req = await _http.openUrl(method, _uri(path));
+      final req = await _http.openUrl(method, _uri(path, query));
       if (token != null) req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
       req.headers.set(HttpHeaders.contentTypeHeader, contentType);
       req.headers.contentLength = bytes.length;
@@ -267,6 +267,13 @@ class ApiClient implements FeedApi, BarcodeApi, CoverApi {
   }
 
   Future<Map<String, dynamic>> item(int id) async => await _json('GET', '/api/v1/items/$id') as Map<String, dynamic>;
+
+  @override
+  Future<int> addPhoto(int itemId, Uint8List jpeg) async {
+    final res = await sendBytes('POST', '/api/v1/items/$itemId/photos', jpeg, contentType: 'image/jpeg');
+    if (res.statusCode >= 400) await _fail(res);
+    return ((jsonDecode(await utf8.decodeStream(res)) as Map<String, dynamic>)['photos'] as List).length;
+  }
 
   @override
   Future<void> putCover(int itemId, Uint8List jpeg) async {

@@ -997,10 +997,10 @@ pub async fn unique_release(store: &Store, cd: &CdService, set: &CdSettings, toc
         Err(r) if r.1 == "no_contact" => Err(("no_contact", String::new())),
         Err(r) => Err(("lookup_failed", r.1.to_owned())),
         Ok((_, mut found)) => {
-            // A release whose disc has exactly this Disc ID is the answer; the near ones (another pressing) count only when there is none.
-            if found.iter().any(|c| c.disc_id_matched) {
-                found.retain(|c| c.disc_id_matched);
-            }
+            // Only a release whose disc has exactly this Disc ID is an answer (the CD-Text of the disc counts as one). A near one, found by
+            // similar track lengths, is no answer for an import nobody watches: it filed CD 1 of "Best of Classic" (Hänssler) as "The
+            // Masterpiece Collection: Classics", with a strange cover, EAN and "Track nn" titles (owner, 2026-11-05). It is offered to a person.
+            found.retain(|c| c.disc_id_matched);
             match found.len() {
                 0 => Err(("no_match", String::new())),
                 1 => found.pop().ok_or(("no_match", String::new())),

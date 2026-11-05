@@ -612,3 +612,26 @@ async fn a_cd_with_a_full_cd_text_is_filed_by_it_and_musicbrainz_is_not_asked_an
     assert_eq!((job.author.as_str(), job.album.as_str()), ("Christoph Zehendner & Manfred Staiger", "Er hört dein Gebet"), "{job:?}");
     assert!(e.fake.asked().iter().all(|a| a.0 != Service::MusicBrainz), "MusicBrainz was asked: {:?}", e.fake.asked());
 }
+
+#[tokio::test]
+async fn a_release_found_only_by_similar_track_lengths_starts_nothing_by_itself() {
+    let mut e = env().await;
+    let _ = pair_admin(&mut e).await;
+    auto_on(&e).await;
+    give_mp3(&e);
+    insert_short(&e, 3).await;
+    // MusicBrainz knows no release with this Disc ID; by the table of contents it names one whose disc only looks alike
+    // (CD 1 of "Best of Classic" was filed as "The Masterpiece Collection: Classics" this way, 2026-11-05).
+    let mut near: Value = serde_json::from_str(&release_json(&e, 1)).unwrap();
+    for r in near["releases"].as_array_mut().unwrap() {
+        for m in r["media"].as_array_mut().unwrap() {
+            m["discs"] = json!([{ "id": "some-other-disc-id", "offsets": [150], "sectors": 1000, "offset-count": 1 }]);
+        }
+    }
+    e.fake.on("/ws/2/discid/-?toc=", Some(near.to_string().as_bytes()));
+    e.fake.on("/ws/2/discid/", None);
+    auto(&e, lib(&e)).await;
+    assert!(e.store.cd_log(10).await.unwrap().iter().all(|j| j.device != "auto" || j.phase == "skipped"), "no rip");
+    assert_eq!(skipped(&e).await.first().map(|(r, _)| r.as_str()), Some("no_match"));
+    assert_eq!(std::fs::read_dir(e.library.path()).unwrap().count(), 0);
+}

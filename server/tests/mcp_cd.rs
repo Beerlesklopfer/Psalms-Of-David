@@ -198,8 +198,8 @@ async fn the_photos_of_the_case_are_pictures_for_the_model_and_the_front_becomes
     let (_, none) = tool(&e, &e.admin_token, "get_photos", json!({})).await;
     assert_eq!(none["photos"], json!([]), "{none}");
     const JPEG: &[u8] = &[0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xFF, 0xD9];
-    e.cd.photos.add(&owner, JPEG, "image/jpeg").unwrap();
-    e.cd.photos.add(&owner, JPEG, "image/jpeg").unwrap();
+    e.cd.photos.add(&owner, JPEG, "image/jpeg", "Anna").unwrap();
+    e.cd.photos.add(&owner, JPEG, "image/jpeg", "Anna").unwrap();
     // cd_drive names them; get_photos hands them out as pictures, each after its number.
     let (_, drive) = tool(&e, &e.admin_token, "cd_drive", json!({})).await;
     assert_eq!(drive["disc"]["photos"].as_array().map(Vec::len), Some(2), "{drive}");

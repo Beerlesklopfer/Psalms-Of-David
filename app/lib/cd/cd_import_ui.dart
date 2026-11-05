@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
@@ -8,6 +9,9 @@ import 'package:intl/intl.dart';
 
 import '../format.dart';
 import '../l10n/app_localizations.dart';
+import '../profile.dart';
+import '../screens/avatar_picker.dart';
+import '../screens/cover_editor.dart';
 import '../server/api_client.dart';
 import 'cd_errors.dart';
 import 'cd_import_controller.dart';
@@ -125,9 +129,13 @@ Future<void> showCdImportDialog(
 }
 
 class CdImportDialog extends StatefulWidget {
-  const CdImportDialog({super.key, required this.controller});
+  const CdImportDialog({super.key, required this.controller, this.picker, this.preparePhotoFor = preparePhoto});
 
   final CdImportController controller;
+
+  /// Takes the photos of the case (the camera of the phone by default).
+  final AvatarPicker? picker;
+  final Future<Uint8List?> Function(Uint8List) preparePhotoFor;
 
   @override
   State<CdImportDialog> createState() => _CdImportDialogState();
@@ -167,6 +175,21 @@ class _CdImportDialogState extends State<CdImportDialog> {
   }
 
   void _sync() => setState(_fill);
+
+  Future<void> _addPhoto() async {
+    final picker = widget.picker ?? const PlatformAvatarPicker.cover();
+    final source = await askPictureSource(context, picker);
+    if (source == null) return;
+    try {
+      final raw = await picker.pick(source);
+      if (raw == null) return;
+      final jpeg = await widget.preparePhotoFor(raw);
+      if (jpeg != null) await c.addPhoto(jpeg);
+    } on AvatarPickerException catch (e) {
+      c.photoError = e.code == 'denied' ? 'photo_denied' : 'photo_unavailable';
+      setState(() {});
+    }
+  }
 
   @override
   void dispose() {
@@ -747,6 +770,23 @@ class _CdImportDialogState extends State<CdImportDialog> {
         ),
         const SizedBox(height: 12),
         _resumeBlock(l),
+        // Photos of the case for the assistant, which reads the titles, the times and the EAN from them (MCP) and fills the rip.
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                c.photoError != null ? cdErrorText(l, c.photoError!) : l.cdPhotos(c.photoCount),
+                key: const Key('cd-photos'),
+              ),
+            ),
+            TextButton.icon(
+              key: const Key('cd-photo-add'),
+              onPressed: c.photoBusy ? null : _addPhoto,
+              icon: const Icon(Icons.add_a_photo_outlined),
+              label: Text(l.cdPhotoAdd),
+            ),
+          ],
+        ),
         // Not the right release: MusicBrainz can be searched by hand; what it finds is added to the matches. Not for a CD that names
         // itself (CD-Text): it is not looked up anywhere else.
         if (!c.fromCdText)

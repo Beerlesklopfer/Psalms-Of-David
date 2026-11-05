@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:io';
 
@@ -65,6 +66,14 @@ class ServerCdApi implements CdServerApi {
   Future<bool> eject({String? device}) async {
     final j = await api.cdJson('POST', '/api/v1/cd/eject', body: {'device': ?device});
     return j is Map<String, dynamic> ? (j['ejected'] as bool?) ?? true : true;
+  }
+
+  @override
+  Future<int> addPhoto(Uint8List jpeg, {String? device}) async {
+    final res = await api.sendBytes('POST', '/api/v1/cd/photos', jpeg, contentType: 'image/jpeg', query: {'device': ?device});
+    final text = await utf8.decodeStream(res);
+    if (res.statusCode >= 400) throw ApiException(res.statusCode, _code(text), _body(text));
+    return ((jsonDecode(text) as Map<String, dynamic>)['photos'] as List).length;
   }
 }
 

@@ -1,5 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import 'dart:typed_data';
+
 import 'cd_models.dart';
 
 /// What the user confirmed in the dialog; sent with `POST /api/v1/cd/rip`.
@@ -115,4 +117,8 @@ abstract class CdServerApi {
   /// Opens the tray. True if it was opened, false if there was nothing to eject. The server never
   /// closes a tray. Throws an `ApiException` on a refusal.
   Future<bool> eject({String? device});
+
+  /// Adds a photo of the case of the disc in the drive (front, back, booklet) for the language model, which reads the titles from it through
+  /// MCP; how many there are now. They go when the rip of the disc ends. Throws an `ApiException` (`no_disc`, `photo_limit`, ...).
+  Future<int> addPhoto(Uint8List jpeg, {String? device});
 }

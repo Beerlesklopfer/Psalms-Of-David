@@ -1,5 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import 'dart:typed_data';
+
 import 'dart:async';
 
 import 'package:psalm/cd/cd_events.dart';
@@ -101,6 +103,16 @@ class FakeCdServer implements CdServerApi {
     ejects.add(device);
     if (ejectError != null) throw ejectError!;
     return ejectResult;
+  }
+
+  final photos = <Uint8List>[];
+  Object? photoError;
+
+  @override
+  Future<int> addPhoto(Uint8List jpeg, {String? device}) async {
+    if (photoError != null) throw photoError!;
+    photos.add(jpeg);
+    return photos.length;
   }
 }
 
