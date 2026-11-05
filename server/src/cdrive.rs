@@ -909,6 +909,10 @@ pub struct RipRequest {
     /// The MusicBrainz release (for the cover).
     #[serde(alias = "release_id")]
     pub mbid: Option<String>,
+    /// The EAN/UPC from the case (EAN-8, UPC-A, EAN-13 or GTIN-14, the check digit must be right: `422 invalid_barcode`), written into the
+    /// tags. Without it the EAN of the chosen MusicBrainz release is taken, if there is one.
+    #[serde(alias = "ean")]
+    pub barcode: Option<String>,
     /// The titles of the tracks, in order, if known.
     pub tracks: Vec<String>,
     /// Eject when done; absent = the setting `cd_eject_after`.
@@ -1160,6 +1164,11 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
         }
         (req.author.clone(), req.title.clone(), req.disc.unwrap_or(1), req.discs_total, kind.clone(), selected)
     };
+    // The EAN from the case: a wrong one is refused, not dropped (a person typed or read it, and should hear about a typo).
+    let barcode = match req.barcode.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+        None => None,
+        Some(b) => Some(crate::gtin::parse(b).ok_or(Refusal(422, "invalid_barcode"))?),
+    };
     let meta = Meta {
         author: author.clone(),
         album: title.clone(),
@@ -1172,8 +1181,8 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
         disc_id: chosen.disc_id.clone(),
         genre: None,
         job_id: None,
+        barcode,
         // The files keep their numbers on the disc; a choice has gaps.
-        barcode: None,
         allow_gaps: true,
         tracks: selected
             .iter()
@@ -1526,7 +1535,7 @@ fn rip_plan_json(v: &RipPlanView) -> serde_json::Value {
         "book_folder": book.display().to_string(),
         "files": files,
         "tags": {
-            "artist": m.author.trim(), "album_artist": m.author.trim(), "album": m.album.trim(), "narrator": m.narrator, "year": m.year,
+            "artist": m.author.trim(), "album_artist": m.author.trim(), "album": m.album.trim(), "narrator": m.narrator, "year": m.year, "barcode": m.barcode,
             "disc": m.disc, "discs_total": m.discs_total.unwrap_or(1), "genre": genre, "tag_version": set.id3_version,
         },
         "format": { "format": set.format, "bitrate_kbps": set.bitrate_kbps, "sample_rate_hz": set.sample_rate_hz, "channel_mode": set.channel_mode },

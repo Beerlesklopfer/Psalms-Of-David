@@ -196,6 +196,7 @@
       <label class="line"><span class="line-label">{{ t("cd.form.author") }}</span><span class="line-field"><input name="author" value="{{ drive.form.author }}" required maxlength="200" size="40"></span></label>
       <label class="line"><span class="line-label">{{ t("cd.form.title") }}</span><span class="line-field"><input name="title" value="{{ drive.form.title }}" required maxlength="200" size="40"></span></label>
       <label class="line"><span class="line-label">{{ t("cd.form.disc") }}</span><span class="line-field"><input name="disc" value="{{ drive.form.disc }}" required inputmode="numeric" pattern="[0-9]+" size="3"> / <input name="discs_total" value="{{ drive.form.discs_total }}" inputmode="numeric" pattern="[0-9]*" size="3"></span></label>
+      <label class="line"><span class="line-label">{{ t("cd.form.barcode") }}</span><span class="line-field"><input name="barcode" value="{{ drive.form.barcode }}" inputmode="numeric" pattern="[0-9 \-]*" maxlength="20" size="16" autocomplete="off"></span></label>
       <label class="line"><span class="line-label">{{ t("cd.form.kind") }}</span><span class="line-field"><select name="kind">{% for k in ["audiobook", "music"] %}<option value="{{ k }}"{% if k == drive.form.kind %} selected{% endif %}>{{ t("cd.opt." ~ k) }}</option>{% endfor %}</select></span></label>
       <label class="line"><span class="line-label">{{ t("cd.form.eject") }}</span><span class="line-field"><input type="checkbox" name="eject" value="1"{% if drive.form.eject %} checked{% endif %}></span></label>
       <div class="form-foot">

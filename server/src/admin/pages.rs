@@ -447,6 +447,8 @@ struct CandView {
     disc_id_matched: bool,
     /// The details are the CD-Text of the disc (MusicBrainz was not asked).
     from_cd_text: bool,
+    /// The EAN/UPC of the release, if MusicBrainz has one.
+    barcode: Option<String>,
 }
 
 /// The release that fills the form without being chosen: the only one, and only if its disc has exactly this Disc ID.
@@ -465,6 +467,8 @@ struct RipForm {
     disc: String,
     discs_total: String,
     mbid: String,
+    /// The EAN/UPC: from the case, or the one of the chosen release.
+    barcode: String,
     tracks: String,
     narrator: String,
     eject: bool,
@@ -1609,6 +1613,7 @@ impl AdminUi {
                                 tracks: c.tracks.into_iter().map(|t| t.title).collect(),
                                 disc_id_matched: c.disc_id_matched,
                                 from_cd_text: c.from_cd_text,
+                                barcode: c.barcode,
                             })
                             .collect()
                     }
@@ -1634,6 +1639,7 @@ impl AdminUi {
                                         tracks: Vec::new(),
                                         disc_id_matched: false,
                                         from_cd_text: false,
+                                        barcode: c.barcode,
                                     });
                                 }
                             }
@@ -1663,6 +1669,7 @@ impl AdminUi {
                         tracks: full.tracks.into_iter().map(|t| t.title).collect(),
                         disc_id_matched: c.disc_id_matched,
                         from_cd_text: false,
+                        barcode: full.barcode,
                     }),
                     Ok(None) => None,
                     Err(r) => {
@@ -1684,6 +1691,7 @@ impl AdminUi {
             disc: field("disc", chosen.and_then(|c| c.disc).unwrap_or(1).to_string()),
             discs_total: field("discs_total", chosen.map(|c| c.discs_total.to_string()).unwrap_or_default()),
             mbid: field("mbid", chosen.map(|c| c.release_id.clone()).unwrap_or_default()),
+            barcode: field("barcode", chosen.and_then(|c| c.barcode.clone()).unwrap_or_default()),
             tracks: field("tracks", chosen.map(|c| c.tracks.join("\n")).unwrap_or_default()),
             narrator: field("narrator", chosen.map(|c| c.narrator.clone()).unwrap_or_default()),
             eject: if typed { q.fields.contains_key("eject") } else { set.eject_after },
@@ -1926,6 +1934,7 @@ mod tests {
             tracks: Vec::new(),
             disc_id_matched: matched,
             from_cd_text: false,
+            barcode: None,
         };
         assert_eq!(super::taken_unasked(&[cand(0, true)]).map(|c| c.index), Some(0));
         assert!(super::taken_unasked(&[cand(0, false)]).is_none(), "a near release (Job 109: another album) waits for a person");

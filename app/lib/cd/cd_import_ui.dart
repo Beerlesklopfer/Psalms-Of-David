@@ -138,6 +138,7 @@ class _CdImportDialogState extends State<CdImportDialog> {
   final _title = TextEditingController();
   final _disc = TextEditingController();
   final _total = TextEditingController();
+  final _barcode = TextEditingController();
   final _search = TextEditingController();
 
   CdImportController get c => widget.controller;
@@ -162,6 +163,7 @@ class _CdImportDialogState extends State<CdImportDialog> {
     _title.text = c.title;
     _disc.text = '${c.disc}';
     _total.text = c.discsTotal?.toString() ?? '';
+    _barcode.text = c.barcode;
   }
 
   void _sync() => setState(_fill);
@@ -169,7 +171,7 @@ class _CdImportDialogState extends State<CdImportDialog> {
   @override
   void dispose() {
     c.removeListener(_sync);
-    for (final t in [_author, _title, _disc, _total, _search]) {
+    for (final t in [_author, _title, _disc, _total, _barcode, _search]) {
       t.dispose();
     }
     super.dispose();
@@ -834,6 +836,13 @@ class _CdImportDialogState extends State<CdImportDialog> {
               ),
             ),
           ],
+        ),
+        TextField(
+          key: const Key('cd-barcode'),
+          controller: _barcode,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(labelText: l.cdBarcode),
+          onChanged: (v) => c.update(barcode: v),
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(

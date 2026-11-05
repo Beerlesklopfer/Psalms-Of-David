@@ -181,6 +181,22 @@ async fn a_dry_run_starts_nothing_and_says_what_would_happen() {
 }
 
 #[tokio::test]
+async fn the_ean_of_the_case_goes_into_the_tags_and_a_wrong_one_is_refused() {
+    let e = env().await;
+    insert(&e, 3).await;
+    let mut args = rip_args(true);
+    // Spaces and dashes as printed are fine; the check digit is checked.
+    args["barcode"] = json!("4 010276 005247");
+    let (err, plan) = tool(&e, &e.admin_token, "cd_rip", args.clone()).await;
+    assert!(!err, "{plan}");
+    assert_eq!(plan["tags"]["barcode"], "4010276005247", "{plan}");
+    args["barcode"] = json!("4010276005248");
+    let (err, msg) = tool(&e, &e.admin_token, "cd_rip", args.clone()).await;
+    assert!(err && msg.to_string().contains("invalid_barcode"), "{msg}");
+    assert!(e.store.cd_log(10).await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn the_year_goes_into_the_tags_and_a_wrong_one_is_refused() {
     let e = env().await;
     insert(&e, 3).await;
@@ -244,7 +260,10 @@ async fn the_start_makes_a_job_the_album_with_the_titles_and_a_log_entry_and_a_s
     e.store.save_import_criteria(&[root], david_server::RatingRule::Manual).await.unwrap();
     e.store.unlock_import("test").await.unwrap();
 
-    let (err, started) = tool(&e, &e.admin_token, "cd_rip", rip_args(false)).await;
+    // The EAN from the case goes along (a CD that MusicBrainz does not know has no other source for it).
+    let mut args = rip_args(false);
+    args["barcode"] = json!("4010276005247");
+    let (err, started) = tool(&e, &e.admin_token, "cd_rip", args).await;
     assert!(!err, "{started}");
     assert_eq!(started["started"], true);
     let id = started["job_id"].as_i64().unwrap();
@@ -266,6 +285,7 @@ async fn the_start_makes_a_job_the_album_with_the_titles_and_a_log_entry_and_a_s
         let f = book.join(format!("Ken Follett_Sturz der Titanen_CD01_TR{n:02}.mp3"));
         let t = david_server::tags::read(&f).unwrap_or_else(|err| panic!("{}: {err}", f.display()));
         assert_eq!((t.title.as_deref(), t.album.as_deref(), t.artist.as_deref()), (Some(title), Some("Sturz der Titanen"), Some("Ken Follett")));
+        assert_eq!(t.barcode.as_deref(), Some("4010276005247"), "track {n}");
     }
     // The album is in the library once the import has run, and the change log has the start.
     let mut found = None;

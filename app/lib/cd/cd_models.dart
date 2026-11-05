@@ -396,6 +396,7 @@ class CdCandidate {
     this.audiobook = false,
     this.discIdMatched = true,
     this.fromCdText = false,
+    this.barcode,
   });
 
   final String author;
@@ -420,6 +421,9 @@ class CdCandidate {
   /// nothing for this CD, so there is no search either.
   final bool fromCdText;
 
+  /// The EAN/UPC of the release, if MusicBrainz has one (`barcode`).
+  final String? barcode;
+
   factory CdCandidate.fromJson(Map<String, dynamic> j) => CdCandidate(
     author: (j['author'] as String?) ?? '',
     title: (j['title'] as String?) ?? '',
@@ -432,6 +436,7 @@ class CdCandidate {
     audiobook: (j['audiobook'] as bool?) ?? false,
     discIdMatched: (j['disc_id_matched'] as bool?) ?? true,
     fromCdText: j['source'] == 'cd_text',
+    barcode: j['barcode'] as String?,
   );
 }
 

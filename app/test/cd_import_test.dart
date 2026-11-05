@@ -209,6 +209,28 @@ void main() {
       c.dispose();
     });
 
+    test('the EAN of the release fills the field, one typed from the case wins, and it goes along with the rip', () async {
+      const withEan = CdCandidate(author: 'A', title: 'T', trackTitles: ['1', '2', '3'], barcode: '4010276005247');
+      var c = await ready(const [withEan]);
+      expect(c.barcode, '4010276005247');
+      await c.save();
+      expect(server.started!.toJson()['barcode'], '4010276005247');
+      c.dispose();
+
+      c = await ready();
+      expect(c.barcode, '', reason: 'no EAN in the release');
+      await c.save();
+      expect(server.started!.toJson().containsKey('barcode'), isFalse);
+      c.dispose();
+
+      c = await ready();
+      c.update(barcode: ' 4010276005247 ');
+      await c.save();
+      expect(server.started!.barcode, '4010276005247');
+      expect(CdCandidate.fromJson(const {'title': 'T', 'barcode': '4006381333931'}).barcode, '4006381333931');
+      c.dispose();
+    });
+
     test('with no title chosen Save is off, even with author and title', () async {
       final c = await ready();
       expect(c.canSave, isTrue);

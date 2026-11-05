@@ -179,6 +179,7 @@ fn tool_list() -> Value {
                 "kind": { "type": "string", "enum": ["audiobook", "music"], "description": "Default: the setting of the CD import" },
                 "mbid": { "type": "string", "description": "MusicBrainz release id (from cd_drive), for the cover" },
                 "year": { "type": "integer", "description": "Year of the release (four digits, from the cover or from cd_drive), written into the tags of every file" },
+                "barcode": { "type": "string", "description": "EAN/UPC from the back of the case (EAN-8, UPC-A, EAN-13 or GTIN-14; the check digit must be right, else invalid_barcode), written into the tags of every file. Without it the EAN of the MusicBrainz release (mbid) is taken, if it has one" },
                 "eject": { "type": "boolean", "description": "Open the tray when done (default: the setting)" },
                 "only_tracks": { "type": "array", "items": { "type": "integer" }, "description": "Track numbers on the disc to read; default all" },
                 "dry_run": { "type": "boolean", "description": "Default true: only report" }
@@ -985,6 +986,7 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 narrator: text("narrator").map(|n| n.trim().to_owned()).filter(|n| !n.is_empty()),
                 year,
                 mbid: text("mbid").map(|n| n.trim().to_owned()).filter(|n| !n.is_empty()),
+                barcode: text("barcode").map(|b| b.trim().to_owned()).filter(|b| !b.is_empty()),
                 tracks: by_position,
                 eject: args.get("eject").and_then(Value::as_bool),
                 device: None,

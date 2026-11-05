@@ -1412,6 +1412,12 @@ abstract class AppLocalizations {
   /// **'MusicBrainz knows no release with exactly this Disc ID. Choose a match only if it is this CD, or type the details.'**
   String get cdCandidateNear;
 
+  /// No description provided for @cdBarcode.
+  ///
+  /// In en, this message translates to:
+  /// **'EAN / UPC (back of the case)'**
+  String get cdBarcode;
+
   /// No description provided for @tooltipOpenAlbum.
   ///
   /// In en, this message translates to:
@@ -1663,6 +1669,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The server did not accept the author, title or numbers.'**
   String get cdErrInvalidMeta;
+
+  /// No description provided for @cdErrInvalidBarcode.
+  ///
+  /// In en, this message translates to:
+  /// **'The EAN/UPC is not valid (length or check digit): check the digits on the case.'**
+  String get cdErrInvalidBarcode;
 
   /// No description provided for @cdErrUnreadableFile.
   ///

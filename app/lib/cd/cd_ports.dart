@@ -13,6 +13,7 @@ class CdRipRequest {
     this.narrator,
     this.year,
     this.mbid,
+    this.barcode,
     this.tracks = const [],
     this.eject,
     this.device,
@@ -30,6 +31,9 @@ class CdRipRequest {
   final String? narrator;
   final String? year;
   final String? mbid;
+
+  /// The EAN/UPC from the case (or of the chosen release); the server checks the check digit (`invalid_barcode`).
+  final String? barcode;
 
   /// Titles of all tracks of the disc, in order; an empty text where none is known.
   final List<String> tracks;
@@ -62,6 +66,7 @@ class CdRipRequest {
     'narrator': ?narrator,
     'year': ?year,
     'mbid': ?mbid,
+    'barcode': ?barcode,
     'tracks': tracks,
     'eject': ?eject,
     'device': ?device,

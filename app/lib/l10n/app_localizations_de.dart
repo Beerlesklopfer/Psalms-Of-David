@@ -781,6 +781,9 @@ class AppLocalizationsDe extends AppLocalizations {
       'MusicBrainz kennt keine Ausgabe mit genau dieser Disc-ID. Wähle einen Treffer nur, wenn es diese CD ist, oder trage die Angaben ein.';
 
   @override
+  String get cdBarcode => 'EAN / UPC (Rückseite der Hülle)';
+
+  @override
   String get tooltipOpenAlbum => 'Album öffnen';
 
   @override
@@ -927,6 +930,10 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get cdErrInvalidMeta =>
       'Der Server hat Autor, Titel oder Nummern nicht akzeptiert.';
+
+  @override
+  String get cdErrInvalidBarcode =>
+      'Die EAN/UPC ist nicht gültig (Länge oder Prüfziffer): bitte die Ziffern auf der Hülle prüfen.';
 
   @override
   String get cdErrUnreadableFile =>

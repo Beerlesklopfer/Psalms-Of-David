@@ -79,6 +79,9 @@ class CdImportController extends ChangeNotifier {
   String title = '';
   int disc = 1;
   int? discsTotal;
+
+  /// The EAN/UPC from the case, or of the chosen release; empty if none.
+  String barcode = '';
   String kind = CdDefaults.kind;
   bool eject = false;
 
@@ -346,6 +349,7 @@ class CdImportController extends ChangeNotifier {
     title = c.title;
     disc = c.disc;
     discsTotal = c.discsTotal;
+    barcode = c.barcode ?? '';
     trackTitles = [
       for (var k = 0; k < trackCount; k++) k < c.trackTitles.length ? c.trackTitles[k].trim() : '',
     ];
@@ -382,9 +386,11 @@ class CdImportController extends ChangeNotifier {
     String? title,
     int? disc,
     int? discsTotal,
+    String? barcode,
     String? kind,
     bool? eject,
   }) {
+    this.barcode = barcode ?? this.barcode;
     this.author = author ?? this.author;
     this.title = title ?? this.title;
     this.disc = disc ?? this.disc;
@@ -418,6 +424,7 @@ class CdImportController extends ChangeNotifier {
           narrator: c?.narrator,
           year: c?.year,
           mbid: c?.mbid,
+          barcode: barcode.trim().isEmpty ? null : barcode.trim(),
           tracks: trackTitles,
           eject: eject,
           device: drive.device,
