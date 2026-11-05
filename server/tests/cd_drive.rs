@@ -1199,3 +1199,21 @@ fn the_size_of_the_ring_is_whole_track_plus_reserve_capped_by_the_memory_limit_a
     set.buffer_seconds = 2;
     assert_eq!(david_server::cdrive::ring_bytes(&set, 0), 2 * second);
 }
+
+#[tokio::test]
+async fn the_app_adds_photos_of_the_case_of_the_disc_in_the_drive_and_can_take_them_back() {
+    let mut e = env().await;
+    let token = pair_admin(&mut e).await;
+    let jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10];
+    let post = |bytes: Vec<u8>| Request::builder().method("POST").uri("/api/v1/cd/photos").header(header::AUTHORIZATION, format!("Bearer {token}")).header(header::CONTENT_TYPE, "image/jpeg").body(Body::from(bytes)).unwrap();
+    assert_eq!(send(&e, post(jpeg.clone())).await.code(), "no_disc");
+    insert(&e, 3).await;
+    let r = send(&e, post(jpeg.clone())).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
+    let id = e.cd.drives.snapshot().0[0].disc_id.clone().unwrap();
+    assert_eq!((r.json()["disc_id"].as_str(), r.json()["photos"].as_array().map(Vec::len)), (Some(id.as_str()), Some(1)));
+    assert_eq!(send(&e, post(b"text".to_vec())).await.code(), "photo_type");
+    assert_eq!(send(&e, post(Vec::new())).await.code(), "photo_none");
+    assert_eq!(call(&e, "GET", "/api/v1/cd/photos", Some(&token), None).await.json()["photos"].as_array().map(Vec::len), Some(1));
+    assert_eq!(call(&e, "DELETE", "/api/v1/cd/photos", Some(&token), None).await.json()["photos"], json!([]));
+}

@@ -55,7 +55,8 @@ pub fn accept_value(headers: &HeaderMap) -> Option<String> {
     Some(base64(&digest))
 }
 
-fn base64(bytes: &[u8]) -> String {
+/// Standard Base64 with padding (the WebSocket accept key; the pictures of MCP `get_photos`).
+pub(crate) fn base64(bytes: &[u8]) -> String {
     const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
     for c in bytes.chunks(3) {

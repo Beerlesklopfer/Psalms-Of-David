@@ -1903,6 +1903,7 @@ pub async fn cd_rip(State(state): State<AppState>, s: AdminSession, Form(pairs):
         year: text("year"),
         mbid: text("mbid"),
         barcode: text("barcode"),
+        cover_photo: number("cover_photo"),
         tracks: q.fields.get("tracks").map(|t| t.lines().map(|l| l.trim().to_owned()).collect()).unwrap_or_default(),
         eject: Some(q.fields.get("eject").is_some_and(|v| v == "1" || v == "on")),
         device: text("device"),

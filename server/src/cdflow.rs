@@ -989,6 +989,8 @@ pub async fn expiry_task(store: Store, cd: CdService) {
     loop {
         tick.tick().await;
         expire_held(&store, &cd, now_ms()).await;
+        // Photos whose process never ended (a cancel, nobody finished).
+        cd.photos.sweep(now_ms());
         // The same round removes what the inbox keeps no longer (`inbox_keep_days`).
         crate::inbox::cleanup(&store, now_ms()).await;
     }
@@ -1090,6 +1092,10 @@ pub enum CdEvent {
 /// The hook of the inbox: tells it that something happened (`crate::inbox::handle` picks the recipients and writes the items). Every place that
 /// makes one of these events calls it.
 pub async fn notify(store: &Store, cd: &CdService, event: &CdEvent) {
+    // The end of the process of a disc: its photos (taken for the language model) go.
+    if let CdEvent::Present { job } | CdEvent::Imported { job } | CdEvent::Decided { job, .. } | CdEvent::Expired { job } = event {
+        cd.photos.discard_job(job.id);
+    }
     crate::inbox::handle(store, cd, event).await;
 }
 

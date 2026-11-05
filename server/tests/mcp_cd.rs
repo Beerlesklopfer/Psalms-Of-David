@@ -55,6 +55,14 @@ async fn tool(e: &Env, token: &str, name: &str, args: Value) -> (bool, Value) {
     (j["result"]["isError"].as_bool().unwrap_or(false), serde_json::from_str(&text).unwrap_or(Value::String(text)))
 }
 
+/// The raw result of a tool (its content blocks), for a tool that hands out pictures.
+async fn tool_raw(e: &Env, token: &str, name: &str, args: Value) -> Value {
+    let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": name, "arguments": args } });
+    let req = Request::builder().method("POST").uri("/mcp").header(header::CONTENT_TYPE, "application/json").header(header::AUTHORIZATION, format!("Bearer {token}")).body(Body::from(body.to_string())).unwrap();
+    let res = e.router.clone().oneshot(req).await.unwrap();
+    serde_json::from_slice::<Value>(&to_bytes(res.into_body(), 8 * 1024 * 1024).await.unwrap()).unwrap()["result"].clone()
+}
+
 async fn insert(e: &Env, n: u8) {
     e.drive.edit("/dev/fake0", |u| {
         u.disc = Some(disc(n));
@@ -178,6 +186,60 @@ async fn a_dry_run_starts_nothing_and_says_what_would_happen() {
     assert!(e.store.tag_changes(0, 10).await.unwrap().is_empty());
     let (_, p) = tool(&e, &e.admin_token, "cd_progress", json!({})).await;
     assert_eq!(p["state"], "none");
+}
+
+#[tokio::test]
+async fn the_photos_of_the_case_are_pictures_for_the_model_and_the_front_becomes_the_cover_of_the_rip_and_then_they_go() {
+    let e = env().await;
+    insert(&e, 3).await;
+    let disc_id = e.cd.drives.snapshot().0[0].disc_id.clone().unwrap();
+    let owner = david_server::photos::Owner::Disc(disc_id.clone());
+    // Nothing yet: said in words.
+    let (_, none) = tool(&e, &e.admin_token, "get_photos", json!({})).await;
+    assert_eq!(none["photos"], json!([]), "{none}");
+    const JPEG: &[u8] = &[0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xFF, 0xD9];
+    e.cd.photos.add(&owner, JPEG, "image/jpeg").unwrap();
+    e.cd.photos.add(&owner, JPEG, "image/jpeg").unwrap();
+    // cd_drive names them; get_photos hands them out as pictures, each after its number.
+    let (_, drive) = tool(&e, &e.admin_token, "cd_drive", json!({})).await;
+    assert_eq!(drive["disc"]["photos"].as_array().map(Vec::len), Some(2), "{drive}");
+    let raw = tool_raw(&e, &e.admin_token, "get_photos", json!({})).await;
+    let blocks = raw["content"].as_array().unwrap();
+    let images: Vec<&Value> = blocks.iter().filter(|b| b["type"] == "image").collect();
+    assert_eq!(images.len(), 2, "{raw}");
+    assert_eq!(images[0]["mimeType"], "image/jpeg");
+    assert!(images[0]["data"].as_str().unwrap().starts_with("/9j/"), "Base64 of a JPEG");
+    assert_eq!(tool_raw(&e, &e.admin_token, "get_photos", json!({ "photo": 2 })).await["content"].as_array().unwrap().iter().filter(|b| b["type"] == "image").count(), 1);
+    // A reader may look, not discard; a number that is no photo is refused before anything starts.
+    assert!(tool(&e, &e.reader_token, "discard_photos", json!({ "disc_id": disc_id })).await.0);
+    let mut args = rip_args(true);
+    args["cover_photo"] = json!(9);
+    let (err, msg) = tool(&e, &e.admin_token, "cd_rip", args).await;
+    assert!(err && msg.to_string().contains("photo_missing"), "{msg}");
+
+    if !common::audio::ffmpeg_available() {
+        return;
+    }
+    give_mp3(&e);
+    let root = e.library.path().canonicalize().unwrap().to_string_lossy().into_owned();
+    e.store.save_import_criteria(&[root], david_server::RatingRule::Manual).await.unwrap();
+    e.store.unlock_import("test").await.unwrap();
+    let mut args = rip_args(false);
+    args["cover_photo"] = json!(1);
+    let (err, started) = tool(&e, &e.admin_token, "cd_rip", args).await;
+    assert!(!err, "{started}");
+    let done = wait_done(&e, started["job_id"].as_i64().unwrap()).await;
+    assert_eq!(done["state"], "done", "{done}");
+    let file = e.library.path().join("Ken Follett/Sturz der Titanen/CD 1/Ken Follett_Sturz der Titanen_CD01_TR01.mp3");
+    assert_eq!(david_server::tags::embedded_cover(&file).map(|(_, b)| b), Some(JPEG.to_vec()), "the photo is the cover");
+    // The end of the rip ended the photos of the disc.
+    for _ in 0..40 {
+        if e.cd.photos.list(&owner).is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(e.cd.photos.list(&owner).is_empty());
 }
 
 #[tokio::test]

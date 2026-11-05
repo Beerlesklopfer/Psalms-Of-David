@@ -913,6 +913,9 @@ pub struct RipRequest {
     /// tags. Without it the EAN of the chosen MusicBrainz release is taken, if there is one.
     #[serde(alias = "ean")]
     pub barcode: Option<String>,
+    /// The number of a photo of this disc (taken with the app, `photos.rs`) that becomes the cover: the front of the case. It is read at the
+    /// start (`422 photo_missing` if there is no such photo), since the photos go when the rip ends.
+    pub cover_photo: Option<u32>,
     /// The titles of the tracks, in order, if known.
     pub tracks: Vec<String>,
     /// Eject when done; absent = the setting `cd_eject_after`.
@@ -1164,6 +1167,14 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
         }
         (req.author.clone(), req.title.clone(), req.disc.unwrap_or(1), req.discs_total, kind.clone(), selected)
     };
+    // The photo of the case that becomes the cover: read now, the photos go when the rip ends.
+    let photo_cover = match req.cover_photo {
+        None => None,
+        Some(n) => {
+            let (mime, bytes) = cd.photos.read(&crate::photos::Owner::Disc(chosen.disc_id.clone().unwrap_or_default()), n).ok_or(Refusal(422, "photo_missing"))?;
+            Some((bytes, mime))
+        }
+    };
     // The EAN from the case: a wrong one is refused, not dropped (a person typed or read it, and should hear about a typo).
     let barcode = match req.barcode.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
         None => None,
@@ -1387,7 +1398,9 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
     let (store2, cd2) = (store.clone(), cd.clone());
     let library_for_task = library.clone();
     let job_id = job.id;
-    let plan = RipPlan { dir: dir.clone(), manifest: Arc::new(Mutex::new(manifest)), resume, lengths, done_before, heal: heal_plan, stats: stats.clone(), ring_bytes };
+    let plan = RipPlan { dir: dir.clone(), manifest: Arc::new(Mutex::new(manifest)), resume, lengths, done_before, heal: heal_plan, stats: stats.clone(), ring_bytes, photo_cover };
+    // The photos of the disc belong to this rip now: its end ends them.
+    cd.photos.attach_job(&disc_id, job.id);
     tokio::spawn(async move {
         let outcome = run_rip(&store2, &cd2, user_id, job_id, &device, &toc, meta, set, root, kind, reserve, flag, &plan, &disc_id).await;
         let shutting_down = cd2.drives.lock().shutting_down;
@@ -1559,6 +1572,8 @@ struct RipPlan {
     stats: Arc<cdrip::ring::RipStats>,
     /// The size of the ring in bytes.
     ring_bytes: u64,
+    /// A photo of the case as the cover (`RipRequest::cover_photo`), read at the start.
+    photo_cover: Option<(Vec<u8>, &'static str)>,
 }
 
 impl RipPlan {
@@ -1828,8 +1843,10 @@ async fn run_rip(
     }
     // A disc with a full CD-Text asks MusicBrainz nothing, not for the cover nor for the EAN, even when a release id was sent along.
     let mb_ok = set.lookup_ready && (disc_id.is_empty() || cd.drives.full_cd_text(disc_id).is_none());
-    let cover = match (&meta.mbid, mb_ok) {
-        (Some(mbid), true) => cdimport::fetch_cover(store, cd, &set, mbid).await.ok().flatten(),
+    // A photo of the case that the person chose wins over the picture of MusicBrainz.
+    let cover = match (&plan.photo_cover, &meta.mbid, mb_ok) {
+        (Some(photo), _, _) => Some(photo.clone()),
+        (None, Some(mbid), true) => cdimport::fetch_cover(store, cd, &set, mbid).await.ok().flatten(),
         _ => None,
     };
     // The EAN of the chosen release goes into the tags (best effort: a rip does not fail because MusicBrainz is not reachable).

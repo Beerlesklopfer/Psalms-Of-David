@@ -79,6 +79,9 @@ fn answer(id: Value, result: Result<Value, (i32, String)>) -> Value {
     }
 }
 
+/// The key under which a tool returns MCP content blocks of its own (text and images) instead of one JSON text.
+const CONTENT: &str = "\u{0}content";
+
 /// One JSON-RPC message; `None` for a notification, which gets no answer.
 async fn handle(s: &McpState, token: &McpToken, request: &Value) -> Option<Value> {
     let id = request.get("id").cloned()?;
@@ -98,6 +101,8 @@ async fn handle(s: &McpState, token: &McpToken, request: &Value) -> Option<Value
             let args = params.get("arguments").cloned().unwrap_or(Value::Null);
             tracing::info!(token = %token.name, tool = %name, "MCP call");
             Ok(match call(s, token, &name, &args).await {
+                // A tool that hands out pictures (get_photos) gives the content blocks itself.
+                Ok(Value::Object(mut o)) if o.contains_key(CONTENT) => json!({ "content": o.remove(CONTENT).unwrap_or_default() }),
                 Ok(v) => json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&v).unwrap_or_default() }] }),
                 Err(message) => {
                     tracing::warn!(token = %token.name, tool = %name, %message, "MCP call failed");
@@ -157,6 +162,21 @@ fn tool_list() -> Value {
             "inputSchema": { "type": "object", "properties": { "id": id }, "required": ["id"] }
         },
         {
+            "name": "get_photos",
+            "description": "The photos a person took with the app of a CD case or an album (front, back, booklet), as pictures, for you to read: the track titles and their times, the artist, the year, the EAN, the label. With id: the photos of that album; without: those of the disc in the drive of the server (or disc_id). Compare the times you read with the times of the disc (cd_drive) before you use the titles; say what you could not read instead of guessing. The photos serve one process and go when it ends (the rip of the disc, or discard_photos), after 24 hours at the latest. Read only; for a disc a token made by a profile that may put in CDs.",
+            "inputSchema": { "type": "object", "properties": { "id": { "type": "integer", "description": "Album id; absent: the disc" }, "disc_id": { "type": "string", "description": "Disc ID (cd_drive); absent: the disc in the drive" }, "photo": { "type": "integer", "description": "Only this photo (its number)" } } }
+        },
+        {
+            "name": "set_cover_from_photo",
+            "description": "Makes a photo of the album (get_photos with id) its cover: the picture file of the folder and embedded in every track, as set_cover_from_url does. For a CD that is not ripped yet give cover_photo to cd_rip instead. Needs a token that may write.",
+            "inputSchema": { "type": "object", "properties": { "id": id, "photo": { "type": "integer", "description": "The number of the photo" } }, "required": ["id", "photo"] }
+        },
+        {
+            "name": "discard_photos",
+            "description": "Removes the photos of an album (id) or of a disc (disc_id) when you are done with them. The photos of a disc go by themselves when its rip ends. Needs a token that may write.",
+            "inputSchema": { "type": "object", "properties": { "id": { "type": "integer" }, "disc_id": { "type": "string" } } }
+        },
+        {
             "name": "set_cover_from_url",
             "description": "Fetches a picture from an https:// address (only public hosts, at most 8 MiB, JPEG or PNG), makes it the cover of the album folder (cover.jpg or cover.png, replacing other cover files) and embeds it in every track. Needs a token that may write.",
             "inputSchema": { "type": "object", "properties": { "id": id, "url": { "type": "string", "description": "https:// address of the picture" } }, "required": ["id", "url"] }
@@ -179,6 +199,7 @@ fn tool_list() -> Value {
                 "kind": { "type": "string", "enum": ["audiobook", "music"], "description": "Default: the setting of the CD import" },
                 "mbid": { "type": "string", "description": "MusicBrainz release id (from cd_drive), for the cover" },
                 "year": { "type": "integer", "description": "Year of the release (four digits, from the cover or from cd_drive), written into the tags of every file" },
+                "cover_photo": { "type": "integer", "description": "The number of a photo of this disc (get_photos) that becomes the cover: the front of the case" },
                 "barcode": { "type": "string", "description": "EAN/UPC from the back of the case (EAN-8, UPC-A, EAN-13 or GTIN-14; the check digit must be right, else invalid_barcode), written into the tags of every file. Without it the EAN of the MusicBrainz release (mbid) is taken, if it has one" },
                 "eject": { "type": "boolean", "description": "Open the tray when done (default: the setting)" },
                 "only_tracks": { "type": "array", "items": { "type": "integer" }, "description": "Track numbers on the disc to read; default all" },
@@ -456,7 +477,7 @@ async fn prompt_of(s: &McpState) -> String {
 }
 
 /// The tools that change files; a token that may only read cannot use them.
-const WRITING_TOOLS: [&str; 29] = ["cd_rip", "hide_albums", "edit_blacklist", "merge_albums", "set_discs_total", "set_labels", "set_track_labels", "set_feed_labels", "move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
+const WRITING_TOOLS: [&str; 31] = ["set_cover_from_photo", "discard_photos", "cd_rip", "hide_albums", "edit_blacklist", "merge_albums", "set_discs_total", "set_labels", "set_track_labels", "set_feed_labels", "move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
 
 /// A sample call of a tool, for `help_for`.
 fn example_of(tool: &str) -> Value {
@@ -465,6 +486,9 @@ fn example_of(tool: &str) -> Value {
         "get_album" | "get_tags" | "set_cover_from_folder" => json!({ "id": 12 }),
         "set_tags" => json!({ "id": 12, "dry_run": true, "fields": { "AlbumTitle": "Back to the Street" } }),
         "set_cover_from_url" => json!({ "id": 12, "url": "https://example.org/cover.jpg" }),
+        "get_photos" => json!({}),
+        "set_cover_from_photo" => json!({ "id": 12, "photo": 1 }),
+        "discard_photos" => json!({ "id": 12 }),
         "cd_rip" => json!({ "author": "Ken Follett", "title": "Sturz der Titanen", "disc": 1, "discs_total": 12, "tracks": ["Teil 1", "Teil 2", "Teil 3"], "narrator": "Johannes Steck", "kind": "audiobook", "mbid": "b0ee0bdb-d1c0-4a39-8d8a-4b7d1b2d6e11", "dry_run": true }),
         "find_problems" => json!({ "offset": 0, "limit": 100 }),
         "list_formats" => json!({ "format": "ogg" }),
@@ -760,7 +784,8 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             let picture = album.dir.as_deref().and_then(folder_picture);
             Ok(json!({
                 "id": id, "kind": album.row.kind, "title": album.row.title, "author": album.row.author,
-                "narrator": album.row.narrator, "barcode": album.row.barcode, "owner": album.row.owner, "description": album.row.description, "folder": album.folder, "folder_picture": picture, "tracks": tracks
+                "narrator": album.row.narrator, "barcode": album.row.barcode, "owner": album.row.owner, "description": album.row.description, "folder": album.folder, "folder_picture": picture, "tracks": tracks,
+                "photos": s.cd.photos.list(&crate::photos::Owner::Album(id)),
             }))
         }
         "get_tags" => {
@@ -899,7 +924,9 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             let minutes = chosen.as_ref().map(|d| (f64::from(d.seconds) / 60.0 * 10.0).round() / 10.0);
             Ok(json!({
                 "mode": mode, "rip_running": s.cd.drives.is_ripping(), "drives": drives,
-                "disc": chosen.as_ref().map(|d| json!({ "device": d.device, "disc_id": d.disc_id, "tracks": d.track_list.iter().map(|t| json!({ "number": t.number, "seconds": t.seconds })).collect::<Vec<_>>(), "total_minutes": minutes })),
+                "disc": chosen.as_ref().map(|d| json!({ "device": d.device, "disc_id": d.disc_id, "tracks": d.track_list.iter().map(|t| json!({ "number": t.number, "seconds": t.seconds })).collect::<Vec<_>>(), "total_minutes": minutes,
+                    // Photos of the case that a person took with the app: read them with get_photos.
+                    "photos": d.disc_id.as_ref().map(|id| s.cd.photos.list(&crate::photos::Owner::Disc(id.clone()))).unwrap_or_default() })),
                 "lookup": { "status": status, "contact_set": set.lookup_ready, "candidates": candidates },
             }))
         }
@@ -987,6 +1014,10 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 year,
                 mbid: text("mbid").map(|n| n.trim().to_owned()).filter(|n| !n.is_empty()),
                 barcode: text("barcode").map(|b| b.trim().to_owned()).filter(|b| !b.is_empty()),
+                cover_photo: match args.get("cover_photo") {
+                    None | Some(Value::Null) => None,
+                    Some(v) => Some(v.as_u64().and_then(|n| u32::try_from(n).ok()).ok_or("cover_photo must be the number of a photo (get_photos)")?),
+                },
                 tracks: by_position,
                 eject: args.get("eject").and_then(Value::as_bool),
                 device: None,
@@ -1075,6 +1106,66 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             s.store.log_tag_change(&token.name, id, name, "Picture", "", &url).await.map_err(db)?;
             s.store.rescan_soon();
             Ok(json!({ "folder_file": name, "bytes": size, "type": mime, "embedded_in": embedded, "of_files": count, "first_embed_error": first_error }))
+        }
+        "get_photos" | "discard_photos" => {
+            // An album by id, else a disc: the one named, or the one in the drive of the server.
+            let owner = match int("id") {
+                Some(id) => {
+                    Album::load(s, id).await?;
+                    crate::photos::Owner::Album(id)
+                }
+                None => {
+                    cd_admin(s, token).await?;
+                    let disc = match text("disc_id").filter(|d| !d.trim().is_empty()) {
+                        Some(d) => d,
+                        None => {
+                            let set = crate::cd_settings::CdSettings::load(&s.store).await.map_err(db)?;
+                            let (states, _) = s.cd.drives.snapshot();
+                            crate::cdrive::pick_drive(&states, &set.device).and_then(|d| d.disc_id.clone()).ok_or("no disc in the drive; give id (an album) or disc_id")?
+                        }
+                    };
+                    crate::photos::Owner::Disc(disc)
+                }
+            };
+            if name == "discard_photos" {
+                if !token.can_write {
+                    return Err("this token may only read".into());
+                }
+                return Ok(json!({ "discarded": s.cd.photos.discard(&owner) }));
+            }
+            let only = int("photo");
+            let list: Vec<_> = s.cd.photos.list(&owner).into_iter().filter(|p| only.is_none_or(|n| i64::from(p.n) == n)).collect();
+            if list.is_empty() {
+                return Ok(json!({ "photos": [], "note": "no photos; a person takes them in the app (CD import dialog or album page)" }));
+            }
+            let mut blocks = vec![json!({ "type": "text", "text": format!("{} photo(s), in the order they were taken: {}", list.len(), list.iter().map(|p| format!("photo {}", p.n)).collect::<Vec<_>>().join(", ")) })];
+            for p in &list {
+                if let Some((mime, bytes)) = s.cd.photos.read(&owner, p.n) {
+                    blocks.push(json!({ "type": "text", "text": format!("photo {}", p.n) }));
+                    blocks.push(json!({ "type": "image", "data": crate::ws::base64(&bytes), "mimeType": mime }));
+                }
+            }
+            Ok(json!({ CONTENT: blocks }))
+        }
+        "set_cover_from_photo" => {
+            if !token.can_write {
+                return Err("this token may only read".into());
+            }
+            let id = int("id").ok_or("id is required")?;
+            let n = int("photo").and_then(|n| u32::try_from(n).ok()).ok_or("photo is required (its number, see get_photos)")?;
+            let album = Album::load(s, id).await?;
+            let dir = album.dir.clone().ok_or("the folder of the album is not known")?;
+            let (mime, bytes) = s.cd.photos.read(&crate::photos::Owner::Album(id), n).ok_or("no such photo of this album (get_photos)")?;
+            let files: Vec<PathBuf> = album.tracks.iter().map(|(_, p)| p.clone()).collect();
+            let need = (bytes.len() as u64).saturating_mul(files.len() as u64 + 1);
+            if !crate::diskspace::fits(&files[0], need, crate::diskspace::reserve(&s.store).await) {
+                return Err("not enough free space on the disk".into());
+            }
+            let count = files.len();
+            let (file, embedded, first_error) = tokio::task::spawn_blocking(move || crate::api::replace_cover(&dir, &files, &bytes, mime)).await.map_err(|e| e.to_string())??;
+            s.store.log_tag_change(&token.name, id, file, "Picture", "", &format!("photo {n}")).await.map_err(db)?;
+            s.store.rescan_soon();
+            Ok(json!({ "folder_file": file, "embedded_in": embedded, "of_files": count, "first_embed_error": first_error }))
         }
         "find_problems" => {
             let offset = int("offset").unwrap_or(0).max(0) as usize;

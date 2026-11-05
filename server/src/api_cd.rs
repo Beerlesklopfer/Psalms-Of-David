@@ -63,6 +63,7 @@ pub fn routes() -> Router<ApiState> {
         .route("/api/v1/cd/rip/{id}/cancel", post(rip_cancel))
         .route("/api/v1/cd/rip/dismiss", post(rip_dismiss))
         .route("/api/v1/cd/eject", post(eject))
+        .route("/api/v1/cd/photos", get(disc_photos).post(disc_photos).delete(disc_photos).layer(DefaultBodyLimit::max(crate::tags::MAX_COVER_BYTES + 1)))
 }
 
 fn refuse() -> ApiError {
@@ -714,6 +715,28 @@ async fn rip_dismiss(State(s): State<ApiState>, d: Device, body: Option<Json<Eje
 #[serde(default)]
 struct EjectRequest {
     device: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct PhotosQuery {
+    /// The drive; absent: the setting, else the first one with an audio CD.
+    device: Option<String>,
+}
+
+/// `GET/POST/DELETE /api/v1/cd/photos`: photos of the case of the disc in the drive of the server (front, back, booklet), for the language model
+/// that reads them through MCP (`get_photos`) and fills the rip. They go when the rip of the disc ends, after 24 hours at the latest.
+/// `{"disc_id","photos":[{n,mime,bytes}]}`; `409 no_disc`; the checks of a picture as for a cover (`photo_none`, `photo_size`, `photo_type`),
+/// `409 photo_limit`. Whoever may put in CDs.
+async fn disc_photos(State(s): State<ApiState>, d: Device, Query(q): Query<PhotosQuery>, method: axum::http::Method, body: axum::body::Bytes) -> ApiResult<Json<Value>> {
+    may_import(&s, &d).await?;
+    let set = CdSettings::load(&s.store).await?;
+    let device = q.device.filter(|d| !d.is_empty()).unwrap_or(set.device);
+    let toc = s.cd.drives.inserted_toc(&device).ok_or_else(|| err(409, "no_disc"))?;
+    let disc_id = musicbrainz::disc_id(&toc);
+    let Json(mut out) = crate::api::photos_call(&s.cd.photos, &crate::photos::Owner::Disc(disc_id.clone()), &method, &body)?;
+    out["disc_id"] = json!(disc_id);
+    Ok(Json(out))
 }
 
 /// Opens the tray when a disc is in and the tray is shut; never closes it. `409 busy` while a rip runs.

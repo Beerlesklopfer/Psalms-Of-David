@@ -565,6 +565,17 @@ async fn the_owner_or_an_administrator_sets_the_cover_from_a_photo_and_it_is_the
     let log = a.store.tag_changes(id, 10).await.unwrap();
     assert!(log.iter().any(|c| c.field == "Picture" && c.token_name == "app: Anna"), "{log:?}");
 
+    // Photos of the album for the language model: the owner adds and takes them back, somebody else may not.
+    let photos = format!("/api/v1/items/{id}/photos");
+    let req = |token: &str| Request::builder().method("POST").uri(&photos).header(header::AUTHORIZATION, format!("Bearer {token}")).body(Body::from(PNG.to_vec())).unwrap();
+    let (parts, body) = a.router.clone().oneshot(req(&ta)).await.unwrap().into_parts();
+    assert_eq!(parts.status, StatusCode::OK);
+    let list: Value = serde_json::from_slice(&to_bytes(body, 1024 * 1024).await.unwrap()).unwrap();
+    assert_eq!(list["photos"][0]["mime"], "image/png", "{list}");
+    assert_eq!(a.router.clone().oneshot(req(&tb)).await.unwrap().status(), StatusCode::FORBIDDEN);
+    assert_eq!(call(&a, "DELETE", &photos, Some(&ta), None, None).await.status, StatusCode::OK);
+    assert_eq!(serde_json::from_slice::<Value>(&call(&a, "GET", &photos, Some(&ta), None, None).await.bytes).unwrap()["photos"], json!([]));
+
     // An administrator may too; a JPEG replaces the PNG.
     let admin_token = pair(&a, a.admin, 3).await;
     let jpeg = vec![0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xFF, 0xD9];

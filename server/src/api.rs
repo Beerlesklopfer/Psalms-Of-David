@@ -16,6 +16,7 @@
 //! | `GET /api/v1/barcode/{code}` | is this EAN/UPC in the library? `{code, gtin, found, items[]}`; `422 invalid_barcode` for a wrong length or check digit |
 //! | `GET /api/v1/items/{id}/cover` | the product picture: `cover.jpg` (or `.png`, `folder.jpg`) in the item's folder, else the picture embedded in its first file; `404` if there is none |
 //! | `PUT /api/v1/items/{id}/cover` | a picture (JPEG or PNG, at most 8 MiB) becomes the cover: the folder file and embedded in every track; the owner and an administrator |
+//! | `GET/POST/DELETE /api/v1/items/{id}/photos` | photos of the album for the language model (MCP `get_photos`); the owner and an administrator |
 //! | `GET /api/v1/continue` | unfinished items, latest first |
 //! | `GET /api/v1/parts/{id}/stream` | the file of a part, with `Range` support |
 //! | `PUT /api/v1/progress` | stores the listening position |
@@ -82,6 +83,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/v1/labels/{name}", put(rename_label).delete(delete_label))
         .route("/api/v1/new", get(new_items))
         .route("/api/v1/items/{id}/cover", get(item_cover).put(put_item_cover).layer(axum::extract::DefaultBodyLimit::max(crate::tags::MAX_COVER_BYTES + 1)))
+        .route("/api/v1/items/{id}/photos", get(item_photos).post(item_photos).delete(item_photos).layer(axum::extract::DefaultBodyLimit::max(crate::tags::MAX_COVER_BYTES + 1)))
         .route("/api/v1/continue", get(continue_listening))
         .route("/api/v1/parts/{id}/stream", get(stream))
         .route("/api/v1/progress", put(put_progress))
@@ -681,25 +683,68 @@ pub(crate) fn replace_cover(dir: &Path, files: &[PathBuf], bytes: &[u8], mime: &
     Ok((name, embedded, first_error))
 }
 
+/// A picture that a device sends (a cover, a photo of the case): not empty (`422 <what>_none`), at most 8 MiB (`413 <what>_size`), JPEG or PNG by
+/// its first bytes (`415 <what>_type`; WebP is not taken, the tags of MP3 files do not carry it everywhere). Its type.
+pub(crate) fn picture_of(body: &[u8], what: &'static str) -> ApiResult<&'static str> {
+    let code = |suffix: &str| -> &'static str {
+        match (what, suffix) {
+            ("cover", "none") => "cover_none",
+            ("cover", "size") => "cover_size",
+            ("cover", _) => "cover_type",
+            (_, "none") => "photo_none",
+            (_, "size") => "photo_size",
+            _ => "photo_type",
+        }
+    };
+    if body.is_empty() {
+        return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, code("none")));
+    }
+    if body.len() > crate::tags::MAX_COVER_BYTES {
+        return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, code("size")));
+    }
+    crate::profile::sniff_image(body).filter(|m| *m != "image/webp").ok_or(ApiError(StatusCode::UNSUPPORTED_MEDIA_TYPE, code("type")))
+}
+
+/// The owner of an album and an administrator: who may change its cover and its photos (the right of the labels, `can_label`). `404` for an
+/// album the device may not see.
+async fn may_edit_item(s: &ApiState, d: &Device, id: i64) -> ApiResult<()> {
+    if !s.store.visible_books(d.user_id).await?.iter().any(|b| b.id == id) {
+        return Err(ApiError(StatusCode::NOT_FOUND, "not_found"));
+    }
+    let row = s.store.admin_book_row(id).await?.ok_or(ApiError(StatusCode::NOT_FOUND, "not_found"))?;
+    if d.role == Role::Admin || (d.role == Role::Member && row.owner_id == Some(d.user_id)) { Ok(()) } else { Err(ApiError(StatusCode::FORBIDDEN, "forbidden")) }
+}
+
+/// `GET /api/v1/items/{id}/photos`: the photos of the album for the language model, `{"photos":[{n,mime,bytes}]}`. `POST`: one more (the
+/// picture as the body, as for the cover; `409 photo_limit` beyond 12). `DELETE`: all of them. The owner and an administrator.
+async fn item_photos(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, method: axum::http::Method, body: axum::body::Bytes) -> ApiResult<Json<Value>> {
+    may_edit_item(&s, &d, id).await?;
+    let owner = crate::photos::Owner::Album(id);
+    photos_call(&s.cd.photos, &owner, &method, &body)
+}
+
+/// The three calls on the photos of an owner (list, add, discard).
+pub(crate) fn photos_call(photos: &crate::photos::Photos, owner: &crate::photos::Owner, method: &axum::http::Method, body: &[u8]) -> ApiResult<Json<Value>> {
+    if *method == axum::http::Method::POST {
+        let mime = picture_of(body, "photo")?;
+        photos.add(owner, body, mime).map_err(|code| match code {
+            "photo_limit" => ApiError(StatusCode::CONFLICT, "photo_limit"),
+            "invalid_disc" => ApiError(StatusCode::UNPROCESSABLE_ENTITY, "invalid_disc"),
+            _ => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal"),
+        })?;
+    } else if *method == axum::http::Method::DELETE {
+        photos.discard(owner);
+    }
+    Ok(Json(json!({ "photos": photos.list(owner) })))
+}
+
 /// `PUT /api/v1/items/{id}/cover`: a picture (the body, JPEG or PNG by its first bytes, at most 8 MiB) becomes the cover of the album, as
 /// the folder file and embedded in every track: a photo of the case taken with the phone. The owner of the album and an administrator may
 /// (the right of the labels, `can_label`). `200 {"folder_file","embedded_in","of_files"}`; `403 forbidden`, `404 not_found`, `413 cover_size`,
 /// `415 cover_type` (WebP and anything that is no JPEG or PNG), `422 cover_none` (empty), `409 files_missing`, `507 no_space`.
 async fn put_item_cover(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, body: axum::body::Bytes) -> ApiResult<Json<Value>> {
-    if !s.store.visible_books(d.user_id).await?.iter().any(|b| b.id == id) {
-        return Err(ApiError(StatusCode::NOT_FOUND, "not_found"));
-    }
-    let row = s.store.admin_book_row(id).await?.ok_or(ApiError(StatusCode::NOT_FOUND, "not_found"))?;
-    if !(d.role == Role::Admin || (d.role == Role::Member && row.owner_id == Some(d.user_id))) {
-        return Err(ApiError(StatusCode::FORBIDDEN, "forbidden"));
-    }
-    if body.is_empty() {
-        return Err(ApiError(StatusCode::UNPROCESSABLE_ENTITY, "cover_none"));
-    }
-    if body.len() > crate::tags::MAX_COVER_BYTES {
-        return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "cover_size"));
-    }
-    let mime = crate::profile::sniff_image(&body).filter(|m| *m != "image/webp").ok_or(ApiError(StatusCode::UNSUPPORTED_MEDIA_TYPE, "cover_type"))?;
+    may_edit_item(&s, &d, id).await?;
+    let mime = picture_of(&body, "cover")?;
     let folder = s.store.book_folder(id).await?.ok_or(ApiError(StatusCode::NOT_FOUND, "not_found"))?;
     let missing = || ApiError(StatusCode::CONFLICT, "files_missing");
     let mut files = Vec::new();

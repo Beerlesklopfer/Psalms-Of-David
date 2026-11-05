@@ -1476,3 +1476,28 @@ async fn albums_are_hidden_for_a_profile_by_label_and_shown_again() {
     assert!(tool(&m, &write, "hide_albums", json!({ "profile": "Anni", "label": "Nirgends" })).await.0);
     assert!(tool(&m, &write, "hide_albums", json!({ "profile": "Niemand", "label": "Schule" })).await.0);
 }
+
+#[tokio::test]
+async fn a_photo_of_an_album_becomes_its_cover_and_the_photos_are_discarded_when_the_model_is_done() {
+    if !ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let m = mcp().await;
+    let id = album(&m, &[("title", "x")]).await;
+    // The same folder the server keeps the photos in (the data folder of the test).
+    let photos = david_server::photos::Photos::new(m._dir.path());
+    let owner = david_server::photos::Owner::Album(id);
+    const JPEG: &[u8] = &[0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xFF, 0xD9];
+    photos.add(&owner, JPEG, "image/jpeg").unwrap();
+    let t = m.store.create_mcp_token("llm", true, m.admin).await.unwrap();
+    let (err, album_json) = tool(&m, &t, "get_album", json!({ "id": id })).await;
+    assert!(!err && album_json["photos"].as_array().map(Vec::len) == Some(1), "{album_json}");
+    let (err, set) = tool(&m, &t, "set_cover_from_photo", json!({ "id": id, "photo": 1 })).await;
+    assert!(!err, "{set}");
+    assert_eq!((set["folder_file"].as_str(), set["embedded_in"].as_u64()), (Some("cover.jpg"), Some(2)), "{set}");
+    assert!(tool(&m, &t, "set_cover_from_photo", json!({ "id": id, "photo": 7 })).await.0, "no such photo");
+    let (err, gone) = tool(&m, &t, "discard_photos", json!({ "id": id })).await;
+    assert!(!err && gone["discarded"] == 1, "{gone}");
+    assert!(photos.list(&owner).is_empty());
+}

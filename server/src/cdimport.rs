@@ -178,6 +178,8 @@ pub const BROADCAST: i64 = -1;
 pub struct CdService {
     pub lookup: Arc<dyn Lookup>,
     pub staging: PathBuf,
+    /// The photos of CD cases and albums for the language model (`photos.rs`).
+    pub photos: crate::photos::Photos,
     pub heartbeat: Duration,
     /// The drives of the server and the rips that run on them.
     pub drives: crate::cdrive::Drives,
@@ -205,7 +207,7 @@ impl CdService {
     /// With another drive behind it (the tests use a fake).
     pub fn with_backend(data_dir: &Path, lookup: Arc<dyn Lookup>, backend: Arc<dyn crate::cdrive::DriveBackend>) -> CdService {
         let (hub, _) = broadcast::channel(256);
-        CdService { lookup, staging: data_dir.join("cd-import"), heartbeat: HEARTBEAT, drives: crate::cdrive::Drives::new(backend), resume_keep: Arc::new(std::sync::atomic::AtomicU64::new(48)), library: None, fingerprint: Arc::default(), present_cache: Arc::default(), hub }
+        CdService { lookup, staging: data_dir.join("cd-import"), photos: crate::photos::Photos::new(data_dir), heartbeat: HEARTBEAT, drives: crate::cdrive::Drives::new(backend), resume_keep: Arc::new(std::sync::atomic::AtomicU64::new(48)), library: None, fingerprint: Arc::default(), present_cache: Arc::default(), hub }
     }
 
     pub fn with_library(mut self, library: Option<PathBuf>) -> CdService {
