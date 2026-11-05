@@ -876,7 +876,11 @@ async fn a_search_by_hand_adds_releases_to_those_of_the_disc_and_a_chosen_one_co
     assert_eq!((list[0]["disc_id_matched"].as_bool(), list[0]["tracks"].as_array().map(Vec::len)), (Some(true), Some(14)), "the release of the disc comes first, with tracks");
     assert_eq!((list[1]["title"].as_str(), list[1]["tracks"].as_array().map(Vec::len)), (Some("Ein anderes Buch"), Some(0)), "a search result has no tracks yet");
     let asked = e.fake.asked();
-    assert!(asked.iter().any(|a| a.1.contains("/ws/2/release/?query=") && a.1.contains("release%3A%28Ken%20Follett%20Titanen%29")), "{asked:?}");
+    // The whole text as a phrase in the title first, and every word in the title or the artist (445b62d).
+    assert!(
+        asked.iter().any(|a| a.1.contains("/ws/2/release/?query=") && a.1.contains("release%3A%22Ken%20Follett%20Titanen%22%5E4") && a.1.contains("%28release%3ATitanen%20OR%20artist%3ATitanen%29")),
+        "{asked:?}"
+    );
 
     // Chosen: the release with the tracks of the disc that has as many tracks as this CD (14: disc 2).
     let r = call(&e, "POST", "/api/v1/cd/lookup", Some(&token), Some(json!({ "toc": toc(), "release_id": "0f2d4b1c-8d0a-4f17-8d7e-222222222222" }))).await;
