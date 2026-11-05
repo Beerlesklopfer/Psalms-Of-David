@@ -196,6 +196,8 @@ class InboxController extends ChangeNotifier {
   }
 
   void _onNoticeEvent(InboxNotifierEvent e) {
+    // The news of new media share the notifier and use negative ids: they are not the inbox's.
+    if (e.id < 0) return;
     switch (e.action) {
       case InboxNoticeAction.approve:
         approve(e.id);

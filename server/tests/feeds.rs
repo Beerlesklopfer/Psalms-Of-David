@@ -83,3 +83,31 @@ async fn stations_are_favourites_of_a_profile_with_the_same_release_as_podcasts(
     store.unfavorite_station(child, a).await.unwrap();
     assert!(store.favorite_stations(child, false).await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn the_news_of_a_profile_are_new_episodes_of_what_it_follows_and_new_stations_of_its_list() {
+    let (_d, store) = open().await;
+    let parent = store.create_profile("Parent", true).await.unwrap();
+    let child = store.create_profile("Child", false).await.unwrap();
+    let id = store.save_feed("https://example.org/feed.xml", &podcast::parse(XML).unwrap()).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    store.subscribe(parent, id, true).await.unwrap();
+    store.subscribe(child, id, false).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    let since = david_server::now_ms();
+    // The episodes that were there when the podcast was followed are no news.
+    assert!(store.new_episodes(parent, 0, 50).await.unwrap().is_empty());
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    let more = XML.replace("<item><title>Folge 2</title>", "<item><title>Folge 3</title><guid>c</guid><enclosure url=\"https://example.org/3.mp3\" type=\"audio/mpeg\"/></item><item><title>Folge 2</title>");
+    store.save_feed("https://example.org/feed.xml", &podcast::parse(&more).unwrap()).await.unwrap();
+    let news = store.new_episodes(parent, since, 50).await.unwrap();
+    assert_eq!(news.iter().map(|e| (e.2.as_str(), e.3.as_str())).collect::<Vec<_>>(), vec![("Kinderfunk", "Folge 3")]);
+    assert!(store.new_episodes(child, since, 50).await.unwrap().is_empty(), "a request that waits for a release sees nothing");
+
+    let a = store.save_station("https://stream.example.org/a", "Radio A", None, None).await.unwrap();
+    store.favorite_station(parent, a, true).await.unwrap();
+    store.favorite_station(child, a, false).await.unwrap();
+    assert_eq!(store.new_stations(parent, since, 50).await.unwrap().iter().map(|s| s.1.as_str()).collect::<Vec<_>>(), vec!["Radio A"]);
+    assert!(store.new_stations(child, since, 50).await.unwrap().is_empty());
+    assert!(store.new_stations(parent, david_server::now_ms() + 1000, 50).await.unwrap().is_empty());
+}

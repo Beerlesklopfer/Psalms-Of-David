@@ -317,6 +317,35 @@ impl Store {
             .collect()
     }
 
+    /// The episodes that came in since `since_ms` in the podcasts a profile follows with a release, newest first: what the app tells as news.
+    /// An episode older than the following itself is no news (a podcast followed today brings its old episodes along).
+    pub async fn new_episodes(&self, profile_id: i64, since_ms: i64, limit: i64) -> Result<Vec<(i64, i64, String, String, i64)>> {
+        let rows = self
+            .db
+            .reader
+            .query_all_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT e.id, f.id, f.title, e.title, e.created_at FROM episode e JOIN feed f ON f.id = e.feed_id                  JOIN subscription s ON s.feed_id = f.id AND s.profile_id = ? AND s.approved = 1                  WHERE e.created_at >= ? AND e.created_at > s.added_at ORDER BY e.created_at DESC, e.id DESC LIMIT ?",
+                [profile_id.into(), since_ms.into(), limit.into()],
+            ))
+            .await?;
+        rows.into_iter().map(|r| Ok((r.try_get_by_index(0)?, r.try_get_by_index(1)?, r.try_get_by_index(2)?, r.try_get_by_index(3)?, r.try_get_by_index(4)?))).collect()
+    }
+
+    /// The stations that came into the list of a profile since `since_ms` (with a release), newest first.
+    pub async fn new_stations(&self, profile_id: i64, since_ms: i64, limit: i64) -> Result<Vec<(i64, String, i64)>> {
+        let rows = self
+            .db
+            .reader
+            .query_all_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT s.id, s.name, f.added_at FROM station_favorite f JOIN station s ON s.id = f.station_id                  WHERE f.profile_id = ? AND f.approved = 1 AND f.added_at >= ? ORDER BY f.added_at DESC, s.id DESC LIMIT ?",
+                [profile_id.into(), since_ms.into(), limit.into()],
+            ))
+            .await?;
+        rows.into_iter().map(|r| Ok((r.try_get_by_index(0)?, r.try_get_by_index(1)?, r.try_get_by_index(2)?))).collect()
+    }
+
     /// May this profile see the feed (it follows it with a release)?
     pub async fn follows(&self, profile_id: i64, feed_id: i64) -> Result<bool> {
         let row = self

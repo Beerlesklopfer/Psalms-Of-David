@@ -1412,6 +1412,36 @@ abstract class AppLocalizations {
   /// **'MusicBrainz knows no release with exactly this Disc ID. Choose a match only if it is this CD, or type the details.'**
   String get cdCandidateNear;
 
+  /// No description provided for @newsAlbum.
+  ///
+  /// In en, this message translates to:
+  /// **'New album'**
+  String get newsAlbum;
+
+  /// No description provided for @newsAudiobook.
+  ///
+  /// In en, this message translates to:
+  /// **'New audiobook'**
+  String get newsAudiobook;
+
+  /// No description provided for @newsEpisode.
+  ///
+  /// In en, this message translates to:
+  /// **'New episode of {podcast}'**
+  String newsEpisode(String podcast);
+
+  /// No description provided for @newsStation.
+  ///
+  /// In en, this message translates to:
+  /// **'New station'**
+  String get newsStation;
+
+  /// No description provided for @newsMany.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} new media on David'**
+  String newsMany(int count);
+
   /// No description provided for @coverAndPhotos.
   ///
   /// In en, this message translates to:

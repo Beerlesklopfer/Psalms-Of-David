@@ -781,6 +781,25 @@ class AppLocalizationsDe extends AppLocalizations {
       'MusicBrainz kennt keine Ausgabe mit genau dieser Disc-ID. Wähle einen Treffer nur, wenn es diese CD ist, oder trage die Angaben ein.';
 
   @override
+  String get newsAlbum => 'Neues Album';
+
+  @override
+  String get newsAudiobook => 'Neues Hörbuch';
+
+  @override
+  String newsEpisode(String podcast) {
+    return 'Neue Folge von $podcast';
+  }
+
+  @override
+  String get newsStation => 'Neuer Sender';
+
+  @override
+  String newsMany(int count) {
+    return '$count neue Medien auf David';
+  }
+
+  @override
   String get coverAndPhotos => 'Cover und Fotos';
 
   @override

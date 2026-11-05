@@ -9,55 +9,57 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'audio/audio_backend.dart';
-import 'cd/cd_kit.dart';
-import 'inbox/inbox_controller.dart';
-import 'inbox/inbox_demo.dart';
-import 'inbox/inbox_ui.dart';
-import 'speech/announcer_scope.dart';
-import 'speech/cd_announcer.dart';
 import 'audio/just_audio_backend.dart';
 import 'audio/mpris.dart';
 import 'audio/pipewire_backend.dart';
+import 'audio/playback_settings.dart';
 import 'audio/psalm_audio_handler.dart';
+import 'cd/cd_kit.dart';
 import 'demo_data.dart';
-import 'theme_mode.dart';
-import 'models.dart';
+import 'inbox/inbox_controller.dart';
+import 'inbox/inbox_demo.dart';
+import 'inbox/inbox_notifier.dart';
+import 'inbox/inbox_ui.dart';
 import 'l10n/app_localizations.dart';
 import 'labels.dart';
 import 'library_hiding.dart';
+import 'models.dart';
+import 'news.dart';
 import 'offline/library_cache.dart';
 import 'offline/offline_controller.dart';
 import 'offline/offline_view.dart';
 import 'offline/outbox.dart';
 import 'player_controller.dart';
 import 'playlists.dart';
+import 'podcast_downloads.dart';
 import 'profile.dart';
-import 'server/profile_api.dart';
-import 'screens/share_button.dart';
+import 'screens/about_screen.dart';
 import 'screens/connect_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/library_screen.dart';
+import 'screens/playlists_screen.dart';
+import 'screens/podcasts_screen.dart';
+import 'screens/radio_screen.dart';
+import 'screens/search_screen.dart';
+import 'screens/settings_screen.dart';
+import 'screens/share_button.dart';
 import 'server/api_client.dart';
 import 'server/app_paths.dart';
 import 'server/credentials.dart';
 import 'server/device_name.dart';
 import 'server/device_pairing.dart';
+import 'server/discovery.dart';
 import 'server/hiding_api.dart';
 import 'server/labels_api.dart';
-import 'server/playlist_api.dart';
-import 'server/discovery.dart';
-import 'audio/playback_settings.dart';
 import 'server/last_played.dart';
 import 'server/outbox_api.dart';
+import 'server/playlist_api.dart';
+import 'server/profile_api.dart';
 import 'server/server_source.dart';
-import 'screens/about_screen.dart';
-import 'screens/library_screen.dart';
-import 'screens/playlists_screen.dart';
-import 'podcast_downloads.dart';
-import 'screens/podcasts_screen.dart';
-import 'screens/radio_screen.dart';
-import 'screens/search_screen.dart';
-import 'screens/settings_screen.dart';
+import 'speech/announcer_scope.dart';
+import 'speech/cd_announcer.dart';
 import 'theme.dart';
+import 'theme_mode.dart';
 import 'voice/voice_commands.dart';
 import 'widgets.dart';
 
@@ -672,11 +674,18 @@ class _ShellState extends State<Shell> {
   /// The voice for the messages of the CD inbox (while music plays); next to the notification.
   late final CdAnnouncer? _announcer = _inbox == null ? null : createShellAnnouncer(() => mounted ? context : null, _cd);
 
+  /// The notifications of new media: asked from David while the app runs (in the home network, no push service); null without a server.
+  late final NewsWatcher? _news = widget.api == null
+      ? null
+      : NewsWatcher(api: widget.api!, notifier: platformInboxNotifier(), cursorFile: File('${AppPaths.base.path}/news-since'));
+
   int _toldRejected = 0;
 
   @override
   void initState() {
     super.initState();
+    _news?.start();
+    _news?.openItem.addListener(_openNews);
     if (_inbox != null) _announcer?.attach(_inbox);
     widget.offline?.addListener(_tellRejected);
     showStartRequests.addListener(_showStart);
@@ -688,6 +697,15 @@ class _ShellState extends State<Shell> {
     super.didChangeDependencies();
     // The system notification of the inbox has no context: it takes its words from here.
     _inbox?.l10n = AppLocalizations.of(context);
+    _news?.l10n = AppLocalizations.of(context);
+  }
+
+  /// A tap on the notification of a new album opens it.
+  void _openNews() {
+    final id = _news?.openItem.value;
+    if (id == null || !mounted) return;
+    final book = PlayerScope.of(context).fullLibrary.where((b) => b.id == '$id').firstOrNull;
+    if (book != null) openItem(context, book);
   }
 
   /// A tap on a notification of the inbox opens its page.
@@ -712,6 +730,8 @@ class _ShellState extends State<Shell> {
 
   @override
   void dispose() {
+    _news?.openItem.removeListener(_openNews);
+    _news?.dispose();
     widget.offline?.removeListener(_tellRejected);
     showStartRequests.removeListener(_showStart);
     _inbox?.openRequests.removeListener(_openInbox);

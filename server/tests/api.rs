@@ -912,3 +912,30 @@ async fn a_child_and_a_guest_do_not_connect_further_devices() {
         assert_eq!(a.store.devices_of(id).await.unwrap().len(), 1, "{name}: no code was made");
     }
 }
+
+#[tokio::test]
+async fn the_news_of_a_device_are_what_became_visible_since_its_last_look_and_the_first_look_tells_nothing() {
+    let a = api().await;
+    let anna = a.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    let kid = a.store.create_user(NewProfile::child("Kid", 6, Schedule::always())).await.unwrap();
+    let (ta, tk) = (pair(&a, anna, 1).await, pair(&a, kid, 2).await);
+    add_book(&a, "Alt", Some(0)).await;
+    // The first look: nothing old, only the time to come back with.
+    let first = serde_json::from_slice::<Value>(&call(&a, "GET", "/api/v1/news", Some(&ta), None, None).await.bytes).unwrap();
+    assert_eq!((first["items"].as_array().map(Vec::len), first["now"].is_i64()), (Some(0), true), "{first}");
+    let since = first["now"].as_i64().unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    let (fresh, _) = add_book(&a, "Neu", Some(0)).await;
+    let (grown_up, _) = add_book(&a, "Für Große", Some(16)).await;
+    let news = |t: &str| {
+        let t = t.to_owned();
+        let a = &a;
+        async move { serde_json::from_slice::<Value>(&call(a, "GET", &format!("/api/v1/news?since={since}"), Some(&t), None, None).await.bytes).unwrap() }
+    };
+    let ids = |v: &Value| v["items"].as_array().unwrap().iter().map(|i| i["id"].as_i64().unwrap()).collect::<Vec<_>>();
+    let mut of_anna = ids(&news(&ta).await);
+    of_anna.sort();
+    assert_eq!(of_anna, vec![fresh, grown_up], "the old one is no news");
+    assert_eq!(ids(&news(&tk).await), vec![fresh], "a child is told only what it may hear");
+    assert_eq!(news(&ta).await["items"][0]["creator"], "Author");
+}

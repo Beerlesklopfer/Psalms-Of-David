@@ -773,6 +773,25 @@ class AppLocalizationsEn extends AppLocalizations {
       'MusicBrainz knows no release with exactly this Disc ID. Choose a match only if it is this CD, or type the details.';
 
   @override
+  String get newsAlbum => 'New album';
+
+  @override
+  String get newsAudiobook => 'New audiobook';
+
+  @override
+  String newsEpisode(String podcast) {
+    return 'New episode of $podcast';
+  }
+
+  @override
+  String get newsStation => 'New station';
+
+  @override
+  String newsMany(int count) {
+    return '$count new media on David';
+  }
+
+  @override
   String get coverAndPhotos => 'Cover and photos';
 
   @override

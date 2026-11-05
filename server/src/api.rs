@@ -82,6 +82,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/v1/labels", get(all_labels))
         .route("/api/v1/labels/{name}", put(rename_label).delete(delete_label))
         .route("/api/v1/new", get(new_items))
+        .route("/api/v1/news", get(news))
         .route("/api/v1/items/{id}/cover", get(item_cover).put(put_item_cover).layer(axum::extract::DefaultBodyLimit::max(crate::tags::MAX_COVER_BYTES + 1)))
         .route("/api/v1/items/{id}/photos", get(item_photos).post(item_photos).delete(item_photos).layer(axum::extract::DefaultBodyLimit::max(crate::tags::MAX_COVER_BYTES + 1)))
         .route("/api/v1/continue", get(continue_listening))
@@ -541,6 +542,39 @@ async fn new_items(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value
         items.retain(|b| !ids.contains(&b.id));
     }
     Ok(Json(json!({ "days": days, "items": items })))
+}
+
+#[derive(Deserialize)]
+struct NewsQuery {
+    /// The `now` of the last answer (Unix ms); absent: nothing is news yet, the answer only gives `now`.
+    since: Option<i64>,
+}
+
+/// `GET /api/v1/news?since=<ms>`: what became new for this profile since the last look, for the notifications of the app (they come only
+/// from David, in the home network: no push service). `{"now", "items":[{id,kind,title,creator}], "episodes":[{id,podcast_id,podcast,title}],
+/// "stations":[{id,name}]}`: albums and audiobooks as the section "New" counts them (visible to the profile, by its age, not hidden, not
+/// started), new episodes of the podcasts it follows, stations that came into its list. The app keeps `now` and sends it as `since` next time;
+/// without `since` the lists are empty (the first look of a device tells nothing old). At most 50 of each, at most 30 days back.
+async fn news(State(s): State<ApiState>, d: Device, Query(q): Query<NewsQuery>) -> ApiResult<Json<Value>> {
+    let now = now_ms();
+    let Some(since) = q.since.map(|t| t.max(now - 30 * 24 * 3_600_000)) else {
+        return Ok(Json(json!({ "now": now, "items": [], "episodes": [], "stations": [] })));
+    };
+    let mut books = s.store.new_books(d.user_id, since, 50).await?;
+    let hidden = s.store.hidden_of(d.user_id).await?;
+    if !hidden.show_hidden {
+        let ids = hidden.ids_in(&s.store.visible_books(d.user_id).await?);
+        books.retain(|b| !ids.contains(&b.id));
+    }
+    let visible = s.store.visible_books(d.user_id).await?;
+    let items: Vec<Value> = books
+        .iter()
+        .filter_map(|n| visible.iter().find(|b| b.id == n.id))
+        .map(|b| json!({ "id": b.id, "kind": b.kind, "title": b.title, "creator": b.author }))
+        .collect();
+    let episodes: Vec<Value> = s.store.new_episodes(d.user_id, since, 50).await?.into_iter().map(|(id, pid, podcast, title, _)| json!({ "id": id, "podcast_id": pid, "podcast": podcast, "title": title })).collect();
+    let stations: Vec<Value> = s.store.new_stations(d.user_id, since, 50).await?.into_iter().map(|(id, name, _)| json!({ "id": id, "name": name })).collect();
+    Ok(Json(json!({ "now": now, "items": items, "episodes": episodes, "stations": stations })))
 }
 
 /// Most items the section "New" holds.
