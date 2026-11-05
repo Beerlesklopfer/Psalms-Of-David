@@ -1108,7 +1108,10 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
         return Err(Refusal(409, "no_disc").into());
     }
     let toc = chosen.table.clone().ok_or(Refusal(409, "no_disc"))?;
-    // One rip per drive: said before anything is worked out (the claim at the end stays as the guard against a race).
+    // One rip per drive: said before anything is worked out (the claim at the end stays as the guard against a race). A rip whose job has
+    // ended already (it told "imported" while it cleans up its folder and lets go of the drive) is waited for a moment: a client that starts
+    // the next CD as soon as it hears of the end must not get `busy`.
+    wait_for_a_finished_rip(store, cd, &chosen.device).await;
     if cd.drives.lock().running.contains_key(&chosen.device) {
         return Err(Refusal(409, "busy").into());
     }
@@ -1905,6 +1908,18 @@ async fn run_rip(
         error: if !skipped.is_empty() { Some("unreadable_track".to_owned()) } else if !unverified.is_empty() { Some("unverified_track".to_owned()) } else { None },
     };
     crate::cdflow::conclude(store, cd, user_id, job_id, &meta, &set, root, kind, cover, staged, reserve, extra).await.map(|_| ()).map_err(|r| r.1)
+}
+
+/// Waits (at most 5 s) while the drive is held by a rip whose job has ended (any state but `ripping` and `ripped`): it is cleaning up.
+async fn wait_for_a_finished_rip(store: &Store, cd: &CdService, device: &str) {
+    for _ in 0..100 {
+        let Some(job_id) = cd.drives.lock().running.get(device).copied() else { return };
+        let ended = matches!(store.cd_job_any(job_id).await, Ok(Some(j)) if !matches!(j.cd_state.as_str(), "ripping" | "ripped"));
+        if !ended {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
 }
 
 /// The rip of `job_id` lets go of the drive (only its own entry: a rip started since keeps its own).
