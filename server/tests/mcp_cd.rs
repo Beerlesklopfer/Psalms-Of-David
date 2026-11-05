@@ -361,4 +361,19 @@ async fn the_start_makes_a_job_the_album_with_the_titles_and_a_log_entry_and_a_s
     assert!(found.is_some(), "the album is in the library");
     let log = e.store.tag_changes(0, 10).await.unwrap();
     assert!(log.iter().any(|c| c.field == "CdRip" && c.token_name == "llm" && c.new_value.contains(&format!("job {id}"))), "{log:?}");
+
+    // The same disc again: it is in the library, so a start is refused; with force it would be read as a new copy.
+    insert(&e, 3).await;
+    let (err, msg) = tool(&e, &e.admin_token, "cd_rip", rip_args(false)).await;
+    assert!(err && msg.to_string().contains("disc_present"), "{msg}");
+    // A CD filed under a wrong name: read again under the right one, beside the old album, which then goes aside.
+    let mut args = rip_args(true);
+    args["title"] = json!("Sturz der Titanen (richtig)");
+    args["force"] = json!(true);
+    let (err, plan) = tool(&e, &e.admin_token, "cd_rip", args.clone()).await;
+    assert!(!err && plan["would_start"] == true && plan["refusal"].is_null(), "{plan}");
+    args["force"] = json!(false);
+    args["dry_run"] = json!(false);
+    let (err, msg) = tool(&e, &e.admin_token, "cd_rip", args).await;
+    assert!(err && msg.to_string().contains("disc_present"), "without force: {msg}");
 }

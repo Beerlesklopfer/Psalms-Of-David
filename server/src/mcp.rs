@@ -205,6 +205,7 @@ fn tool_list() -> Value {
                 "mbid": { "type": "string", "description": "MusicBrainz release id (from cd_drive), for the cover" },
                 "year": { "type": "integer", "description": "Year of the release (four digits, from the cover or from cd_drive), written into the tags of every file" },
                 "cover_photo": { "type": "integer", "description": "The number of a photo of this disc (get_photos) that becomes the cover: the front of the case" },
+                "force": { "type": "boolean", "description": "Import although the CD is in the library already (refusal disc_present): a new copy beside the old one, nothing is overwritten. For a CD that was filed wrongly: rip it again with force, then put the old album aside with quarantine_duplicates (dry run first). Default false" },
                 "barcode": { "type": "string", "description": "EAN/UPC from the back of the case (EAN-8, UPC-A, EAN-13 or GTIN-14; the check digit must be right, else invalid_barcode), written into the tags of every file. Without it the EAN of the MusicBrainz release (mbid) is taken, if it has one" },
                 "eject": { "type": "boolean", "description": "Open the tray when done (default: the setting)" },
                 "only_tracks": { "type": "array", "items": { "type": "integer" }, "description": "Track numbers on the disc to read; default all" },
@@ -1030,7 +1031,7 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 only,
                 resume: None,
                 mode: None,
-                force: false,
+                force: args.get("force").and_then(Value::as_bool).unwrap_or(false),
                 auto: false,
                 starter_device: String::new(),
             };

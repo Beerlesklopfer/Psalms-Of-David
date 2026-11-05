@@ -97,6 +97,15 @@ fn same_recording(a: Option<&Vec<i64>>, b: Option<&Vec<i64>>) -> bool {
     }
 }
 
+/// One album is a CD of the other: its tracks (at least three) come one after another, each within a second, among the tracks of the other,
+/// which has more. A CD that was filed on its own under a wrong name and was read again into its work (2026-11-05: CD 1 of "Best of Classic"
+/// as "The Masterpiece Collection: Classics").
+fn one_cd_of(a: Option<&Vec<i64>>, b: Option<&Vec<i64>>) -> bool {
+    let (Some(a), Some(b)) = (a, b) else { return false };
+    let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    short.len() >= 3 && short.len() < long.len() && long.windows(short.len()).any(|w| w.iter().zip(short).all(|(x, y)| (x - y).abs() <= 1))
+}
+
 /// The groups, found by title and also by the combination of the tracks and their lengths.
 pub fn find_with_tracks(all: &[AdminBookRow], rules: &[crate::ignore::Rule], tracks: &Tracks) -> Vec<Group> {
     let rows: Vec<AdminBookRow> = all.iter().filter(|r| !crate::ignore::ignored(rules, r, crate::ignore::DUPLICATE)).cloned().collect();
@@ -113,7 +122,8 @@ pub fn find_with_tracks(all: &[AdminBookRow], rules: &[crate::ignore::Rule], tra
     }
     for i in 0..rows.len() {
         for j in i + 1..rows.len() {
-            if alike(&keys[i], &keys[j]) || same_recording(tracks.get(&rows[i].id), tracks.get(&rows[j].id)) {
+            let (ti, tj) = (tracks.get(&rows[i].id), tracks.get(&rows[j].id));
+            if alike(&keys[i], &keys[j]) || same_recording(ti, tj) || one_cd_of(ti, tj) {
                 let (a, b) = (root(&mut parent, i), root(&mut parent, j));
                 parent[a] = b;
             }
@@ -276,6 +286,19 @@ mod tests {
         // Too few tracks prove nothing.
         let two: Tracks = [(1, vec![200, 310]), (2, vec![200, 310])].into_iter().collect();
         assert!(find_with_tracks(&rows[..2], &[], &two).is_empty());
+    }
+
+    #[test]
+    fn an_album_that_is_one_cd_of_another_is_found_as_a_possible_copy() {
+        let rows = vec![row(1, "The Masterpiece Collection: Classics", "Various Artists", None, 16), row(2, "Best of Classic, Vol. 1", "Various Artists", None, 32), row(3, "Anderes", "X", None, 16)];
+        let cd1 = vec![84, 387, 207, 118, 449, 110, 170, 148];
+        let mut work = vec![85, 388, 207, 118, 450, 111, 170, 149];
+        work.extend([422, 58, 149, 43, 145, 201, 308, 96]);
+        let tracks: Tracks = [(1, cd1), (2, work), (3, vec![84, 999, 207, 118, 449, 110, 170, 148])].into_iter().collect();
+        let groups = find_with_tracks(&rows, &[], &tracks);
+        assert_eq!(groups.iter().map(|g| g.books.iter().map(|b| b.id).collect::<Vec<_>>()).collect::<Vec<_>>(), vec![vec![1, 2]], "{groups:?}");
+        assert_eq!(groups[0].confidence, "possible", "a person decides which goes");
+        assert!(!one_cd_of(Some(&vec![1, 2, 3]), Some(&vec![1, 2, 3])), "the same length is same_recording, not a CD of it");
     }
 
     #[test]
