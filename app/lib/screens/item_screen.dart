@@ -161,15 +161,42 @@ extension on ItemScreen {
   }
 }
 
+/// One album in a list (the hits of the search, a scanned barcode): its cover, its title and a line below it, and the download of
+/// the album page. A tap opens the album (or does [onTap]); a long press offers hiding, as the cards of the library do.
+class AlbumTile extends StatelessWidget {
+  const AlbumTile({super.key, required this.book, this.title, this.subtitle, this.onTap});
+
+  final LibraryItem book;
+
+  /// The title to show; the album's own when null (a barcode answer names the release as the server has it).
+  final String? title;
+
+  /// The line below the title; the author when null.
+  final String? subtitle;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    leading: SizedBox.square(dimension: 48, child: Cover(book: book)),
+    title: Text(title ?? book.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+    subtitle: Text(subtitle ?? book.author, maxLines: 1, overflow: TextOverflow.ellipsis),
+    trailing: DownloadButton(book: book),
+    onTap: onTap ?? () => openItem(context, book),
+    onLongPress: () => showHideSheet(context, book),
+  );
+}
+
 /// One track: tap plays it (or says that this platform cannot), with its labels, the played mark, its length and "add to playlist".
-/// The same tile serves the page of the album and the hits of the search; there ([inSearch]) it shows the cover and the album, and a
-/// button leads to the album.
+/// The same tile serves the page of the album, the hits of the search and the chapters of the player. In the search ([inSearch]) it
+/// shows the cover and the album, and a button leads to the album; in the player ([inPlayer]) it counts through the whole album and
+/// names the disc with the title.
 class TrackTile extends StatelessWidget {
-  const TrackTile({super.key, required this.book, required this.track, this.inSearch = false});
+  const TrackTile({super.key, required this.book, required this.track, this.inSearch = false, this.inPlayer = false});
 
   final LibraryItem book;
   final Track track;
   final bool inSearch;
+  final bool inPlayer;
 
   @override
   Widget build(BuildContext context) {
@@ -187,12 +214,12 @@ class TrackTile extends StatelessWidget {
               width: 28,
               child: active
                   ? Icon(Icons.graphic_eq, color: cs.primary)
-                  : Text('${track.number}', textAlign: TextAlign.end),
+                  : Text('${inPlayer ? index + 1 : track.number}', textAlign: TextAlign.end),
             ),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(track.title),
+          Text(inPlayer ? AppLocalizations.of(context).discTrack(track.disc, track.title) : track.title),
           if (inSearch) Text('${book.title} · ${book.author}', style: Theme.of(context).textTheme.bodySmall),
           TrackLabels(book: book, track: track),
         ],

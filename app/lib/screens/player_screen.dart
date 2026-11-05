@@ -7,6 +7,7 @@ import '../l10n/app_localizations.dart';
 import '../player_controller.dart';
 import '../stream_info_card.dart';
 import '../widgets.dart';
+import 'item_screen.dart';
 
 
 class PlayerScreen extends StatelessWidget {
@@ -156,24 +157,8 @@ class PlayerScreen extends StatelessWidget {
                 ],
               ),
               SectionHeader(l.sectionChapters),
-              for (final (i, t) in book.tracks.indexed)
-                ListTile(
-                  dense: true,
-                  selected: i == p.trackIndex,
-                  selectedColor: cs.primary,
-                  leading: SizedBox(
-                    width: 28,
-                    child: i == p.trackIndex
-                        ? Icon(Icons.graphic_eq, color: cs.primary)
-                        : Text('${i + 1}', textAlign: TextAlign.end),
-                  ),
-                  title: Text(l.discTrack(t.disc, t.title)),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if (p.isTrackPlayed(book, i)) ...const [PlayedMark(), SizedBox(width: 8)],
-                    Text(formatDuration(t.length)),
-                  ]),
-                  onTap: () => p.open(book, track: i),
-                ),
+              // The tile of the album page (it checks the format, and has the labels and "add to playlist").
+              for (final t in book.tracks) TrackTile(book: book, track: t, inPlayer: true),
               const SizedBox(height: 24),
             ],
           ),

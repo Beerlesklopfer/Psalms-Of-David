@@ -794,7 +794,6 @@
   "barcodeInvalid": "Das ist kein gültiger Barcode. Prüfe die Ziffern.",
   "barcodeOfflineNotFound": "Die Bibliothek auf diesem Gerät hat es nicht. Der Server wurde nicht gefragt, weil du offline bist.",
   "barcodeLookupFailed": "Der Server konnte nicht gefragt werden. Versuche es später noch einmal.",
-  "barcodeOpen": "Öffnen",
   "barcodeScanHint": "Halte den Barcode der CD vor die Kamera",
   "barcodeTypeHint": "Oder tippe die Ziffern unter dem Barcode ein:",
   "inboxTitle": "CD-Eingang",

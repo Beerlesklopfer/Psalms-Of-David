@@ -11,6 +11,7 @@ import 'package:psalm/models.dart';
 import 'package:psalm/offline/offline_controller.dart';
 import 'package:psalm/player_controller.dart';
 import 'package:psalm/screens/barcode_scan_screen.dart';
+import 'package:psalm/screens/item_screen.dart';
 import 'package:psalm/server/api_client.dart';
 
 import 'barcode_api_test.dart' show barcodeServer;
@@ -87,6 +88,7 @@ void main() {
     expect(find.text('Server album'), findsOneWidget);
     expect(find.text('Unknown here'), findsOneWidget);
     expect(find.byKey(const Key('barcode-open-2')), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('barcode-open-2')), matching: find.byType(DownloadButton)), findsOneWidget, reason: 'the download of the album page');
     expect(find.byKey(const Key('barcode-open-99')), findsNothing);
   });
 

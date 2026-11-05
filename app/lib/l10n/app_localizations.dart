@@ -3518,12 +3518,6 @@ abstract class AppLocalizations {
   /// **'The server could not be asked. Try again later.'**
   String get barcodeLookupFailed;
 
-  /// No description provided for @barcodeOpen.
-  ///
-  /// In en, this message translates to:
-  /// **'Open'**
-  String get barcodeOpen;
-
   /// No description provided for @barcodeScanHint.
   ///
   /// In en, this message translates to:

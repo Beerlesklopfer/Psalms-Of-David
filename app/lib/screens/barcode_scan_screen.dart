@@ -12,6 +12,7 @@ import '../models.dart';
 import '../player_controller.dart';
 import '../server/api_client.dart';
 import '../widgets.dart';
+import 'item_screen.dart';
 import 'qr_scan_screen.dart';
 
 /// Opens a book; a parameter so that a test need not build the book screen.
@@ -358,17 +359,21 @@ class _ResultSheet extends StatelessWidget {
   Widget _row(BuildContext context, AppLocalizations l, _Hit h) {
     final book = h.book;
     final kind = h.kind == 'music' ? l.cdKindMusic : l.cdKindAudiobook;
+    // An album of this device: the tile of the search, with the download; a tap opens it.
+    if (book != null) {
+      return AlbumTile(
+        key: ValueKey('barcode-open-${book.id}'),
+        book: book,
+        title: h.title,
+        subtitle: h.creator.isEmpty ? kind : '${h.creator} · $kind',
+        onTap: () => onOpen(book),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          SizedBox(
-            width: 56,
-            height: 56,
-            child: book == null
-                ? const Icon(Icons.album_outlined, size: 40)
-                : Cover(book: book),
-          ),
+          const SizedBox(width: 56, height: 56, child: Icon(Icons.album_outlined, size: 40)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -389,12 +394,6 @@ class _ResultSheet extends StatelessWidget {
               ],
             ),
           ),
-          if (book != null)
-            TextButton(
-              key: ValueKey('barcode-open-${book.id}'),
-              onPressed: () => onOpen(book),
-              child: Text(l.barcodeOpen),
-            ),
         ],
       ),
     );

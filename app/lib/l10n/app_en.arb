@@ -1118,7 +1118,6 @@
   "barcodeInvalid": "This is not a valid barcode. Check the digits.",
   "barcodeOfflineNotFound": "The library on this device does not have it. The server was not asked, because you are offline.",
   "barcodeLookupFailed": "The server could not be asked. Try again later.",
-  "barcodeOpen": "Open",
   "barcodeScanHint": "Hold the barcode of the CD in front of the camera",
   "barcodeTypeHint": "Or type the digits below the barcode:",
   "inboxTitle": "CD inbox",

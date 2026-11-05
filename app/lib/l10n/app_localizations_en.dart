@@ -2048,9 +2048,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'The server could not be asked. Try again later.';
 
   @override
-  String get barcodeOpen => 'Open';
-
-  @override
   String get barcodeScanHint =>
       'Hold the barcode of the CD in front of the camera';
 

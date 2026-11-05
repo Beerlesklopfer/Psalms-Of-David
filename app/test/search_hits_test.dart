@@ -6,6 +6,7 @@ import 'package:psalm/l10n/app_localizations.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
 import 'package:psalm/screens/item_screen.dart';
+import 'package:psalm/screens/player_screen.dart';
 import 'package:psalm/screens/search_screen.dart';
 
 final _album = LibraryItem(
@@ -20,13 +21,13 @@ final _album = LibraryItem(
   ],
 );
 
-Widget _app(PlayerController p) => PlayerScope(
+Widget _app(PlayerController p, {Widget home = const SearchScreen()}) => PlayerScope(
   controller: p,
   child: MaterialApp(
     locale: const Locale('en'),
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
-    home: const Scaffold(body: SearchScreen()),
+    home: Scaffold(body: home),
   ),
 );
 
@@ -47,6 +48,17 @@ void main() {
     await tester.pumpWidget(_app(PlayerController([_album])));
     await tester.enterText(find.byType(TextField), 'gebet');
     await tester.pump();
-    expect(find.byType(DownloadButton), findsOneWidget);
+    expect(find.descendant(of: find.byType(AlbumTile), matching: find.byType(DownloadButton)), findsOneWidget);
+  });
+
+  testWidgets('the chapters of the player are the tiles of the album page, counted through and with the disc', (tester) async {
+    tester.view.physicalSize = const Size(800, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final p = PlayerController([_album]);
+    await tester.pumpWidget(_app(p, home: const PlayerScreen()));
+    expect(find.byType(TrackTile), findsNWidgets(2));
+    expect(find.descendant(of: find.byType(TrackTile).last, matching: find.text('2')), findsOneWidget);
+    p.dispose();
   });
 }

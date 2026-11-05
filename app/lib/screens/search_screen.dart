@@ -227,14 +227,7 @@ class _SearchScreenState extends State<SearchScreen> {
               itemCount: found.albums.length,
               itemBuilder: (context, i) {
                 final b = found.albums[i];
-                return ListTile(
-                  leading: SizedBox.square(dimension: 48, child: Cover(book: b)),
-                  title: Text(b.title),
-                  subtitle: Text(b.author),
-                  // The same download as on the page of the album.
-                  trailing: DownloadButton(book: b),
-                  onTap: () => openItem(context, b),
-                );
+                return AlbumTile(book: b);
               },
             ),
           ],
