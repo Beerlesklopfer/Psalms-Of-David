@@ -1863,7 +1863,7 @@ pub async fn cd_settings_save(State(state): State<AppState>, s: AdminSession, Fo
     finish(&s, "/admin/settings?tab=cdimport", outcome)
 }
 
-/// Saves the rules of the phone backup (tab "Phone backup"). Nothing is saved if one value is refused.
+/// Saves the rules of the photo backup (tab "Photo backup"). Nothing is saved if one value is refused.
 pub async fn photo_settings_save(State(state): State<AppState>, s: AdminSession, Form(f): Form<HashMap<String, String>>) -> Response {
     let outcome = async {
         let mut values = Vec::new();
@@ -1878,7 +1878,7 @@ pub async fn photo_settings_save(State(state): State<AppState>, s: AdminSession,
         }
         if refused.is_empty() {
             state.store.save_settings(&values).await?;
-            tracing::info!(by = s.user_id, "phone backup settings saved");
+            tracing::info!(by = s.user_id, "photo backup settings saved");
         }
         Ok(state.ui.settings_photos_fragment(&state.store, view(&s), refused.is_empty(), &refused).await?)
     }
@@ -2764,7 +2764,7 @@ pub async fn profile_language(State(state): State<AppState>, s: Session, Form(f)
     }
 }
 
-/// The phone backup of the signed-in person (the section of the profile page). A choice the server does not allow is refused, and then
+/// The photo backup of the signed-in person (the section of the profile page). A choice the server does not allow is refused, and then
 /// nothing is saved.
 pub async fn profile_photos(State(state): State<AppState>, s: Session, Form(f): Form<HashMap<String, String>>) -> Response {
     let outcome = async {
@@ -2776,25 +2776,25 @@ pub async fn profile_photos(State(state): State<AppState>, s: Session, Form(f): 
         Ok(refused) if refused.is_empty() => back_to_profile("ok.photo_saved"),
         Ok(_) => back_to_profile("err.photo_refused"),
         Err(e) => {
-            tracing::error!(error = %e, "cannot save the phone backup settings");
+            tracing::error!(error = %e, "cannot save the photo backup settings");
             back_to_profile("err.server")
         }
     }
 }
 
-/// The page of the phone backup of one person, for an administrator.
+/// The page of the photo backup of one person, for an administrator.
 pub async fn user_photos_page(State(state): State<AppState>, s: AdminSession, axum::extract::Path(id): axum::extract::Path<i64>, Query(q): Query<PageQuery>) -> Response {
     match state.ui.user_photos(&state.store, view_for(&s, &q), id).await {
         Ok(Some(html)) => Html(html).into_response(),
         Ok(None) => plain_failure(StatusCode::NOT_FOUND, "err.not_found", s.lang, false),
         Err(e) => {
-            tracing::error!(error = %e, "the phone backup page of a person failed");
+            tracing::error!(error = %e, "the photo backup page of a person failed");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
 }
 
-/// Saves the phone backup of one person, set by an administrator (for a child the way to switch it on).
+/// Saves the photo backup of one person, set by an administrator (for a child the way to switch it on).
 pub async fn user_photos_save(State(state): State<AppState>, s: AdminSession, Form(f): Form<HashMap<String, String>>) -> Response {
     let Some(id) = f.get("id").and_then(|v| v.parse::<i64>().ok()) else { return plain_failure(StatusCode::UNPROCESSABLE_ENTITY, "err.invalid_input", s.lang, false) };
     let outcome = async {
@@ -2805,13 +2805,13 @@ pub async fn user_photos_save(State(state): State<AppState>, s: AdminSession, Fo
     let back = |msg: &str| Redirect::to(&format!("/admin/users/{id}/photos?msg={msg}")).into_response();
     match outcome {
         Ok(Some(refused)) if refused.is_empty() => {
-            tracing::info!(by = s.user_id, profile = id, "phone backup of a person set by an administrator");
+            tracing::info!(by = s.user_id, profile = id, "photo backup of a person set by an administrator");
             back("ok.photo_saved")
         }
         Ok(Some(_)) => back("err.photo_refused"),
         Ok(None) => plain_failure(StatusCode::NOT_FOUND, "err.not_found", s.lang, false),
         Err(e) => {
-            tracing::error!(error = %e, "cannot save the phone backup of a person");
+            tracing::error!(error = %e, "cannot save the photo backup of a person");
             back("err.server")
         }
     }

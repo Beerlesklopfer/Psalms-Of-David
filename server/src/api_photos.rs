@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The phone backup for the apps (docs/spec-photo-sync.md, section 4), under `/api/v1/photos`: the settings of the profile of the device.
+//! The photo backup for the apps (docs/spec-photo-sync.md, section 4), under `/api/v1/photos`: the settings of the profile of the device.
 //! While the server has the backup off every route answers `404 photo_sync_off`, so the app offers nothing; a guest gets `403 no_guests`.
 //!
 //! | Request | Answer |

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The phone backup of the apps (`/api/v1/photos`): the settings of the profile within the rules of the server.
+//! The photo backup of the apps (`/api/v1/photos`): the settings of the profile within the rules of the server.
 
 mod common;
 
@@ -74,7 +74,7 @@ async fn member(a: &Api, name: &str, n: u8) -> (i64, String) {
 }
 
 #[tokio::test]
-async fn the_app_reads_and_sets_the_phone_backup_within_the_rules_of_the_server() {
+async fn the_app_reads_and_sets_the_photo_backup_within_the_rules_of_the_server() {
     let a = api().await;
     let (anna, token) = member(&a, "Anna", 1).await;
     // Off on the server: the app offers nothing.

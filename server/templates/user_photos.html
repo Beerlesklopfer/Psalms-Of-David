@@ -4,7 +4,7 @@
 {% block title %}{{ t("settings.tab.photos") }}: {{ who.name }}{% endblock %}
 
 {% block content %}
-{#- The phone backup of one person, set by an administrator: for a child the only way to switch it on when the server says so. -#}
+{#- The photo backup of one person, set by an administrator: for a child the only way to switch it on when the server says so. -#}
 <h1>{{ t("settings.tab.photos") }}: {{ who.name }}</h1>
 <p class="unit"><a href="/admin/users">{{ t("photo.admin.back") }}</a> &middot; <a href="/admin/settings?tab=photos">{{ t("photo.admin.rules") }}</a></p>
 {% if not photo.server_on %}<p class="form-error" role="note">{{ t("photo.why.server_off") }}</p>{% endif %}

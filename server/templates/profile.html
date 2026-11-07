@@ -57,7 +57,7 @@
 </form>
 
 {% if photo %}{% from "fragments/choice.html" import choice %}
-{#- The phone backup of this person: the rules of the server lock what it does not allow, and the reason stands under the option. -#}
+{#- The photo backup of this person: the rules of the server lock what it does not allow, and the reason stands under the option. -#}
 <form class="card settings-form" id="photo-mine" method="post" action="/profile/photos?csrf={{ csrf }}">
   <fieldset class="line-group">
     <legend>{{ t("photo.group.mine") }}</legend>

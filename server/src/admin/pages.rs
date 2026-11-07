@@ -828,7 +828,7 @@ impl AdminUi {
     /// what they are listening to, their hours), the picture and the PIN.
     pub async fn profile<'a>(&self, store: &Store, view: impl Into<View<'a>>, user_id: i64) -> Result<String> {
         let dash = personal_dashboard(store, user_id).await?;
-        // The phone backup only once the server has it switched on, and never for a guest.
+        // The photo backup only once the server has it switched on, and never for a guest.
         let role = store.profile_by_id(user_id).await?.map(|p| p.role).unwrap_or_default();
         let photo = crate::photo_settings::profile_view(store, user_id, &role, true).await?;
         let photo = (photo["server_on"] == true && role != "guest").then_some(photo);
@@ -838,7 +838,7 @@ impl AdminUi {
         )
     }
 
-    /// The phone backup of one person, as an administrator sets it; `None` if there is no such person or it is a guest.
+    /// The photo backup of one person, as an administrator sets it; `None` if there is no such person or it is a guest.
     pub async fn user_photos<'a>(&self, store: &Store, view: impl Into<View<'a>>, id: i64) -> Result<Option<String>> {
         let Some(who) = store.profile_by_id(id).await?.filter(|p| p.role != "guest") else { return Ok(None) };
         let photo = crate::photo_settings::profile_view(store, id, &who.role, false).await?;
@@ -1121,7 +1121,7 @@ impl AdminUi {
         self.render("settings.html", ctx)
     }
 
-    /// The tab "Phone backup" alone, as the answer to saving it; a refused value is shown as it was typed, with the reason.
+    /// The tab "Photo backup" alone, as the answer to saving it; a refused value is shown as it was typed, with the reason.
     pub async fn settings_photos_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>, saved: bool, refused: &[(String, String, &'static str)]) -> Result<String> {
         let view: View<'a> = view.into();
         let cat = Catalog::new(view.lang);

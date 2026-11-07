@@ -9,7 +9,8 @@ profile page and the app API. Stage 2 (the storage and the upload) and stage 3 (
 books have since schema 0040: now that something in the library belongs to a family member, the pictures on a device can be copied to the
 server of the family and kept there, and that copy is the backup.
 
-**Name.** The feature is the **phone backup** (*Handy-Sicherung*; owner, 2026-11-07: "Es geht um eine Handy-Sicherung"). Its content is
+**Name.** The feature is the **photo backup** (*Bilder-Sicherung*; owner, 2026-11-07: first "Es geht um eine Handy-Sicherung", then the
+name "Bilder-Sicherung"; English "Photo backup"). Its content is
 photos and videos. Other things on a phone (contacts, documents, messenger folders) are not part of it unless the owner widens it.
 
 **Decisions of 2026-11-07** (section 8):
@@ -195,18 +196,20 @@ Tests with a fake device: an upload of a file, the same file again (not stored t
 second device of the same profile, a picture of another owner that is `404`, the disk reserve, the owner chosen by the token and never by the request, and the
 rule that a deleted picture on the device changes nothing on the server.
 
-## 10. Slideshow (requested 2026-11-07, not designed yet)
+## 10. Slideshow (requested 2026-11-07, decided, not built)
 
 The owner: "Die App soll auch eine Diashow mit gängigen Übergängen machen, um sie z.B. an einem Familienabend zu zeigen." The app shows the
-backed-up photos and videos as a slideshow with the usual transitions. It follows the same visibility as the pictures: a person sees their
-own, and a child's only when section 2 allows it.
+backed-up photos and videos as a slideshow.
 
-Questions to the owner before it is designed:
-1. Which transitions (crossfade, slide, zoom and pan in the manner of Ken Burns, cube, ...), and is one chosen for the whole show or at random?
-2. Background music from the library of David (a playlist, an album), and is the music the clock of the show (pictures change with the music)?
-3. Showing on the TV: fullscreen on a phone or tablet, Chromecast or AirPlay, the Linux desktop on a TV, or a page of the server opened in the
-   browser of the TV?
-4. Which devices: Android first like the backup, or every app?
-5. Whose pictures: only one's own, or a show of several people's pictures for the family evening? A shared show crosses the rule that pictures
-   never pass between people, so it would need the owner's explicit choice (like the shared albums of 8.5).
+Decisions of 2026-11-07:
+- **Transitions:** crossfade, slide, zoom and pan (in the manner of Ken Burns), and "mixed": a different one of the chosen ones for every picture.
+- **Music:** freely chosen from the library of David (an album or a playlist); the pictures change at the time set for the show, not with the music.
+- **Showing:** fullscreen on the phone or tablet (to the TV by cable or screen mirroring), **Chromecast** from the app, and the Linux desktop
+  app of Psalm in fullscreen on a computer at the TV.
+- **Whose pictures:** a show can hold the pictures of **several people** for the family evening. Since pictures otherwise never pass between
+  people, a person **shares** pictures for it on purpose (a shared album of 8.5 that the owner of each picture fills by choice). Nobody's picture
+  appears in another person's show without that choice; a child's only as section 2 allows.
 
+Still to design: the shared album (who may see it, who may add, how a person takes a picture back out), the settings of a show (time per
+picture, order: by date or shuffled, videos with their own sound or muted under the music), and how the Chromecast receiver gets the pictures
+(through the server, with a short-lived link per show, never a public address).

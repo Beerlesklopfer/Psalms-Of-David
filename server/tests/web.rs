@@ -5076,7 +5076,7 @@ fn david_server_test_ffmpeg() -> bool {
 }
 
 #[tokio::test]
-async fn the_phone_backup_tab_explains_every_option_and_a_refused_value_saves_nothing() {
+async fn the_photo_backup_tab_explains_every_option_and_a_refused_value_saves_nothing() {
     let a = app().await;
     let (cookie, csrf) = sign_in(&a).await;
     let plain = Opts { cookie: Some(&cookie), ..Default::default() };
@@ -5086,10 +5086,10 @@ async fn the_phone_backup_tab_explains_every_option_and_a_refused_value_saves_no
         assert!(tab.contains(&format!("name=\"{key}\"")), "{key}: {tab}");
     }
     // Every option has its own explanation, all in the page (the script shows the chosen one); the default is chosen.
-    assert!(tab.contains("data-choice-for=\"off\" data-chosen") && tab.contains("The phone backup is off.") && tab.contains("The phone backup is on."), "{tab}");
+    assert!(tab.contains("data-choice-for=\"off\" data-chosen") && tab.contains("The photo backup is off.") && tab.contains("The photo backup is on."), "{tab}");
     assert!(tab.contains("Backup only") && tab.contains("Backup and sync") && tab.contains("that is what makes it a backup"), "{tab}");
     let de = send(&a, get("/admin/settings?tab=photos", &Opts { lang: Some("de"), ..plain })).await.body;
-    assert!(de.contains("Handy-Sicherung") && de.contains("Sicherung und Abgleich"), "{de}");
+    assert!(de.contains("Bilder-Sicherung") && de.contains("Sicherung und Abgleich"), "{de}");
 
     let r = send(&a, post("/admin/rpc/settings.photos", &form(&[("photo_sync", "on"), ("photo_modes", "both"), ("photo_max_file_mb", "4096")]), &o)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
@@ -5104,7 +5104,7 @@ async fn the_phone_backup_tab_explains_every_option_and_a_refused_value_saves_no
 }
 
 #[tokio::test]
-async fn a_person_chooses_their_phone_backup_only_within_the_rules_of_the_server() {
+async fn a_person_chooses_their_photo_backup_only_within_the_rules_of_the_server() {
     let a = app().await;
     let (anna, cookie, csrf) = member_session(&a).await;
     let o = Opts { cookie: Some(&cookie), ..Default::default() };
@@ -5128,12 +5128,12 @@ async fn a_person_chooses_their_phone_backup_only_within_the_rules_of_the_server
     let mine = a.store.profile_photo_settings(anna).await.unwrap();
     assert!(mine.enabled && mine.network == "any" && mine.charging == "always" && mine.mode == "uni");
     let page = send(&a, get("/profile", &o)).await.body;
-    assert!(page.contains("Your phone backup is on") && page.contains("data-choice-for=\"any\" data-chosen") && page.contains("Large videos can use up"), "{page}");
+    assert!(page.contains("Your photo backup is on") && page.contains("data-choice-for=\"any\" data-chosen") && page.contains("Large videos can use up"), "{page}");
     assert!(!page.contains("name=\"parent_view\""), "only a child has the choice whether parents may look");
 }
 
 #[tokio::test]
-async fn only_an_administrator_switches_on_the_phone_backup_of_a_child_and_the_child_sees_it() {
+async fn only_an_administrator_switches_on_the_photo_backup_of_a_child_and_the_child_sees_it() {
     let a = app().await;
     let (cookie, csrf) = sign_in(&a).await;
     let admin = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), ..Default::default() };
@@ -5162,7 +5162,7 @@ async fn only_an_administrator_switches_on_the_phone_backup_of_a_child_and_the_c
     let s = a.store.profile_photo_settings(kim).await.unwrap();
     assert!(s.enabled && s.parent_view);
     // The child sees that it is on, and may switch it off.
-    assert!(send(&a, get("/profile", &ko)).await.body.contains("Your phone backup is on"));
+    assert!(send(&a, get("/profile", &ko)).await.body.contains("Your photo backup is on"));
     let r = send(&a, post("/profile/photos", &form(&[("csrf", &csrf_token(&token)), ("enabled", "off")]), &ko)).await;
     assert_eq!(r.header("location"), Some("/profile?msg=ok.photo_saved"));
     // A guest has no such page.
