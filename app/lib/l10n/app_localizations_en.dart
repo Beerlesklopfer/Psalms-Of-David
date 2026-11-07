@@ -2909,4 +2909,8 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get photoErrNoTrash =>
       'Deleting into the trash is not switched on for your profile.';
+
+  @override
+  String get photoIosHint =>
+      'On the iPhone and iPad, iOS decides when the backup runs in the background: mostly at night while the device charges, and not after the app was swiped away in the app switcher. \"Back up now\" sends at once.';
 }

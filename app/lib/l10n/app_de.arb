@@ -1015,5 +1015,6 @@
   "photoAskTrashNo": "Nein, auf dem Server behalten",
   "photoRunTrashed": "{count} in den Papierkorb.",
   "photoErrBusy": "Eine Sicherung läuft; versuche es gleich noch einmal.",
-  "photoErrNoTrash": "Löschen in den Papierkorb ist für dein Profil nicht eingeschaltet."
+  "photoErrNoTrash": "Löschen in den Papierkorb ist für dein Profil nicht eingeschaltet.",
+  "photoIosHint": "Auf iPhone und iPad entscheidet iOS, wann die Sicherung im Hintergrund läuft: meist nachts, während das Gerät lädt, und nicht mehr, wenn die App im App-Umschalter weggewischt wurde. „Jetzt sichern“ schickt sofort."
 }

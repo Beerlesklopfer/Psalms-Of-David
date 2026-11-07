@@ -324,6 +324,10 @@ class _DeviceCard extends StatelessWidget {
             ),
           const SizedBox(height: 8),
         ],
+        if (Theme.of(context).platform == TargetPlatform.iOS) ...[
+          Text(l.photoIosHint, key: const ValueKey('photo-ios-hint'), style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+          const SizedBox(height: 8),
+        ],
         if (c.running) ...[
           LinearProgressIndicator(value: c.total == 0 ? null : c.done / c.total),
           const SizedBox(height: 6),

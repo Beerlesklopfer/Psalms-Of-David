@@ -2,6 +2,7 @@ import Flutter
 import Intents
 import UIKit
 import UserNotifications
+import workmanager_apple
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -10,6 +11,7 @@ import UserNotifications
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     excludeAppFilesFromBackup()
+    registerPhotoBackup()
     // The notifications of the app (new media, the CD inbox: flutter_local_notifications) show while the app is in front too.
     UNUserNotificationCenter.current().delegate = self as? UNUserNotificationCenterDelegate
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
@@ -31,6 +33,15 @@ import UserNotifications
     } else {
       completionHandler(INIntentResponse())
     }
+  }
+
+  /// The photo backup in the background (docs/spec-photo-sync.md, section 5): the task must be known to iOS before the app has finished
+  /// launching, and the background engine needs the plugins (photo_manager, path_provider, connectivity_plus).
+  private func registerPhotoBackup() {
+    WorkmanagerPlugin.setPluginRegistrantCallback { registry in
+      GeneratedPluginRegistrant.register(with: registry)
+    }
+    WorkmanagerPlugin.registerBGProcessingTask(withIdentifier: "david-photo-backup")
   }
 
   /// The pairing (server address, certificate, token) and the downloaded parts live in

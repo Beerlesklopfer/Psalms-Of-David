@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'dart:io';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
 
@@ -19,8 +20,22 @@ const kPhotoJob = 'david-photo-backup';
 /// How often the system starts the job, at most (it waits for the conditions: Wi-Fi, charging).
 const kPhotoJobEvery = Duration(hours: 1);
 
-/// The background job: Android only (iOS later, the desktop has no camera roll).
-bool get photoBackupSupported => !kIsWeb && Platform.isAndroid;
+/// The background job: Android and iOS (the desktop has no camera roll).
+bool get photoBackupSupported => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
+/// iOS runs the job when it decides (a "processing" task, mostly at night while charging), and once each time: it is asked for again after
+/// every run. It knows "any network" only, so "Wi-Fi only" is checked here.
+bool get _ios => !kIsWeb && Platform.isIOS;
+
+/// The device is on Wi-Fi or a cable (iOS; Android has the condition in WorkManager).
+Future<bool> _onWifi() async {
+  try {
+    final kinds = await Connectivity().checkConnectivity();
+    return kinds.contains(ConnectivityResult.wifi) || kinds.contains(ConnectivityResult.ethernet);
+  } on Object {
+    return false;
+  }
+}
 
 /// The entry point of the job, in an isolate of its own without the app: it reads the pairing and runs the backup once.
 @pragma('vm:entry-point')
@@ -32,8 +47,17 @@ void photoBackupDispatcher() {
     if (creds == null) return true;
     final client = ApiClient(address: creds.address, fingerprint: creds.fingerprint, ca: creds.ca, token: creds.token);
     final store = PhotoDeviceStore.standard();
-    final sync = running = PhotoSync(api: ServerPhotoBackupApi(client), library: DevicePhotoLibrary(background: true), store: store);
+    final api = ServerPhotoBackupApi(client);
+    final sync = running = PhotoSync(api: api, library: DevicePhotoLibrary(background: true), store: store);
     try {
+      if (_ios) {
+        // Not on Wi-Fi while the profile wants it: only ask for the next time.
+        final settings = await api.settings().catchError((Object _) => null);
+        if (settings != null && settings.wifiOnly && !await _onWifi()) {
+          await schedulePhotoBackup(settings, store.loadSettings(), store);
+          return true;
+        }
+      }
       final result = await sync.run();
       if (result.settings case final s?) await schedulePhotoBackup(s, store.loadSettings(), store);
       // A broken connection is tried again by WorkManager (with its backoff); everything else waits for the next period.
@@ -57,8 +81,16 @@ Future<void> schedulePhotoBackup(PhotoSettings settings, PhotoDeviceSettings dev
   final on = settings.active && device.enabled;
   final wanted = on ? 'wifi=${settings.wifiOnly},charging=${settings.chargingOnly}' : 'off';
   final state = store.load();
-  if (state.constraints == wanted) return;
-  if (on) {
+  // On iOS the task runs once per request: it is asked for again every time.
+  if (state.constraints == wanted && !(on && _ios)) return;
+  if (on && _ios) {
+    await Workmanager().registerProcessingTask(
+      kPhotoJob,
+      kPhotoJob,
+      initialDelay: kPhotoJobEvery,
+      constraints: Constraints(networkType: NetworkType.connected, requiresCharging: settings.chargingOnly),
+    );
+  } else if (on) {
     await Workmanager().registerPeriodicTask(
       kPhotoJob,
       kPhotoJob,

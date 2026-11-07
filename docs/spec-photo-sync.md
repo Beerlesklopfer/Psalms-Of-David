@@ -177,6 +177,11 @@ owner from the token, never from a request field.
 
 ## 5. The app
 
+- **iOS** (2026-11-08): the same screen and loop through `photo_manager` (`PHPhotoLibrary`; "camera only" leaves out the screenshots,
+  iOS has no folders), a `BGProcessingTask` `david-photo-backup` (Info.plist `BGTaskSchedulerPermittedIdentifiers`, `UIBackgroundModes`
+  `processing`, registered in `AppDelegate.swift`) with "charging" as `requiresExternalPower`; iOS knows no "Wi-Fi only", so the job checks
+  it itself before it sends. The task runs once per request and is asked for again after every run; iOS decides when (mostly at night
+  while charging, never after the app was swiped away), the screen says so. Received originals go into the library (no folder).
 - **Android** first (the pictures are in `MediaStore`; a `WorkManager` job with constraints: unmetered network, charging, battery not low), **iOS** later
   (`PHPhotoLibrary`, background tasks are less reliable: the sync also runs when the app is opened). The Linux desktop has no camera roll; a chosen folder
   can be backed up instead (setting).

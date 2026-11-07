@@ -251,6 +251,23 @@ void main() {
     expect(find.byKey(const ValueKey('photo-trash-empty')), findsOneWidget);
   });
 
+  testWidgets('on iOS the screen says that iOS decides when the backup runs in the background; elsewhere it does not', (tester) async {
+    final c = controller(_Api(), _Library());
+    await c.load();
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(platform: TargetPlatform.iOS),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: PhotoBackupScreen(controller: c),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('photo-ios-hint')), findsOneWidget);
+
+    await tester.pumpWidget(app(PhotoBackupScreen(key: const ValueKey('android'), controller: c)));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('photo-ios-hint')), findsNothing);
+  });
+
   testWidgets('with the backup off on the server the settings show no photo backup at all', (tester) async {
     final c = controller(_Api(off: true), _Library());
     await tester.pumpWidget(app(Scaffold(body: PhotoBackupCard(controller: c))));

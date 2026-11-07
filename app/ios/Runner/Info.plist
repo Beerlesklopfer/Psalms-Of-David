@@ -53,6 +53,13 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<!-- The photo backup: a BGProcessingTask that iOS starts when it decides, mostly at night while charging. -->
+		<string>processing</string>
+	</array>
+	<!-- The task of the photo backup (lib/photos/photo_background.dart kPhotoJob, registered in AppDelegate.swift). -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>david-photo-backup</string>
 	</array>
 	<!-- The server announces itself by mDNS (_david._tcp): without this entry iOS 14+ does not let the app browse for it. -->
 	<key>NSBonjourServices</key>
@@ -69,7 +76,10 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Psalms scans the QR code that pairs this device with your David server, takes your profile picture and photographs the case of a CD as the cover of its album.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Psalms reads a picture of the QR code that pairs this device with your David server, or a photo that you choose as your profile picture or as the cover of an album.</string>
+	<string>Psalms reads a picture of the QR code that pairs this device with your David server, or a photo that you choose as your profile picture or as the cover of an album. When you switch on the photo backup, Psalms copies your photos and videos to the David server of your family.</string>
+	<!-- The photo backup with "backup and sync": the pictures of the other devices of the person go into the library. -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Psalms puts the photos that your other devices backed up to your David server into your library, when you choose so in the photo backup.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

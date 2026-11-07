@@ -2941,4 +2941,8 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get photoErrNoTrash =>
       'Löschen in den Papierkorb ist für dein Profil nicht eingeschaltet.';
+
+  @override
+  String get photoIosHint =>
+      'Auf iPhone und iPad entscheidet iOS, wann die Sicherung im Hintergrund läuft: meist nachts, während das Gerät lädt, und nicht mehr, wenn die App im App-Umschalter weggewischt wurde. „Jetzt sichern“ schickt sofort.';
 }

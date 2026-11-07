@@ -48,7 +48,7 @@ class DevicePhotoLibrary extends PhotoLibrary {
       final assets = await all.getAssetListPaged(page: page, size: _page);
       for (final a in assets) {
         if (a.type != AssetType.image && a.type != AssetType.video) continue;
-        if (sources == 'camera' && !_fromCamera(a.relativePath)) continue;
+        if (sources == 'camera' && !_fromCamera(a)) continue;
         final mime = a.mimeType ?? await a.mimeTypeAsync ?? (a.type == AssetType.video ? 'video/mp4' : 'image/jpeg');
         out.add(_local(a, a.title ?? await a.titleAsync, mime));
       }
@@ -103,12 +103,17 @@ class DevicePhotoLibrary extends PhotoLibrary {
   }
 
   /// The camera folder (`DCIM/...`), without the screenshots that some devices keep there too. An older Android (before 10) gives no
-  /// folder: then the picture counts.
-  static bool _fromCamera(String? relativePath) {
+  /// folder: then the picture counts. iOS has no folders: everything but the screenshots (`PHAssetMediaSubtype.photoScreenshot`).
+  static bool _fromCamera(AssetEntity a) {
+    if (Platform.isIOS) return a.type != AssetType.image || a.subtype & _iosScreenshot == 0;
+    final relativePath = a.relativePath;
     if (relativePath == null || relativePath.isEmpty) return true;
     final p = relativePath.toLowerCase();
     return p.startsWith('dcim/') && !p.contains('screenshot');
   }
+
+  /// `PHAssetMediaSubtype.photoScreenshot`.
+  static const _iosScreenshot = 1 << 2;
 
   @override
   Future<void> cleanUp() => PhotoManager.clearFileCache();
