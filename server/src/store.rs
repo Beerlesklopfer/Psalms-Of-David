@@ -40,6 +40,9 @@ pub struct Store {
     pub(crate) data_dir: std::path::PathBuf,
     /// The transcoding to MP3, made at the first use (its limits are settings).
     transcoder: std::sync::Arc<tokio::sync::OnceCell<std::sync::Arc<crate::transcode::Transcoder>>>,
+    /// Held by an import run for its whole length and by every move of album folders (move_to_audiobooks, merge_albums, rename_album):
+    /// a scan that read a folder before it moved must not write the old place back afterwards (and its tidying then remove the album).
+    pub(crate) library_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
 }
 
 #[derive(Debug, Clone, FromQueryResult)]
@@ -325,7 +328,7 @@ impl Store {
         let db = Db::open(path).await?;
         let queue = WriteQueue::spawn(db.writer.clone(), COALESCE_WINDOW);
         let data_dir = path.parent().filter(|p| !p.as_os_str().is_empty()).map_or_else(|| std::path::PathBuf::from("."), std::path::Path::to_path_buf);
-        let store = Store { db, queue, access_cache: std::sync::Arc::default(), data_dir, transcoder: std::sync::Arc::default() };
+        let store = Store { db, queue, access_cache: std::sync::Arc::default(), data_dir, transcoder: std::sync::Arc::default(), library_lock: std::sync::Arc::default() };
         store.ensure_server_identity().await?;
         let open = store.unconfirmed_defaults().await?;
         if open > 0 {

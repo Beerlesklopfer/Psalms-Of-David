@@ -333,6 +333,7 @@ impl Store {
     }
 
     pub async fn run_import(&self) -> Result<ScanReport> {
+        let _library = self.library_lock.lock().await;
         let state = self.import_state().await?;
         if !state.enabled {
             return Err(Error::ImportLocked);

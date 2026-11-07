@@ -818,6 +818,29 @@ async fn cds_are_put_together_by_the_numbers_of_their_tags_or_by_numbers_given_a
 }
 
 #[tokio::test]
+async fn a_cd_whose_folder_is_the_folder_of_the_work_goes_into_cd_1_of_it() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let m = mcp().await;
+    let music = tempfile::TempDir::new().unwrap();
+    m.store.save_music_roots(&[music.path().display().to_string()]).await.unwrap();
+    make_mp3(&music.path().join("NORA/Schule/National Anthems/01.mp3"), &[("album", "National Anthems"), ("artist", "Various"), ("track", "1")]);
+    make_mp3(&music.path().join("NORA/Schule/National Anthems [CD 2]/01.mp3"), &[("album", "National Anthems"), ("artist", "Various"), ("track", "1")]);
+    m.store.scan_kind(music.path(), "music").await.unwrap();
+    let write = m.store.create_mcp_token("w", true, m.admin).await.unwrap();
+    let a = m.store.find_book("NORA/Schule/National Anthems").await.unwrap().unwrap().id;
+    let b = m.store.find_book("NORA/Schule/National Anthems [CD 2]").await.unwrap().unwrap().id;
+    // Given in the other order on purpose: the CD whose folder is the work moves first all the same.
+    let (err, done) = tool(&m, &write, "merge_albums", json!({ "ids": [b, a], "discs": [2, 1], "discs_total": 2, "dry_run": false })).await;
+    assert!(!err && done["merged"] == true, "{done}");
+    let work = music.path().join("NORA/Schule/National Anthems");
+    assert!(work.join("CD 1/01.mp3").is_file() && work.join("CD 2/01.mp3").is_file(), "{done}");
+    assert!(!music.path().join("NORA/Schule/National Anthems [CD 2]").exists());
+    assert_eq!(std::fs::read_dir(music.path().join("NORA/Schule")).unwrap().count(), 1, "no folder left aside");
+}
+
+#[tokio::test]
 async fn a_branch_of_the_filing_moves_up_with_ids_kept_and_a_place_that_exists_stays() {
     if !ffmpeg_available() {
         return;

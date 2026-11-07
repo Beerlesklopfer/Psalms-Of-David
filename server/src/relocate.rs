@@ -328,8 +328,12 @@ pub async fn execute(store: &Store, members: &[&Plan]) -> Result<(), String> {
     if let Some(problem) = members.iter().find_map(|p| p.problem.as_ref()) {
         return Err(problem.clone());
     }
+    let _library = store.library_lock.lock().await;
     let mut moved: Vec<&Plan> = Vec::new();
-    for plan in members {
+    // A CD whose folder becomes the folder of the work (`X` -> `X/CD 1`) moves first, before the other CDs go into `X`.
+    let mut order: Vec<&Plan> = members.to_vec();
+    order.sort_by_key(|p| !p.to.starts_with(&p.from));
+    for plan in order {
         let (from, to) = (plan.from.clone(), plan.to.clone());
         let result = tokio::task::spawn_blocking(move || move_dir(&from, &to)).await.map_err(|e| e.to_string())?;
         if let Err(e) = result {
@@ -500,6 +504,7 @@ pub async fn execute_rename(store: &Store, plan: &Rename) -> Result<(), String> 
     if let Some(problem) = &plan.problem {
         return Err(problem.clone());
     }
+    let _library = store.library_lock.lock().await;
     let moves = plan.to != plan.from;
     if moves {
         let (from, to) = (plan.from.clone(), plan.to.clone());
@@ -584,6 +589,30 @@ async fn undo(moved: &[&Plan]) {
 
 pub(crate) fn move_dir(from: &Path, to: &Path) -> Result<(), String> {
     let fail = |what: &str, e: std::io::Error| format!("{what}: {e}");
+    // Into a folder of its own (the first CD of a work keeps the name of the work: `X` -> `X/CD 1`), or the way back
+    // (`X/CD 1` -> `X`, the folder `X` holding nothing else): no rename does that in one step, it goes by a name beside it.
+    if to.starts_with(from) || from.starts_with(to) {
+        let outer = if to.starts_with(from) { from } else { to };
+        let name = outer.file_name().ok_or("no folder name")?.to_string_lossy().into_owned();
+        let aside = outer.with_file_name(format!(".{name}.david-move"));
+        if aside.exists() {
+            return Err(format!("{} exists already (an earlier move that did not end?)", aside.display()));
+        }
+        std::fs::rename(from, &aside).map_err(|e| fail("moving aside", e))?;
+        if from.starts_with(to) {
+            // The way back: what is left of `to` must be empty folders only.
+            if let Err(e) = std::fs::remove_dir(to) {
+                let _ = std::fs::rename(&aside, from);
+                return Err(fail("the folder holds more than the CD", e));
+            }
+        }
+        if let Err(e) = std::fs::create_dir_all(to.parent().ok_or("no parent folder")?).and_then(|()| std::fs::rename(&aside, to)) {
+            let _ = std::fs::create_dir_all(from.parent().unwrap_or(from));
+            let _ = std::fs::rename(&aside, from);
+            return Err(fail("moving", e));
+        }
+        return Ok(());
+    }
     std::fs::create_dir_all(to.parent().ok_or("no parent folder")?).map_err(|e| fail("creating the folder", e))?;
     match std::fs::rename(from, to) {
         Ok(()) => Ok(()),
@@ -638,6 +667,26 @@ fn tree_size(dir: &Path) -> (u64, u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_folder_moves_into_a_folder_of_its_own_name_and_back() {
+        let d = tempfile::tempdir().unwrap();
+        let work = d.path().join("National Anthems");
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::write(work.join("01.mp3"), b"x").unwrap();
+        let cd1 = work.join("CD 1");
+        move_dir(&work, &cd1).unwrap();
+        assert!(cd1.join("01.mp3").is_file());
+        assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 1, "nothing left beside it");
+        move_dir(&cd1, &work).unwrap();
+        assert!(work.join("01.mp3").is_file() && !cd1.exists());
+        // The way back refuses a folder that holds more than the CD, and keeps everything.
+        move_dir(&work, &cd1).unwrap();
+        std::fs::create_dir_all(work.join("CD 2")).unwrap();
+        std::fs::write(work.join("CD 2/01.mp3"), b"y").unwrap();
+        assert!(move_dir(&cd1, &work).is_err());
+        assert!(cd1.join("01.mp3").is_file() && work.join("CD 2/01.mp3").is_file());
+    }
 
     #[test]
     fn the_genre_decides() {

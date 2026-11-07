@@ -91,6 +91,7 @@ pub async fn execute(store: &Store, plan: &Plan) -> Result<(), String> {
     if let Some(problem) = &plan.problem {
         return Err(problem.clone());
     }
+    let _library = store.library_lock.lock().await;
     let (from, to) = (plan.from.clone(), plan.to.clone());
     tokio::task::spawn_blocking(move || crate::relocate::move_dir(&from, &to)).await.map_err(|e| e.to_string())??;
     // On Windows the dot does not hide the folder: an NTFS ACL and the hidden attribute do (see `ntacl`).
