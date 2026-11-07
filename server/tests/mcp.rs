@@ -144,6 +144,27 @@ async fn set_tags_changes_every_file_logs_each_change_and_a_dry_run_changes_noth
 }
 
 #[tokio::test]
+async fn a_field_the_tag_of_the_files_cannot_keep_is_refused_by_the_dry_run_and_nothing_is_written() {
+    if !ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let m = mcp().await;
+    let id = album(&m, &[("artist", "Haydn"), ("album", "Sinfonien")]).await;
+    let write = m.store.create_mcp_token("llm", true, m.admin).await.unwrap();
+    // MP3 keeps ID3v2, which has no Performer: the dry run says so, as the real run does, and Conductor is not written either.
+    let fields = json!({ "Conductor": "Ádám Fischer", "Performer": "Ungarische Nationalphilharmonie" });
+    for dry in [true, false] {
+        let (err, text) = tool(&m, &write, "set_tags", json!({ "id": id, "fields": fields, "dry_run": dry })).await;
+        let text = text.as_str().unwrap_or_default().to_owned();
+        assert!(err && text.contains("nothing was changed") && text.contains("Performer cannot be kept") && text.contains("2 of 2"), "{text}");
+    }
+    let (_, after) = tool(&m, &write, "get_tags", json!({ "id": id })).await;
+    assert!(after["tracks"].as_array().unwrap().iter().all(|t| t["fields"].get("Conductor").is_none()), "{after}");
+    assert!(m.store.tag_changes(id, 10).await.unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn find_problems_names_what_is_wrong_and_skips_what_is_fine() {
     if !ffmpeg_available() {
         eprintln!("skipped: ffmpeg is not installed");

@@ -171,7 +171,7 @@ fn tool_list() -> Value {
         },
         {
             "name": "set_tags",
-            "description": "Sets tag fields in every track of an album, or in one track. `fields` maps a field name to a string, a list of strings (several values) or null (remove the field). Use dry_run first to see what would change. `Barcode` must be a valid EAN/UPC (8, 12, 13 or 14 digits with a correct check digit) or null; the library follows at once. Needs a token that may write.",
+            "description": "Sets tag fields in every track of an album, or in one track. `fields` maps a field name to a string, a list of strings (several values) or null (remove the field). Use dry_run first to see what would change. Not every kind of tag has every field (ID3v2 of MP3 has no Performer: use TrackArtist, Conductor and Composer for classical music); a field that the tag of a file cannot keep is refused by the dry run as by the real run, and then no file is written. `Barcode` must be a valid EAN/UPC (8, 12, 13 or 14 digits with a correct check digit) or null; the library follows at once. Needs a token that may write.",
             "inputSchema": { "type": "object", "properties": {
                 "id": id,
                 "track": { "type": "integer", "description": "Only this track id; without it every track of the album" },
@@ -863,7 +863,11 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             }
             let wanted = changes.clone();
             let outcome = tokio::task::spawn_blocking(move || -> Result<Vec<(String, String, String, String)>, String> {
+                // First every file is looked at, in a dry run as in a real one: a field that the tag of one file cannot keep (Performer in
+                // ID3v2) is refused before any file is written, so that no album is left half done.
                 let mut log = Vec::new();
+                let mut todo = Vec::new();
+                let mut refused = Vec::new();
                 for (file, path) in &files {
                     let before = crate::tags::read_fields(path).map_err(|e| e.to_string())?;
                     let mut effective = Vec::new();
@@ -874,7 +878,19 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                             effective.push((field.clone(), new.clone()));
                         }
                     }
-                    if !dry && !effective.is_empty() {
+                    if !effective.is_empty() {
+                        match crate::tags::check_fields(path, &effective) {
+                            Ok(()) => todo.push((file, path, effective)),
+                            Err(crate::error::Error::Tags { message, .. }) => refused.push(format!("{file}: {message}")),
+                            Err(e) => refused.push(format!("{file}: {e}")),
+                        }
+                    }
+                }
+                if !refused.is_empty() {
+                    return Err(format!("nothing was changed: {} of {} files refuse it: {}", refused.len(), files.len(), refused.join("; ")));
+                }
+                if !dry {
+                    for (file, path, effective) in todo {
                         crate::tags::write_fields(path, &effective).map_err(|e| format!("{file}: {e}"))?;
                     }
                 }

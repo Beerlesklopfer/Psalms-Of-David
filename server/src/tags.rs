@@ -472,23 +472,36 @@ pub fn read_fields(path: &Path) -> Result<Vec<(String, Vec<String>)>, Error> {
 /// kept in the kind of tag the file has.
 pub fn write_fields(path: &Path, changes: &[(String, Vec<String>)]) -> Result<(), Error> {
     use lofty::config::WriteOptions;
-    use lofty::tag::{ItemValue, TagExt, TagItem};
+    use lofty::tag::TagExt;
+    let tag = fields_applied(path, changes)?;
+    tag.save_to_path(path, WriteOptions::default()).map_err(|e| tags_error(path, e))
+}
+
+/// What `write_fields` would say, without writing: an unknown name, or a field the kind of tag of this file cannot keep (`Performer` in
+/// ID3v2, for example). A dry run asks it for every file, and so does a real run before it writes the first one.
+pub fn check_fields(path: &Path, changes: &[(String, Vec<String>)]) -> Result<(), Error> {
+    fields_applied(path, changes).map(|_| ())
+}
+
+fn fields_applied(path: &Path, changes: &[(String, Vec<String>)]) -> Result<lofty::tag::Tag, Error> {
+    use lofty::tag::{ItemValue, TagItem};
 
     let fail = |message: String| Error::Tags { file: path.display().to_string(), message };
     let mut tagged = open_tagged(path, Forgive::Writing).map_err(|e| tags_error(path, e))?;
     ensure_primary(&mut tagged);
-    let tag = tagged.primary_tag_mut().ok_or_else(|| fail("no tag".into()))?;
+    let mut tag = tagged.primary_tag().cloned().ok_or_else(|| fail("no tag".into()))?;
+    let kind = tag.tag_type();
     for (name, values) in changes {
         let key = key_of(name).ok_or_else(|| fail(format!("unknown field {name}")))?;
         tag.remove_key(key);
         for value in values {
             if !tag.push(TagItem::new(key, ItemValue::Text(value.clone()))) {
-                return Err(fail(format!("{name} cannot be kept in this kind of tag")));
+                return Err(fail(format!("{name} cannot be kept in this kind of tag ({kind:?})")));
             }
         }
     }
-    repair_languages(tag);
-    tag.save_to_path(path, WriteOptions::default()).map_err(|e| tags_error(path, e))
+    repair_languages(&mut tag);
+    Ok(tag)
 }
 
 /// Puts a picture into the file as the front cover, replacing the one that is there.
