@@ -4093,6 +4093,594 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The page of the inbox asked for does not exist.'**
   String get cdErrInvalidPaging;
+
+  /// No description provided for @photoBackupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo backup'**
+  String get photoBackupTitle;
+
+  /// No description provided for @photoBackupHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Back up the pictures of this device to the server'**
+  String get photoBackupHint;
+
+  /// No description provided for @photoGroupDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'This device'**
+  String get photoGroupDevice;
+
+  /// No description provided for @photoGroupProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'My profile (all my devices)'**
+  String get photoGroupProfile;
+
+  /// No description provided for @photoGroupServer.
+  ///
+  /// In en, this message translates to:
+  /// **'On the server'**
+  String get photoGroupServer;
+
+  /// No description provided for @photoStatusActive.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup runs on this device.'**
+  String get photoStatusActive;
+
+  /// No description provided for @photoStatusDeviceOff.
+  ///
+  /// In en, this message translates to:
+  /// **'This device is not switched on.'**
+  String get photoStatusDeviceOff;
+
+  /// No description provided for @photoStatusInactive.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup of your profile is off.'**
+  String get photoStatusInactive;
+
+  /// No description provided for @photoStatusNoFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Your profile has no picture folder on the server yet. An administrator sets it on the Users page.'**
+  String get photoStatusNoFolder;
+
+  /// No description provided for @photoStatusNoAccess.
+  ///
+  /// In en, this message translates to:
+  /// **'The app may not read the pictures. Allow it in the settings of the system (Apps → Psalm → Permissions).'**
+  String get photoStatusNoAccess;
+
+  /// No description provided for @photoLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The settings could not be loaded from the server.'**
+  String get photoLoadFailed;
+
+  /// No description provided for @photoSetDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Back up this device'**
+  String get photoSetDevice;
+
+  /// No description provided for @photoOptDeviceOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get photoOptDeviceOff;
+
+  /// No description provided for @photoOptDeviceOn.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get photoOptDeviceOn;
+
+  /// No description provided for @photoExplainDeviceOff.
+  ///
+  /// In en, this message translates to:
+  /// **'This device sends no pictures.'**
+  String get photoExplainDeviceOff;
+
+  /// No description provided for @photoExplainDeviceOn.
+  ///
+  /// In en, this message translates to:
+  /// **'This device sends its new pictures in the background, when the network and battery rules of your profile allow it. Android asks once whether the app may read the pictures.'**
+  String get photoExplainDeviceOn;
+
+  /// No description provided for @photoSetSources.
+  ///
+  /// In en, this message translates to:
+  /// **'Which pictures'**
+  String get photoSetSources;
+
+  /// No description provided for @photoOptSourcesCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Camera only'**
+  String get photoOptSourcesCamera;
+
+  /// No description provided for @photoOptSourcesAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All pictures'**
+  String get photoOptSourcesAll;
+
+  /// No description provided for @photoExplainSourcesCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the photos and videos of the camera. Screenshots, downloads and the pictures of messengers stay on the device.'**
+  String get photoExplainSourcesCamera;
+
+  /// No description provided for @photoExplainSourcesAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Every picture of the device: also screenshots, downloads and the pictures that messengers kept.'**
+  String get photoExplainSourcesAll;
+
+  /// No description provided for @photoSince.
+  ///
+  /// In en, this message translates to:
+  /// **'Pictures from {date} on.'**
+  String photoSince(String date);
+
+  /// No description provided for @photoSinceAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All pictures, also the older ones.'**
+  String get photoSinceAll;
+
+  /// No description provided for @photoOlderButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Also back up the older pictures'**
+  String get photoOlderButton;
+
+  /// No description provided for @photoOlderTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Also the older pictures?'**
+  String get photoOlderTitle;
+
+  /// No description provided for @photoOlderBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The pictures of this device from before {date} are sent too. That can be many, and take a few nights.'**
+  String photoOlderBody(String date);
+
+  /// No description provided for @photoOlderConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Send them too'**
+  String get photoOlderConfirm;
+
+  /// No description provided for @photoNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Back up now'**
+  String get photoNow;
+
+  /// No description provided for @photoPause.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause'**
+  String get photoPause;
+
+  /// No description provided for @photoProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'{done} of {total} pictures'**
+  String photoProgress(int done, int total);
+
+  /// No description provided for @photoLastRun.
+  ///
+  /// In en, this message translates to:
+  /// **'Last look: {when}'**
+  String photoLastRun(String when);
+
+  /// No description provided for @photoWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{Nothing waits.} =1{1 picture waits.} other{{count} pictures wait.}}'**
+  String photoWaiting(int count);
+
+  /// No description provided for @photoRunDone.
+  ///
+  /// In en, this message translates to:
+  /// **'{sent} sent, {known} already on the server.'**
+  String photoRunDone(int sent, int known);
+
+  /// No description provided for @photoServerCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No pictures yet} =1{1 picture, {size}} other{{count} pictures, {size}}}'**
+  String photoServerCount(int count, String size);
+
+  /// No description provided for @photoServerQuota.
+  ///
+  /// In en, this message translates to:
+  /// **'At most {size}'**
+  String photoServerQuota(String size);
+
+  /// No description provided for @photoServerLast.
+  ///
+  /// In en, this message translates to:
+  /// **'Last picture received: {when}'**
+  String photoServerLast(String when);
+
+  /// No description provided for @photoErrorsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Last problems'**
+  String get photoErrorsTitle;
+
+  /// No description provided for @photoProfileHint.
+  ///
+  /// In en, this message translates to:
+  /// **'These choices count for all your devices. The server shows the same on your profile page.'**
+  String get photoProfileHint;
+
+  /// No description provided for @photoRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'The server did not take this choice.'**
+  String get photoRefused;
+
+  /// No description provided for @photoErrTooLarge.
+  ///
+  /// In en, this message translates to:
+  /// **'Larger than the server takes'**
+  String get photoErrTooLarge;
+
+  /// No description provided for @photoErrWrongType.
+  ///
+  /// In en, this message translates to:
+  /// **'A kind of file the server does not take'**
+  String get photoErrWrongType;
+
+  /// No description provided for @photoErrQuotaFull.
+  ///
+  /// In en, this message translates to:
+  /// **'Your room on the server is full'**
+  String get photoErrQuotaFull;
+
+  /// No description provided for @photoErrDiskFull.
+  ///
+  /// In en, this message translates to:
+  /// **'The disk of the server is full'**
+  String get photoErrDiskFull;
+
+  /// No description provided for @photoErrUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'The picture could not be read on the device'**
+  String get photoErrUnreadable;
+
+  /// No description provided for @photoErrHashMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'The picture changed while it was sent; it is sent again'**
+  String get photoErrHashMismatch;
+
+  /// No description provided for @photoErrNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not be reached'**
+  String get photoErrNetwork;
+
+  /// No description provided for @photoErrBackupOff.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup was switched off'**
+  String get photoErrBackupOff;
+
+  /// No description provided for @photoErrNoFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Your profile has no picture folder'**
+  String get photoErrNoFolder;
+
+  /// No description provided for @photoErrOther.
+  ///
+  /// In en, this message translates to:
+  /// **'The server refused it'**
+  String get photoErrOther;
+
+  /// No description provided for @photoStopBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'A backup is running already.'**
+  String get photoStopBusy;
+
+  /// No description provided for @photoStopNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not be reached. The next try comes by itself.'**
+  String get photoStopNetwork;
+
+  /// No description provided for @photoStopStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Paused. The next run goes on there.'**
+  String get photoStopStopped;
+
+  /// No description provided for @photoStopRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'The server stopped the backup, see the last problems.'**
+  String get photoStopRefused;
+
+  /// No description provided for @photoSetEnabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Back up my pictures'**
+  String get photoSetEnabled;
+
+  /// No description provided for @photoOptEnabledOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get photoOptEnabledOff;
+
+  /// No description provided for @photoExplainEnabledOff.
+  ///
+  /// In en, this message translates to:
+  /// **'None of your pictures are backed up. Nothing is read from your devices.'**
+  String get photoExplainEnabledOff;
+
+  /// No description provided for @photoOptEnabledOn.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get photoOptEnabledOn;
+
+  /// No description provided for @photoExplainEnabledOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Your devices back up their pictures to the server, each one after it was switched on in the app. Only pictures from that day on, unless a device is told to take the older ones too.'**
+  String get photoExplainEnabledOn;
+
+  /// No description provided for @photoSetMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Kind of backup'**
+  String get photoSetMode;
+
+  /// No description provided for @photoOptModeUni.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup only'**
+  String get photoOptModeUni;
+
+  /// No description provided for @photoExplainModeUni.
+  ///
+  /// In en, this message translates to:
+  /// **'Each device copies its new pictures to the server. Deleting or editing a picture on a device never changes the server.'**
+  String get photoExplainModeUni;
+
+  /// No description provided for @photoOptModeBi.
+  ///
+  /// In en, this message translates to:
+  /// **'Backup and sync'**
+  String get photoOptModeBi;
+
+  /// No description provided for @photoExplainModeBi.
+  ///
+  /// In en, this message translates to:
+  /// **'Like the backup, and in addition each of your devices receives the pictures of your other devices. (The app receives them in a later version; for now it only sends.)'**
+  String get photoExplainModeBi;
+
+  /// No description provided for @photoSetNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Network'**
+  String get photoSetNetwork;
+
+  /// No description provided for @photoOptNetworkWifi.
+  ///
+  /// In en, this message translates to:
+  /// **'Wi-Fi only'**
+  String get photoOptNetworkWifi;
+
+  /// No description provided for @photoExplainNetworkWifi.
+  ///
+  /// In en, this message translates to:
+  /// **'Only over Wi-Fi, at home or through the family VPN. Mobile data is never used.'**
+  String get photoExplainNetworkWifi;
+
+  /// No description provided for @photoOptNetworkAny.
+  ///
+  /// In en, this message translates to:
+  /// **'Also mobile data'**
+  String get photoOptNetworkAny;
+
+  /// No description provided for @photoExplainNetworkAny.
+  ///
+  /// In en, this message translates to:
+  /// **'Also over mobile data, through the family VPN. Large videos can use up the data volume of your contract.'**
+  String get photoExplainNetworkAny;
+
+  /// No description provided for @photoSetCharging.
+  ///
+  /// In en, this message translates to:
+  /// **'Battery'**
+  String get photoSetCharging;
+
+  /// No description provided for @photoOptChargingCharging.
+  ///
+  /// In en, this message translates to:
+  /// **'Only while charging'**
+  String get photoOptChargingCharging;
+
+  /// No description provided for @photoExplainChargingCharging.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup runs only while the device is charging, so the battery is spared. Most devices charge at night: the pictures of the day are on the server the next morning.'**
+  String get photoExplainChargingCharging;
+
+  /// No description provided for @photoOptChargingAlways.
+  ///
+  /// In en, this message translates to:
+  /// **'Also on battery'**
+  String get photoOptChargingAlways;
+
+  /// No description provided for @photoExplainChargingAlways.
+  ///
+  /// In en, this message translates to:
+  /// **'The backup runs whenever the network allows it, also on battery (not when the battery is low). The pictures reach the server sooner, the battery runs down faster.'**
+  String get photoExplainChargingAlways;
+
+  /// No description provided for @photoSetVideos.
+  ///
+  /// In en, this message translates to:
+  /// **'Videos'**
+  String get photoSetVideos;
+
+  /// No description provided for @photoOptVideosOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos and videos'**
+  String get photoOptVideosOn;
+
+  /// No description provided for @photoExplainVideosOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Videos are backed up too, up to the largest file the server takes.'**
+  String get photoExplainVideosOn;
+
+  /// No description provided for @photoOptVideosOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos only'**
+  String get photoOptVideosOff;
+
+  /// No description provided for @photoExplainVideosOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Only photos are backed up; videos stay on the devices.'**
+  String get photoExplainVideosOff;
+
+  /// No description provided for @photoSetDeletes.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleting (sync)'**
+  String get photoSetDeletes;
+
+  /// No description provided for @photoOptDeletesNever.
+  ///
+  /// In en, this message translates to:
+  /// **'Never passed on'**
+  String get photoOptDeletesNever;
+
+  /// No description provided for @photoExplainDeletesNever.
+  ///
+  /// In en, this message translates to:
+  /// **'A picture deleted on one device stays on the server and on the other devices.'**
+  String get photoExplainDeletesNever;
+
+  /// No description provided for @photoOptDeletesTrash.
+  ///
+  /// In en, this message translates to:
+  /// **'Into the trash of the server'**
+  String get photoOptDeletesTrash;
+
+  /// No description provided for @photoExplainDeletesTrash.
+  ///
+  /// In en, this message translates to:
+  /// **'A picture deleted on one device goes into the trash of the server for 30 days, and the other devices remove it too. The app says so before it deletes. Only with backup and sync.'**
+  String get photoExplainDeletesTrash;
+
+  /// No description provided for @photoSetParentView.
+  ///
+  /// In en, this message translates to:
+  /// **'Parents may look'**
+  String get photoSetParentView;
+
+  /// No description provided for @photoOptParentViewOff.
+  ///
+  /// In en, this message translates to:
+  /// **'No'**
+  String get photoOptParentViewOff;
+
+  /// No description provided for @photoExplainParentViewOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Administrators do not see your pictures.'**
+  String get photoExplainParentViewOff;
+
+  /// No description provided for @photoOptParentViewOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes'**
+  String get photoOptParentViewOn;
+
+  /// No description provided for @photoExplainParentViewOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Administrators may look at your pictures.'**
+  String get photoExplainParentViewOn;
+
+  /// No description provided for @photoWhyServerOff.
+  ///
+  /// In en, this message translates to:
+  /// **'The photo backup is off on this server.'**
+  String get photoWhyServerOff;
+
+  /// No description provided for @photoWhyNoChildren.
+  ///
+  /// In en, this message translates to:
+  /// **'The server does not back up the devices of children.'**
+  String get photoWhyNoChildren;
+
+  /// No description provided for @photoWhyParentsOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Only an administrator can switch it on for a child.'**
+  String get photoWhyParentsOnly;
+
+  /// No description provided for @photoWhyNoGuests.
+  ///
+  /// In en, this message translates to:
+  /// **'Guests have no photo backup.'**
+  String get photoWhyNoGuests;
+
+  /// No description provided for @photoWhyNoBisync.
+  ///
+  /// In en, this message translates to:
+  /// **'The server allows the backup only, not the sync.'**
+  String get photoWhyNoBisync;
+
+  /// No description provided for @photoWhyNoVideos.
+  ///
+  /// In en, this message translates to:
+  /// **'The server takes no videos.'**
+  String get photoWhyNoVideos;
+
+  /// No description provided for @photoWhyChildrenOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Only for children.'**
+  String get photoWhyChildrenOnly;
+
+  /// No description provided for @photoWhyNoParentView.
+  ///
+  /// In en, this message translates to:
+  /// **'The server does not let parents look at pictures.'**
+  String get photoWhyNoParentView;
+
+  /// No description provided for @photoWhyNotAnOption.
+  ///
+  /// In en, this message translates to:
+  /// **'No such option.'**
+  String get photoWhyNotAnOption;
+
+  /// No description provided for @photoWhyNoFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Your profile has no picture folder yet (an administrator sets it on the Users page).'**
+  String get photoWhyNoFolder;
 }
 
 class _AppLocalizationsDelegate

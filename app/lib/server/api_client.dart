@@ -189,11 +189,13 @@ class ApiClient implements FeedApi, BarcodeApi, CoverApi, NewsApi {
   Future<void> logout() => _json('POST', '/api/v1/logout');
 
   /// Sends [bytes] as the body (a picture) and returns the response without reading it.
-  Future<HttpClientResponse> sendBytes(String method, String path, List<int> bytes, {required String contentType, Map<String, String>? query}) async {
+  Future<HttpClientResponse> sendBytes(String method, String path, List<int> bytes,
+      {required String contentType, Map<String, String>? query, Map<String, String>? headers}) async {
     try {
       final req = await _http.openUrl(method, _uri(path, query));
       if (token != null) req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
       req.headers.set(HttpHeaders.contentTypeHeader, contentType);
+      headers?.forEach(req.headers.set);
       req.headers.contentLength = bytes.length;
       req.add(bytes);
       return await req.close().timeout(const Duration(seconds: 60));

@@ -2435,4 +2435,361 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get cdErrInvalidPaging =>
       'The page of the inbox asked for does not exist.';
+
+  @override
+  String get photoBackupTitle => 'Photo backup';
+
+  @override
+  String get photoBackupHint =>
+      'Back up the pictures of this device to the server';
+
+  @override
+  String get photoGroupDevice => 'This device';
+
+  @override
+  String get photoGroupProfile => 'My profile (all my devices)';
+
+  @override
+  String get photoGroupServer => 'On the server';
+
+  @override
+  String get photoStatusActive => 'The backup runs on this device.';
+
+  @override
+  String get photoStatusDeviceOff => 'This device is not switched on.';
+
+  @override
+  String get photoStatusInactive => 'The backup of your profile is off.';
+
+  @override
+  String get photoStatusNoFolder =>
+      'Your profile has no picture folder on the server yet. An administrator sets it on the Users page.';
+
+  @override
+  String get photoStatusNoAccess =>
+      'The app may not read the pictures. Allow it in the settings of the system (Apps → Psalm → Permissions).';
+
+  @override
+  String get photoLoadFailed =>
+      'The settings could not be loaded from the server.';
+
+  @override
+  String get photoSetDevice => 'Back up this device';
+
+  @override
+  String get photoOptDeviceOff => 'Off';
+
+  @override
+  String get photoOptDeviceOn => 'On';
+
+  @override
+  String get photoExplainDeviceOff => 'This device sends no pictures.';
+
+  @override
+  String get photoExplainDeviceOn =>
+      'This device sends its new pictures in the background, when the network and battery rules of your profile allow it. Android asks once whether the app may read the pictures.';
+
+  @override
+  String get photoSetSources => 'Which pictures';
+
+  @override
+  String get photoOptSourcesCamera => 'Camera only';
+
+  @override
+  String get photoOptSourcesAll => 'All pictures';
+
+  @override
+  String get photoExplainSourcesCamera =>
+      'Only the photos and videos of the camera. Screenshots, downloads and the pictures of messengers stay on the device.';
+
+  @override
+  String get photoExplainSourcesAll =>
+      'Every picture of the device: also screenshots, downloads and the pictures that messengers kept.';
+
+  @override
+  String photoSince(String date) {
+    return 'Pictures from $date on.';
+  }
+
+  @override
+  String get photoSinceAll => 'All pictures, also the older ones.';
+
+  @override
+  String get photoOlderButton => 'Also back up the older pictures';
+
+  @override
+  String get photoOlderTitle => 'Also the older pictures?';
+
+  @override
+  String photoOlderBody(String date) {
+    return 'The pictures of this device from before $date are sent too. That can be many, and take a few nights.';
+  }
+
+  @override
+  String get photoOlderConfirm => 'Send them too';
+
+  @override
+  String get photoNow => 'Back up now';
+
+  @override
+  String get photoPause => 'Pause';
+
+  @override
+  String photoProgress(int done, int total) {
+    return '$done of $total pictures';
+  }
+
+  @override
+  String photoLastRun(String when) {
+    return 'Last look: $when';
+  }
+
+  @override
+  String photoWaiting(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count pictures wait.',
+      one: '1 picture waits.',
+      zero: 'Nothing waits.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String photoRunDone(int sent, int known) {
+    return '$sent sent, $known already on the server.';
+  }
+
+  @override
+  String photoServerCount(int count, String size) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count pictures, $size',
+      one: '1 picture, $size',
+      zero: 'No pictures yet',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String photoServerQuota(String size) {
+    return 'At most $size';
+  }
+
+  @override
+  String photoServerLast(String when) {
+    return 'Last picture received: $when';
+  }
+
+  @override
+  String get photoErrorsTitle => 'Last problems';
+
+  @override
+  String get photoProfileHint =>
+      'These choices count for all your devices. The server shows the same on your profile page.';
+
+  @override
+  String get photoRefused => 'The server did not take this choice.';
+
+  @override
+  String get photoErrTooLarge => 'Larger than the server takes';
+
+  @override
+  String get photoErrWrongType => 'A kind of file the server does not take';
+
+  @override
+  String get photoErrQuotaFull => 'Your room on the server is full';
+
+  @override
+  String get photoErrDiskFull => 'The disk of the server is full';
+
+  @override
+  String get photoErrUnreadable =>
+      'The picture could not be read on the device';
+
+  @override
+  String get photoErrHashMismatch =>
+      'The picture changed while it was sent; it is sent again';
+
+  @override
+  String get photoErrNetwork => 'The server could not be reached';
+
+  @override
+  String get photoErrBackupOff => 'The backup was switched off';
+
+  @override
+  String get photoErrNoFolder => 'Your profile has no picture folder';
+
+  @override
+  String get photoErrOther => 'The server refused it';
+
+  @override
+  String get photoStopBusy => 'A backup is running already.';
+
+  @override
+  String get photoStopNetwork =>
+      'The server could not be reached. The next try comes by itself.';
+
+  @override
+  String get photoStopStopped => 'Paused. The next run goes on there.';
+
+  @override
+  String get photoStopRefused =>
+      'The server stopped the backup, see the last problems.';
+
+  @override
+  String get photoSetEnabled => 'Back up my pictures';
+
+  @override
+  String get photoOptEnabledOff => 'Off';
+
+  @override
+  String get photoExplainEnabledOff =>
+      'None of your pictures are backed up. Nothing is read from your devices.';
+
+  @override
+  String get photoOptEnabledOn => 'On';
+
+  @override
+  String get photoExplainEnabledOn =>
+      'Your devices back up their pictures to the server, each one after it was switched on in the app. Only pictures from that day on, unless a device is told to take the older ones too.';
+
+  @override
+  String get photoSetMode => 'Kind of backup';
+
+  @override
+  String get photoOptModeUni => 'Backup only';
+
+  @override
+  String get photoExplainModeUni =>
+      'Each device copies its new pictures to the server. Deleting or editing a picture on a device never changes the server.';
+
+  @override
+  String get photoOptModeBi => 'Backup and sync';
+
+  @override
+  String get photoExplainModeBi =>
+      'Like the backup, and in addition each of your devices receives the pictures of your other devices. (The app receives them in a later version; for now it only sends.)';
+
+  @override
+  String get photoSetNetwork => 'Network';
+
+  @override
+  String get photoOptNetworkWifi => 'Wi-Fi only';
+
+  @override
+  String get photoExplainNetworkWifi =>
+      'Only over Wi-Fi, at home or through the family VPN. Mobile data is never used.';
+
+  @override
+  String get photoOptNetworkAny => 'Also mobile data';
+
+  @override
+  String get photoExplainNetworkAny =>
+      'Also over mobile data, through the family VPN. Large videos can use up the data volume of your contract.';
+
+  @override
+  String get photoSetCharging => 'Battery';
+
+  @override
+  String get photoOptChargingCharging => 'Only while charging';
+
+  @override
+  String get photoExplainChargingCharging =>
+      'The backup runs only while the device is charging, so the battery is spared. Most devices charge at night: the pictures of the day are on the server the next morning.';
+
+  @override
+  String get photoOptChargingAlways => 'Also on battery';
+
+  @override
+  String get photoExplainChargingAlways =>
+      'The backup runs whenever the network allows it, also on battery (not when the battery is low). The pictures reach the server sooner, the battery runs down faster.';
+
+  @override
+  String get photoSetVideos => 'Videos';
+
+  @override
+  String get photoOptVideosOn => 'Photos and videos';
+
+  @override
+  String get photoExplainVideosOn =>
+      'Videos are backed up too, up to the largest file the server takes.';
+
+  @override
+  String get photoOptVideosOff => 'Photos only';
+
+  @override
+  String get photoExplainVideosOff =>
+      'Only photos are backed up; videos stay on the devices.';
+
+  @override
+  String get photoSetDeletes => 'Deleting (sync)';
+
+  @override
+  String get photoOptDeletesNever => 'Never passed on';
+
+  @override
+  String get photoExplainDeletesNever =>
+      'A picture deleted on one device stays on the server and on the other devices.';
+
+  @override
+  String get photoOptDeletesTrash => 'Into the trash of the server';
+
+  @override
+  String get photoExplainDeletesTrash =>
+      'A picture deleted on one device goes into the trash of the server for 30 days, and the other devices remove it too. The app says so before it deletes. Only with backup and sync.';
+
+  @override
+  String get photoSetParentView => 'Parents may look';
+
+  @override
+  String get photoOptParentViewOff => 'No';
+
+  @override
+  String get photoExplainParentViewOff =>
+      'Administrators do not see your pictures.';
+
+  @override
+  String get photoOptParentViewOn => 'Yes';
+
+  @override
+  String get photoExplainParentViewOn =>
+      'Administrators may look at your pictures.';
+
+  @override
+  String get photoWhyServerOff => 'The photo backup is off on this server.';
+
+  @override
+  String get photoWhyNoChildren =>
+      'The server does not back up the devices of children.';
+
+  @override
+  String get photoWhyParentsOnly =>
+      'Only an administrator can switch it on for a child.';
+
+  @override
+  String get photoWhyNoGuests => 'Guests have no photo backup.';
+
+  @override
+  String get photoWhyNoBisync =>
+      'The server allows the backup only, not the sync.';
+
+  @override
+  String get photoWhyNoVideos => 'The server takes no videos.';
+
+  @override
+  String get photoWhyChildrenOnly => 'Only for children.';
+
+  @override
+  String get photoWhyNoParentView =>
+      'The server does not let parents look at pictures.';
+
+  @override
+  String get photoWhyNotAnOption => 'No such option.';
+
+  @override
+  String get photoWhyNoFolder =>
+      'Your profile has no picture folder yet (an administrator sets it on the Users page).';
 }

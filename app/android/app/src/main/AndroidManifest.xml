@@ -11,6 +11,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <!-- Android 13 and later: the notification with the controls; playback works without it, asked for at the first playback. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- The photo backup (docs/spec-photo-sync.md): the pictures and videos of the gallery, with their location data (without
+         ACCESS_MEDIA_LOCATION Android hands out the files with the location removed). Android 12 and older: READ_EXTERNAL_STORAGE
+         (declared by photo_manager). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION"/>
     <application
         android:label="Psalms"
         android:name="${applicationName}"

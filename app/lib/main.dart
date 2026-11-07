@@ -29,6 +29,11 @@ import 'offline/library_cache.dart';
 import 'offline/offline_controller.dart';
 import 'offline/offline_view.dart';
 import 'offline/outbox.dart';
+import 'photos/photo_backup_api.dart';
+import 'photos/photo_backup_controller.dart';
+import 'photos/photo_background.dart';
+import 'photos/photo_device.dart';
+import 'photos/photo_library_device.dart';
 import 'player_controller.dart';
 import 'playlists.dart';
 import 'podcast_downloads.dart';
@@ -69,6 +74,7 @@ Future<void> main(List<String> args) async {
   // Before any download starts: what an earlier run left half loaded is of no use.
   ServerSource.dropPartials(partCache());
   await PsalmAudioHandler.init();
+  await initPhotoBackup();
   runApp(PsalmApp(pairing: _pairingAddress(args)));
 }
 
@@ -754,6 +760,14 @@ class _ShellState extends State<Shell> {
       devicePairing: widget.api == null ? null : ServerDevicePairingApi(widget.api!),
       onSync: widget.onSync,
       onShareListening: widget.api?.setShareListening,
+      photoBackup: widget.api == null || !photoBackupSupported
+          ? null
+          : PhotoBackupController(
+              api: ServerPhotoBackupApi(widget.api!),
+              library: DevicePhotoLibrary(),
+              store: PhotoDeviceStore.standard(),
+              schedule: schedulePhotoBackup,
+            ),
     ),
     const AboutScreen(),
   ];

@@ -12,6 +12,8 @@ import 'profile_screen.dart';
 import '../library_hiding.dart';
 import '../offline/offline_controller.dart';
 import '../offline/offline_view.dart';
+import '../photos/photo_backup_controller.dart';
+import '../photos/photo_backup_ui.dart';
 import '../player_controller.dart';
 import '../server/credentials.dart';
 import '../theme_mode.dart';
@@ -31,8 +33,12 @@ class SettingsScreen extends StatelessWidget {
     this.devicePairing,
     this.onSync,
     this.onShareListening,
+    this.photoBackup,
     this.openUrl = _launch,
   });
+
+  /// The photo backup of this device (Android, with a server); null elsewhere. The card shows only when the server has the backup on.
+  final PhotoBackupController? photoBackup;
 
   /// Tells the server whether the family sees what this user listens to (throws when it refuses); null in demo mode.
   final Future<void> Function(bool share)? onShareListening;
@@ -126,6 +132,10 @@ class SettingsScreen extends StatelessWidget {
           // The labels of the library: everybody sees the list; an administrator renames and deletes.
           if (LabelsScope.maybeOf(context) case final labels? when labels.available) LabelsCard(controller: labels),
           const SizedBox(height: 24),
+        ],
+        if (photoBackup case final photos? when creds != null) ...[
+          _GroupTitle(icon: Icons.photo_library_outlined, title: l.photoBackupTitle),
+          PhotoBackupCard(controller: photos),
         ],
         // Connecting a further device: a parent only, with a server (the card is empty for anybody else).
         if (devicePairing != null && creds != null) ...[

@@ -2462,4 +2462,365 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get cdErrInvalidPaging =>
       'Die gewünschte Seite des CD-Eingangs gibt es nicht.';
+
+  @override
+  String get photoBackupTitle => 'Bilder-Sicherung';
+
+  @override
+  String get photoBackupHint =>
+      'Die Bilder dieses Geräts auf den Server sichern';
+
+  @override
+  String get photoGroupDevice => 'Dieses Gerät';
+
+  @override
+  String get photoGroupProfile => 'Mein Profil (alle meine Geräte)';
+
+  @override
+  String get photoGroupServer => 'Auf dem Server';
+
+  @override
+  String get photoStatusActive => 'Die Sicherung läuft auf diesem Gerät.';
+
+  @override
+  String get photoStatusDeviceOff => 'Dieses Gerät ist nicht eingeschaltet.';
+
+  @override
+  String get photoStatusInactive => 'Die Sicherung deines Profils ist aus.';
+
+  @override
+  String get photoStatusNoFolder =>
+      'Dein Profil hat noch keinen Bilder-Ordner auf dem Server. Ein Administrator legt ihn auf der Seite Benutzer fest.';
+
+  @override
+  String get photoStatusNoAccess =>
+      'Die App darf die Bilder nicht lesen. Erlaube es in den Einstellungen des Systems (Apps → Psalm → Berechtigungen).';
+
+  @override
+  String get photoLoadFailed =>
+      'Die Einstellungen konnten nicht vom Server geladen werden.';
+
+  @override
+  String get photoSetDevice => 'Dieses Gerät sichern';
+
+  @override
+  String get photoOptDeviceOff => 'Aus';
+
+  @override
+  String get photoOptDeviceOn => 'An';
+
+  @override
+  String get photoExplainDeviceOff => 'Dieses Gerät schickt keine Bilder.';
+
+  @override
+  String get photoExplainDeviceOn =>
+      'Dieses Gerät schickt seine neuen Bilder im Hintergrund, wenn die Regeln deines Profils für Netz und Akku es erlauben. Android fragt einmal, ob die App die Bilder lesen darf.';
+
+  @override
+  String get photoSetSources => 'Welche Bilder';
+
+  @override
+  String get photoOptSourcesCamera => 'Nur Kamera';
+
+  @override
+  String get photoOptSourcesAll => 'Alle Bilder';
+
+  @override
+  String get photoExplainSourcesCamera =>
+      'Nur die Fotos und Videos der Kamera. Bildschirmfotos, Downloads und die Bilder von Messengern bleiben auf dem Gerät.';
+
+  @override
+  String get photoExplainSourcesAll =>
+      'Jedes Bild des Geräts: auch Bildschirmfotos, Downloads und die Bilder, die Messenger gespeichert haben.';
+
+  @override
+  String photoSince(String date) {
+    return 'Bilder ab $date.';
+  }
+
+  @override
+  String get photoSinceAll => 'Alle Bilder, auch die älteren.';
+
+  @override
+  String get photoOlderButton => 'Auch die älteren Bilder sichern';
+
+  @override
+  String get photoOlderTitle => 'Auch die älteren Bilder?';
+
+  @override
+  String photoOlderBody(String date) {
+    return 'Die Bilder dieses Geräts von vor dem $date werden auch geschickt. Das können viele sein und ein paar Nächte dauern.';
+  }
+
+  @override
+  String get photoOlderConfirm => 'Auch schicken';
+
+  @override
+  String get photoNow => 'Jetzt sichern';
+
+  @override
+  String get photoPause => 'Anhalten';
+
+  @override
+  String photoProgress(int done, int total) {
+    return '$done von $total Bildern';
+  }
+
+  @override
+  String photoLastRun(String when) {
+    return 'Zuletzt nachgesehen: $when';
+  }
+
+  @override
+  String photoWaiting(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Bilder warten.',
+      one: '1 Bild wartet.',
+      zero: 'Nichts wartet.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String photoRunDone(int sent, int known) {
+    return '$sent geschickt, $known schon auf dem Server.';
+  }
+
+  @override
+  String photoServerCount(int count, String size) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Bilder, $size',
+      one: '1 Bild, $size',
+      zero: 'Noch keine Bilder',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String photoServerQuota(String size) {
+    return 'Höchstens $size';
+  }
+
+  @override
+  String photoServerLast(String when) {
+    return 'Zuletzt ein Bild bekommen: $when';
+  }
+
+  @override
+  String get photoErrorsTitle => 'Letzte Probleme';
+
+  @override
+  String get photoProfileHint =>
+      'Diese Einstellungen gelten für alle deine Geräte. Der Server zeigt dieselben auf deiner Profilseite.';
+
+  @override
+  String get photoRefused =>
+      'Der Server hat diese Einstellung nicht angenommen.';
+
+  @override
+  String get photoErrTooLarge => 'Größer, als der Server annimmt';
+
+  @override
+  String get photoErrWrongType =>
+      'Eine Art Datei, die der Server nicht annimmt';
+
+  @override
+  String get photoErrQuotaFull => 'Dein Platz auf dem Server ist voll';
+
+  @override
+  String get photoErrDiskFull => 'Die Platte des Servers ist voll';
+
+  @override
+  String get photoErrUnreadable =>
+      'Das Bild konnte auf dem Gerät nicht gelesen werden';
+
+  @override
+  String get photoErrHashMismatch =>
+      'Das Bild hat sich beim Schicken geändert; es wird noch einmal geschickt';
+
+  @override
+  String get photoErrNetwork => 'Der Server war nicht erreichbar';
+
+  @override
+  String get photoErrBackupOff => 'Die Sicherung wurde ausgeschaltet';
+
+  @override
+  String get photoErrNoFolder => 'Dein Profil hat keinen Bilder-Ordner';
+
+  @override
+  String get photoErrOther => 'Der Server hat abgelehnt';
+
+  @override
+  String get photoStopBusy => 'Eine Sicherung läuft schon.';
+
+  @override
+  String get photoStopNetwork =>
+      'Der Server war nicht erreichbar. Der nächste Versuch kommt von selbst.';
+
+  @override
+  String get photoStopStopped =>
+      'Angehalten. Der nächste Lauf macht dort weiter.';
+
+  @override
+  String get photoStopRefused =>
+      'Der Server hat die Sicherung angehalten, siehe die letzten Probleme.';
+
+  @override
+  String get photoSetEnabled => 'Meine Bilder sichern';
+
+  @override
+  String get photoOptEnabledOff => 'Aus';
+
+  @override
+  String get photoExplainEnabledOff =>
+      'Keine deiner Bilder werden gesichert. Von deinen Geräten wird nichts gelesen.';
+
+  @override
+  String get photoOptEnabledOn => 'An';
+
+  @override
+  String get photoExplainEnabledOn =>
+      'Deine Geräte sichern ihre Bilder auf den Server, jedes, nachdem es in der App eingeschaltet wurde. Nur Bilder ab diesem Tag, es sei denn, ein Gerät soll auch die älteren nehmen.';
+
+  @override
+  String get photoSetMode => 'Art der Sicherung';
+
+  @override
+  String get photoOptModeUni => 'Nur Sicherung';
+
+  @override
+  String get photoExplainModeUni =>
+      'Jedes Gerät kopiert seine neuen Bilder auf den Server. Löschen oder Bearbeiten auf einem Gerät ändert auf dem Server nie etwas.';
+
+  @override
+  String get photoOptModeBi => 'Sicherung und Abgleich';
+
+  @override
+  String get photoExplainModeBi =>
+      'Wie die Sicherung, und zusätzlich bekommt jedes deiner Geräte die Bilder deiner anderen Geräte. (Das Empfangen kommt in einer späteren Version der App; jetzt schickt sie nur.)';
+
+  @override
+  String get photoSetNetwork => 'Netz';
+
+  @override
+  String get photoOptNetworkWifi => 'Nur WLAN';
+
+  @override
+  String get photoExplainNetworkWifi =>
+      'Nur über WLAN, zu Hause oder über das VPN der Familie. Mobile Daten werden nie benutzt.';
+
+  @override
+  String get photoOptNetworkAny => 'Auch mobile Daten';
+
+  @override
+  String get photoExplainNetworkAny =>
+      'Auch über mobile Daten, über das VPN der Familie. Große Videos können das Datenvolumen deines Vertrags aufbrauchen.';
+
+  @override
+  String get photoSetCharging => 'Akku';
+
+  @override
+  String get photoOptChargingCharging => 'Nur beim Laden';
+
+  @override
+  String get photoExplainChargingCharging =>
+      'Die Sicherung läuft nur, während das Gerät lädt; das schont den Akku. Die meisten Geräte laden nachts: Die Bilder des Tages sind am nächsten Morgen auf dem Server.';
+
+  @override
+  String get photoOptChargingAlways => 'Auch mit Akku';
+
+  @override
+  String get photoExplainChargingAlways =>
+      'Die Sicherung läuft, wann immer das Netz es erlaubt, auch mit Akku (nicht bei fast leerem Akku). Die Bilder sind früher auf dem Server, der Akku ist schneller leer.';
+
+  @override
+  String get photoSetVideos => 'Videos';
+
+  @override
+  String get photoOptVideosOn => 'Fotos und Videos';
+
+  @override
+  String get photoExplainVideosOn =>
+      'Videos werden mitgesichert, bis zur größten Datei, die der Server annimmt.';
+
+  @override
+  String get photoOptVideosOff => 'Nur Fotos';
+
+  @override
+  String get photoExplainVideosOff =>
+      'Nur Fotos werden gesichert; Videos bleiben auf den Geräten.';
+
+  @override
+  String get photoSetDeletes => 'Löschen (Abgleich)';
+
+  @override
+  String get photoOptDeletesNever => 'Nie weitergeben';
+
+  @override
+  String get photoExplainDeletesNever =>
+      'Ein auf einem Gerät gelöschtes Bild bleibt auf dem Server und auf den anderen Geräten.';
+
+  @override
+  String get photoOptDeletesTrash => 'In den Papierkorb des Servers';
+
+  @override
+  String get photoExplainDeletesTrash =>
+      'Ein auf einem Gerät gelöschtes Bild kommt für 30 Tage in den Papierkorb des Servers, und die anderen Geräte entfernen es auch. Die App sagt das, bevor sie löscht. Nur bei Sicherung und Abgleich.';
+
+  @override
+  String get photoSetParentView => 'Eltern dürfen ansehen';
+
+  @override
+  String get photoOptParentViewOff => 'Nein';
+
+  @override
+  String get photoExplainParentViewOff =>
+      'Administratoren sehen deine Bilder nicht.';
+
+  @override
+  String get photoOptParentViewOn => 'Ja';
+
+  @override
+  String get photoExplainParentViewOn =>
+      'Administratoren dürfen deine Bilder ansehen.';
+
+  @override
+  String get photoWhyServerOff =>
+      'Die Bilder-Sicherung ist auf diesem Server aus.';
+
+  @override
+  String get photoWhyNoChildren =>
+      'Der Server sichert die Geräte von Kindern nicht.';
+
+  @override
+  String get photoWhyParentsOnly =>
+      'Nur ein Administrator kann sie für ein Kind einschalten.';
+
+  @override
+  String get photoWhyNoGuests => 'Gäste haben keine Bilder-Sicherung.';
+
+  @override
+  String get photoWhyNoBisync =>
+      'Der Server erlaubt nur die Sicherung, nicht den Abgleich.';
+
+  @override
+  String get photoWhyNoVideos => 'Der Server nimmt keine Videos an.';
+
+  @override
+  String get photoWhyChildrenOnly => 'Nur für Kinder.';
+
+  @override
+  String get photoWhyNoParentView =>
+      'Der Server lässt Eltern keine Bilder ansehen.';
+
+  @override
+  String get photoWhyNotAnOption => 'Diese Möglichkeit gibt es nicht.';
+
+  @override
+  String get photoWhyNoFolder =>
+      'Dein Profil hat noch keinen Bilder-Ordner (ein Administrator legt ihn auf der Seite Benutzer fest).';
 }
