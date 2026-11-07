@@ -1554,12 +1554,19 @@ fn rip_plan_json(v: &RipPlanView) -> serde_json::Value {
     if v.chosen.disc_id.as_deref().is_some_and(|id| cdresume::dir_of(v.staging, id).exists()) {
         warnings.push("an interrupted rip of this disc is waiting; its finished tracks are taken over".to_owned());
     }
-    if m.mbid.is_some() && !set.lookup_ready {
-        warnings.push("the cover cannot be fetched: no MusicBrainz contact address is set".to_owned());
-    }
-    if m.mbid.is_none() {
-        warnings.push("no mbid: the files get no cover".to_owned());
-    }
+    // Which cover the files get: a photo of the case wins over the picture of the release (as the rip does it).
+    let cover = match (v.req.cover_photo, &m.mbid) {
+        (Some(n), _) => format!("photo {n}"),
+        (None, Some(mbid)) if set.lookup_ready => format!("MusicBrainz release {mbid}"),
+        (None, Some(_)) => {
+            warnings.push("the cover cannot be fetched: no MusicBrainz contact address is set".to_owned());
+            "none".to_owned()
+        }
+        (None, None) => {
+            warnings.push("no cover: neither cover_photo nor an mbid is given (a cover can be set afterwards)".to_owned());
+            "none".to_owned()
+        }
+    };
     serde_json::json!({
         "would_start": refusal.is_none(),
         "refusal": refusal,
@@ -1575,6 +1582,7 @@ fn rip_plan_json(v: &RipPlanView) -> serde_json::Value {
         },
         "format": { "format": set.format, "bitrate_kbps": set.bitrate_kbps, "sample_rate_hz": set.sample_rate_hz, "channel_mode": set.channel_mode },
         "eject": v.eject,
+        "cover": cover,
         "present": v.present.map(present_json),
         "warnings": warnings,
     })

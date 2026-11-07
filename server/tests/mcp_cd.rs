@@ -178,7 +178,8 @@ async fn a_dry_run_starts_nothing_and_says_what_would_happen() {
     assert_eq!(plan["files"][1]["tag_track"], 102);
     assert_eq!((plan["tags"]["album"].as_str(), plan["tags"]["narrator"].as_str(), plan["tags"]["discs_total"].as_i64()), (Some("Sturz der Titanen"), Some("Johannes Steck"), Some(2)));
     assert!(plan["folder"].as_str().unwrap().contains("Ken Follett/Sturz der Titanen"), "{plan}");
-    assert!(plan["warnings"].as_array().unwrap().iter().any(|w| w.as_str().unwrap().contains("no mbid")));
+    assert!(plan["warnings"].as_array().unwrap().iter().any(|w| w.as_str().unwrap().contains("no cover")));
+    assert_eq!(plan["cover"], "none", "{plan}");
     // Nothing happened: no job, nothing running, no folder, no entry in the change log.
     assert!(e.store.cd_log(10).await.unwrap().is_empty());
     assert!(!e.cd.drives.is_ripping());
@@ -216,6 +217,12 @@ async fn the_photos_of_the_case_are_pictures_for_the_model_and_the_front_becomes
     args["cover_photo"] = json!(9);
     let (err, msg) = tool(&e, &e.admin_token, "cd_rip", args).await;
     assert!(err && msg.to_string().contains("photo_missing"), "{msg}");
+    // With a photo that is there the dry run names it as the cover and does not warn about a missing one.
+    let mut args = rip_args(true);
+    args["cover_photo"] = json!(2);
+    let (err, plan) = tool(&e, &e.admin_token, "cd_rip", args).await;
+    assert!(!err && plan["cover"] == "photo 2", "{plan}");
+    assert!(!plan["warnings"].to_string().contains("no cover"), "{plan}");
 
     if !common::audio::ffmpeg_available() {
         return;
