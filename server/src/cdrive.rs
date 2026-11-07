@@ -1259,12 +1259,31 @@ async fn rip_inner(store: &Store, cd: &CdService, library: Option<PathBuf>, user
         if !req.starter_device.is_empty() {
             let _ = store.set_cd_starter_device(job.id, &req.starter_device).await;
         }
-        // What `retry` needs to start the same rip again.
-        match serde_json::to_string(&req) {
-            Ok(text) => {
-                let _ = store.set_cd_request(job.id, &text).await;
+        // What `retry` needs to start the same rip again, and the Disc ID it read (`job_disc_id`, beside the fields of the request).
+        match serde_json::to_value(&req) {
+            Ok(mut v) => {
+                v["job_disc_id"] = serde_json::json!(disc_id);
+                let _ = store.set_cd_request(job.id, &v.to_string()).await;
             }
             Err(e) => tracing::warn!(error = %e, "the request of a rip could not be written down"),
+        }
+        // A new start of a disc whose earlier rip waits in `retry_wait` takes its resume folder over: the earlier job is done with
+        // (it would stay in the list of waiting CDs, and "read again" there would read a disc that is in the library by then).
+        if !disc_id.is_empty() {
+            for other in store.cd_ids_in(crate::cdflow::CdState::RetryWait).await.unwrap_or_default() {
+                if other == job.id {
+                    continue;
+                }
+                let stored = store.cd_request(other).await.ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).unwrap_or_default();
+                // A job from before the Disc ID was written down: the same author, title and CD number.
+                let same = match stored["job_disc_id"].as_str() {
+                    Some(id) => id == disc_id,
+                    None => store.cd_job_any(other).await.ok().flatten().is_some_and(|o| o.author == job.author && o.album == job.album && o.disc == job.disc),
+                };
+                if same && let Ok(moved) = store.cd_move(other, crate::cdflow::Move::Superseded(job.id), &crate::cdflow::Actor::Server).await {
+                    cd.publish(moved.job.user_id, "failed", &moved.job);
+                }
+            }
         }
     }
     let taken = {

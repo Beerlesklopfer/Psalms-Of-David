@@ -853,7 +853,7 @@ async fn a_stopped_service_keeps_the_finished_tracks_and_the_next_rip_reads_only
     }
     let mut e = env().await;
     let token = pair_admin(&mut e).await;
-    interrupted_rip(&mut e, &token).await;
+    let first = interrupted_rip(&mut e, &token).await;
     // The folder of the disc stays, with the manifest and the two tracks that were done; nothing is in the library.
     let dir = disc_dir(&e);
     let m = cdresume::read(&dir).expect("a manifest");
@@ -874,6 +874,10 @@ async fn a_stopped_service_keeps_the_finished_tracks_and_the_next_rip_reads_only
     let job = wait_job(&e, &token, r.json()["id"].as_i64().unwrap()).await;
     assert_eq!((job["phase"].as_str(), job["track"].as_i64(), job["tracks_total"].as_i64()), (Some("done"), Some(4), Some(4)), "{job}");
     assert_eq!(*e.drive.reads.lock().unwrap(), vec![3, 4]);
+    // The new start took the resume folder of the first job over: that one no longer waits.
+    let old = e.store.cd_job_any(first).await.unwrap().unwrap();
+    assert_eq!((old.cd_state.as_str(), old.error.as_str()), ("cancelled", "cancelled"), "{old:?}");
+    assert!(old.message.contains("superseded"), "{}", old.message);
     let book = e.library.path().join("Ken Follett/Sturz der Titanen");
     for n in 1..=4 {
         assert!(book.join(format!("Ken Follett_Sturz der Titanen_CD01_TR{n:02}.mp3")).is_file(), "track {n}");

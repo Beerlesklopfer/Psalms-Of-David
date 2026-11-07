@@ -122,6 +122,8 @@ pub enum Move {
     Cancel,
     /// `awaiting_approval` -> `rejected` with the reason `expired`.
     Expire,
+    /// `retry_wait` -> `cancelled`: a new rip of the same disc (the job) took its resume folder over.
+    Superseded(i64),
 }
 
 impl Move {
@@ -140,6 +142,7 @@ impl Move {
             Move::ImportFailed => "import_failed",
             Move::Fail(_) => "fail",
             Move::Cancel => "cancel",
+            Move::Superseded(_) => "superseded",
             Move::Expire => "expire",
         }
     }
@@ -157,7 +160,7 @@ impl Move {
         use CdState::*;
         match (self, from) {
             (Move::Retry, RetryWait) => Some(Ripping),
-            (Move::GiveUp, RetryWait) | (Move::Cancel, Ripping | RetryWait) => Some(Cancelled),
+            (Move::GiveUp | Move::Superseded(_), RetryWait) | (Move::Cancel, Ripping | RetryWait) => Some(Cancelled),
             (Move::Approve, AwaitingApproval) => Some(Ripped),
             (Move::Reject | Move::Expire, AwaitingApproval) => Some(Rejected),
             (Move::ReadFailed(_) | Move::Interrupted, Ripping) | (Move::Interrupted, Ripped) => {
@@ -417,6 +420,10 @@ impl Store {
                 set("message", if actor_name.is_empty() { "cancelled".to_owned() } else { format!("cancelled by {who}") }.into());
             }
             Move::Interrupted => set("error", "interrupted".to_owned().into()),
+            Move::Superseded(by) => {
+                set("error", "cancelled".to_owned().into());
+                set("message", format!("superseded by job {by}, which read the disc again").into());
+            }
             Move::Present | Move::Ripped | Move::Place => {}
         }
         let sql = format!(

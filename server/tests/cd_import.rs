@@ -273,20 +273,17 @@ async fn a_disc_is_looked_up_with_a_contact_cached_and_asked_for_only_once() {
     assert_eq!((c["disc"].as_u64(), c["discs_total"].as_u64(), c["language"].as_str()), (Some(2), Some(12), Some("deu")));
     assert_eq!((c["tracks"].as_array().map(Vec::len), c["tracks"][0].as_str(), c["track_details"][0]["length_ms"].as_u64(), c["cover"].as_str()), (Some(14), Some("Teil 014"), Some(223000), c["release_id"].as_str()));
 
-    // The exact question, then the one by the table of contents for releases that are nearly the same.
+    // Only the exact question: releases with nearly the same track lengths are no certain match and are not asked for (owner, 2026-11-07).
     let asked = e.fake.asked();
-    assert_eq!(asked.len(), 2, "{asked:?}");
-    assert!(asked[1].1.contains("/ws/2/discid/-?toc="), "{}", asked[1].1);
+    assert_eq!(asked.len(), 1, "{asked:?}");
     assert_eq!(asked[0].0, Service::MusicBrainz);
     assert!(asked[0].1.starts_with("https://musicbrainz.org/ws/2/discid/"), "{}", asked[0].1);
     assert!(asked[0].2.contains("family@example.org") && asked[0].2.starts_with("david-server/"), "{}", asked[0].2);
     // The second look comes from the cache.
     let again = call(&e, "POST", "/api/v1/cd/lookup", Some(&token), Some(body)).await;
     assert_eq!(again.json(), j);
-    // The answer for the ID is not asked for again; a question that found nothing is not cached and is asked once more.
-    let asked = e.fake.asked();
-    assert_eq!(asked.len(), 3, "{asked:?}");
-    assert!(asked[2].1.contains("/ws/2/discid/-?toc="), "{}", asked[2].1);
+    // The answer for the ID is not asked for again.
+    assert_eq!(e.fake.asked().len(), 1, "{:?}", e.fake.asked());
 }
 
 #[tokio::test]
@@ -304,12 +301,12 @@ async fn a_bad_table_of_contents_and_services_that_fail_are_answered_with_codes(
     assert_eq!((r.status, r.code().as_str()), (StatusCode::BAD_GATEWAY, "lookup_failed"));
     assert!(e.fake.asked()[0].1.starts_with("https://mirror.example.org/ws/2/discid/"), "the address of the setting is used");
 
-    // Unknown by ID: asked again by the table of contents; unknown there too: no candidates, remembered.
+    // Unknown by ID: no candidates (no question by the table of contents, no guesses), remembered.
     e.fake.on("/ws/2/discid/", None);
     let r = call(&e, "POST", "/api/v1/cd/lookup", Some(&token), Some(json!({ "toc": toc() }))).await;
     assert_eq!((r.status, r.json()["candidates"].as_array().map(Vec::len)), (StatusCode::OK, Some(0)));
     let n = e.fake.asked().len();
-    assert!(e.fake.asked().iter().any(|a| a.1.contains("discid/-?toc=1+14+334409+150+")));
+    assert!(!e.fake.asked().iter().any(|a| a.1.contains("?toc=")));
     call(&e, "POST", "/api/v1/cd/lookup", Some(&token), Some(json!({ "toc": toc() }))).await;
     assert_eq!(e.fake.asked().len(), n, "a miss is remembered for a while");
 

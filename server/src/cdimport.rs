@@ -767,23 +767,9 @@ pub async fn lookup(store: &Store, cd: &CdService, set: &CdSettings, toc: &Toc) 
         }
     };
     let exact = cached(store, cd, set, &format!("mb:discid:{id}"), Service::MusicBrainz, musicbrainz::discid_url(&mb, &id, None), musicbrainz::MAX_JSON_BYTES).await?;
-    let mut candidates = parse(exact)?;
-    // The table of contents finds releases whose disc is nearly the same (another pressing, another country): they are offered after the
-    // exact ones, so that a disc whose ID belongs to a wrong or an incomplete entry is not left with that one choice.
-    let near = cached(store, cd, set, &format!("mb:toc:{id}"), Service::MusicBrainz, musicbrainz::discid_url(&mb, "-", Some(toc)), musicbrainz::MAX_JSON_BYTES).await;
-    match near {
-        Ok(body) => {
-            for c in parse(body)? {
-                if !candidates.iter().any(|k| k.release_id == c.release_id) {
-                    candidates.push(c);
-                }
-            }
-        }
-        // The exact answer stands when the second question fails.
-        Err(_) if !candidates.is_empty() => {}
-        Err(e) => return Err(e),
-    }
-    candidates.sort_by_key(|c| !c.disc_id_matched);
+    // Only certain matches: releases with a disc of exactly this Disc ID (project owner, 2026-11-07: "no guesses"). Releases with nearly the
+    // same track lengths (another pressing, or another album altogether) are not asked for any more; the search by words is for the rest.
+    let candidates = parse(exact)?.into_iter().filter(|c| c.disc_id_matched).collect();
     Ok((id, candidates))
 }
 
