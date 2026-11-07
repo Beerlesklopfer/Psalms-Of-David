@@ -16,6 +16,8 @@ pub const KEEP_MS: i64 = 24 * 3600 * 1000;
 const JOB_FILE: &str = "job";
 /// Who took the photos (the profile of the device that sent the first).
 const BY_FILE: &str = "by";
+/// How long an upload address of [`Photos::issue_link`] takes photos.
+pub const LINK_MS: i64 = 30 * 60 * 1000;
 
 /// What the photos belong to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,9 +59,19 @@ pub struct Task {
     pub job: Option<i64>,
 }
 
+/// An upload address: whose photos it takes, for whom, until when.
+#[derive(Debug, Clone)]
+struct Link {
+    owner: Owner,
+    by: String,
+    until_ms: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct Photos {
     base: PathBuf,
+    /// The upload addresses by their secret (MCP `photo_upload_link`); in memory, a restart ends them.
+    links: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, Link>>>,
 }
 
 fn ext(mime: &str) -> &'static str {
@@ -68,7 +80,24 @@ fn ext(mime: &str) -> &'static str {
 
 impl Photos {
     pub fn new(data_dir: &Path) -> Photos {
-        Photos { base: data_dir.join("photos") }
+        Photos { base: data_dir.join("photos"), links: Default::default() }
+    }
+
+    /// A secret for an upload address that takes photos of `owner` (as if `by` took them) for [`LINK_MS`]: a photo a language model
+    /// has (sent into its chat) goes to the server with `curl --data-binary`, not through the model. `None` for an owner that cannot be a folder.
+    pub fn issue_link(&self, owner: Owner, by: &str, now_ms: i64) -> Option<String> {
+        owner.dir_name()?;
+        let secret = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
+        let mut links = self.links.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        links.retain(|_, l| l.until_ms > now_ms);
+        links.insert(secret.clone(), Link { owner, by: by.to_owned(), until_ms: now_ms + LINK_MS });
+        Some(secret)
+    }
+
+    /// Whose photos the upload address `secret` takes, and for whom; `None` for an unknown or expired one.
+    pub fn link(&self, secret: &str, now_ms: i64) -> Option<(Owner, String)> {
+        let links = self.links.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        links.get(secret).filter(|l| l.until_ms > now_ms).map(|l| (l.owner.clone(), l.by.clone()))
     }
 
     fn dir(&self, owner: &Owner) -> Option<PathBuf> {
@@ -232,6 +261,19 @@ mod tests {
             p.add(&a, JPEG, "image/jpeg", "").unwrap();
         }
         assert_eq!(p.add(&a, JPEG, "image/jpeg", ""), Err("photo_limit"));
+    }
+
+    #[test]
+    fn an_upload_address_takes_photos_of_its_owner_until_it_expires() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Photos::new(d.path());
+        assert!(p.issue_link(Owner::Disc("../x".into()), "mcp", 0).is_none());
+        let secret = p.issue_link(Owner::Album(7), "mcp", 1000).unwrap();
+        assert_eq!(secret.len(), 64);
+        assert_eq!(p.link(&secret, 2000), Some((Owner::Album(7), "mcp".to_owned())));
+        assert_eq!(p.clone().link(&secret, 2000).map(|l| l.0), Some(Owner::Album(7)), "the clones share the addresses");
+        assert!(p.link(&secret, 1000 + LINK_MS).is_none());
+        assert!(p.link("nope", 2000).is_none());
     }
 
     #[test]

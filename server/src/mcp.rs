@@ -32,7 +32,30 @@ pub struct McpState {
 }
 
 pub fn router(state: McpState) -> Router {
-    Router::new().route("/mcp", post(rpc)).layer(axum::middleware::from_fn(crate::actor::scope)).with_state(state)
+    Router::new()
+        .route("/mcp", post(rpc))
+        .route("/mcp/photos/{secret}", post(upload_photo).layer(axum::extract::DefaultBodyLimit::max(crate::tags::MAX_COVER_BYTES + 1)))
+        .layer(axum::middleware::from_fn(crate::actor::scope))
+        .with_state(state)
+}
+
+/// `POST /mcp/photos/{secret}`: one photo (the body, JPEG or PNG, at most 8 MiB) for the owner of an upload address of
+/// `photo_upload_link`. The secret is the right: no token, so that a photo goes by `curl --data-binary @file` and not through the model.
+/// `200 {"photo","photos"}` as `POST /api/v1/items/{id}/photos`; `404 unknown_link` (unknown or expired), `409 photo_limit`, `413`, `415`, `422`.
+async fn upload_photo(State(s): State<McpState>, axum::extract::Path(secret): axum::extract::Path<String>, body: axum::body::Bytes) -> Response {
+    let Some((owner, by)) = s.cd.photos.link(&secret, crate::store::now_ms()) else {
+        return (StatusCode::NOT_FOUND, axum::Json(json!({ "error": "unknown_link" }))).into_response();
+    };
+    let before = s.cd.photos.list(&owner).last().map_or(0, |p| p.n);
+    match crate::api::photos_call(&s.cd.photos, &owner, &axum::http::Method::POST, &body, &by) {
+        Ok(axum::Json(mut v)) => {
+            let n = s.cd.photos.list(&owner).last().map(|p| p.n).filter(|n| *n > before);
+            v["photo"] = json!(n);
+            tracing::info!(?owner, %by, bytes = body.len(), "photo uploaded through an MCP upload address");
+            axum::Json(v).into_response()
+        }
+        Err(e) => e.into_response(),
+    }
 }
 
 fn unauthorized() -> Response {
@@ -180,6 +203,11 @@ fn tool_list() -> Value {
             "name": "discard_photos",
             "description": "Removes the photos of an album (id) or of a disc (disc_id) when you are done with them. The photos of a disc go by themselves when its rip ends. Needs a token that may write.",
             "inputSchema": { "type": "object", "properties": { "id": { "type": "integer" }, "disc_id": { "type": "string" } } }
+        },
+        {
+            "name": "photo_upload_link",
+            "description": "An upload address for photos you have as files (a photo of the CD case, the back, the booklet that the person sent into the chat) that are not in David yet: the address takes them for an album (id) or a disc (disc_id; absent: the disc in the drive) for 30 minutes, at most 12 per owner. Send each file with curl from your machine (`curl --fail --data-binary @front.jpg <address of this MCP server without /mcp>/mcp/photos/<secret>`), never as base64 through the conversation. Crop or turn it before if needed; JPEG or PNG, at most 8 MiB. Afterwards they are photos like those of the app: get_photos reads them, set_cover_from_photo makes one the cover of an album, cd_rip with cover_photo the cover of the CD it imports; they go when the rip ends or with discard_photos. Needs a token that may write (for a disc made by a profile that may put in CDs).",
+            "inputSchema": { "type": "object", "properties": { "id": { "type": "integer", "description": "Album id; absent: a disc" }, "disc_id": { "type": "string", "description": "Disc ID (cd_drive); absent: the disc in the drive" } } }
         },
         {
             "name": "set_cover_from_url",
@@ -483,7 +511,7 @@ async fn prompt_of(s: &McpState) -> String {
 }
 
 /// The tools that change files; a token that may only read cannot use them.
-const WRITING_TOOLS: [&str; 31] = ["set_cover_from_photo", "discard_photos", "cd_rip", "hide_albums", "edit_blacklist", "merge_albums", "set_discs_total", "set_labels", "set_track_labels", "set_feed_labels", "move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
+const WRITING_TOOLS: [&str; 32] = ["photo_upload_link", "set_cover_from_photo", "discard_photos", "cd_rip", "hide_albums", "edit_blacklist", "merge_albums", "set_discs_total", "set_labels", "set_track_labels", "set_feed_labels", "move_albums", "set_owner", "assign_owners", "release_albums", "edit_podcasts", "edit_stations", "edit_playlists", "upgrade_to_id3v2", "rename_album", "edit_genres", "set_genre", "remove_empty_folders", "set_recommended_age", "set_tags", "set_cover_from_folder", "set_cover_from_url", "move_to_audiobooks", "quarantine_duplicates", "set_description", "ignore", "unignore"];
 
 /// A sample call of a tool, for `help_for`.
 fn example_of(tool: &str) -> Value {
@@ -496,6 +524,7 @@ fn example_of(tool: &str) -> Value {
         "photo_tasks" => json!({}),
         "set_cover_from_photo" => json!({ "id": 12, "photo": 1 }),
         "discard_photos" => json!({ "id": 12 }),
+        "photo_upload_link" => json!({ "disc_id": "AM3Ds7LYFUg7YH7ywvK9zGrpNsU-" }),
         "cd_rip" => json!({ "author": "Ken Follett", "title": "Sturz der Titanen", "disc": 1, "discs_total": 12, "tracks": ["Teil 1", "Teil 2", "Teil 3"], "narrator": "Johannes Steck", "kind": "audiobook", "mbid": "b0ee0bdb-d1c0-4a39-8d8a-4b7d1b2d6e11", "dry_run": true }),
         "find_problems" => json!({ "offset": 0, "limit": 100 }),
         "list_formats" => json!({ "format": "ogg" }),
@@ -1137,7 +1166,7 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
             }
             Ok(json!({ "tasks": tasks }))
         }
-        "get_photos" | "discard_photos" => {
+        "get_photos" | "discard_photos" | "photo_upload_link" => {
             // An album by id, else a disc: the one named, or the one in the drive of the server.
             let owner = match int("id") {
                 Some(id) => {
@@ -1157,6 +1186,14 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                     crate::photos::Owner::Disc(disc)
                 }
             };
+            if name == "photo_upload_link" {
+                if !token.can_write {
+                    return Err("this token may only read".into());
+                }
+                let secret = s.cd.photos.issue_link(owner, &token.name, crate::store::now_ms()).ok_or("this disc_id is no Disc ID")?;
+                let path = format!("/mcp/photos/{secret}");
+                return Ok(json!({ "path": path, "valid_minutes": crate::photos::LINK_MS / 60_000, "max_photos": crate::photos::MAX_PHOTOS, "how": format!("curl --fail --data-binary @photo.jpg <the address of this MCP server without /mcp>{path}; once per file, in the order of the pages") }));
+            }
             if name == "discard_photos" {
                 if !token.can_write {
                     return Err("this token may only read".into());

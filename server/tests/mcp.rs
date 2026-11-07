@@ -1504,3 +1504,48 @@ async fn a_photo_of_an_album_becomes_its_cover_and_the_photos_are_discarded_when
     assert!(!err && gone["discarded"] == 1, "{gone}");
     assert!(photos.list(&owner).is_empty());
 }
+
+#[tokio::test]
+async fn a_photo_the_model_has_goes_to_the_server_through_an_upload_address_and_then_is_a_photo_like_those_of_the_app() {
+    if !ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let m = mcp().await;
+    let id = album(&m, &[("title", "x")]).await;
+    const JPEG: &[u8] = &[0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xFF, 0xD9];
+    let read = m.store.create_mcp_token("reader", false, m.admin).await.unwrap();
+    let (err, text) = tool(&m, &read, "photo_upload_link", json!({ "id": id })).await;
+    assert!(err && text.as_str().unwrap().contains("only read"), "{text}");
+    let t = m.store.create_mcp_token("llm", true, m.admin).await.unwrap();
+    let (err, link) = tool(&m, &t, "photo_upload_link", json!({ "id": id })).await;
+    assert!(!err, "{link}");
+    let path = link["path"].as_str().unwrap().to_owned();
+    assert!(path.starts_with("/mcp/photos/") && link["valid_minutes"] == 30, "{link}");
+    let send = |uri: String, body: &'static [u8]| {
+        let r = m.router.clone();
+        async move {
+            let res = r.oneshot(Request::builder().method("POST").uri(uri).body(Body::from(body)).unwrap()).await.unwrap();
+            let status = res.status();
+            (status, serde_json::from_slice::<Value>(&to_bytes(res.into_body(), 1 << 20).await.unwrap()).unwrap_or(Value::Null))
+        }
+    };
+    // No token needed: the secret of the address is the right. The first photo is number 1; a second follows.
+    let (status, j) = send(path.clone(), JPEG).await;
+    assert_eq!((status, j["photo"].as_u64()), (StatusCode::OK, Some(1)), "{j}");
+    assert_eq!(send(path.clone(), JPEG).await.1["photo"], 2);
+    // Something that is no picture, and an address that does not exist, are refused.
+    assert_eq!(send(path.clone(), b"hello").await.0, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(send("/mcp/photos/nope".into(), JPEG).await.0, StatusCode::NOT_FOUND);
+    // Now they are photos of the album, taken by the token.
+    let (_, tasks) = tool(&m, &t, "photo_tasks", json!({})).await;
+    assert_eq!((tasks["tasks"][0]["id"].as_i64(), tasks["tasks"][0]["photos"].as_u64(), tasks["tasks"][0]["by"].as_str()), (Some(id), Some(2), Some("llm")), "{tasks}");
+    // A disc needs a token of a profile that may put in CDs, and a Disc ID that can be one.
+    let plain = m.store.create_profile("Kind", false).await.unwrap();
+    let child = m.store.create_mcp_token("kind", true, plain).await.unwrap();
+    assert!(tool(&m, &child, "photo_upload_link", json!({ "disc_id": "AM3Ds7LYFUg7YH7ywvK9zGrpNsU-" })).await.0);
+    let (err, bad) = tool(&m, &t, "photo_upload_link", json!({ "disc_id": "../etc" })).await;
+    assert!(err, "{bad}");
+    let (err, disc) = tool(&m, &t, "photo_upload_link", json!({ "disc_id": "AM3Ds7LYFUg7YH7ywvK9zGrpNsU-" })).await;
+    assert!(!err, "{disc}");
+}
