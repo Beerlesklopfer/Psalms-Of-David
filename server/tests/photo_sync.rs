@@ -257,3 +257,70 @@ async fn videos_large_files_and_other_types_are_refused_by_the_rules() {
     let r = piece(&a, &phone, "fits", &[3u8; 10], 0, 10, "c.jpg", "image/jpeg").await;
     assert_eq!(r.status, StatusCode::CREATED);
 }
+
+#[tokio::test]
+async fn a_deleted_picture_goes_into_the_trash_the_other_devices_are_told_and_it_can_be_restored_until_it_is_removed_for_good() {
+    let a = api().await;
+    let (anna, phone) = member(&a, "Anna", 1).await;
+    let tablet = pair(&a, anna, 2).await;
+    let folder = tempfile::tempdir().unwrap();
+    a.store.set_profile_folder(anna, "photo", Some(folder.path().to_str().unwrap())).await.unwrap();
+    a.store.save_settings(&[("photo_sync".into(), "on".into()), ("photo_modes".into(), "both".into()), ("time_zone".into(), "UTC".into())]).await.unwrap();
+    let r = json_call(&a, "PUT", "/api/v1/photos/settings", &phone, json!({ "enabled": "on", "mode": "bi" })).await;
+    assert_eq!(r.status, StatusCode::OK);
+    let img: Vec<u8> = (0..5000u32).map(|i| (i % 249) as u8).collect();
+    let r = piece(&a, &phone, "p", &img, 0, img.len(), "IMG_0007.jpg", "image/jpeg").await;
+    let id = r.json()["photo"].as_i64().unwrap();
+    let jpeg: Vec<u8> = [0xFF, 0xD8, 0xFF, 0xE0, 9].to_vec();
+    assert_eq!(send(&a, "PUT", &format!("/api/v1/photos/{id}/thumb"), Some(&phone), "image/jpeg", jpeg, None).await.status, StatusCode::NO_CONTENT);
+
+    // The tablet starts reading the deletions now: it has nothing to remove of before.
+    let start = get_json(&a, &tablet, "/api/v1/photos/removals").await.json();
+    assert_eq!(start["events"], json!([]));
+    let since = start["next"].as_i64().unwrap();
+
+    // Only with "deleting into the trash".
+    let r = json_call(&a, "POST", "/api/v1/photos/trash", &phone, json!({ "sha256": [sha(&img)] })).await;
+    assert_eq!((r.status, r.json()["error"].clone()), (StatusCode::CONFLICT, json!("no_trash")));
+    assert_eq!(json_call(&a, "PUT", "/api/v1/photos/settings", &phone, json!({ "deletes": "trash" })).await.status, StatusCode::OK);
+    let r = json_call(&a, "POST", "/api/v1/photos/trash", &phone, json!({ "sha256": [sha(&img), "0".repeat(64)] })).await;
+    assert_eq!(r.json(), json!({ "trashed": [id] }), "an unknown picture is no error");
+    assert!(!folder.path().join("2026/03/IMG_0007.jpg").exists());
+    assert_eq!(std::fs::read(folder.path().join(".david-trash/2026/03/IMG_0007.jpg")).unwrap(), img);
+
+    // In the trash: not in the numbers, not among the changes, but known, so no other device sends it again.
+    let st = get_json(&a, &phone, "/api/v1/photos/state").await.json();
+    assert_eq!((st["count"].clone(), st["trash_count"].clone(), st["trash_bytes"].clone()), (json!(0), json!(1), json!(img.len())));
+    assert_eq!(get_json(&a, &tablet, "/api/v1/photos/changes?since=0").await.json()["photos"], json!([]));
+    let r = json_call(&a, "POST", "/api/v1/photos/have", &tablet, json!({ "files": [{ "sha256": sha(&img), "size": img.len() }] })).await;
+    assert_eq!(r.json()["missing"], json!([]));
+    let trash = get_json(&a, &phone, "/api/v1/photos/trash").await.json();
+    assert_eq!((trash["keep_days"].clone(), trash["photos"][0]["id"].clone(), trash["photos"][0]["name"].clone()), (json!(30), json!(id), json!("IMG_0007.jpg")));
+
+    // The tablet is told, the phone that deleted it is not.
+    let ev = get_json(&a, &tablet, &format!("/api/v1/photos/removals?since={since}")).await.json();
+    assert_eq!(ev["events"].as_array().unwrap().len(), 1, "{ev}");
+    assert_eq!((ev["events"][0]["kind"].clone(), ev["events"][0]["sha256"].clone()), (json!("trash"), json!(sha(&img))));
+    assert_eq!(get_json(&a, &phone, &format!("/api/v1/photos/removals?since={since}")).await.json()["events"], json!([]));
+    let next = ev["next"].as_i64().unwrap();
+
+    // Restored: back in its month, and the phone is told of it this time.
+    let (_, bert) = member(&a, "Bert", 3).await;
+    assert_eq!(send(&a, "POST", &format!("/api/v1/photos/{id}/restore"), Some(&bert), "application/json", vec![], None).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(send(&a, "POST", &format!("/api/v1/photos/{id}/restore"), Some(&tablet), "application/json", vec![], None).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(std::fs::read(folder.path().join("2026/03/IMG_0007.jpg")).unwrap(), img);
+    assert_eq!(get_json(&a, &tablet, &format!("/api/v1/photos/{id}/file")).await.bytes, img);
+    let ev = get_json(&a, &phone, &format!("/api/v1/photos/removals?since={next}")).await.json();
+    assert_eq!(ev["events"][0]["kind"], json!("restore"));
+    assert_eq!(send(&a, "POST", &format!("/api/v1/photos/{id}/restore"), Some(&tablet), "application/json", vec![], None).await.status, StatusCode::NOT_FOUND);
+
+    // Into the trash again, and after the 30 days removed for good, with its preview; then a device may send it anew.
+    json_call(&a, "POST", "/api/v1/photos/trash", &phone, json!({ "sha256": [sha(&img)] })).await;
+    assert_eq!(a.store.purge_photo_trash().await.unwrap(), 0, "not yet 30 days");
+    assert_eq!(a.store.purge_photo_trash_before(i64::MAX).await.unwrap(), 1);
+    assert!(!folder.path().join(".david-trash/2026/03/IMG_0007.jpg").exists());
+    assert!(!folder.path().join(format!(".david-thumbs/{id}.jpg")).exists());
+    assert_eq!(get_json(&a, &phone, "/api/v1/photos/trash").await.json()["photos"], json!([]));
+    let r = json_call(&a, "POST", "/api/v1/photos/have", &tablet, json!({ "files": [{ "sha256": sha(&img), "size": img.len() }] })).await;
+    assert_eq!(r.json()["missing"], json!([sha(&img)]));
+}

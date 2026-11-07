@@ -2843,4 +2843,70 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get photoErrUnwritable =>
       'The picture could not be put into the gallery';
+
+  @override
+  String get photoTrashTitle => 'Trash';
+
+  @override
+  String get photoTrashHint =>
+      'Pictures that one of your devices deleted. The server keeps them for 30 days, then they are removed for good.';
+
+  @override
+  String get photoTrashEmpty => 'The trash is empty.';
+
+  @override
+  String photoTrashUntil(String date) {
+    return 'Removed for good on $date';
+  }
+
+  @override
+  String get photoRestore => 'Restore';
+
+  @override
+  String get photoTrashThis => 'Into the trash';
+
+  @override
+  String get photoTrashThisBody =>
+      'The picture goes into the trash of the server for 30 days, and your other devices are asked to remove it too.';
+
+  @override
+  String photoAskDelete(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count pictures were deleted on your other devices. Delete them here too?',
+      one: '1 picture was deleted on another of your devices. Delete it here too?',
+    );
+    return '$_temp0 They are in the trash of the server for 30 days.';
+  }
+
+  @override
+  String get photoAskDeleteYes => 'Delete here too';
+
+  @override
+  String get photoAskDeleteNo => 'Keep them here';
+
+  @override
+  String photoAskTrash(int count) {
+    return '$count pictures that were backed up are no longer on this device. Were they deleted? Then they go into the trash of the server and your other devices are asked about them.';
+  }
+
+  @override
+  String get photoAskTrashYes => 'Yes, into the trash';
+
+  @override
+  String get photoAskTrashNo => 'No, keep them on the server';
+
+  @override
+  String photoRunTrashed(int count) {
+    return '$count into the trash.';
+  }
+
+  @override
+  String get photoErrBusy => 'A backup is running; try again in a moment.';
+
+  @override
+  String get photoErrNoTrash =>
+      'Deleting into the trash is not switched on for your profile.';
 }

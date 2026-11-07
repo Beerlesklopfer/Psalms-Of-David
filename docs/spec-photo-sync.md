@@ -14,8 +14,16 @@ The receiving half of bisync is built too (decided 2026-11-07: either way, chose
 gallery folder `Pictures/David`, marked as known so the backup does not send them back) and `off`. The previews are made by the device
 that sends a picture (its gallery reads every format, also HEIC and videos; the server reads none) and kept by the server in
 `<picture folder>/.david-thumbs/<id>.jpg` (`PUT`/`GET /photos/{id}/thumb`, `changes` says `thumb`). A device receives what was taken from
-the day it was switched on, like it sends; "also the older ones" reads the changes again from the start. Not built yet: `keep_local`
-(received originals in the gallery stay; Android asks the person before an app deletes there) and the trash of bisync deletions. It builds on the **ownership** that
+the day it was switched on, like it sends; "also the older ones" reads the changes again from the start. The trash is built too (2026-11-08,
+`deletes` = `trash`, bisync only): a picture this device sent or received into its gallery and that is no longer in the gallery (checked
+one by one with the gallery, and only with access to all pictures, so a picture outside the chosen ones or an access to some pictures
+only never counts as deleted) goes into the trash of the server; more than 20 at once wait for the person ("Were they deleted?"). The
+server moves the file into `<picture folder>/.david-trash/<year>/<month>/`, keeps the row (so no other device sends it again), tells
+the other devices (`photo_event`, `GET /photos/removals`) and removes it for good after 30 days (the hourly job, with its preview).
+Another device drops a preview of the app at once; a picture in its gallery waits for "delete here too" (Android asks once more) or
+"keep them here". The trash screen of the app lists what is in it with the day it goes, and restores (back to its month; the devices
+that still ask drop the question). A received picture can be put into the trash from the view of the app. Not built yet: `keep_local`
+(received originals in the gallery stay), and a restored picture does not come back to a device that had dropped its preview. It builds on the **ownership** that
 books have since schema 0040: now that something in the library belongs to a family member, the pictures on a device can be copied to the
 server of the family and kept there, and that copy is the backup.
 

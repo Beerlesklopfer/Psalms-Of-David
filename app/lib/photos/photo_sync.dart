@@ -55,6 +55,16 @@ abstract class PhotoLibrary {
   /// Removes what [LocalPhoto.open] copied into the cache of the app.
   Future<void> cleanUp() async {}
 
+  /// The app may read all pictures, not only some the person picked (Android 14 can give access to a choice): only then does a
+  /// picture that is not found count as deleted.
+  Future<bool> fullAccess() async => hasAccess();
+
+  /// The entry [id] is still in the gallery.
+  Future<bool> exists(String id) async => true;
+
+  /// Deletes entries of the gallery (Android shows its own question first); the ids that were deleted.
+  Future<List<String>> delete(List<String> ids) async => const [];
+
   /// Puts a received original into the gallery (folder "David"); the new entry of the gallery, null when it could not be written.
   Future<LocalPhoto?> saveToGallery(File file, {required String name, required String mime, required DateTime takenAt}) async => null;
 }
@@ -104,6 +114,9 @@ class PhotoRunResult {
 
   /// Received from the other devices of the person (bisync).
   int received;
+
+  /// Deleted on this device and put into the trash of the server.
+  int trashed = 0;
 
   PhotoRunStop? stop;
 
@@ -269,8 +282,85 @@ class PhotoSync {
         store.save(state);
       }
     }
+    if (settings.trashOn) {
+      if (!await _sendDeletions(photos, state, result)) return result;
+      if (!await _readRemovals(state, result)) return result;
+    }
     await _receive(state, device, settings, result);
     return result;
+  }
+
+  /// The pictures this device sent or received into its gallery and that are no longer there: into the trash of the server. Many at once
+  /// wait for the person ([PhotoDeviceState.toTrash]), in case they were moved rather than deleted. False when the run has to stop.
+  Future<bool> _sendDeletions(List<LocalPhoto> listed, PhotoDeviceState state, PhotoRunResult result) async {
+    // With access to only some pictures every other one would look deleted.
+    if (!await library.fullAccess()) return true;
+    final present = {for (final p in listed) p.id};
+    final waiting = {for (final g in state.toTrash) g.key};
+    final gone = <PhotoGone>[];
+    for (final e in state.entries.entries) {
+      if (!e.value.done || waiting.contains(e.key)) continue;
+      final id = e.key.split('@').first;
+      if (present.contains(id)) continue;
+      // Not listed: outside of the chosen pictures, or edited (a new key), or deleted. Only the gallery knows.
+      if (await library.exists(id)) continue;
+      gone.add(PhotoGone(e.key, e.value.sha256));
+    }
+    if (gone.isEmpty) return true;
+    if (gone.length > kPhotoTrashAsk) {
+      state.toTrash.addAll(gone);
+      store.save(state);
+      return true;
+    }
+    try {
+      await api.trash([for (final g in gone) g.sha256]);
+    } on ApiException catch (e) {
+      if (e.code == 'no_trash') return true;
+      result.stop = _stopOf(e, state);
+      return false;
+    }
+    for (final g in gone) {
+      state.entries.remove(g.key);
+    }
+    result.trashed += gone.length;
+    store.save(state);
+    return true;
+  }
+
+  /// What the other devices deleted: a preview in the app goes at once (it is the app's own); a picture in the gallery waits for the person
+  /// ([PhotoDeviceState.toDelete]). A restore takes it off that list again. False when the run has to stop.
+  Future<bool> _readRemovals(PhotoDeviceState state, PhotoRunResult result) async {
+    while (true) {
+      final ({List<PhotoEvent> events, int next}) page;
+      try {
+        page = await api.removals(state.removalsSince);
+      } on ApiException catch (e) {
+        if (e.code == 'not_bisync') return true;
+        result.stop = _stopOf(e, state);
+        return false;
+      }
+      final first = state.removalsSince == null;
+      for (final ev in page.events) {
+        if (ev.kind == 'trash') {
+          for (final r in state.received.where((r) => r.sha256 == ev.sha256 && !r.gallery).toList()) {
+            final f = store.thumbFile(r.id);
+            if (f.existsSync()) f.deleteSync();
+            state.received.remove(r);
+          }
+          for (final e in state.entries.entries) {
+            if (e.value.sha256 == ev.sha256 && !state.toDelete.any((g) => g.key == e.key)) {
+              final name = state.received.where((r) => r.sha256 == ev.sha256).firstOrNull?.name;
+              state.toDelete.add(PhotoGone(e.key, ev.sha256, name));
+            }
+          }
+        } else if (ev.kind == 'restore') {
+          state.toDelete.removeWhere((g) => g.sha256 == ev.sha256);
+        }
+      }
+      state.removalsSince = page.next;
+      store.save(state);
+      if (first || page.events.isEmpty) return true;
+    }
   }
 
   /// The preview of a picture that was just sent, for the other devices. Without one they show a placeholder: it is no reason to stop.

@@ -9,6 +9,7 @@ import 'photo_backup_api.dart';
 import 'photo_backup_controller.dart';
 import 'photo_device.dart';
 import 'photo_received_ui.dart';
+import 'photo_trash_ui.dart';
 import 'photo_sync.dart';
 import 'photo_texts.dart';
 
@@ -282,6 +283,34 @@ class _DeviceCard extends StatelessWidget {
             ),
           const SizedBox(height: 8),
         ],
+        if (st.toDelete.isNotEmpty)
+          _Ask(
+            key: const ValueKey('photo-ask-delete'),
+            text: l.photoAskDelete(st.toDelete.length),
+            yes: l.photoAskDeleteYes,
+            no: l.photoAskDeleteNo,
+            onYes: c.deleteHereToo,
+            onNo: c.keepHere,
+          ),
+        if (st.toTrash.isNotEmpty)
+          _Ask(
+            key: const ValueKey('photo-ask-trash'),
+            text: l.photoAskTrash(st.toTrash.length),
+            yes: l.photoAskTrashYes,
+            no: l.photoAskTrashNo,
+            onYes: c.trashGone,
+            onNo: c.forgetGone,
+          ),
+        if (settings.trashOn || (c.server?.trashCount ?? 0) > 0)
+          ListTile(
+            key: const ValueKey('open-trash'),
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.delete_outline),
+            title: Text(l.photoTrashTitle),
+            subtitle: Text(l.photoReceivedCount(c.server?.trashCount ?? 0)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PhotoTrashScreen(controller: c))),
+          ),
         if (since != null) ...[
           Text(d.olderToo ? l.photoSinceAll : l.photoSince(DateFormat.yMd(locale).format(since)), key: const ValueKey('photo-since')),
           if (!d.olderToo)
@@ -338,7 +367,7 @@ class _DeviceCard extends StatelessWidget {
   }
 
   String _runText(AppLocalizations l, PhotoRunResult r) => switch (r.stop) {
-        null => [l.photoRunDone(r.sent, r.known), if (r.received > 0) l.photoRunReceived(r.received)].join(' '),
+        null => [l.photoRunDone(r.sent, r.known), if (r.received > 0) l.photoRunReceived(r.received), if (r.trashed > 0) l.photoRunTrashed(r.trashed)].join(' '),
         PhotoRunStop.busy => l.photoStopBusy,
         PhotoRunStop.network => l.photoStopNetwork,
         PhotoRunStop.stopped => '${l.photoRunDone(r.sent, r.known)} ${l.photoStopStopped}',
@@ -362,6 +391,44 @@ class _DeviceCard extends StatelessWidget {
       ),
     );
     if (yes == true) controller.includeOlder();
+  }
+}
+
+/// A question of the backup on the screen, with its two answers (a deletion is never done without one).
+class _Ask extends StatelessWidget {
+  const _Ask({super.key, required this.text, required this.yes, required this.no, required this.onYes, required this.onNo});
+
+  final String text;
+  final String yes;
+  final String no;
+  final VoidCallback onYes;
+  final VoidCallback onNo;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      color: cs.secondaryContainer,
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(text, style: TextStyle(color: cs.onSecondaryContainer)),
+            const SizedBox(height: 8),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              children: [
+                TextButton(key: const ValueKey('ask-no'), onPressed: onNo, child: Text(no)),
+                FilledButton(key: const ValueKey('ask-yes'), onPressed: onYes, child: Text(yes)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

@@ -999,5 +999,21 @@
   "photoReceivedNone": "Noch nichts empfangen. Bilder, die deine anderen Geräte schicken, kommen hierher.",
   "photoReceivedCount": "{count, plural, =1{1 Bild} other{{count} Bilder}}",
   "photoRunReceived": "{count} empfangen.",
-  "photoErrUnwritable": "Das Bild konnte nicht in die Galerie gelegt werden"
+  "photoErrUnwritable": "Das Bild konnte nicht in die Galerie gelegt werden",
+  "photoTrashTitle": "Papierkorb",
+  "photoTrashHint": "Bilder, die eines deiner Geräte gelöscht hat. Der Server hebt sie 30 Tage auf, dann werden sie endgültig entfernt.",
+  "photoTrashEmpty": "Der Papierkorb ist leer.",
+  "photoTrashUntil": "Wird am {date} endgültig entfernt",
+  "photoRestore": "Wiederherstellen",
+  "photoTrashThis": "In den Papierkorb",
+  "photoTrashThisBody": "Das Bild kommt für 30 Tage in den Papierkorb des Servers, und deine anderen Geräte werden gefragt, ob sie es auch entfernen.",
+  "photoAskDelete": "{count, plural, =1{1 Bild wurde auf einem anderen deiner Geräte gelöscht. Hier auch löschen?} other{{count} Bilder wurden auf deinen anderen Geräten gelöscht. Hier auch löschen?}} Sie liegen 30 Tage im Papierkorb des Servers.",
+  "photoAskDeleteYes": "Hier auch löschen",
+  "photoAskDeleteNo": "Hier behalten",
+  "photoAskTrash": "{count} gesicherte Bilder sind nicht mehr auf diesem Gerät. Wurden sie gelöscht? Dann kommen sie in den Papierkorb des Servers, und deine anderen Geräte werden gefragt.",
+  "photoAskTrashYes": "Ja, in den Papierkorb",
+  "photoAskTrashNo": "Nein, auf dem Server behalten",
+  "photoRunTrashed": "{count} in den Papierkorb.",
+  "photoErrBusy": "Eine Sicherung läuft; versuche es gleich noch einmal.",
+  "photoErrNoTrash": "Löschen in den Papierkorb ist für dein Profil nicht eingeschaltet."
 }

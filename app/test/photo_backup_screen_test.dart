@@ -73,6 +73,24 @@ class _Api implements PhotoBackupApi {
 
   @override
   Future<void> download(int photo, File dest, String sha256) async {}
+
+  @override
+  Future<List<int>> trash(List<String> sha256) async => const [];
+
+  final inTrash = [TrashedPhoto(id: 5, sha256: 'a' * 64, name: 'IMG_5.jpg', mime: 'image/jpeg', size: 10, takenAt: DateTime(2026, 11, 1), purgeAt: DateTime(2026, 12, 7))];
+  final restored = <int>[];
+
+  @override
+  Future<List<TrashedPhoto>> trashList() async => List.of(inTrash);
+
+  @override
+  Future<void> restore(int photo) async {
+    restored.add(photo);
+    inTrash.removeWhere((t) => t.id == photo);
+  }
+
+  @override
+  Future<({List<PhotoEvent> events, int next})> removals(int? since) async => (events: <PhotoEvent>[], next: 0);
 }
 
 class _Library extends PhotoLibrary {
@@ -205,6 +223,32 @@ void main() {
     await tester.pumpAndSettle();
     expect(store.loadSettings().olderToo, isTrue);
     expect(find.text(l.photoSinceAll), findsOneWidget);
+  });
+
+  testWidgets('a deletion on another device is only asked about; the trash lists what is in it and restores it', (tester) async {
+    final api = _Api()..choices = {..._Api().choices, 'mode': 'bi', 'deletes': 'trash'};
+    store.saveSettings(PhotoDeviceSettings(enabled: true, since: DateTime(2026, 11, 7)));
+    store.save(PhotoDeviceState(toDelete: [PhotoGone('42@1', 'b' * 64, 'IMG_42.jpg')]));
+    final c = controller(api, _Library());
+    await c.load();
+    await tester.pumpWidget(app(PhotoBackupScreen(controller: c)));
+    await tester.pumpAndSettle();
+    final l = AppLocalizations.of(tester.element(find.byType(PhotoBackupScreen)));
+
+    expect(find.text(l.photoAskDelete(1)), findsOneWidget);
+    await tester.tap(find.descendant(of: find.byKey(const ValueKey('photo-ask-delete')), matching: find.byKey(const ValueKey('ask-no'))));
+    await tester.pumpAndSettle();
+    expect(store.load().toDelete, isEmpty);
+    expect(find.byKey(const ValueKey('photo-ask-delete')), findsNothing);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('open-trash')));
+    await tester.tap(find.byKey(const ValueKey('open-trash')));
+    await tester.pumpAndSettle();
+    expect(find.text('IMG_5.jpg'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('restore-5')));
+    await tester.pumpAndSettle();
+    expect(api.restored, [5]);
+    expect(find.byKey(const ValueKey('photo-trash-empty')), findsOneWidget);
   });
 
   testWidgets('with the backup off on the server the settings show no photo backup at all', (tester) async {

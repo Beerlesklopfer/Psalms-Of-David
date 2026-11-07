@@ -154,7 +154,7 @@ pub fn clean_name(name: &str, sha256: &str, mime: &str) -> String {
 }
 
 /// A free name in `dir`: the name itself, else `stem (2).ext`, `stem (3).ext`, ...
-fn free_name(dir: &Path, name: &str) -> PathBuf {
+pub(crate) fn free_name(dir: &Path, name: &str) -> PathBuf {
     let first = dir.join(name);
     if !first.exists() {
         return first;
@@ -493,7 +493,7 @@ impl Store {
             .query_all_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT id, sha256, size_bytes, original_name, mime, taken_at, uploaded_at FROM photo \
-                 WHERE owner_id = ? AND id > ? AND (device_id IS NULL OR device_id != ?) ORDER BY id LIMIT ?",
+                 WHERE owner_id = ? AND id > ? AND (device_id IS NULL OR device_id != ?) AND trashed_at IS NULL ORDER BY id LIMIT ?",
                 [Value::from(owner), Value::from(since), Value::from(device), Value::from(i64::try_from(limit).unwrap_or(500))],
             ))
             .await?;

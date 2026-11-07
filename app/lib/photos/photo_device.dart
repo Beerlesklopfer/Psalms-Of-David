@@ -12,6 +12,9 @@ const kPhotoSources = ['camera', 'all'];
 /// tap), or the originals into the gallery (folder "David").
 const kPhotoReceive = ['app', 'gallery', 'off'];
 
+/// More pictures gone from the device at once than this: the person is asked before they go into the trash of the server.
+const kPhotoTrashAsk = 20;
+
 /// How many errors the device keeps to show.
 const kPhotoErrorsKept = 10;
 
@@ -121,14 +124,44 @@ class ReceivedPhoto {
       {'id': id, 's': sha256, 'n': size, 'name': name, 'mime': mime, 'at': takenAt.millisecondsSinceEpoch, if (thumb) 'thumb': true, if (gallery) 'gallery': true};
 }
 
+/// A picture of this device that a deletion concerns: the entry of the gallery and its hash.
+class PhotoGone {
+  PhotoGone(this.key, this.sha256, [this.name]);
+
+  factory PhotoGone.fromJson(Map<String, dynamic> j) => PhotoGone(j['key'] as String, j['s'] as String, j['name'] as String?);
+
+  /// The key of [PhotoDeviceState.entries] (`<gallery id>@<modified>`).
+  final String key;
+  final String sha256;
+  final String? name;
+
+  /// The id of the entry in the gallery.
+  String get assetId => key.split('@').first;
+
+  Map<String, Object?> toJson() => {'key': key, 's': sha256, 'name': ?name};
+}
+
 /// What the backup has done on this device, in a small file of the app that only a run writes (one at a time, see [PhotoDeviceStore.tryLock]).
 class PhotoDeviceState {
-  PhotoDeviceState({this.changesSince = 0, this.receivedOlder = false, List<ReceivedPhoto>? received, Map<String, PhotoEntry>? entries, List<PhotoError>? errors, this.lastRunAt, this.lastSentAt, this.waiting, this.constraints})
-      : received = received ?? [],
+  PhotoDeviceState({this.removalsSince, List<PhotoGone>? toDelete, List<PhotoGone>? toTrash, this.changesSince = 0, this.receivedOlder = false, List<ReceivedPhoto>? received, Map<String, PhotoEntry>? entries, List<PhotoError>? errors, this.lastRunAt, this.lastSentAt, this.waiting, this.constraints})
+      : toDelete = toDelete ?? [],
+        toTrash = toTrash ?? [],
+        received = received ?? [],
         entries = entries ?? {},
         errors = errors ?? [];
 
   factory PhotoDeviceState.fromJson(Map<String, dynamic> j) => PhotoDeviceState(
+        removalsSince: j['removals_since'] as int?,
+        toDelete: [
+          if (j['to_delete'] is List)
+            for (final g in j['to_delete'] as List)
+              if (g is Map && g['key'] is String && g['s'] is String) PhotoGone.fromJson(g.cast<String, dynamic>()),
+        ],
+        toTrash: [
+          if (j['to_trash'] is List)
+            for (final g in j['to_trash'] as List)
+              if (g is Map && g['key'] is String && g['s'] is String) PhotoGone.fromJson(g.cast<String, dynamic>()),
+        ],
         changesSince: j['changes_since'] as int? ?? 0,
         receivedOlder: j['received_older'] == true,
         received: [
@@ -151,6 +184,16 @@ class PhotoDeviceState {
         waiting: j['waiting'] as int?,
         constraints: j['constraints'] as String?,
       );
+
+  /// Bisync with the trash: the `since` of the next `removals` call; null until the first one.
+  int? removalsSince;
+
+  /// Pictures of this device that another device deleted: they wait for the person to say "delete here too" (Android asks once more).
+  final List<PhotoGone> toDelete;
+
+  /// Many pictures were gone from this device at once (more than [kPhotoTrashAsk]): the person confirms before they go into the trash of
+  /// the server, in case they were moved away rather than deleted.
+  final List<PhotoGone> toTrash;
 
   /// Bisync: the `since` of the next `changes` call.
   int changesSince;
@@ -184,6 +227,9 @@ class PhotoDeviceState {
   }
 
   Map<String, Object?> toJson() => {
+        'removals_since': ?removalsSince,
+        if (toDelete.isNotEmpty) 'to_delete': [for (final g in toDelete) g.toJson()],
+        if (toTrash.isNotEmpty) 'to_trash': [for (final g in toTrash) g.toJson()],
         'changes_since': changesSince,
         if (receivedOlder) 'received_older': true,
         'received': [for (final r in received) r.toJson()],

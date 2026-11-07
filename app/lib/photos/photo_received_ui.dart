@@ -19,23 +19,27 @@ class ReceivedPhotosScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final items = controller.state.received.reversed.toList();
     return Scaffold(
       appBar: AppBar(title: Text(l.photoReceivedTitle)),
-      body: items.isEmpty
+      body: ListenableBuilder(listenable: controller, builder: (context, _) => _grid(l)),
+    );
+  }
+
+  Widget _grid(AppLocalizations l) {
+    final items = controller.state.received.reversed.toList();
+    return items.isEmpty
           ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(l.photoReceivedNone, textAlign: TextAlign.center)))
           : GridView.builder(
               padding: const EdgeInsets.all(4),
               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 140, mainAxisSpacing: 4, crossAxisSpacing: 4),
               itemCount: items.length,
-              itemBuilder: (context, i) => _Tile(controller: controller, photo: items[i]),
-            ),
-    );
+              itemBuilder: (context, i) => _Tile(key: ValueKey(items[i].id), controller: controller, photo: items[i]),
+            );
   }
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile({required this.controller, required this.photo});
+  const _Tile({super.key, required this.controller, required this.photo});
 
   final PhotoBackupController controller;
   final ReceivedPhoto photo;
@@ -81,13 +85,14 @@ class _Tile extends StatelessWidget {
       await SharePlus.instance.share(ShareParams(files: [XFile(file.path, mimeType: photo.mime)]));
       return;
     }
-    await navigator.push(MaterialPageRoute<void>(builder: (_) => _Original(photo: photo, file: file)));
+    await navigator.push(MaterialPageRoute<void>(builder: (_) => _Original(controller: controller, photo: photo, file: file)));
   }
 }
 
 class _Original extends StatelessWidget {
-  const _Original({required this.photo, required this.file});
+  const _Original({required this.controller, required this.photo, required this.file});
 
+  final PhotoBackupController controller;
   final ReceivedPhoto photo;
   final File file;
 
@@ -100,6 +105,15 @@ class _Original extends StatelessWidget {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         title: Text(photo.name, overflow: TextOverflow.ellipsis),
+        actions: [
+          if (controller.settings?.trashOn ?? false)
+            IconButton(
+              key: const ValueKey('received-trash'),
+              icon: const Icon(Icons.delete_outline),
+              tooltip: AppLocalizations.of(context).photoTrashThis,
+              onPressed: () => _trash(context),
+            ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(20),
           child: Text(DateFormat.yMd(locale).add_Hm().format(photo.takenAt), style: const TextStyle(color: Colors.white70)),
@@ -107,5 +121,22 @@ class _Original extends StatelessWidget {
       ),
       body: InteractiveViewer(maxScale: 6, child: Center(child: Image.file(file))),
     );
+  }
+
+  Future<void> _trash(BuildContext context) async {
+    final l = AppLocalizations.of(context);
+    final navigator = Navigator.of(context);
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l.photoTrashThis),
+        content: Text(l.photoTrashThisBody),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
+          FilledButton(key: const ValueKey('received-trash-confirm'), onPressed: () => Navigator.pop(context, true), child: Text(l.photoTrashThis)),
+        ],
+      ),
+    );
+    if (yes == true && await controller.trashReceived(photo)) navigator.pop();
   }
 }

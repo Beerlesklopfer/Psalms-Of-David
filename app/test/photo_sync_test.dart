@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:psalm/photos/photo_backup_api.dart';
+import 'package:psalm/photos/photo_backup_controller.dart';
 import 'package:psalm/photos/photo_device.dart';
 import 'package:psalm/photos/photo_sync.dart';
 import 'package:psalm/server/api_client.dart';
@@ -21,6 +22,12 @@ class FakeServer implements PhotoBackupApi {
   bool active = true;
   int maxFileMb = 2048;
   String mode = 'uni';
+  String deletes = 'never';
+
+  /// The trash: the hashes that went in, and the events for the other devices.
+  final trashed = <String>[];
+  final events = <PhotoEvent>[];
+  int removalsCalls = 0;
 
   /// The pictures of the other devices (bisync), with their bytes and previews.
   final remote = <RemotePhoto>[];
@@ -38,8 +45,8 @@ class FakeServer implements PhotoBackupApi {
   Future<PhotoSettings?> settings() async => PhotoSettings(
         folder: true,
         active: active,
-        settings: {'enabled': active ? 'on' : 'off', 'videos': 'on', 'mode': mode},
-        effective: {'enabled': active ? 'on' : 'off', 'videos': 'on', 'network': 'wifi', 'charging': 'charging', 'mode': mode},
+        settings: {'enabled': active ? 'on' : 'off', 'videos': 'on', 'mode': mode, 'deletes': deletes},
+        effective: {'enabled': active ? 'on' : 'off', 'videos': 'on', 'network': 'wifi', 'charging': 'charging', 'mode': mode, 'deletes': deletes},
         locked: const {},
         maxFileMb: maxFileMb,
       );
@@ -112,6 +119,28 @@ class FakeServer implements PhotoBackupApi {
       ..writeAsBytesSync(b);
   }
 
+  @override
+  Future<List<int>> trash(List<String> sha256) async {
+    if (mode != 'bi' || deletes != 'trash') throw ApiException(409, 'no_trash');
+    trashed.addAll(sha256);
+    return [for (var i = 0; i < sha256.length; i++) i + 1];
+  }
+
+  @override
+  Future<List<TrashedPhoto>> trashList() async => [];
+
+  @override
+  Future<void> restore(int photo) async {}
+
+  @override
+  Future<({List<PhotoEvent> events, int next})> removals(int? since) async {
+    removalsCalls++;
+    final head = events.isEmpty ? 0 : events.last.seq;
+    if (since == null) return (events: <PhotoEvent>[], next: head);
+    final page = events.where((e) => e.seq > since).toList();
+    return (events: page, next: page.isEmpty ? since : page.last.seq);
+  }
+
   /// A picture that another device of the person sent.
   RemotePhoto addRemote(int id, List<int> bytes, {DateTime? taken, bool thumb = true}) {
     final r = RemotePhoto(id: id, sha256: sha256Of(bytes), size: bytes.length, name: 'remote-$id.jpg', mime: 'image/jpeg', takenAt: taken ?? DateTime(2026, 11, 8), thumb: thumb);
@@ -144,6 +173,24 @@ class FakeLibrary extends PhotoLibrary {
   }
 
   final gallery = <String, List<int>>{};
+  bool full = true;
+  final deletedIds = <String>[];
+
+  @override
+  Future<bool> fullAccess() async => full;
+
+  @override
+  Future<bool> exists(String id) async => photos.any((p) => p.id == id) || hidden.contains(id);
+
+  /// Pictures that are on the device but not among the chosen ones (another folder).
+  final hidden = <String>{};
+
+  @override
+  Future<List<String>> delete(List<String> ids) async {
+    deletedIds.addAll(ids);
+    photos.removeWhere((p) => ids.contains(p.id));
+    return ids;
+  }
 
   @override
   Future<LocalPhoto?> saveToGallery(File file, {required String name, required String mime, required DateTime takenAt}) async {
@@ -355,6 +402,97 @@ void main() {
 
     server.remoteBytes[5] = bytes(100, 18);
     expect((await PhotoSync(api: server, library: lib, store: store).run()).received, 1);
+  });
+
+  group('the trash', () {
+    test('a picture deleted on the device goes into the trash of the server; one only outside of the chosen pictures does not', () async {
+      final server = FakeServer()
+        ..mode = 'bi'
+        ..deletes = 'trash';
+      final a = bytes(100, 20), b = bytes(100, 21);
+      final lib = FakeLibrary([photo('a.jpg', a), photo('b.jpg', b)]);
+      await PhotoSync(api: server, library: lib, store: store).run();
+
+      lib.photos.removeWhere((p) => p.id == 'a.jpg'); // deleted
+      lib.photos.removeWhere((p) => p.id == 'b.jpg');
+      lib.hidden.add('b.jpg'); // still on the device, only not among the chosen pictures
+      final r = await PhotoSync(api: server, library: lib, store: store).run();
+      expect(r.trashed, 1);
+      expect(server.trashed, [sha256Of(a)]);
+      expect(store.load().entries.values.map((e) => e.sha256), [sha256Of(b)]);
+
+      expect((await PhotoSync(api: server, library: lib, store: store).run()).trashed, 0, reason: 'once only');
+    });
+
+    test('without "deleting into the trash", or with access to only some pictures, nothing goes into the trash', () async {
+      final server = FakeServer()..mode = 'bi';
+      final lib = FakeLibrary([photo('a.jpg', bytes(100, 22))]);
+      await PhotoSync(api: server, library: lib, store: store).run();
+      lib.photos.clear();
+      await PhotoSync(api: server, library: lib, store: store).run();
+      expect(server.trashed, isEmpty);
+      expect(server.removalsCalls, 0);
+
+      server.deletes = 'trash';
+      lib.full = false;
+      await PhotoSync(api: server, library: lib, store: store).run();
+      expect(server.trashed, isEmpty);
+      expect(store.load().entries, hasLength(1));
+    });
+
+    test('many pictures gone at once wait for the person', () async {
+      final server = FakeServer()
+        ..mode = 'bi'
+        ..deletes = 'trash';
+      final lib = FakeLibrary([for (var i = 0; i < kPhotoTrashAsk + 1; i++) photo('p$i.jpg', bytes(50, 100 + i))]);
+      await PhotoSync(api: server, library: lib, store: store).run();
+      lib.photos.clear();
+
+      await PhotoSync(api: server, library: lib, store: store).run();
+      expect(server.trashed, isEmpty);
+      expect(store.load().toTrash, hasLength(kPhotoTrashAsk + 1));
+      await PhotoSync(api: server, library: lib, store: store).run();
+      expect(store.load().toTrash, hasLength(kPhotoTrashAsk + 1), reason: 'not twice on the list');
+
+      final c = PhotoBackupController(api: server, library: lib, store: store, schedule: (_, _, _) async {});
+      await c.trashGone();
+      expect(server.trashed, hasLength(kPhotoTrashAsk + 1));
+      expect(store.load().toTrash, isEmpty);
+      expect(store.load().entries, isEmpty);
+    });
+
+    test('what another device deleted: a preview goes at once, a picture of the gallery only when the person says so; a restore takes it back', () async {
+      final server = FakeServer()
+        ..mode = 'bi'
+        ..deletes = 'trash';
+      final mine = bytes(100, 30), other = bytes(100, 31), third = bytes(100, 32);
+      server.addRemote(1, other);
+      final lib = FakeLibrary([photo('mine.jpg', mine), photo('third.jpg', third)]);
+      await PhotoSync(api: server, library: lib, store: store).run();
+      expect(store.load().received.map((r) => r.id), [1]);
+      expect(store.load().removalsSince, 0, reason: 'starts now: nothing of before');
+
+      server.events
+        ..add(PhotoEvent(1, 1, sha256Of(other), 'trash'))
+        ..add(PhotoEvent(2, 7, sha256Of(mine), 'trash'))
+        ..add(PhotoEvent(3, 8, sha256Of(third), 'trash'))
+        ..add(PhotoEvent(4, 8, sha256Of(third), 'restore'));
+      await PhotoSync(api: server, library: lib, store: store).run();
+      final st = store.load();
+      expect(st.received, isEmpty, reason: 'the preview of the app goes without asking');
+      expect(store.thumbFile(1).existsSync(), isFalse);
+      expect(st.toDelete.map((g) => g.assetId), ['mine.jpg'], reason: 'restored again: not asked for');
+      expect(lib.deletedIds, isEmpty, reason: 'nothing in the gallery without the person');
+      expect(st.removalsSince, 4);
+
+      final c = PhotoBackupController(api: server, library: lib, store: store, schedule: (_, _, _) async {});
+      await c.deleteHereToo();
+      expect(lib.deletedIds, ['mine.jpg']);
+      expect(store.load().toDelete, isEmpty);
+      expect(store.load().entries.values.map((e) => e.sha256), [sha256Of(third)]);
+      await PhotoSync(api: server, library: lib, store: store).run();
+      expect(server.trashed, isEmpty, reason: 'deleted because of the other device: not sent to the trash again');
+    });
   });
 
   group('ServerPhotoBackupApi', () {

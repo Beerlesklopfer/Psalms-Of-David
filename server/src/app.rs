@@ -162,6 +162,10 @@ pub async fn run(
                 let _ = store.purge_expired_sessions().await;
                 // A child's age limit rises on the birthday.
                 let _ = store.refresh_ages().await;
+                // Pictures in the trash of the photo backup for 30 days go for good.
+                if let Err(e) = store.purge_photo_trash().await {
+                    tracing::warn!("the trash of the photo backup: {e}");
+                }
             }
         })
     };

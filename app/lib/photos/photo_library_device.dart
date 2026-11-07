@@ -69,6 +69,28 @@ class DevicePhotoLibrary extends PhotoLibrary {
       );
 
   @override
+  Future<bool> fullAccess() async {
+    if (background) await PhotoManager.setIgnorePermissionCheck(true);
+    return (await PhotoManager.getPermissionState(requestOption: _permission)) == PermissionState.authorized;
+  }
+
+  @override
+  Future<bool> exists(String id) async {
+    try {
+      return await AssetEntity.fromId(id) != null;
+    } on Object {
+      // When in doubt it is there: nothing goes into the trash by mistake.
+      return true;
+    }
+  }
+
+  @override
+  Future<List<String>> delete(List<String> ids) async {
+    if (ids.isEmpty) return const [];
+    return PhotoManager.editor.deleteWithIds(ids);
+  }
+
+  @override
   Future<LocalPhoto?> saveToGallery(File file, {required String name, required String mime, required DateTime takenAt}) async {
     try {
       final a = mime.startsWith('video/')

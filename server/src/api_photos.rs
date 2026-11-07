@@ -14,6 +14,10 @@
 //! | `GET /photos/changes?since=<id>&limit=<n>` | bisync only (else `409 not_bisync`): `{photos: [{id, sha256, size, name, mime, taken_at, uploaded_at, thumb}], next}`, the pictures other devices of the person sent after `since`; `next` is the `since` of the next call |
 //! | `GET /photos/{id}/file` | the file of an own picture (with `Range`), `404` for any other |
 //! | `PUT /photos/{id}/thumb` | the preview of an own picture (`image/jpeg`, at most 512 KiB), sent by the device that sent the picture: `204`; `404 not_found` for any other picture, `415 wrong_type`, `413 too_large` |
+//! | `POST /photos/trash` `{sha256: [..]}` (at most 1000) | bisync with `deletes` = `trash` only (else `409 no_trash`): the device deleted these pictures; they go into the trash of the server for 30 days and the other devices are told. `{trashed: [id]}` |
+//! | `GET /photos/trash` | `{photos: [{id, sha256, name, mime, size, taken_at, trashed_at, purge_at}], keep_days}`, the latest deletion first |
+//! | `POST /photos/{id}/restore` | takes an own picture out of the trash (`204`; `404 not_found` when it is not there) and tells the other devices |
+//! | `GET /photos/removals?since=<seq>&limit=<n>` | bisync only: `{events: [{seq, photo, sha256, kind}], next}` with `kind` `trash` or `restore`, done by the other devices; without `since` no events and `next` is where to start |
 //! | `GET /photos/{id}/thumb` | the preview, `404 no_thumb` when there is none (`changes` says so in `thumb`) |
 //!
 //! An upload: the device names the file by a `client_id` of its own (1 to 128 visible characters, no slash) and sends it in pieces with
@@ -43,6 +47,7 @@ use tower::ServiceExt;
 use crate::api::{ApiError, ApiResult, ApiState, Device};
 use crate::photo_settings::{PROFILE_CHOICES, ServerPhotoSettings};
 use crate::photo_store::{HAVE_MAX, Offer, Owner, PIECE_MAX, Progress, Refusal, THUMB_MAX, is_jpeg};
+use crate::photo_trash::{TRASH_KEEP_MS, TRASH_MAX};
 
 pub fn routes() -> Router<ApiState> {
     Router::new()
@@ -52,6 +57,9 @@ pub fn routes() -> Router<ApiState> {
         .route("/api/v1/photos/upload/{client_id}", get(get_upload).put(put_upload).layer(DefaultBodyLimit::max(PIECE_MAX + 1024)))
         .route("/api/v1/photos/changes", get(get_changes))
         .route("/api/v1/photos/{id}/file", get(get_file))
+        .route("/api/v1/photos/trash", get(get_trash).post(post_trash))
+        .route("/api/v1/photos/{id}/restore", post(post_restore))
+        .route("/api/v1/photos/removals", get(get_removals))
         .route("/api/v1/photos/{id}/thumb", get(get_thumb).put(put_thumb).layer(DefaultBodyLimit::max(THUMB_MAX + 1024)))
 }
 
@@ -129,9 +137,11 @@ async fn owner_of(s: &ApiState, d: &Device) -> ApiResult<Owner> {
 async fn get_state(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
     let o = owner_of(&s, &d).await?;
     let (count, bytes, last_at) = s.store.photo_totals(o.id).await?;
+    let (trash_count, trash_bytes) = s.store.photo_trash_totals(o.id).await?;
     let quota = u64::from(o.server.quota_gb) * 1024 * 1024 * 1024;
     Ok(Json(json!({
-        "count": count, "bytes": bytes, "last_at": last_at, "quota_bytes": (quota > 0).then_some(quota),
+        "count": count - trash_count, "bytes": bytes - trash_bytes, "trash_count": trash_count, "trash_bytes": trash_bytes,
+        "last_at": last_at, "quota_bytes": (quota > 0).then_some(quota),
         "active": o.settings.enabled && o.folder.is_some(), "mode": o.settings.mode,
     })))
 }
@@ -310,4 +320,44 @@ async fn get_thumb(State(s): State<ApiState>, d: Device, Path(id): Path<i64>) ->
         Ok(None) => ApiError(StatusCode::NOT_FOUND, "not_found").into_response(),
         Err(e) => e.into_response(),
     }
+}
+
+#[derive(Deserialize)]
+struct TrashRequest {
+    sha256: Vec<String>,
+}
+
+async fn post_trash(State(s): State<ApiState>, d: Device, Json(req): Json<TrashRequest>) -> ApiResult<Json<Value>> {
+    let o = owner_of(&s, &d).await?;
+    if !(o.settings.enabled && o.settings.mode == "bi" && o.settings.deletes == "trash") {
+        return Err(ApiError(StatusCode::CONFLICT, "no_trash"));
+    }
+    if req.sha256.len() > TRASH_MAX || req.sha256.iter().any(|h| !crate::photo_store::valid_sha256(h)) {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "bad_request"));
+    }
+    Ok(Json(json!({ "trashed": s.store.trash_photos(&o, &req.sha256).await? })))
+}
+
+async fn get_trash(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
+    let o = owner_of(&s, &d).await?;
+    Ok(Json(json!({ "photos": s.store.photo_trash(o.id).await?, "keep_days": TRASH_KEEP_MS / (24 * 3600 * 1000) })))
+}
+
+async fn post_restore(State(s): State<ApiState>, d: Device, Path(id): Path<i64>) -> ApiResult<StatusCode> {
+    let o = owner_of(&s, &d).await?;
+    if s.store.restore_photo(&o, id).await? { Ok(StatusCode::NO_CONTENT) } else { Err(ApiError(StatusCode::NOT_FOUND, "not_found")) }
+}
+
+async fn get_removals(State(s): State<ApiState>, d: Device, Query(q): Query<ChangesQuery>) -> ApiResult<Json<Value>> {
+    let o = owner_of(&s, &d).await?;
+    if o.settings.mode != "bi" || !o.settings.enabled {
+        return Err(ApiError(StatusCode::CONFLICT, "not_bisync"));
+    }
+    let Some(since) = q.since else {
+        // A device that starts now has nothing to remove of what was deleted before.
+        return Ok(Json(json!({ "events": [], "next": s.store.photo_events_head(o.id).await? })));
+    };
+    let events = s.store.photo_removals(o.id, o.device, since, q.limit.unwrap_or(500).clamp(1, 1000)).await?;
+    let next = events.last().map_or(since, |e| e.seq);
+    Ok(Json(json!({ "events": events, "next": next })))
 }

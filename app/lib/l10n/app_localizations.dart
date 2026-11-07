@@ -4753,6 +4753,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The picture could not be put into the gallery'**
   String get photoErrUnwritable;
+
+  /// No description provided for @photoTrashTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Trash'**
+  String get photoTrashTitle;
+
+  /// No description provided for @photoTrashHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Pictures that one of your devices deleted. The server keeps them for 30 days, then they are removed for good.'**
+  String get photoTrashHint;
+
+  /// No description provided for @photoTrashEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'The trash is empty.'**
+  String get photoTrashEmpty;
+
+  /// No description provided for @photoTrashUntil.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed for good on {date}'**
+  String photoTrashUntil(String date);
+
+  /// No description provided for @photoRestore.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore'**
+  String get photoRestore;
+
+  /// No description provided for @photoTrashThis.
+  ///
+  /// In en, this message translates to:
+  /// **'Into the trash'**
+  String get photoTrashThis;
+
+  /// No description provided for @photoTrashThisBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The picture goes into the trash of the server for 30 days, and your other devices are asked to remove it too.'**
+  String get photoTrashThisBody;
+
+  /// No description provided for @photoAskDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 picture was deleted on another of your devices. Delete it here too?} other{{count} pictures were deleted on your other devices. Delete them here too?}} They are in the trash of the server for 30 days.'**
+  String photoAskDelete(int count);
+
+  /// No description provided for @photoAskDeleteYes.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete here too'**
+  String get photoAskDeleteYes;
+
+  /// No description provided for @photoAskDeleteNo.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep them here'**
+  String get photoAskDeleteNo;
+
+  /// No description provided for @photoAskTrash.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} pictures that were backed up are no longer on this device. Were they deleted? Then they go into the trash of the server and your other devices are asked about them.'**
+  String photoAskTrash(int count);
+
+  /// No description provided for @photoAskTrashYes.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes, into the trash'**
+  String get photoAskTrashYes;
+
+  /// No description provided for @photoAskTrashNo.
+  ///
+  /// In en, this message translates to:
+  /// **'No, keep them on the server'**
+  String get photoAskTrashNo;
+
+  /// No description provided for @photoRunTrashed.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} into the trash.'**
+  String photoRunTrashed(int count);
+
+  /// No description provided for @photoErrBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'A backup is running; try again in a moment.'**
+  String get photoErrBusy;
+
+  /// No description provided for @photoErrNoTrash.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleting into the trash is not switched on for your profile.'**
+  String get photoErrNoTrash;
 }
 
 class _AppLocalizationsDelegate

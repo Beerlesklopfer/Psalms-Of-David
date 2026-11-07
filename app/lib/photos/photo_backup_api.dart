@@ -78,17 +78,21 @@ class PhotoSettings {
   final int maxFileMb;
 
   bool get videosOn => effective['videos'] == 'on';
+
+  /// Bisync with "deleting into the trash": deletions go to the server and to the other devices.
+  bool get trashOn => effective['enabled'] == 'on' && effective['mode'] == 'bi' && effective['deletes'] == 'trash';
   bool get wifiOnly => effective['network'] != 'any';
   bool get chargingOnly => effective['charging'] != 'always';
 }
 
 /// What the person keeps on the server (`GET /api/v1/photos/state`).
 class PhotoServerState {
-  PhotoServerState({required this.count, required this.bytes, this.lastAt, this.quotaBytes});
+  PhotoServerState({required this.count, required this.bytes, this.lastAt, this.quotaBytes, this.trashCount = 0});
 
   factory PhotoServerState.fromJson(Map<String, dynamic> j) => PhotoServerState(
         count: j['count'] is int ? j['count'] as int : 0,
         bytes: j['bytes'] is int ? j['bytes'] as int : 0,
+        trashCount: j['trash_count'] is int ? j['trash_count'] as int : 0,
         lastAt: j['last_at'] is int ? DateTime.fromMillisecondsSinceEpoch(j['last_at'] as int) : null,
         quotaBytes: j['quota_bytes'] is int ? j['quota_bytes'] as int : null,
       );
@@ -97,6 +101,9 @@ class PhotoServerState {
   final int bytes;
   final DateTime? lastAt;
   final int? quotaBytes;
+
+  /// In the trash (not in [count]).
+  final int trashCount;
 }
 
 /// The answer to one piece of an upload.
@@ -151,6 +158,46 @@ class RemotePhoto {
   bool get video => mime.startsWith('video/');
 }
 
+/// A picture in the trash of the server (`GET /api/v1/photos/trash`).
+class TrashedPhoto {
+  TrashedPhoto({required this.id, required this.sha256, required this.name, required this.mime, required this.size, required this.takenAt, required this.purgeAt});
+
+  factory TrashedPhoto.fromJson(Map<String, dynamic> j) => TrashedPhoto(
+        id: j['id'] as int,
+        sha256: j['sha256'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        mime: j['mime'] as String? ?? '',
+        size: j['size'] as int? ?? 0,
+        takenAt: DateTime.fromMillisecondsSinceEpoch(j['taken_at'] as int? ?? 0),
+        purgeAt: DateTime.fromMillisecondsSinceEpoch(j['purge_at'] as int? ?? 0),
+      );
+
+  final int id;
+  final String sha256;
+  final String name;
+  final String mime;
+  final int size;
+  final DateTime takenAt;
+
+  /// When the server removes it for good.
+  final DateTime purgeAt;
+
+  bool get video => mime.startsWith('video/');
+}
+
+/// A deletion (`trash`) or a restore that another device of the person did (`GET /api/v1/photos/removals`).
+class PhotoEvent {
+  PhotoEvent(this.seq, this.photo, this.sha256, this.kind);
+
+  factory PhotoEvent.fromJson(Map<String, dynamic> j) =>
+      PhotoEvent(j['seq'] as int? ?? 0, j['photo'] as int? ?? 0, j['sha256'] as String? ?? '', j['kind'] as String? ?? '');
+
+  final int seq;
+  final int photo;
+  final String sha256;
+  final String kind;
+}
+
 /// A change of the choices that the server refused, by key (`{"mode": "no_bisync"}`); nothing was saved.
 class PhotoChoiceRefused implements Exception {
   PhotoChoiceRefused(this.refused);
@@ -195,6 +242,17 @@ abstract class PhotoBackupApi {
 
   /// Loads the file of a picture into [dest] and checks it against [sha256]; the file appears under its name only when it is complete.
   Future<void> download(int photo, File dest, String sha256);
+
+  /// The device deleted these pictures: into the trash of the server (bisync with `deletes` = `trash`); the ids moved.
+  Future<List<int>> trash(List<String> sha256);
+
+  Future<List<TrashedPhoto>> trashList();
+
+  /// Takes a picture out of the trash.
+  Future<void> restore(int photo);
+
+  /// What the other devices deleted or restored after [since]; with null no events, and `next` is where to start.
+  Future<({List<PhotoEvent> events, int next})> removals(int? since);
 }
 
 /// [PhotoBackupApi] over the app API of David.
@@ -322,6 +380,38 @@ class ServerPhotoBackupApi implements PhotoBackupApi {
       b.add(chunk);
     }
     return b.takeBytes();
+  }
+
+  @override
+  Future<List<int>> trash(List<String> sha256) async {
+    final (status, j) = await _call('POST', '/api/v1/photos/trash', body: {'sha256': sha256});
+    if (status >= 400) _fail(status, j);
+    return [for (final id in j['trashed'] as List? ?? const []) if (id is int) id];
+  }
+
+  @override
+  Future<List<TrashedPhoto>> trashList() async {
+    final (status, j) = await _call('GET', '/api/v1/photos/trash');
+    if (status >= 400) _fail(status, j);
+    return [for (final p in j['photos'] as List? ?? const []) if (p is Map<String, dynamic> && p['id'] is int) TrashedPhoto.fromJson(p)];
+  }
+
+  @override
+  Future<void> restore(int photo) async {
+    final (status, j) = await _call('POST', '/api/v1/photos/$photo/restore');
+    if (status >= 400) _fail(status, j);
+  }
+
+  @override
+  Future<({List<PhotoEvent> events, int next})> removals(int? since) async {
+    final res = await api.sendRaw('GET', '/api/v1/photos/removals', query: {if (since != null) 'since': '$since', 'limit': '500'});
+    final status = res.statusCode;
+    final j = _object(await utf8.decodeStream(res));
+    if (status >= 400) _fail(status, j);
+    return (
+      events: [for (final e in j['events'] as List? ?? const []) if (e is Map<String, dynamic>) PhotoEvent.fromJson(e)],
+      next: j['next'] as int? ?? since ?? 0,
+    );
   }
 
   @override

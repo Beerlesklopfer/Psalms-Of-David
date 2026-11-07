@@ -2874,4 +2874,71 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get photoErrUnwritable =>
       'Das Bild konnte nicht in die Galerie gelegt werden';
+
+  @override
+  String get photoTrashTitle => 'Papierkorb';
+
+  @override
+  String get photoTrashHint =>
+      'Bilder, die eines deiner Geräte gelöscht hat. Der Server hebt sie 30 Tage auf, dann werden sie endgültig entfernt.';
+
+  @override
+  String get photoTrashEmpty => 'Der Papierkorb ist leer.';
+
+  @override
+  String photoTrashUntil(String date) {
+    return 'Wird am $date endgültig entfernt';
+  }
+
+  @override
+  String get photoRestore => 'Wiederherstellen';
+
+  @override
+  String get photoTrashThis => 'In den Papierkorb';
+
+  @override
+  String get photoTrashThisBody =>
+      'Das Bild kommt für 30 Tage in den Papierkorb des Servers, und deine anderen Geräte werden gefragt, ob sie es auch entfernen.';
+
+  @override
+  String photoAskDelete(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count Bilder wurden auf deinen anderen Geräten gelöscht. Hier auch löschen?',
+      one: '1 Bild wurde auf einem anderen deiner Geräte gelöscht. Hier auch löschen?',
+    );
+    return '$_temp0 Sie liegen 30 Tage im Papierkorb des Servers.';
+  }
+
+  @override
+  String get photoAskDeleteYes => 'Hier auch löschen';
+
+  @override
+  String get photoAskDeleteNo => 'Hier behalten';
+
+  @override
+  String photoAskTrash(int count) {
+    return '$count gesicherte Bilder sind nicht mehr auf diesem Gerät. Wurden sie gelöscht? Dann kommen sie in den Papierkorb des Servers, und deine anderen Geräte werden gefragt.';
+  }
+
+  @override
+  String get photoAskTrashYes => 'Ja, in den Papierkorb';
+
+  @override
+  String get photoAskTrashNo => 'Nein, auf dem Server behalten';
+
+  @override
+  String photoRunTrashed(int count) {
+    return '$count in den Papierkorb.';
+  }
+
+  @override
+  String get photoErrBusy =>
+      'Eine Sicherung läuft; versuche es gleich noch einmal.';
+
+  @override
+  String get photoErrNoTrash =>
+      'Löschen in den Papierkorb ist für dein Profil nicht eingeschaltet.';
 }
