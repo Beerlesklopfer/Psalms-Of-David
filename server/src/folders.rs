@@ -54,6 +54,28 @@ pub enum FolderError {
     NoSuchFolder,
     #[error("the server cannot read, write and enter this folder")]
     NotUsable,
+    /// The rights of the folder would let the server in, but the file system is read-only for it: almost always the sandbox of the systemd
+    /// service (`ProtectSystem=strict` without the folder in `ReadWritePaths=`), sometimes a mount that is read-only.
+    #[error("the folder is read-only for the server (the sandbox of the service or a read-only mount)")]
+    ReadOnly,
+}
+
+/// Why the server cannot use a folder it can read and enter: `ReadOnly` when writing fails because the file system is read-only for it
+/// (`EROFS`), else `NotUsable`.
+fn why_not_writable(path: &Path) -> FolderError {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        if let Ok(c) = std::ffi::CString::new(path.as_os_str().as_bytes()) {
+            // SAFETY: `c` is a valid NUL-terminated string that outlives the call; `access` only reads it.
+            let refused = unsafe { libc::access(c.as_ptr(), libc::W_OK) } != 0;
+            if refused && std::io::Error::last_os_error().raw_os_error() == Some(libc::EROFS) {
+                return FolderError::ReadOnly;
+            }
+        }
+    }
+    let _ = path;
+    FolderError::NotUsable
 }
 
 /// A path as it is saved: absolute, an existing folder that the server can read, write and enter; symbolic links resolved.
@@ -67,7 +89,7 @@ pub fn check(path: &str) -> std::result::Result<PathBuf, FolderError> {
         return Err(FolderError::NoSuchFolder);
     }
     if !usable(&real) {
-        return Err(FolderError::NotUsable);
+        return Err(if may(&real, READ | ENTER) { why_not_writable(&real) } else { FolderError::NotUsable });
     }
     Ok(real)
 }
@@ -190,6 +212,15 @@ impl Store {
 
 #[cfg(all(test, unix))]
 mod tests {
+
+    /// A folder the rights let in, on a file system that is read-only for the server, is `ReadOnly`, not `NotUsable`. It needs a
+    /// read-only mount, so it runs only when one is given, for example inside
+    /// `unshare -rm sh -c 'mount --bind -o ro D D && DAVID_RO_DIR=D cargo test --lib a_read_only_mount'`.
+    #[test]
+    fn a_read_only_mount_is_named_as_such() {
+        let Ok(dir) = std::env::var("DAVID_RO_DIR") else { return };
+        assert_eq!(check(&dir), Err(FolderError::ReadOnly));
+    }
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 

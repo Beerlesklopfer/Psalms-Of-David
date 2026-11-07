@@ -977,7 +977,8 @@ pub async fn user_update(State(state): State<AppState>, s: AdminSession, Form(f)
                 if v.is_empty() {
                     folders.push((kind, None));
                 } else {
-                    let real = crate::folders::check(v).map_err(|_| Failure::new(StatusCode::UNPROCESSABLE_ENTITY, "err.folder").at(format!("folder_{kind}")))?;
+                    let real = crate::folders::check(v)
+                        .map_err(|e| Failure::new(StatusCode::UNPROCESSABLE_ENTITY, if e == crate::folders::FolderError::ReadOnly { "err.folder_read_only" } else { "err.folder" }).at(format!("folder_{kind}")))?;
                     folders.push((kind, Some(real.to_string_lossy().into_owned())));
                 }
             }
