@@ -4850,6 +4850,36 @@ async fn the_tags_window_edits_the_cd_number_and_the_number_of_cds() {
 
 
 #[tokio::test]
+async fn the_tags_window_of_an_album_of_two_cds_does_not_send_the_cd_number_and_saves() {
+    if !common::audio::ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let lib = tempfile::TempDir::new().unwrap();
+    let dir = lib.path().join("Various Artists/Best of Classic");
+    common::audio::make_mp3(&dir.join("a_CD01_TR01.mp3"), &[("album", "Best of Classic"), ("artist", "Various Artists"), ("disc", "1/2")]);
+    common::audio::make_mp3(&dir.join("a_CD02_TR01.mp3"), &[("album", "Best of Classic"), ("artist", "Various Artists"), ("disc", "2/2")]);
+    let root = std::fs::canonicalize(lib.path()).unwrap().to_string_lossy().into_owned();
+    send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &root), ("rule", "manual")]), &o)).await;
+    send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
+    send(&a, post("/admin/rpc/import.run", "", &o)).await;
+    let row = a.store.admin_book_rows().await.unwrap().remove(0);
+    assert_eq!(row.discs, 2);
+    // The number of the CD belongs to each CD: the field is shown, not filled and not sent (a disabled field), the total is.
+    let w = send(&a, get(&format!("/admin/rpc/book.tags_form?id={}", row.id), &o)).await;
+    assert!(w.body.contains("name=\"disc\" min=\"1\" max=\"99\" inputmode=\"numeric\" placeholder=\" \" disabled>"), "{}", w.body);
+    assert!(w.body.contains("name=\"discs\" min=\"1\" max=\"99\" inputmode=\"numeric\" placeholder=\" \" value=\"2\""), "{}", w.body);
+    // What the browser sends then (no disc) saves; each CD keeps its number.
+    let r = send(&a, tags_request(&csrf, &cookie, &[("id", &row.id.to_string()), ("discs", "2"), ("genre", "Klassik")], None)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(david_server::tags::read_album(&dir.join("a_CD02_TR01.mp3")).disc, Some(2));
+    assert_eq!(david_server::tags::read_album(&dir.join("a_CD01_TR01.mp3")).genre.as_deref(), Some("Klassik"));
+}
+
+#[tokio::test]
 async fn the_tags_window_keeps_the_barcode_in_the_library_and_refuses_a_wrong_one() {
     if !common::audio::ffmpeg_available() {
         eprintln!("skipped: ffmpeg is not installed");

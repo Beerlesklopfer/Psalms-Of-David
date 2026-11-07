@@ -1287,7 +1287,7 @@ pub async fn book_tags_form(State(state): State<AppState>, s: AdminSession, Quer
             Some(path) => tokio::task::spawn_blocking(move || crate::tags::read_album(&path)).await.unwrap_or_default(),
             None => crate::tags::AlbumTags::default(),
         };
-        Ok(state.ui.book_tags_fragment(view(&s), book.id, &book.kind, &tags)?)
+        Ok(state.ui.book_tags_fragment(view(&s), book.id, &book.kind, book.discs, &tags)?)
     }
     .await;
     match outcome {

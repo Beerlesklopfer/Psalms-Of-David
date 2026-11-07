@@ -1070,8 +1070,9 @@ impl AdminUi {
         self.render("fragments/upload_queue.html", context! { jobs => Serde(jobs), busy => busy, ..view.into().context() })
     }
 
-    /// The content of the tags window of an album, filled in from its first file.
-    pub fn book_tags_fragment<'a>(&self, view: impl Into<View<'a>>, id: i64, kind: &str, tags: &crate::tags::AlbumTags) -> Result<String> {
+    /// The content of the tags window of an album, filled in from its first file. `held_discs`: how many CDs the album holds; with more
+    /// than one the number of the CD is shown but not sent (it belongs to each CD, and saving refuses a change of it).
+    pub fn book_tags_fragment<'a>(&self, view: impl Into<View<'a>>, id: i64, kind: &str, held_discs: i64, tags: &crate::tags::AlbumTags) -> Result<String> {
         self.render(
             "fragments/book_tags.html",
             context! {
@@ -1084,6 +1085,7 @@ impl AdminUi {
                 genre => tags.genre.clone().unwrap_or_default(),
                 disc => tags.disc,
                 discs => tags.discs,
+                disc_fixed => held_discs > 1,
                 catalog => serde_json::to_string(&crate::tags::field_catalog().iter().map(|(n, k)| serde_json::json!({ "name": n, "kind": k })).collect::<Vec<_>>()).unwrap_or_else(|_| "[]".to_owned()),
                 ..view.into().context()
             },
