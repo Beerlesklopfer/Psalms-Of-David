@@ -22,6 +22,13 @@ use crate::store::{Store, now_ms};
 
 /// The hidden folder of the uploads under way, in the picture folder.
 pub const UPLOAD_DIR: &str = ".david-upload";
+
+/// The folder of the previews in the picture folder of a person: `<id>.jpg`, made by the device that sent the picture (it can read every
+/// format of its own gallery, the server reads none).
+pub const THUMB_DIR: &str = ".david-thumbs";
+
+/// The largest preview the server takes.
+pub const THUMB_MAX: usize = 512 * 1024;
 /// An upload nobody went on with for this long is given up and its bytes removed.
 pub const UPLOAD_KEEP_MS: i64 = 7 * 86_400_000;
 /// The most files one `have` asks about.
@@ -102,6 +109,8 @@ pub struct PhotoInfo {
     pub mime: String,
     pub taken_at: i64,
     pub uploaded_at: i64,
+    /// The server has a preview of it (`GET /photos/{id}/thumb`).
+    pub thumb: bool,
 }
 
 /// One lock per upload, so that two pieces of the same file are never written at once.
@@ -477,6 +486,7 @@ impl Store {
 
     /// Bisync: the pictures of the owner after `since` (an id) that other devices sent, oldest first, at most `limit`.
     pub async fn photo_changes(&self, owner: i64, device: i64, since: i64, limit: u64) -> Result<Vec<PhotoInfo>> {
+        let thumbs = self.profile_folders(owner).await?.into_iter().find(|(k, _)| k == "photo").map(|(_, p)| PathBuf::from(p).join(THUMB_DIR));
         let rows = self
             .db
             .reader
@@ -489,8 +499,10 @@ impl Store {
             .await?;
         rows.iter()
             .map(|r| {
+                let id: i64 = r.try_get_by_index(0)?;
                 Ok(PhotoInfo {
-                    id: r.try_get_by_index(0)?,
+                    id,
+                    thumb: thumbs.as_ref().is_some_and(|d| d.join(format!("{id}.jpg")).is_file()),
                     sha256: r.try_get_by_index(1)?,
                     size: r.try_get_by_index(2)?,
                     name: r.try_get_by_index(3)?,
@@ -515,6 +527,40 @@ impl Store {
         let file: String = r.try_get_by_index(0)?;
         Ok(Some((folder.join(file), r.try_get_by_index(1)?)))
     }
+}
+
+impl Store {
+    /// Where the preview of an own picture is (it may not exist yet); None for a picture of somebody else or without a folder.
+    pub async fn photo_thumb_path(&self, owner: i64, id: i64) -> Result<Option<PathBuf>> {
+        let known = self
+            .db
+            .reader
+            .query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "SELECT 1 FROM photo WHERE owner_id = ? AND id = ?", [Value::from(owner), Value::from(id)]))
+            .await?
+            .is_some();
+        if !known {
+            return Ok(None);
+        }
+        let folder = self.profile_folders(owner).await?.into_iter().find(|(k, _)| k == "photo").map(|(_, p)| PathBuf::from(p));
+        Ok(folder.map(|f| f.join(THUMB_DIR).join(format!("{id}.jpg"))))
+    }
+
+    /// Keeps the preview of an own picture (a JPEG of at most [`THUMB_MAX`] bytes), written through a temporary file so a broken one is never
+    /// served. False when the picture is not the owner's.
+    pub async fn put_photo_thumb(&self, owner: i64, id: i64, jpeg: &[u8]) -> Result<bool> {
+        let Some(path) = self.photo_thumb_path(owner, id).await? else { return Ok(false) };
+        let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
+        tokio::fs::create_dir_all(&dir).await?;
+        let temp = dir.join(format!(".{id}.jpg.part"));
+        tokio::fs::write(&temp, jpeg).await?;
+        tokio::fs::rename(&temp, &path).await?;
+        Ok(true)
+    }
+}
+
+/// A JPEG starts with `FF D8 FF`.
+pub fn is_jpeg(b: &[u8]) -> bool {
+    b.len() > 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF
 }
 
 #[cfg(test)]

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../server/api_client.dart';
 
@@ -123,6 +124,33 @@ class PieceRefused extends PieceAnswer {
   final int? received;
 }
 
+/// A picture that another device of the person sent (`GET /api/v1/photos/changes`).
+class RemotePhoto {
+  RemotePhoto({required this.id, required this.sha256, required this.size, required this.name, required this.mime, required this.takenAt, this.thumb = false});
+
+  factory RemotePhoto.fromJson(Map<String, dynamic> j) => RemotePhoto(
+        id: j['id'] as int,
+        sha256: j['sha256'] as String? ?? '',
+        size: j['size'] as int? ?? 0,
+        name: j['name'] as String? ?? '',
+        mime: j['mime'] as String? ?? 'application/octet-stream',
+        takenAt: DateTime.fromMillisecondsSinceEpoch(j['taken_at'] as int? ?? 0),
+        thumb: j['thumb'] == true,
+      );
+
+  final int id;
+  final String sha256;
+  final int size;
+  final String name;
+  final String mime;
+  final DateTime takenAt;
+
+  /// The server has a preview.
+  final bool thumb;
+
+  bool get video => mime.startsWith('video/');
+}
+
 /// A change of the choices that the server refused, by key (`{"mode": "no_bisync"}`); nothing was saved.
 class PhotoChoiceRefused implements Exception {
   PhotoChoiceRefused(this.refused);
@@ -155,6 +183,18 @@ abstract class PhotoBackupApi {
     String? name,
     DateTime? takenAt,
   });
+
+  /// The preview of a picture this device sent (a JPEG made by the gallery of the device).
+  Future<void> putThumb(int photo, List<int> jpeg);
+
+  /// Bisync: what the other devices of the person sent after [since], and the `since` of the next call.
+  Future<({List<RemotePhoto> photos, int next})> changes(int since, {int limit = 200});
+
+  /// The preview of a picture, or null when the server has none.
+  Future<List<int>?> thumb(int photo);
+
+  /// Loads the file of a picture into [dest] and checks it against [sha256]; the file appears under its name only when it is complete.
+  Future<void> download(int photo, File dest, String sha256);
 }
 
 /// [PhotoBackupApi] over the app API of David.
@@ -247,5 +287,56 @@ class ServerPhotoBackupApi implements PhotoBackupApi {
     if (status == 200 || status == 201) return PieceDone(j['photo'] as int? ?? 0, known: status == 200);
     if (j['error'] is String && status != 401) return PieceRefused(j['error'] as String, j['received'] as int?);
     _fail(status, j);
+  }
+
+  @override
+  Future<void> putThumb(int photo, List<int> jpeg) async {
+    final res = await api.sendBytes('PUT', '/api/v1/photos/$photo/thumb', jpeg, contentType: 'image/jpeg');
+    final status = res.statusCode;
+    final j = _object(await utf8.decodeStream(res));
+    if (status >= 400) _fail(status, j);
+  }
+
+  @override
+  Future<({List<RemotePhoto> photos, int next})> changes(int since, {int limit = 200}) async {
+    final res = await api.sendRaw('GET', '/api/v1/photos/changes', query: {'since': '$since', 'limit': '$limit'});
+    final status = res.statusCode;
+    final j = _object(await utf8.decodeStream(res));
+    if (status >= 400) _fail(status, j);
+    return (
+      photos: [for (final p in j['photos'] as List? ?? const []) if (p is Map<String, dynamic> && p['id'] is int) RemotePhoto.fromJson(p)],
+      next: j['next'] as int? ?? since,
+    );
+  }
+
+  @override
+  Future<List<int>?> thumb(int photo) async {
+    final res = await api.sendRaw('GET', '/api/v1/photos/$photo/thumb');
+    if (res.statusCode == 404) {
+      await res.drain<void>();
+      return null;
+    }
+    if (res.statusCode >= 400) _fail(res.statusCode, _object(await utf8.decodeStream(res)));
+    final b = BytesBuilder(copy: false);
+    await for (final chunk in res.timeout(kDownloadIdleTimeout)) {
+      b.add(chunk);
+    }
+    return b.takeBytes();
+  }
+
+  @override
+  Future<void> download(int photo, File dest, String sha256) async {
+    final res = await api.sendRaw('GET', '/api/v1/photos/$photo/file');
+    if (res.statusCode >= 400) _fail(res.statusCode, _object(await utf8.decodeStream(res)));
+    await dest.parent.create(recursive: true);
+    final partial = partialFileFor(dest);
+    try {
+      await res.timeout(kDownloadIdleTimeout).pipe(partial.openWrite());
+      await verifyDownload(partial, expectedLength: res.contentLength, expectedSha256: sha256);
+    } catch (_) {
+      if (partial.existsSync()) partial.deleteSync();
+      rethrow;
+    }
+    await partial.rename(dest.path);
   }
 }

@@ -15,9 +15,12 @@ const kPhotoBatch = 50;
 /// request also over a slow VPN.
 const kPhotoPiece = 4 * 1024 * 1024;
 
+/// The largest preview the server takes (`THUMB_MAX`).
+const kPhotoThumbMax = 512 * 1024;
+
 /// A picture or video of the device.
 class LocalPhoto {
-  LocalPhoto({required this.id, required this.name, required this.mime, required this.takenAt, required this.modified, required this.open, this.video = false});
+  LocalPhoto({required this.id, required this.name, required this.mime, required this.takenAt, required this.modified, required this.open, this.video = false, this.thumbnail});
 
   /// The id of the gallery of the device.
   final String id;
@@ -31,6 +34,9 @@ class LocalPhoto {
 
   /// The file itself (the original, with its location data); null when it cannot be read.
   final Future<File?> Function() open;
+
+  /// A small JPEG of it (also of a video), made by the gallery; sent with the picture for the other devices.
+  final Future<List<int>?> Function()? thumbnail;
 
   String get key => '$id@${modified.millisecondsSinceEpoch ~/ 1000}';
 }
@@ -48,6 +54,9 @@ abstract class PhotoLibrary {
 
   /// Removes what [LocalPhoto.open] copied into the cache of the app.
   Future<void> cleanUp() async {}
+
+  /// Puts a received original into the gallery (folder "David"); the new entry of the gallery, null when it could not be written.
+  Future<LocalPhoto?> saveToGallery(File file, {required String name, required String mime, required DateTime takenAt}) async => null;
 }
 
 /// Why a run stopped before it was through, or did nothing.
@@ -79,7 +88,7 @@ enum PhotoRunStop {
 
 /// What a run did.
 class PhotoRunResult {
-  PhotoRunResult({this.sent = 0, this.known = 0, this.skipped = 0, this.waiting = 0, this.stop, this.settings});
+  PhotoRunResult({this.sent = 0, this.known = 0, this.skipped = 0, this.waiting = 0, this.received = 0, this.stop, this.settings});
 
   /// Sent in this run.
   int sent;
@@ -93,13 +102,16 @@ class PhotoRunResult {
   /// Still to send.
   int waiting;
 
+  /// Received from the other devices of the person (bisync).
+  int received;
+
   PhotoRunStop? stop;
 
   /// The settings the run worked with (to register the background job with its conditions).
   PhotoSettings? settings;
 
   @override
-  String toString() => 'PhotoRunResult(sent $sent, known $known, skipped $skipped, waiting $waiting, stop $stop)';
+  String toString() => 'PhotoRunResult(sent $sent, known $known, skipped $skipped, waiting $waiting, received $received, stop $stop)';
 }
 
 /// Codes of the server that refuse one file for good, as long as the rules stay: the file is not offered again.
@@ -228,10 +240,11 @@ class PhotoSync {
             continue;
           }
           switch (answer) {
-            case PieceDone(:final known):
+            case PieceDone(:final photo, :final known):
               entry.done = true;
               known ? result.known++ : result.sent++;
               state.lastSentAt = now();
+              if (!known) await _sendThumb(p, photo);
             case PieceRefused(:final code) when _skipCodes.contains(code):
               entry.skipped = rules;
               state.addError(PhotoError(now(), code, p.name));
@@ -256,7 +269,104 @@ class PhotoSync {
         store.save(state);
       }
     }
+    await _receive(state, device, settings, result);
     return result;
+  }
+
+  /// The preview of a picture that was just sent, for the other devices. Without one they show a placeholder: it is no reason to stop.
+  Future<void> _sendThumb(LocalPhoto p, int photo) async {
+    try {
+      final jpeg = await p.thumbnail?.call();
+      if (jpeg != null && jpeg.isNotEmpty && jpeg.length <= kPhotoThumbMax) await api.putThumb(photo, jpeg);
+    } on ApiException {
+      // the picture is kept; the preview is missing
+    }
+  }
+
+  /// Bisync: the pictures the other devices of the person sent, from the day this device was switched on (or all of them with "also the
+  /// older ones"), as previews in the app or as originals in the gallery. A picture the device holds itself is not fetched.
+  Future<void> _receive(PhotoDeviceState state, PhotoDeviceSettings device, PhotoSettings settings, PhotoRunResult result) async {
+    if (settings.effective['mode'] != 'bi' || device.receive == 'off') return;
+    if (device.olderToo && !state.receivedOlder) {
+      state.changesSince = 0;
+      state.receivedOlder = true;
+    }
+    final mine = {for (final e in state.entries.values) e.sha256};
+    final have = {for (final r in state.received) r.id};
+    final from = device.from;
+    while (true) {
+      if (_stop) {
+        result.stop = PhotoRunStop.stopped;
+        return;
+      }
+      final ({List<RemotePhoto> photos, int next}) page;
+      try {
+        page = await api.changes(state.changesSince);
+      } on ApiException catch (e) {
+        if (e.code != 'not_bisync') result.stop = _stopOf(e, state);
+        return;
+      }
+      for (final r in page.photos) {
+        if (_stop) {
+          result.stop = PhotoRunStop.stopped;
+          return;
+        }
+        final wanted = !have.contains(r.id) &&
+            !mine.contains(r.sha256) &&
+            (from == null || !r.takenAt.isBefore(from)) &&
+            (settings.videosOn || !r.video);
+        if (wanted) {
+          final rec = ReceivedPhoto(id: r.id, sha256: r.sha256, size: r.size, name: r.name, mime: r.mime, takenAt: r.takenAt);
+          try {
+            if (device.receive == 'gallery') {
+              final incoming = File('${store.receivedDir.path}/incoming-${r.id}');
+              try {
+                await api.download(r.id, incoming, r.sha256);
+                final saved = await library.saveToGallery(incoming, name: r.name, mime: r.mime, takenAt: r.takenAt);
+                if (saved == null) {
+                  state.addError(PhotoError(now(), 'unwritable', r.name));
+                } else {
+                  // The copy in the gallery is known: the backup does not read it again.
+                  state.entries[saved.key] = PhotoEntry(r.sha256, r.size, done: true);
+                  mine.add(r.sha256);
+                  rec.gallery = true;
+                }
+              } finally {
+                if (incoming.existsSync()) incoming.deleteSync();
+              }
+            }
+            if (r.thumb) {
+              final jpeg = await api.thumb(r.id);
+              if (jpeg != null) {
+                store.thumbFile(r.id)
+                  ..parent.createSync(recursive: true)
+                  ..writeAsBytesSync(jpeg, flush: true);
+                rec.thumb = true;
+              }
+            }
+          } on ApiException catch (e) {
+            result.stop = _stopOf(e, state);
+            store.save(state);
+            return;
+          } on IOException {
+            // A cut-off or broken download: the same picture next time (the cursor stays before it).
+            state.addError(PhotoError(now(), 'network', r.name));
+            result.stop = PhotoRunStop.network;
+            store.save(state);
+            return;
+          }
+          state.received.add(rec);
+          have.add(r.id);
+          result.received++;
+        }
+        state.changesSince = r.id;
+        store.save(state);
+        store.touchLock();
+      }
+      state.changesSince = page.next;
+      store.save(state);
+      if (page.photos.isEmpty) return;
+    }
   }
 
   PhotoRunStop _stopOf(ApiException e, PhotoDeviceState state) {

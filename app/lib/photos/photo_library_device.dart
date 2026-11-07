@@ -1,5 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import 'dart:io';
+
 import 'package:photo_manager/photo_manager.dart';
 
 import 'photo_sync.dart';
@@ -10,6 +12,9 @@ const _permission = PermissionRequestOption(androidPermission: AndroidPermission
 
 /// How many entries of the gallery are asked for at once.
 const _page = 500;
+
+/// Where the received originals go in the gallery (bisync, "into the gallery").
+const kPhotoGalleryFolder = 'Pictures/David';
 
 /// The pictures of an Android device, from `MediaStore` (through `photo_manager`).
 class DevicePhotoLibrary extends PhotoLibrary {
@@ -45,19 +50,34 @@ class DevicePhotoLibrary extends PhotoLibrary {
         if (a.type != AssetType.image && a.type != AssetType.video) continue;
         if (sources == 'camera' && !_fromCamera(a.relativePath)) continue;
         final mime = a.mimeType ?? await a.mimeTypeAsync ?? (a.type == AssetType.video ? 'video/mp4' : 'image/jpeg');
-        out.add(LocalPhoto(
-          id: a.id,
-          name: a.title ?? await a.titleAsync,
-          mime: mime,
-          takenAt: a.createDateTime,
-          modified: a.modifiedDateTime,
-          video: a.type == AssetType.video,
-          open: () => a.originFile,
-        ));
+        out.add(_local(a, a.title ?? await a.titleAsync, mime));
       }
       if (assets.length < _page) break;
     }
     return out;
+  }
+
+  static LocalPhoto _local(AssetEntity a, String name, String mime) => LocalPhoto(
+        id: a.id,
+        name: name,
+        mime: mime,
+        takenAt: a.createDateTime,
+        modified: a.modifiedDateTime,
+        video: a.type == AssetType.video,
+        open: () => a.originFile,
+        thumbnail: () => a.thumbnailDataWithSize(const ThumbnailSize(512, 512), quality: 80),
+      );
+
+  @override
+  Future<LocalPhoto?> saveToGallery(File file, {required String name, required String mime, required DateTime takenAt}) async {
+    try {
+      final a = mime.startsWith('video/')
+          ? await PhotoManager.editor.saveVideo(file, title: name, relativePath: kPhotoGalleryFolder, creationDate: takenAt)
+          : await PhotoManager.editor.saveImageWithPath(file.path, title: name, relativePath: kPhotoGalleryFolder, creationDate: takenAt);
+      return _local(a, name, mime);
+    } on Object {
+      return null;
+    }
   }
 
   /// The camera folder (`DCIM/...`), without the screenshots that some devices keep there too. An older Android (before 10) gives no

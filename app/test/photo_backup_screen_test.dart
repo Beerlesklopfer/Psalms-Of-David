@@ -16,7 +16,7 @@ class _Api implements PhotoBackupApi {
   _Api({this.off = false});
 
   final bool off;
-  final changes = <Map<String, String>>[];
+  final saved = <Map<String, String>>[];
   var choices = {'enabled': 'on', 'mode': 'uni', 'network': 'wifi', 'charging': 'charging', 'videos': 'on', 'deletes': 'never'};
 
   PhotoSettings get _settings => PhotoSettings(
@@ -34,7 +34,7 @@ class _Api implements PhotoBackupApi {
 
   @override
   Future<PhotoSettings> putSettings(Map<String, String> c) async {
-    changes.add(c);
+    saved.add(c);
     if (c['mode'] == 'bi') throw PhotoChoiceRefused({'mode': 'no_bisync'});
     choices = {...choices, ...c};
     return _settings;
@@ -61,6 +61,18 @@ class _Api implements PhotoBackupApi {
     DateTime? takenAt,
   }) async =>
       const PieceDone(1, known: false);
+
+  @override
+  Future<void> putThumb(int photo, List<int> jpeg) async {}
+
+  @override
+  Future<({List<RemotePhoto> photos, int next})> changes(int since, {int limit = 200}) async => (photos: <RemotePhoto>[], next: since);
+
+  @override
+  Future<List<int>?> thumb(int photo) async => null;
+
+  @override
+  Future<void> download(int photo, File dest, String sha256) async {}
 }
 
 class _Library extends PhotoLibrary {
@@ -131,7 +143,7 @@ void main() {
     expect(explain(tester, 'network'), l.photoExplainNetworkWifi);
     expect(find.text(l.photoExplainNetworkAny), findsNothing);
     await pick(tester, 'network', 'any');
-    expect(api.changes.last, {'network': 'any'});
+    expect(api.saved.last, {'network': 'any'});
     expect(explain(tester, 'network'), l.photoExplainNetworkAny);
     expect(find.text(l.photoExplainNetworkWifi), findsNothing);
     expect(find.text(l.photoServerCount(12, '34 MB')), findsOneWidget);
@@ -152,7 +164,7 @@ void main() {
     expect(item.enabled, isFalse);
     await tester.tap(find.byKey(const ValueKey('photo-option-mode-bi')).last, warnIfMissed: false);
     await tester.pumpAndSettle();
-    expect(api.changes, isEmpty, reason: 'a greyed-out option cannot be picked');
+    expect(api.saved, isEmpty, reason: 'a greyed-out option cannot be picked');
     await tester.tap(find.byKey(const ValueKey('photo-option-mode-uni')).last);
     await tester.pumpAndSettle();
 

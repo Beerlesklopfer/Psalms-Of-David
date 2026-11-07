@@ -20,6 +20,13 @@ class FakeServer implements PhotoBackupApi {
   final pieces = <({String clientId, int start, int length, String? name})>[];
   bool active = true;
   int maxFileMb = 2048;
+  String mode = 'uni';
+
+  /// The pictures of the other devices (bisync), with their bytes and previews.
+  final remote = <RemotePhoto>[];
+  final remoteBytes = <int, List<int>>{};
+  final thumbs = <int, List<int>>{};
+  int changesCalls = 0;
 
   /// After this many pieces the connection "breaks" (once).
   int? breakAfterPieces;
@@ -31,8 +38,8 @@ class FakeServer implements PhotoBackupApi {
   Future<PhotoSettings?> settings() async => PhotoSettings(
         folder: true,
         active: active,
-        settings: {'enabled': active ? 'on' : 'off', 'videos': 'on'},
-        effective: {'enabled': active ? 'on' : 'off', 'videos': 'on', 'network': 'wifi', 'charging': 'charging'},
+        settings: {'enabled': active ? 'on' : 'off', 'videos': 'on', 'mode': mode},
+        effective: {'enabled': active ? 'on' : 'off', 'videos': 'on', 'network': 'wifi', 'charging': 'charging', 'mode': mode},
         locked: const {},
         maxFileMb: maxFileMb,
       );
@@ -81,6 +88,38 @@ class FakeServer implements PhotoBackupApi {
     kept[sha256] = have;
     return PieceDone(kept.length, known: false);
   }
+
+  @override
+  Future<void> putThumb(int photo, List<int> jpeg) async => thumbs[photo] = jpeg;
+
+  @override
+  Future<({List<RemotePhoto> photos, int next})> changes(int since, {int limit = 200}) async {
+    changesCalls++;
+    if (mode != 'bi') throw ApiException(409, 'not_bisync');
+    final page = remote.where((r) => r.id > since).take(limit).toList();
+    return (photos: page, next: page.isEmpty ? since : page.last.id);
+  }
+
+  @override
+  Future<List<int>?> thumb(int photo) async => thumbs[photo];
+
+  @override
+  Future<void> download(int photo, File dest, String sha256) async {
+    final b = remoteBytes[photo]!;
+    if (sha256Of(b) != sha256) throw const HttpException('the download does not match its hash');
+    dest
+      ..parent.createSync(recursive: true)
+      ..writeAsBytesSync(b);
+  }
+
+  /// A picture that another device of the person sent.
+  RemotePhoto addRemote(int id, List<int> bytes, {DateTime? taken, bool thumb = true}) {
+    final r = RemotePhoto(id: id, sha256: sha256Of(bytes), size: bytes.length, name: 'remote-$id.jpg', mime: 'image/jpeg', takenAt: taken ?? DateTime(2026, 11, 8), thumb: thumb);
+    remote.add(r);
+    remoteBytes[id] = bytes;
+    if (thumb) thumbs[id] = [0xFF, 0xD8, 0xFF, id];
+    return r;
+  }
 }
 
 String sha256Of(List<int> b) => sha256.convert(b).toString();
@@ -103,6 +142,18 @@ class FakeLibrary extends PhotoLibrary {
     askedSince = since;
     return [for (final p in photos) if (since == null || !p.takenAt.isBefore(since)) p];
   }
+
+  final gallery = <String, List<int>>{};
+
+  @override
+  Future<LocalPhoto?> saveToGallery(File file, {required String name, required String mime, required DateTime takenAt}) async {
+    final bytes = file.readAsBytesSync();
+    final copy = File('${file.parent.path}/gallery-$name')..writeAsBytesSync(bytes);
+    gallery[name] = bytes;
+    final p = LocalPhoto(id: 'gallery-$name', name: name, mime: mime, takenAt: takenAt, modified: takenAt, open: () async => copy);
+    photos.add(p);
+    return p;
+  }
 }
 
 void main() {
@@ -120,7 +171,7 @@ void main() {
   LocalPhoto photo(String name, List<int> bytes, {DateTime? taken}) {
     final f = File('${dir.path}/$name')..writeAsBytesSync(bytes);
     final at = taken ?? day.add(const Duration(hours: 9));
-    return LocalPhoto(id: name, name: name, mime: 'image/jpeg', takenAt: at, modified: at, open: () async => f);
+    return LocalPhoto(id: name, name: name, mime: 'image/jpeg', takenAt: at, modified: at, open: () async => f, thumbnail: () async => [0xFF, 0xD8, 0xFF, 0]);
   }
 
   List<int> bytes(int n, int seed) {
@@ -225,6 +276,87 @@ void main() {
     expect((await PhotoSync(api: server, library: lib, store: store).run()).sent, 1);
   });
 
+  test('a picture that was sent gets its preview on the server; one the server had already does not', () async {
+    final server = FakeServer();
+    final b = bytes(200, 10);
+    server.kept[sha256Of(b)] = b;
+    final lib = FakeLibrary([photo('a.jpg', bytes(100, 11)), photo('b.jpg', b)]);
+    await PhotoSync(api: server, library: lib, store: store).run();
+    expect(server.thumbs.keys, [server.kept.length]);
+  });
+
+  test('with backup only, nothing is received and the server is not even asked', () async {
+    final server = FakeServer()..addRemote(1, bytes(10, 12));
+    await PhotoSync(api: server, library: FakeLibrary([]), store: store).run();
+    expect(server.changesCalls, 0);
+    expect(store.load().received, isEmpty);
+  });
+
+  test('bisync in the app: the previews of the other devices, from the day the device was switched on, the own pictures not again', () async {
+    final server = FakeServer()..mode = 'bi';
+    final own = bytes(300, 13);
+    server.addRemote(1, bytes(100, 14));
+    server.addRemote(2, own); // the same picture is on this device
+    server.addRemote(3, bytes(100, 15), taken: DateTime(2025, 1, 1)); // before the device was switched on
+    server.addRemote(4, bytes(100, 16), thumb: false);
+    final lib = FakeLibrary([photo('own.jpg', own)]);
+
+    final first = await PhotoSync(api: server, library: lib, store: store).run();
+    expect(first.stop, isNull);
+    expect(first.received, 2);
+    final st = store.load();
+    expect(st.received.map((r) => r.id), [1, 4]);
+    expect(st.received.first.thumb, isTrue);
+    expect(store.thumbFile(1).readAsBytesSync(), server.thumbs[1]);
+    expect(st.received.last.thumb, isFalse, reason: 'no preview on the server: a placeholder');
+    expect(st.changesSince, 4);
+    expect(lib.gallery, isEmpty, reason: 'in the app only: the gallery stays as it is');
+
+    expect((await PhotoSync(api: server, library: lib, store: store).run()).received, 0);
+
+    // "Also the older ones" reads the changes again from the start, and only what is new comes.
+    store.saveSettings(store.loadSettings()..olderToo = true);
+    final older = await PhotoSync(api: server, library: lib, store: store).run();
+    expect(older.received, 1);
+    expect(store.load().received.map((r) => r.id), [1, 4, 3]);
+  });
+
+  test('bisync into the gallery: the original, checked, in the gallery, and the backup does not send it back', () async {
+    final server = FakeServer()..mode = 'bi';
+    final pic = bytes(5000, 17);
+    server.addRemote(9, pic);
+    store.saveSettings(store.loadSettings()..receive = 'gallery');
+    final lib = FakeLibrary([]);
+
+    final first = await PhotoSync(api: server, library: lib, store: store).run();
+    expect(first.received, 1);
+    expect(lib.gallery['remote-9.jpg'], pic);
+    expect(store.load().received.single.gallery, isTrue);
+    expect(store.receivedDir.listSync().whereType<File>().where((f) => f.path.contains('incoming')), isEmpty);
+
+    server.pieces.clear();
+    server.haveCalls.clear();
+    final second = await PhotoSync(api: server, library: lib, store: store).run();
+    expect(second.sent + second.known, 0);
+    expect(server.haveCalls, isEmpty, reason: 'the copy in the gallery is known on this device');
+  });
+
+  test('a download that does not fit its hash stops the run, and the same picture comes next time', () async {
+    final server = FakeServer()..mode = 'bi';
+    server.addRemote(5, bytes(100, 18));
+    server.remoteBytes[5] = bytes(100, 19); // broken on the way
+    store.saveSettings(store.loadSettings()..receive = 'gallery');
+    final lib = FakeLibrary([]);
+
+    final first = await PhotoSync(api: server, library: lib, store: store).run();
+    expect(first.stop, PhotoRunStop.network);
+    expect(store.load().received, isEmpty);
+    expect(store.load().changesSince, 0);
+
+    server.remoteBytes[5] = bytes(100, 18);
+    expect((await PhotoSync(api: server, library: lib, store: store).run()).received, 1);
+  });
+
   group('ServerPhotoBackupApi', () {
     late HttpServer http;
     final seen = <HttpRequest>[];
@@ -288,6 +420,35 @@ void main() {
 
       answer = (req) => reply(req, 422, {'error': 'refused', 'refused': {'mode': 'no_bisync'}});
       await expectLater(api().putSettings({'mode': 'bi'}), throwsA(isA<PhotoChoiceRefused>().having((e) => e.refused, 'refused', {'mode': 'no_bisync'})));
+    });
+
+    test('the changes are asked for with since in the query; a missing preview is null; a download that does not fit its hash is dropped', () async {
+      answer = (req) async {
+        if (req.uri.path == '/api/v1/photos/changes') {
+          return reply(req, 200, {
+            'photos': [
+              {'id': 7, 'sha256': 'ab', 'size': 3, 'name': 'x.jpg', 'mime': 'image/jpeg', 'taken_at': 1000, 'uploaded_at': 2000, 'thumb': true},
+            ],
+            'next': 7,
+          });
+        }
+        if (req.uri.path == '/api/v1/photos/7/thumb') return reply(req, 404, {'error': 'no_thumb'});
+        await req.drain<void>();
+        req.response
+          ..statusCode = 200
+          ..add([1, 2, 3]);
+        await req.response.close();
+      };
+      final c = await api().changes(5);
+      expect(seen.single.uri.queryParameters['since'], '5');
+      expect((c.next, c.photos.single.id, c.photos.single.thumb), (7, 7, true));
+      expect(await api().thumb(7), isNull);
+      final dest = File('${Directory.systemTemp.createTempSync('dl-').path}/x.jpg');
+      await expectLater(api().download(7, dest, 'ff' * 32), throwsA(isA<HttpException>()));
+      expect(dest.existsSync(), isFalse);
+      expect(dest.parent.listSync(), isEmpty, reason: 'no part file is left');
+      await api().download(7, dest, sha256Of([1, 2, 3]));
+      expect(dest.readAsBytesSync(), [1, 2, 3]);
     });
 
     test('the settings are read with the locked options and the reasons', () async {

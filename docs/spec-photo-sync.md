@@ -8,7 +8,14 @@ Status: **being built** (project owner, 2026-11-07). Stage 1 is done: the settin
 profile page and the app API. Stage 2 is done: the storage, `have`, the upload in pieces that goes on after a lost connection, the SHA-256
 check, bisync `changes` and the file of a picture (`src/photo_store.rs`, `src/api_photos.rs`; the exact protocol is at the top of
 `src/api_photos.rs`). An upload that is not complete answers `202 {received}`, not `308` as sketched in section 4: a `308` is a redirect to
-many HTTP clients. Stage 3, the sending half, is done in the Android app (`app/lib/photos/`): the screen "Photo backup" in the settings (this device, the choices of the profile with the text of the chosen option, what the server keeps), the gallery through `photo_manager` (with `ACCESS_MEDIA_LOCATION`, so the files keep their location), a WorkManager job every hour with the conditions of the profile (Wi-Fi → unmetered network, charging), and the loop of section 5 with the SHA-256 of the file as its upload id (a broken upload goes on where the server is; two devices with the same picture send it once). The device settings `sources` (`camera`/`all`) and `since` (the day it was switched on, "also the older ones" as a button) are built; `on_download` and `keep_local` come with the receiving half of bisync, with the thumbnails and the trash of bisync deletions. It builds on the **ownership** that
+many HTTP clients. Stage 3, the sending half, is done in the Android app (`app/lib/photos/`): the screen "Photo backup" in the settings (this device, the choices of the profile with the text of the chosen option, what the server keeps), the gallery through `photo_manager` (with `ACCESS_MEDIA_LOCATION`, so the files keep their location), a WorkManager job every hour with the conditions of the profile (Wi-Fi → unmetered network, charging), and the loop of section 5 with the SHA-256 of the file as its upload id (a broken upload goes on where the server is; two devices with the same picture send it once). The device settings `sources` (`camera`/`all`) and `since` (the day it was switched on, "also the older ones" as a button) are built.
+The receiving half of bisync is built too (decided 2026-11-07: either way, chosen on the device): `on_download` is called `receive` and has
+`app` (previews in the app, the original loaded on a tap; the default), `gallery` (the originals, checked against their SHA-256, into the
+gallery folder `Pictures/David`, marked as known so the backup does not send them back) and `off`. The previews are made by the device
+that sends a picture (its gallery reads every format, also HEIC and videos; the server reads none) and kept by the server in
+`<picture folder>/.david-thumbs/<id>.jpg` (`PUT`/`GET /photos/{id}/thumb`, `changes` says `thumb`). A device receives what was taken from
+the day it was switched on, like it sends; "also the older ones" reads the changes again from the start. Not built yet: `keep_local`
+(received originals in the gallery stay; Android asks the person before an app deletes there) and the trash of bisync deletions. It builds on the **ownership** that
 books have since schema 0040: now that something in the library belongs to a family member, the pictures on a device can be copied to the
 server of the family and kept there, and that copy is the backup.
 
@@ -155,7 +162,7 @@ device_photo_state(device_id, enabled, sources, since, on_download, keep_local, 
 | `POST /api/v1/photos/have` | body: a list of `{sha256, size}` the device holds; answer: those the server **lacks** (the device sends only these) |
 | `PUT /api/v1/photos/upload/{client_id}` | the bytes (with `Content-Range` for resuming); `Digest`/`X-Sha256` header; answer `201` when complete and the hash fits, `308` for "go on", `409` for a clash |
 | `GET /api/v1/photos?...` | later: the profile's own pictures, newest first, for a viewer and for "restore" |
-| `GET /api/v1/photos/{id}` / `/thumb` | later: the file / a small version (owner only) |
+| `GET /api/v1/photos/{id}/file` / `GET`/`PUT /api/v1/photos/{id}/thumb` | the file / the preview made by the sending device (owner only) |
 
 All of it is **authenticated like the rest** (device token), on the same transport (TLS or the tunnel), with the same limit of devices. The server decides the
 owner from the token, never from a request field.

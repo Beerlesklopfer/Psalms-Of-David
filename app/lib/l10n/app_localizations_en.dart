@@ -2671,7 +2671,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get photoExplainModeBi =>
-      'Like the backup, and in addition each of your devices receives the pictures of your other devices. (The app receives them in a later version; for now it only sends.)';
+      'Like the backup, and in addition each of your devices receives the pictures of your other devices, as previews in the app or in full in the gallery, set on each device.';
 
   @override
   String get photoSetNetwork => 'Network';
@@ -2792,4 +2792,55 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get photoWhyNoFolder =>
       'Your profile has no picture folder yet (an administrator sets it on the Users page).';
+
+  @override
+  String get photoSetReceive => 'Pictures of my other devices';
+
+  @override
+  String get photoOptReceiveApp => 'Previews in the app';
+
+  @override
+  String get photoOptReceiveGallery => 'Originals into the gallery';
+
+  @override
+  String get photoOptReceiveOff => 'Do not receive';
+
+  @override
+  String get photoExplainReceiveApp =>
+      'This device keeps small previews of the pictures of your other devices, in the app only. A tap loads the original from the server; the gallery stays as it is.';
+
+  @override
+  String get photoExplainReceiveGallery =>
+      'The pictures of your other devices are loaded in full and put into the gallery of this device, in the folder \"David\", visible in every photo app. That takes room on the device.';
+
+  @override
+  String get photoExplainReceiveOff =>
+      'This device only sends; it receives nothing of your other devices.';
+
+  @override
+  String get photoReceivedTitle => 'From my other devices';
+
+  @override
+  String get photoReceivedNone =>
+      'Nothing received yet. Pictures that your other devices send come here.';
+
+  @override
+  String photoReceivedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count pictures',
+      one: '1 picture',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String photoRunReceived(int count) {
+    return '$count received.';
+  }
+
+  @override
+  String get photoErrUnwritable =>
+      'The picture could not be put into the gallery';
 }

@@ -216,6 +216,21 @@ async fn a_picture_is_sent_in_pieces_checked_kept_once_and_found_by_the_other_de
 
     let r = get_json(&a, &phone, "/api/v1/photos/state").await.json();
     assert_eq!((r["count"].clone(), r["bytes"].clone(), r["active"].clone()), (json!(2), json!(img.len() + other.len()), json!(true)));
+
+    // The preview: made by the device that sent the picture, a JPEG only, for the own pictures only; `changes` says whether there is one.
+    let jpeg: Vec<u8> = [0xFF, 0xD8, 0xFF, 0xE0].into_iter().chain(std::iter::repeat_n(1u8, 2000)).collect();
+    assert_eq!(get_json(&a, &tablet, &format!("/api/v1/photos/{id}/thumb")).await.json()["error"], json!("no_thumb"));
+    assert_eq!(get_json(&a, &tablet, "/api/v1/photos/changes?since=0").await.json()["photos"][0]["thumb"], json!(false));
+    let r = send(&a, "PUT", &format!("/api/v1/photos/{id}/thumb"), Some(&phone), "image/png", b"\x89PNG....".to_vec(), None).await;
+    assert_eq!((r.status, r.json()["error"].clone()), (StatusCode::UNSUPPORTED_MEDIA_TYPE, json!("wrong_type")));
+    let r = send(&a, "PUT", &format!("/api/v1/photos/{id}/thumb"), Some(&bert), "image/jpeg", jpeg.clone(), None).await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND, "nobody puts a preview on the picture of another person");
+    let r = send(&a, "PUT", &format!("/api/v1/photos/{id}/thumb"), Some(&phone), "image/jpeg", jpeg.clone(), None).await;
+    assert_eq!(r.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&r.bytes));
+    assert_eq!(get_json(&a, &tablet, &format!("/api/v1/photos/{id}/thumb")).await.bytes, jpeg);
+    assert_eq!(get_json(&a, &bert, &format!("/api/v1/photos/{id}/thumb")).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(get_json(&a, &tablet, "/api/v1/photos/changes?since=0").await.json()["photos"][0]["thumb"], json!(true));
+    assert!(folder.path().join(".david-thumbs").join(format!("{id}.jpg")).is_file());
 }
 
 #[tokio::test]

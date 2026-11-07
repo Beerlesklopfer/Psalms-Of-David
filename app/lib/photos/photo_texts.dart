@@ -79,5 +79,6 @@ String photoErrorText(AppLocalizations l, String code) => switch (code) {
       'network' => l.photoErrNetwork,
       'backup_off' => l.photoErrBackupOff,
       'no_folder' => l.photoErrNoFolder,
+      'unwritable' => l.photoErrUnwritable,
       _ => l.photoErrOther,
     };

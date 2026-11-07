@@ -1,5 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 import '../server/api_client.dart';
@@ -106,6 +108,27 @@ class PhotoBackupController extends ChangeNotifier {
     device.sources = sources;
     store.saveSettings(device);
     notifyListeners();
+  }
+
+  /// Bisync: what this device does with the pictures of the other devices (`app`, `gallery`, `off`).
+  void setReceive(String receive) {
+    device.receive = receive;
+    store.saveSettings(device);
+    notifyListeners();
+  }
+
+  /// The original of a received picture, loaded for the view. Only the one being looked at stays on the device: the one before is removed.
+  Future<File> original(ReceivedPhoto photo) async {
+    final dir = store.receivedDir;
+    final file = File('${dir.path}/original-${photo.id}');
+    if (file.existsSync()) return file;
+    if (dir.existsSync()) {
+      for (final f in dir.listSync().whereType<File>()) {
+        if (f.uri.pathSegments.last.startsWith('original-')) f.deleteSync();
+      }
+    }
+    await api.download(photo.id, file, photo.sha256);
+    return file;
   }
 
   /// Also the pictures from before the day the device was switched on (the explicit button).

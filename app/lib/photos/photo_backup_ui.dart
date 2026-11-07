@@ -8,6 +8,7 @@ import '../l10n/app_localizations.dart';
 import 'photo_backup_api.dart';
 import 'photo_backup_controller.dart';
 import 'photo_device.dart';
+import 'photo_received_ui.dart';
 import 'photo_sync.dart';
 import 'photo_texts.dart';
 
@@ -259,6 +260,28 @@ class _DeviceCard extends StatelessWidget {
           explain: (o) => o == 'all' ? l.photoExplainSourcesAll : l.photoExplainSourcesCamera,
           onChanged: c.setSources,
         ),
+        if (settings.effective['mode'] == 'bi') ...[
+          PhotoChoiceField(
+            id: 'receive',
+            label: l.photoSetReceive,
+            options: kPhotoReceive,
+            value: d.receive,
+            optionLabel: (o) => switch (o) { 'gallery' => l.photoOptReceiveGallery, 'off' => l.photoOptReceiveOff, _ => l.photoOptReceiveApp },
+            explain: (o) => switch (o) { 'gallery' => l.photoExplainReceiveGallery, 'off' => l.photoExplainReceiveOff, _ => l.photoExplainReceiveApp },
+            onChanged: c.setReceive,
+          ),
+          if (st.received.isNotEmpty)
+            ListTile(
+              key: const ValueKey('open-received'),
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.collections_outlined),
+              title: Text(l.photoReceivedTitle),
+              subtitle: Text(l.photoReceivedCount(st.received.length)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ReceivedPhotosScreen(controller: c))),
+            ),
+          const SizedBox(height: 8),
+        ],
         if (since != null) ...[
           Text(d.olderToo ? l.photoSinceAll : l.photoSince(DateFormat.yMd(locale).format(since)), key: const ValueKey('photo-since')),
           if (!d.olderToo)
@@ -315,7 +338,7 @@ class _DeviceCard extends StatelessWidget {
   }
 
   String _runText(AppLocalizations l, PhotoRunResult r) => switch (r.stop) {
-        null => l.photoRunDone(r.sent, r.known),
+        null => [l.photoRunDone(r.sent, r.known), if (r.received > 0) l.photoRunReceived(r.received)].join(' '),
         PhotoRunStop.busy => l.photoStopBusy,
         PhotoRunStop.network => l.photoStopNetwork,
         PhotoRunStop.stopped => '${l.photoRunDone(r.sent, r.known)} ${l.photoStopStopped}',

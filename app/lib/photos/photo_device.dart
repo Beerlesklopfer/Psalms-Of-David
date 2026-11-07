@@ -8,6 +8,10 @@ import '../server/app_paths.dart';
 /// Which pictures of the device are looked at.
 const kPhotoSources = ['camera', 'all'];
 
+/// What a device does with the pictures of the other devices of the person (bisync): nothing, previews in the app (the original on a
+/// tap), or the originals into the gallery (folder "David").
+const kPhotoReceive = ['app', 'gallery', 'off'];
+
 /// How many errors the device keeps to show.
 const kPhotoErrorsKept = 10;
 
@@ -50,13 +54,14 @@ class PhotoEntry {
 /// The settings of the backup on this device (`docs/spec-photo-sync.md`, section 2a "Device"). Only the screen writes them, in a file of
 /// their own, so a run in the background never puts back an older choice.
 class PhotoDeviceSettings {
-  PhotoDeviceSettings({this.enabled = false, this.since, this.olderToo = false, this.sources = 'camera'});
+  PhotoDeviceSettings({this.enabled = false, this.since, this.olderToo = false, this.sources = 'camera', this.receive = 'app'});
 
   factory PhotoDeviceSettings.fromJson(Map<String, dynamic> j) => PhotoDeviceSettings(
         enabled: j['enabled'] == true,
         since: j['since'] is int ? DateTime.fromMillisecondsSinceEpoch(j['since'] as int) : null,
         olderToo: j['older_too'] == true,
         sources: kPhotoSources.contains(j['sources']) ? j['sources'] as String : 'camera',
+        receive: kPhotoReceive.contains(j['receive']) ? j['receive'] as String : 'app',
       );
 
   /// This device takes part (asked once; off until the person switches it on).
@@ -71,20 +76,66 @@ class PhotoDeviceSettings {
   /// `camera` (the camera folder) or `all` (every picture of the device).
   String sources;
 
+  /// Bisync: `app`, `gallery` or `off` (see [kPhotoReceive]).
+  String receive;
+
   /// Where the run starts: nothing before the device was switched on, unless the older ones were asked for.
   DateTime? get from => olderToo ? null : since;
 
   Map<String, Object?> toJson() =>
-      {'enabled': enabled, 'since': ?since?.millisecondsSinceEpoch, if (olderToo) 'older_too': true, 'sources': sources};
+      {'enabled': enabled, 'since': ?since?.millisecondsSinceEpoch, if (olderToo) 'older_too': true, 'sources': sources, 'receive': receive};
+}
+
+/// A picture of another device of the person that this device received.
+class ReceivedPhoto {
+  ReceivedPhoto({required this.id, required this.sha256, required this.size, required this.name, required this.mime, required this.takenAt, this.thumb = false, this.gallery = false});
+
+  factory ReceivedPhoto.fromJson(Map<String, dynamic> j) => ReceivedPhoto(
+        id: j['id'] as int,
+        sha256: j['s'] as String? ?? '',
+        size: j['n'] as int? ?? 0,
+        name: j['name'] as String? ?? '',
+        mime: j['mime'] as String? ?? '',
+        takenAt: DateTime.fromMillisecondsSinceEpoch(j['at'] as int? ?? 0),
+        thumb: j['thumb'] == true,
+        gallery: j['gallery'] == true,
+      );
+
+  /// The id of the picture on the server.
+  final int id;
+  final String sha256;
+  final int size;
+  final String name;
+  final String mime;
+  final DateTime takenAt;
+
+  /// The preview is on the device ([PhotoDeviceStore.thumbFile]).
+  bool thumb;
+
+  /// The original was put into the gallery of the device.
+  bool gallery;
+
+  bool get video => mime.startsWith('video/');
+
+  Map<String, Object?> toJson() =>
+      {'id': id, 's': sha256, 'n': size, 'name': name, 'mime': mime, 'at': takenAt.millisecondsSinceEpoch, if (thumb) 'thumb': true, if (gallery) 'gallery': true};
 }
 
 /// What the backup has done on this device, in a small file of the app that only a run writes (one at a time, see [PhotoDeviceStore.tryLock]).
 class PhotoDeviceState {
-  PhotoDeviceState({Map<String, PhotoEntry>? entries, List<PhotoError>? errors, this.lastRunAt, this.lastSentAt, this.waiting, this.constraints})
-      : entries = entries ?? {},
+  PhotoDeviceState({this.changesSince = 0, this.receivedOlder = false, List<ReceivedPhoto>? received, Map<String, PhotoEntry>? entries, List<PhotoError>? errors, this.lastRunAt, this.lastSentAt, this.waiting, this.constraints})
+      : received = received ?? [],
+        entries = entries ?? {},
         errors = errors ?? [];
 
   factory PhotoDeviceState.fromJson(Map<String, dynamic> j) => PhotoDeviceState(
+        changesSince: j['changes_since'] as int? ?? 0,
+        receivedOlder: j['received_older'] == true,
+        received: [
+          if (j['received'] is List)
+            for (final r in j['received'] as List)
+              if (r is Map && r['id'] is int) ReceivedPhoto.fromJson(r.cast<String, dynamic>()),
+        ],
         entries: {
           if (j['entries'] is Map)
             for (final e in (j['entries'] as Map).entries)
@@ -100,6 +151,15 @@ class PhotoDeviceState {
         waiting: j['waiting'] as int?,
         constraints: j['constraints'] as String?,
       );
+
+  /// Bisync: the `since` of the next `changes` call.
+  int changesSince;
+
+  /// The changes were read again from the start after "also the older ones" was chosen.
+  bool receivedOlder;
+
+  /// What this device received of the other devices, oldest first.
+  final List<ReceivedPhoto> received;
 
   /// Per picture of the device (`<id>@<modified>`, so an edited picture is read again) what is known of it.
   final Map<String, PhotoEntry> entries;
@@ -124,6 +184,9 @@ class PhotoDeviceState {
   }
 
   Map<String, Object?> toJson() => {
+        'changes_since': changesSince,
+        if (receivedOlder) 'received_older': true,
+        'received': [for (final r in received) r.toJson()],
         'entries': {for (final e in entries.entries) e.key: e.value.toJson()},
         'errors': [for (final e in errors) e.toJson()],
         'last_run': ?lastRunAt?.millisecondsSinceEpoch,
@@ -143,6 +206,11 @@ class PhotoDeviceStore {
 
   final File file;
   final File settingsFile;
+
+  /// The folder of the received previews (`<id>.jpg`) and, while it is loaded, of a received original.
+  Directory get receivedDir => Directory('${file.parent.path}/photo_received');
+
+  File thumbFile(int id) => File('${receivedDir.path}/$id.jpg');
 
   static Map<String, dynamic>? _read(File f) {
     try {

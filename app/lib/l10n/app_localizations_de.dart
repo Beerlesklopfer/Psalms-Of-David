@@ -2701,7 +2701,7 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get photoExplainModeBi =>
-      'Wie die Sicherung, und zusätzlich bekommt jedes deiner Geräte die Bilder deiner anderen Geräte. (Das Empfangen kommt in einer späteren Version der App; jetzt schickt sie nur.)';
+      'Wie die Sicherung, und zusätzlich bekommt jedes deiner Geräte die Bilder deiner anderen Geräte, als Vorschau in der App oder ganz in der Galerie, je nach Einstellung am Gerät.';
 
   @override
   String get photoSetNetwork => 'Netz';
@@ -2823,4 +2823,55 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get photoWhyNoFolder =>
       'Dein Profil hat noch keinen Bilder-Ordner (ein Administrator legt ihn auf der Seite Benutzer fest).';
+
+  @override
+  String get photoSetReceive => 'Bilder meiner anderen Geräte';
+
+  @override
+  String get photoOptReceiveApp => 'Vorschau in der App';
+
+  @override
+  String get photoOptReceiveGallery => 'Originale in die Galerie';
+
+  @override
+  String get photoOptReceiveOff => 'Nicht empfangen';
+
+  @override
+  String get photoExplainReceiveApp =>
+      'Dieses Gerät hält kleine Vorschaubilder der Bilder deiner anderen Geräte, nur in der App. Ein Tippen lädt das Original vom Server; die Galerie bleibt, wie sie ist.';
+
+  @override
+  String get photoExplainReceiveGallery =>
+      'Die Bilder deiner anderen Geräte werden ganz geladen und in die Galerie dieses Geräts gelegt, in den Ordner „David“, sichtbar in jeder Foto-App. Das braucht Platz auf dem Gerät.';
+
+  @override
+  String get photoExplainReceiveOff =>
+      'Dieses Gerät schickt nur; von deinen anderen Geräten bekommt es nichts.';
+
+  @override
+  String get photoReceivedTitle => 'Von meinen anderen Geräten';
+
+  @override
+  String get photoReceivedNone =>
+      'Noch nichts empfangen. Bilder, die deine anderen Geräte schicken, kommen hierher.';
+
+  @override
+  String photoReceivedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Bilder',
+      one: '1 Bild',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String photoRunReceived(int count) {
+    return '$count empfangen.';
+  }
+
+  @override
+  String get photoErrUnwritable =>
+      'Das Bild konnte nicht in die Galerie gelegt werden';
 }

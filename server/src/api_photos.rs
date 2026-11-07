@@ -11,8 +11,10 @@
 //! | `POST /photos/have` `{files: [{sha256, size}]}` (at most 1000) | `{missing: [sha256]}`: the files the server lacks; the device sends only these |
 //! | `PUT /photos/upload/{client_id}` | a piece of a file, see below |
 //! | `GET /photos/upload/{client_id}` | `{sha256, received}` of an upload under way, `404 unknown_upload` |
-//! | `GET /photos/changes?since=<id>&limit=<n>` | bisync only (else `409 not_bisync`): `{photos: [{id, sha256, size, name, mime, taken_at, uploaded_at}], next}`, the pictures other devices of the person sent after `since`; `next` is the `since` of the next call |
+//! | `GET /photos/changes?since=<id>&limit=<n>` | bisync only (else `409 not_bisync`): `{photos: [{id, sha256, size, name, mime, taken_at, uploaded_at, thumb}], next}`, the pictures other devices of the person sent after `since`; `next` is the `since` of the next call |
 //! | `GET /photos/{id}/file` | the file of an own picture (with `Range`), `404` for any other |
+//! | `PUT /photos/{id}/thumb` | the preview of an own picture (`image/jpeg`, at most 512 KiB), sent by the device that sent the picture: `204`; `404 not_found` for any other picture, `415 wrong_type`, `413 too_large` |
+//! | `GET /photos/{id}/thumb` | the preview, `404 no_thumb` when there is none (`changes` says so in `thumb`) |
 //!
 //! An upload: the device names the file by a `client_id` of its own (1 to 128 visible characters, no slash) and sends it in pieces with
 //! `PUT /photos/upload/{client_id}`, each with the headers `X-Sha256` (of the whole file, lower-case hex), `X-Size` (of the whole file),
@@ -40,7 +42,7 @@ use tower::ServiceExt;
 
 use crate::api::{ApiError, ApiResult, ApiState, Device};
 use crate::photo_settings::{PROFILE_CHOICES, ServerPhotoSettings};
-use crate::photo_store::{HAVE_MAX, Offer, Owner, PIECE_MAX, Progress, Refusal};
+use crate::photo_store::{HAVE_MAX, Offer, Owner, PIECE_MAX, Progress, Refusal, THUMB_MAX, is_jpeg};
 
 pub fn routes() -> Router<ApiState> {
     Router::new()
@@ -50,6 +52,7 @@ pub fn routes() -> Router<ApiState> {
         .route("/api/v1/photos/upload/{client_id}", get(get_upload).put(put_upload).layer(DefaultBodyLimit::max(PIECE_MAX + 1024)))
         .route("/api/v1/photos/changes", get(get_changes))
         .route("/api/v1/photos/{id}/file", get(get_file))
+        .route("/api/v1/photos/{id}/thumb", get(get_thumb).put(put_thumb).layer(DefaultBodyLimit::max(THUMB_MAX + 1024)))
 }
 
 /// The role of the device's profile, if the backup is open to it at all.
@@ -276,6 +279,34 @@ async fn get_file(State(s): State<ApiState>, d: Device, Path(id): Path<i64>, req
                 Err(_) => ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response(),
             }
         }
+        Ok(None) => ApiError(StatusCode::NOT_FOUND, "not_found").into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn put_thumb(State(s): State<ApiState>, d: Device, Path(id): Path<i64>, headers: HeaderMap, body: Bytes) -> ApiResult<StatusCode> {
+    role_of(&s, &d).await?;
+    let mime = headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or_default();
+    if !mime.trim().eq_ignore_ascii_case("image/jpeg") || !is_jpeg(&body) {
+        return Err(ApiError(StatusCode::UNSUPPORTED_MEDIA_TYPE, "wrong_type"));
+    }
+    if body.len() > THUMB_MAX {
+        return Err(ApiError(StatusCode::PAYLOAD_TOO_LARGE, "too_large"));
+    }
+    if s.store.put_photo_thumb(d.user_id, id, &body).await? { Ok(StatusCode::NO_CONTENT) } else { Err(ApiError(StatusCode::NOT_FOUND, "not_found")) }
+}
+
+async fn get_thumb(State(s): State<ApiState>, d: Device, Path(id): Path<i64>) -> Response {
+    let found = async {
+        role_of(&s, &d).await?;
+        Ok::<_, ApiError>(s.store.photo_thumb_path(d.user_id, id).await?)
+    }
+    .await;
+    match found {
+        Ok(Some(path)) => match tokio::fs::read(&path).await {
+            Ok(b) => ([(header::CONTENT_TYPE, "image/jpeg")], b).into_response(),
+            Err(_) => ApiError(StatusCode::NOT_FOUND, "no_thumb").into_response(),
+        },
         Ok(None) => ApiError(StatusCode::NOT_FOUND, "not_found").into_response(),
         Err(e) => e.into_response(),
     }

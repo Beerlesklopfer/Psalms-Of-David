@@ -952,7 +952,7 @@
   "photoOptModeUni": "Nur Sicherung",
   "photoExplainModeUni": "Jedes Gerät kopiert seine neuen Bilder auf den Server. Löschen oder Bearbeiten auf einem Gerät ändert auf dem Server nie etwas.",
   "photoOptModeBi": "Sicherung und Abgleich",
-  "photoExplainModeBi": "Wie die Sicherung, und zusätzlich bekommt jedes deiner Geräte die Bilder deiner anderen Geräte. (Das Empfangen kommt in einer späteren Version der App; jetzt schickt sie nur.)",
+  "photoExplainModeBi": "Wie die Sicherung, und zusätzlich bekommt jedes deiner Geräte die Bilder deiner anderen Geräte, als Vorschau in der App oder ganz in der Galerie, je nach Einstellung am Gerät.",
   "photoSetNetwork": "Netz",
   "photoOptNetworkWifi": "Nur WLAN",
   "photoExplainNetworkWifi": "Nur über WLAN, zu Hause oder über das VPN der Familie. Mobile Daten werden nie benutzt.",
@@ -987,5 +987,17 @@
   "photoWhyChildrenOnly": "Nur für Kinder.",
   "photoWhyNoParentView": "Der Server lässt Eltern keine Bilder ansehen.",
   "photoWhyNotAnOption": "Diese Möglichkeit gibt es nicht.",
-  "photoWhyNoFolder": "Dein Profil hat noch keinen Bilder-Ordner (ein Administrator legt ihn auf der Seite Benutzer fest)."
+  "photoWhyNoFolder": "Dein Profil hat noch keinen Bilder-Ordner (ein Administrator legt ihn auf der Seite Benutzer fest).",
+  "photoSetReceive": "Bilder meiner anderen Geräte",
+  "photoOptReceiveApp": "Vorschau in der App",
+  "photoOptReceiveGallery": "Originale in die Galerie",
+  "photoOptReceiveOff": "Nicht empfangen",
+  "photoExplainReceiveApp": "Dieses Gerät hält kleine Vorschaubilder der Bilder deiner anderen Geräte, nur in der App. Ein Tippen lädt das Original vom Server; die Galerie bleibt, wie sie ist.",
+  "photoExplainReceiveGallery": "Die Bilder deiner anderen Geräte werden ganz geladen und in die Galerie dieses Geräts gelegt, in den Ordner „David“, sichtbar in jeder Foto-App. Das braucht Platz auf dem Gerät.",
+  "photoExplainReceiveOff": "Dieses Gerät schickt nur; von deinen anderen Geräten bekommt es nichts.",
+  "photoReceivedTitle": "Von meinen anderen Geräten",
+  "photoReceivedNone": "Noch nichts empfangen. Bilder, die deine anderen Geräte schicken, kommen hierher.",
+  "photoReceivedCount": "{count, plural, =1{1 Bild} other{{count} Bilder}}",
+  "photoRunReceived": "{count} empfangen.",
+  "photoErrUnwritable": "Das Bild konnte nicht in die Galerie gelegt werden"
 }

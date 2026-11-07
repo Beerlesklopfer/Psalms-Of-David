@@ -4469,7 +4469,7 @@ abstract class AppLocalizations {
   /// No description provided for @photoExplainModeBi.
   ///
   /// In en, this message translates to:
-  /// **'Like the backup, and in addition each of your devices receives the pictures of your other devices. (The app receives them in a later version; for now it only sends.)'**
+  /// **'Like the backup, and in addition each of your devices receives the pictures of your other devices, as previews in the app or in full in the gallery, set on each device.'**
   String get photoExplainModeBi;
 
   /// No description provided for @photoSetNetwork.
@@ -4681,6 +4681,78 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Your profile has no picture folder yet (an administrator sets it on the Users page).'**
   String get photoWhyNoFolder;
+
+  /// No description provided for @photoSetReceive.
+  ///
+  /// In en, this message translates to:
+  /// **'Pictures of my other devices'**
+  String get photoSetReceive;
+
+  /// No description provided for @photoOptReceiveApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Previews in the app'**
+  String get photoOptReceiveApp;
+
+  /// No description provided for @photoOptReceiveGallery.
+  ///
+  /// In en, this message translates to:
+  /// **'Originals into the gallery'**
+  String get photoOptReceiveGallery;
+
+  /// No description provided for @photoOptReceiveOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Do not receive'**
+  String get photoOptReceiveOff;
+
+  /// No description provided for @photoExplainReceiveApp.
+  ///
+  /// In en, this message translates to:
+  /// **'This device keeps small previews of the pictures of your other devices, in the app only. A tap loads the original from the server; the gallery stays as it is.'**
+  String get photoExplainReceiveApp;
+
+  /// No description provided for @photoExplainReceiveGallery.
+  ///
+  /// In en, this message translates to:
+  /// **'The pictures of your other devices are loaded in full and put into the gallery of this device, in the folder \"David\", visible in every photo app. That takes room on the device.'**
+  String get photoExplainReceiveGallery;
+
+  /// No description provided for @photoExplainReceiveOff.
+  ///
+  /// In en, this message translates to:
+  /// **'This device only sends; it receives nothing of your other devices.'**
+  String get photoExplainReceiveOff;
+
+  /// No description provided for @photoReceivedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'From my other devices'**
+  String get photoReceivedTitle;
+
+  /// No description provided for @photoReceivedNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing received yet. Pictures that your other devices send come here.'**
+  String get photoReceivedNone;
+
+  /// No description provided for @photoReceivedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 picture} other{{count} pictures}}'**
+  String photoReceivedCount(int count);
+
+  /// No description provided for @photoRunReceived.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} received.'**
+  String photoRunReceived(int count);
+
+  /// No description provided for @photoErrUnwritable.
+  ///
+  /// In en, this message translates to:
+  /// **'The picture could not be put into the gallery'**
+  String get photoErrUnwritable;
 }
 
 class _AppLocalizationsDelegate
