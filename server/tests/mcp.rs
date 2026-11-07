@@ -1549,3 +1549,30 @@ async fn a_photo_the_model_has_goes_to_the_server_through_an_upload_address_and_
     let (err, disc) = tool(&m, &t, "photo_upload_link", json!({ "disc_id": "AM3Ds7LYFUg7YH7ywvK9zGrpNsU-" })).await;
     assert!(!err, "{disc}");
 }
+
+#[tokio::test]
+async fn set_tags_of_the_album_title_and_artist_shows_in_the_lists_at_once_without_moving_the_folder() {
+    if !ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let m = mcp().await;
+    let id = album(&m, &[("artist", "Follett"), ("album", "Winter")]).await;
+    let folder = m.store.book_folder(id).await.unwrap();
+    let t = m.store.create_mcp_token("llm", true, m.admin).await.unwrap();
+    let (err, out) = tool(&m, &t, "set_tags", json!({ "id": id, "fields": { "AlbumTitle": "Kolibri 1/2 – Hörbeispiele", "AlbumArtist": "Kolibris" }, "dry_run": false })).await;
+    assert!(!err, "{out}");
+    let row = m.store.admin_book_row(id).await.unwrap().unwrap();
+    assert_eq!((row.author.as_str(), row.title.as_str()), ("Kolibris", "Kolibri 1/2 – Hörbeispiele"));
+    let (_, list) = tool(&m, &t, "list_albums", json!({ "query": "kolibri" })).await;
+    assert!(list.to_string().contains("Kolibri 1/2 – Hörbeispiele"), "{list}");
+    assert_eq!(m.store.book_folder(id).await.unwrap(), folder, "the folder stays where it is; rename_album files it");
+    // The composer is the narrator of an audiobook: it follows as well.
+    assert_eq!(row.kind, "audiobook");
+    let (err, out) = tool(&m, &t, "set_tags", json!({ "id": id, "fields": { "Composer": "Hanno Herzler" }, "dry_run": false })).await;
+    assert!(!err, "{out}");
+    assert_eq!(m.store.admin_book_row(id).await.unwrap().unwrap().narrator.as_deref(), Some("Hanno Herzler"));
+    // A dry run changes nothing.
+    tool(&m, &t, "set_tags", json!({ "id": id, "fields": { "AlbumTitle": "Anders" }, "dry_run": true })).await;
+    assert_eq!(m.store.admin_book_row(id).await.unwrap().unwrap().title, "Kolibri 1/2 – Hörbeispiele");
+}

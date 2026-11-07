@@ -889,6 +889,14 @@ async fn call(s: &McpState, token: &McpToken, name: &str, args: &Value) -> Resul
                 {
                     s.store.set_book_barcode(id, values.first().map(String::as_str)).await.map_err(db)?;
                 }
+                // So do the title and the author: the tags decide them (the folder is only the filing, rename_album files it),
+                // and the lists show them at once, not only after the scan (which waits a few seconds and does not run while the import is locked).
+                if only.is_none()
+                    && changes.iter().any(|(n, _)| ["AlbumTitle", "AlbumArtist", "Artist", "Composer"].iter().any(|f| n.eq_ignore_ascii_case(f)))
+                    && let Some((_, first)) = album.tracks.first()
+                {
+                    s.store.follow_album_names(id, first.clone()).await.map_err(db)?;
+                }
                 s.store.rescan_soon();
                 for (file, field, old, new) in &outcome {
                     tracing::info!(token = %token.name, album = id, %file, %field, %old, %new, "tag changed");

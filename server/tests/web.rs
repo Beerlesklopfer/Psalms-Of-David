@@ -4873,8 +4873,9 @@ async fn the_tags_window_of_an_album_of_two_cds_does_not_send_the_cd_number_and_
     assert!(w.body.contains("name=\"disc\" min=\"1\" max=\"99\" inputmode=\"numeric\" placeholder=\" \" disabled>"), "{}", w.body);
     assert!(w.body.contains("name=\"discs\" min=\"1\" max=\"99\" inputmode=\"numeric\" placeholder=\" \" value=\"2\""), "{}", w.body);
     // What the browser sends then (no disc) saves; each CD keeps its number.
-    let r = send(&a, tags_request(&csrf, &cookie, &[("id", &row.id.to_string()), ("discs", "2"), ("genre", "Klassik")], None)).await;
+    let r = send(&a, tags_request(&csrf, &cookie, &[("id", &row.id.to_string()), ("discs", "2"), ("genre", "Klassik"), ("album", "Best of Classic, Vol. 1")], None)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(a.store.admin_book_row(row.id).await.unwrap().unwrap().title, "Best of Classic, Vol. 1", "the title follows the tags at once");
     assert_eq!(david_server::tags::read_album(&dir.join("a_CD02_TR01.mp3")).disc, Some(2));
     assert_eq!(david_server::tags::read_album(&dir.join("a_CD01_TR01.mp3")).genre.as_deref(), Some("Klassik"));
 }

@@ -1439,6 +1439,7 @@ pub async fn book_tags(State(state): State<AppState>, s: AdminSession, mut form:
         }
         let tags = crate::tags::AlbumTags { album: clean(&album)?, artist: clean(&artist)?, narrator: clean(&narrator)?, year, genre: clean(&genre)?, cover, ..Default::default() };
         let (_, files) = book_files(&state, id).await?;
+        let first = files.first().cloned();
         // A picture goes into every file: that many bytes more on the disk of the album.
         if let Some((bytes, _)) = &tags.cover {
             let need = (bytes.len() as u64).saturating_mul(files.len() as u64 + 1);
@@ -1479,6 +1480,10 @@ pub async fn book_tags(State(state): State<AppState>, s: AdminSession, mut form:
         }
         if let Some(code) = barcode_change {
             state.store.set_book_barcode(id, code.as_deref()).await?;
+        }
+        // The title and the author too: the tags decide them, the row shows them now.
+        if let Some(first) = first {
+            state.store.follow_album_names(id, first).await?;
         }
         book_row(&state, &s, id).await
     }

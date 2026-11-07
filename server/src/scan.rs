@@ -327,6 +327,27 @@ impl Store {
 }
 
 impl Store {
+    /// After the tags of a whole album were written: its author, title and narrator follow the tags of its first file at once (the tags decide,
+    /// the folder is only the filing), not only after the next scan, which waits and does not run while the import is locked.
+    /// What the tags do not say stays as it is. Reads the file (blocking, in a task of its own).
+    pub async fn follow_album_names(&self, id: i64, first: std::path::PathBuf) -> Result<()> {
+        let (Some(row), Some(folder)) = (self.admin_book_row(id).await?, self.book_folder(id).await?) else { return Ok(()) };
+        let ph = self.placeholder_tags().await?;
+        let Ok(Some(t)) = tokio::task::spawn_blocking(move || tags::read(&first).ok()).await else { return Ok(()) };
+        let (author, title) = names_of(&t, &ph);
+        let (author, title) = (author.unwrap_or_else(|| row.author.clone()), title.unwrap_or_else(|| row.title.clone()));
+        // The composer tag is the narrator of an audiobook (as the scan reads it); on music there is none.
+        let narrator = t.narrator.clone().filter(|n| !n.trim().is_empty() && row.kind == "audiobook");
+        if author != row.author || title != row.title {
+            self.rename_book(id, &folder, &author, &title).await?;
+        }
+        if narrator != row.narrator {
+            let values: [Value; 2] = [narrator.into(), id.into()];
+            self.db.writer.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite, "UPDATE book SET narrator = ? WHERE id = ?", values)).await?;
+        }
+        Ok(())
+    }
+
     /// A book whose folder, author and title changed by a rename; unlike `relocate_book` the kind stays.
     pub async fn rename_book(&self, id: i64, folder: &str, author: &str, title: &str) -> Result<()> {
         let author_id = upsert_author(&self.db.writer, author).await?;
@@ -614,6 +635,14 @@ fn normalize_numbers(tracks: &mut [FoundTrack]) {
 /// `skipped`; the rest of the album is imported, it must not lose its place because of one file. A file that cannot be
 /// opened or read (rights, a disk that is gone for the moment) is another matter: the folder is skipped as a whole and
 /// nothing changes, so that a short failure cannot remove tracks and their listening progress from the library.
+/// The author and the title an album has by the tags of its first file (album artist, else artist; the album without a CD
+/// number), `None` for what the tags do not say (or say with a placeholder word). The tags decide, the folder names are the fallback.
+pub(crate) fn names_of(t: &tags::MediaTags, ph: &crate::placeholders::Placeholders) -> (Option<String>, Option<String>) {
+    let author = ph.real(t.album_artist.clone()).or_else(|| ph.real(t.artist.clone()));
+    let title = ph.real(t.album.clone()).map(|a| crate::relocate::strip_disc(&a).0).filter(|a| !a.is_empty());
+    (author, title)
+}
+
 fn book_of(root: &Path, dir: &Path, parts: &[(PathBuf, Option<i64>)], kind: &str, ph: &crate::placeholders::Placeholders, skipped: &mut Vec<String>) -> std::result::Result<FoundBook, String> {
     let relative = dir.strip_prefix(root).unwrap_or(dir);
     let names: Vec<String> = relative.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
@@ -641,8 +670,7 @@ fn book_of(root: &Path, dir: &Path, parts: &[(PathBuf, Option<i64>)], kind: &str
     let recommended_age = first_tags.as_ref().and_then(|t| t.age_recommendation).map(i64::from);
     // The tags come first (project owner, 2026-10-28: the folders are only the filing); the folder
     // names are the fallback for what the tags do not say. A CD number in the album tag is not part of the title.
-    let tag_author = first_tags.as_ref().and_then(|t| ph.real(t.album_artist.clone()).or_else(|| ph.real(t.artist.clone())));
-    let tag_title = first_tags.as_ref().and_then(|t| t.album.clone()).and_then(|a| ph.real(Some(a))).map(|a| crate::relocate::strip_disc(&a).0).filter(|a| !a.is_empty());
+    let (tag_author, tag_title) = first_tags.as_ref().map_or((None, None), |t| names_of(t, ph));
     let author = tag_author.unwrap_or_else(|| match names.len() {
         0 | 1 => "Unknown".to_owned(),
         n => names[n - 2].clone(),
