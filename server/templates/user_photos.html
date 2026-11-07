@@ -1,0 +1,24 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "users" %}
+{% from "fragments/choice.html" import choice %}
+{% block title %}{{ t("settings.tab.photos") }}: {{ who.name }}{% endblock %}
+
+{% block content %}
+{#- The phone backup of one person, set by an administrator: for a child the only way to switch it on when the server says so. -#}
+<h1>{{ t("settings.tab.photos") }}: {{ who.name }}</h1>
+<p class="unit"><a href="/admin/users">{{ t("photo.admin.back") }}</a> &middot; <a href="/admin/settings?tab=photos">{{ t("photo.admin.rules") }}</a></p>
+{% if not photo.server_on %}<p class="form-error" role="note">{{ t("photo.why.server_off") }}</p>{% endif %}
+<form class="card settings-form" id="photo-of" method="post" action="/admin/rpc/user.photos">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="id" value="{{ who.id }}">
+  <fieldset class="line-group">
+    <legend>{{ t("role." ~ who.role) }}</legend>
+    <p class="unit">{% if photo.active %}{{ t("photo.admin.active") }}{% elif not photo.folder %}{{ t("photo.why.no_folder") }}{% else %}{{ t("photo.admin.inactive") }}{% endif %}</p>
+    {% for c in photo.choices %}{{ choice(c, "photo") }}{% endfor %}
+  </fieldset>
+  <div class="form-foot">
+    <a class="btn outline" href="/admin/users/{{ who.id }}/photos">{{ t("ui.cancel") }}</a>
+    <button type="submit" class="btn">{{ t("ui.save") }}</button>
+  </div>
+</form>
+{% endblock %}

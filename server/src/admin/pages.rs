@@ -61,6 +61,9 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("fragments/pager.html", include_str!("../../templates/fragments/pager.html")),
     ("fragments/cd_import.html", include_str!("../../templates/fragments/cd_import.html")),
     ("fragments/settings_cdimport.html", include_str!("../../templates/fragments/settings_cdimport.html")),
+    ("fragments/settings_photos.html", include_str!("../../templates/fragments/settings_photos.html")),
+    ("fragments/choice.html", include_str!("../../templates/fragments/choice.html")),
+    ("user_photos.html", include_str!("../../templates/user_photos.html")),
     ("fragments/settings_llm.html", include_str!("../../templates/fragments/settings_llm.html")),
     ("fragments/access_warning.html", include_str!("../../templates/fragments/access_warning.html")),
     ("fragments/settings_roles.html", include_str!("../../templates/fragments/settings_roles.html")),
@@ -825,10 +828,22 @@ impl AdminUi {
     /// what they are listening to, their hours), the picture and the PIN.
     pub async fn profile<'a>(&self, store: &Store, view: impl Into<View<'a>>, user_id: i64) -> Result<String> {
         let dash = personal_dashboard(store, user_id).await?;
+        // The phone backup only once the server has it switched on, and never for a guest.
+        let role = store.profile_by_id(user_id).await?.map(|p| p.role).unwrap_or_default();
+        let photo = crate::photo_settings::profile_view(store, user_id, &role, true).await?;
+        let photo = (photo["server_on"] == true && role != "guest").then_some(photo);
         self.render(
             "profile.html",
-            context! { dash => Serde(dash), max_kib => crate::profile::MAX_AVATAR_BYTES / 1024, ..view.into().context() },
+            context! { dash => Serde(dash), photo => Serde(photo), max_kib => crate::profile::MAX_AVATAR_BYTES / 1024, ..view.into().context() },
         )
+    }
+
+    /// The phone backup of one person, as an administrator sets it; `None` if there is no such person or it is a guest.
+    pub async fn user_photos<'a>(&self, store: &Store, view: impl Into<View<'a>>, id: i64) -> Result<Option<String>> {
+        let Some(who) = store.profile_by_id(id).await?.filter(|p| p.role != "guest") else { return Ok(None) };
+        let photo = crate::photo_settings::profile_view(store, id, &who.role, false).await?;
+        let who = context! { id => who.id, name => who.name, role => who.role };
+        self.render("user_photos.html", context! { who => who, photo => Serde(photo), ..view.into().context() }).map(Some)
     }
 
     pub async fn overview<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
@@ -1093,7 +1108,7 @@ impl AdminUi {
     }
 
     pub async fn settings<'a>(&self, store: &Store, cd: &crate::cdimport::CdService, view: impl Into<View<'a>>, tab: Option<&str>, mcp: Option<&str>) -> Result<String> {
-        let tab = tab.filter(|t| matches!(*t, "roles" | "values" | "llm" | "cdimport")).unwrap_or("import");
+        let tab = tab.filter(|t| matches!(*t, "roles" | "values" | "llm" | "cdimport" | "photos")).unwrap_or("import");
         let llm = if tab == "llm" { self.llm_context(store, mcp, None).await? } else { self.llm_context(store, None, None).await.unwrap_or_default() };
         let policies = self.policy_views(store).await?;
         let settings = self.setting_views(store).await?;
@@ -1101,8 +1116,19 @@ impl AdminUi {
         // The tab holds the values of the CD import; the import itself (drive, choice, progress, log) is the page "CD import".
         let cd = self.cd_context(store, cd, false, &HashMap::new(), 0).await?;
         let ctx = context! { tab => tab, saved => false, zones => Self::zone_names(), kinds => Self::root_kinds(&state), state => Serde(state), policies => Serde(policies), settings => Serde(settings), ..view.into().context() };
-        let ctx = context! { ..ctx, ..llm, ..cd };
+        let photo = if tab == "photos" { Some(crate::photo_settings::server_view(store, &HashMap::new()).await?) } else { None };
+        let ctx = context! { ..ctx, ..llm, ..cd, ..context! { photo => Serde(photo), errors => HashMap::<String, String>::new() } };
         self.render("settings.html", ctx)
+    }
+
+    /// The tab "Phone backup" alone, as the answer to saving it; a refused value is shown as it was typed, with the reason.
+    pub async fn settings_photos_fragment<'a>(&self, store: &Store, view: impl Into<View<'a>>, saved: bool, refused: &[(String, String, &'static str)]) -> Result<String> {
+        let view: View<'a> = view.into();
+        let cat = Catalog::new(view.lang);
+        let typed: HashMap<String, String> = refused.iter().map(|(k, v, _)| (k.clone(), v.clone())).collect();
+        let errors: HashMap<String, String> = refused.iter().map(|(k, _, code)| (k.clone(), cat.t(&format!("photo.verr.{code}")).to_owned())).collect();
+        let photo = crate::photo_settings::server_view(store, &typed).await?;
+        self.render("fragments/settings_photos.html", context! { photo => Serde(photo), errors => errors, saved => saved, ..view.context() })
     }
 
     /// What the tab "LLM access" shows: the endpoint (if the server runs with `--mcp`), the

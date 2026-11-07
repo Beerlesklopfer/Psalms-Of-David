@@ -5074,3 +5074,100 @@ fn david_server_test_ffmpeg() -> bool {
     }
     ok
 }
+
+#[tokio::test]
+async fn the_phone_backup_tab_explains_every_option_and_a_refused_value_saves_nothing() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let tab = send(&a, get("/admin/settings?tab=photos", &plain)).await.body;
+    for key in david_server::photo_settings::server_keys() {
+        assert!(tab.contains(&format!("name=\"{key}\"")), "{key}: {tab}");
+    }
+    // Every option has its own explanation, all in the page (the script shows the chosen one); the default is chosen.
+    assert!(tab.contains("data-choice-for=\"off\" data-chosen") && tab.contains("The phone backup is off.") && tab.contains("The phone backup is on."), "{tab}");
+    assert!(tab.contains("Backup only") && tab.contains("Backup and sync") && tab.contains("that is what makes it a backup"), "{tab}");
+    let de = send(&a, get("/admin/settings?tab=photos", &Opts { lang: Some("de"), ..plain })).await.body;
+    assert!(de.contains("Handy-Sicherung") && de.contains("Sicherung und Abgleich"), "{de}");
+
+    let r = send(&a, post("/admin/rpc/settings.photos", &form(&[("photo_sync", "on"), ("photo_modes", "both"), ("photo_max_file_mb", "4096")]), &o)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(r.body.contains("id=\"photo-tab\"") && r.body.contains("data-choice-for=\"both\" data-chosen"), "{}", r.body);
+    let s = david_server::photo_settings::ServerPhotoSettings::load(&a.store).await.unwrap();
+    assert!(s.on && s.bisync && s.max_file_mb == 4096);
+
+    let r = send(&a, post("/admin/rpc/settings.photos", &form(&[("photo_sync", "off"), ("photo_max_file_mb", "0")]), &o)).await;
+    assert!(r.body.contains("out of range") && r.body.contains("value=\"0\""), "{}", r.body);
+    let s = david_server::photo_settings::ServerPhotoSettings::load(&a.store).await.unwrap();
+    assert!(s.on && s.max_file_mb == 4096, "a refused value saves nothing");
+}
+
+#[tokio::test]
+async fn a_person_chooses_their_phone_backup_only_within_the_rules_of_the_server() {
+    let a = app().await;
+    let (anna, cookie, csrf) = member_session(&a).await;
+    let o = Opts { cookie: Some(&cookie), ..Default::default() };
+    // Off on the server: the profile page has no section.
+    assert!(!send(&a, get("/profile", &o)).await.body.contains("id=\"photo-mine\""));
+    a.store.save_settings(&[("photo_sync".into(), "on".into())]).await.unwrap();
+    let page = send(&a, get("/profile", &o)).await.body;
+    assert!(page.contains("id=\"photo-mine\"") && page.contains("no picture folder yet"), "{page}");
+    // Without a picture folder it cannot be switched on; the option is locked and says why.
+    assert!(page.contains("<option value=\"on\" disabled>"), "{page}");
+    let r = send(&a, post("/profile/photos", &form(&[("csrf", &csrf), ("enabled", "on")]), &o)).await;
+    assert_eq!(r.header("location"), Some("/profile?msg=err.photo_refused"));
+    let folder = tempfile::tempdir().unwrap();
+    a.store.set_profile_folder(anna, "photo", Some(folder.path().to_str().unwrap())).await.unwrap();
+    // Bisync is not allowed by the server yet: refused, and nothing is saved.
+    let r = send(&a, post("/profile/photos", &form(&[("csrf", &csrf), ("enabled", "on"), ("mode", "bi")]), &o)).await;
+    assert_eq!(r.header("location"), Some("/profile?msg=err.photo_refused"));
+    assert!(!a.store.profile_photo_settings(anna).await.unwrap().enabled);
+    let r = send(&a, post("/profile/photos", &form(&[("csrf", &csrf), ("enabled", "on"), ("network", "any"), ("charging", "always")]), &o)).await;
+    assert_eq!(r.header("location"), Some("/profile?msg=ok.photo_saved"));
+    let mine = a.store.profile_photo_settings(anna).await.unwrap();
+    assert!(mine.enabled && mine.network == "any" && mine.charging == "always" && mine.mode == "uni");
+    let page = send(&a, get("/profile", &o)).await.body;
+    assert!(page.contains("Your phone backup is on") && page.contains("data-choice-for=\"any\" data-chosen") && page.contains("Large videos can use up"), "{page}");
+    assert!(!page.contains("name=\"parent_view\""), "only a child has the choice whether parents may look");
+}
+
+#[tokio::test]
+async fn only_an_administrator_switches_on_the_phone_backup_of_a_child_and_the_child_sees_it() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let admin = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), ..Default::default() };
+    let kim = a.store.create_profile("Kim", false).await.unwrap();
+    let r = send(&a, post("/admin/rpc/user.set_role", &form(&[("id", &kim.to_string()), ("role", "child"), ("max_age", "8")]), &Opts { htmx: true, ..admin })).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let folder = tempfile::tempdir().unwrap();
+    a.store.set_profile_folder(kim, "photo", Some(folder.path().to_str().unwrap())).await.unwrap();
+    a.store.save_settings(&[("photo_sync".into(), "on".into()), ("photo_parents_may_view".into(), "on".into())]).await.unwrap();
+
+    // The child cannot switch it on alone (the server says: an administrator does).
+    let token = a.store.create_session(kim, Role::Child, None).await.unwrap();
+    let kid = format!("david_session={token}");
+    let ko = Opts { cookie: Some(&kid), ..Default::default() };
+    let page = send(&a, get("/profile", &ko)).await.body;
+    assert!(page.contains("Only an administrator can switch it on for a child.") && page.contains("name=\"parent_view\""), "{page}");
+    let r = send(&a, post("/profile/photos", &form(&[("csrf", &csrf_token(&token)), ("enabled", "on")]), &ko)).await;
+    assert_eq!(r.header("location"), Some("/profile?msg=err.photo_refused"));
+
+    // The administrator can, on the page of the child, linked from the list of users.
+    assert!(send(&a, get("/admin/users", &admin)).await.body.contains(&format!("href=\"/admin/users/{kim}/photos\"")));
+    let page = send(&a, get(&format!("/admin/users/{kim}/photos"), &admin)).await.body;
+    assert!(page.contains("id=\"photo-of\"") && page.contains("Kim"), "{page}");
+    let r = send(&a, post("/admin/rpc/user.photos", &form(&[("csrf", &csrf), ("id", &kim.to_string()), ("enabled", "on"), ("parent_view", "on")]), &admin)).await;
+    assert_eq!(r.header("location").map(str::to_owned), Some(format!("/admin/users/{kim}/photos?msg=ok.photo_saved")));
+    let s = a.store.profile_photo_settings(kim).await.unwrap();
+    assert!(s.enabled && s.parent_view);
+    // The child sees that it is on, and may switch it off.
+    assert!(send(&a, get("/profile", &ko)).await.body.contains("Your phone backup is on"));
+    let r = send(&a, post("/profile/photos", &form(&[("csrf", &csrf_token(&token)), ("enabled", "off")]), &ko)).await;
+    assert_eq!(r.header("location"), Some("/profile?msg=ok.photo_saved"));
+    // A guest has no such page.
+    let guest = a.store.create_profile("Gast", false).await.unwrap();
+    let r = send(&a, post("/admin/rpc/user.set_role", &form(&[("id", &guest.to_string()), ("role", "guest")]), &Opts { htmx: true, ..admin })).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert_eq!(send(&a, get(&format!("/admin/users/{guest}/photos"), &admin)).await.status, StatusCode::NOT_FOUND);
+}

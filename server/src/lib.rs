@@ -51,6 +51,8 @@ pub mod logging;
 pub mod mcp;
 pub mod pairing;
 pub mod photos;
+pub mod photo_settings;
+pub mod api_photos;
 pub mod ntacl;
 pub mod platform;
 pub mod plays;

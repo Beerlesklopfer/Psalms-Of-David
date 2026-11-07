@@ -4,8 +4,26 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 # Photo sync and automatic backup (design)
 
-Status: **designed, nothing built** (project owner, 2026-10-29). It builds on the **ownership** that books have since schema 0040: now that something in the
-library belongs to a family member, the pictures on a device can be copied to the server of the family and kept there, and that copy is the backup.
+Status: **being built** (project owner, 2026-11-07). Stage 1 is done: the settings of the server and of the profile, with the page, the
+profile page and the app API. Stage 2 (the storage and the upload) and stage 3 (the Android app) follow. It builds on the **ownership** that
+books have since schema 0040: now that something in the library belongs to a family member, the pictures on a device can be copied to the
+server of the family and kept there, and that copy is the backup.
+
+**Name.** The feature is the **phone backup** (*Handy-Sicherung*; owner, 2026-11-07: "Es geht um eine Handy-Sicherung"). Its content is
+photos and videos. Other things on a phone (contacts, documents, messenger folders) are not part of it unless the owner widens it.
+
+**Decisions of 2026-11-07** (section 8):
+- Server, profile and Android come in one step; iOS later.
+- Both modes, unisync and bisync. The server allows bisync only when `photo_modes` says `both`.
+- Parents look at a child's pictures only when the server allows it (`photo_parents_may_view`) **and** the child's profile does (`parent_view`),
+  and the child sees that it is on. David has no parent relation between profiles: "parents" are the **administrators**, who manage the
+  children's profiles already.
+- Videos are included, with a limit per file (`photo_max_file_mb`, 2048 by default).
+- The pictures of a person go into the **picture folder of that profile** (Users page, `profile_folder` of kind `photo`), not into a folder of
+  the server. That replaces the setting `photo_folder` of section 2a. A profile without a picture folder cannot switch the backup on.
+- Every setting is a **choice with an explanation of every option**; choosing an option swaps the text that explains it (owner, 2026-11-07).
+  Without the script every explanation is shown under the name of its option (`templates/fragments/choice.html`, `static/ui.js`).
+- Retention (section 8.3) is not decided: everything is kept, and the setting `photo_retention_days` is not built.
 
 ## 1. Goal
 
@@ -47,16 +65,16 @@ allows, a profile not more than the server allows).
 
 | Key | Values | Default | Meaning |
 |---|---|---|---|
-| `photo_sync` | `0` / `1` | `0` | The feature exists at all. Off: no route (404), no menu, the apps do not offer it (like the hidden features). |
-| `photo_folder` | a folder path | empty | Where the pictures are kept (section 3). Without it the feature is off. Never inside an import folder. |
-| `photo_modes` | any of `uni`, `bi` | `uni` | Which modes a profile may choose (below). `bi` must be allowed here before anybody can use it. |
+| `photo_sync` | `off` / `on` | `off` | The feature exists at all. Off: no route (404), no menu, the apps do not offer it (like the hidden features). |
+| ~~`photo_folder`~~ | | | Not built: the picture folder of each profile takes its place (decisions above). |
+| `photo_modes` | `uni` / `both` | `uni` | Which modes a profile may choose (below). `bi` must be allowed here before anybody can use it. |
 | `photo_quota_gb` | number, `0` = none | `0` | The most one owner may keep. |
 | `photo_reserve_gb` | number | the disk reserve of the server | An upload that would leave less free space is refused. |
 | `photo_max_file_mb` | number | `2048` | The largest single file (a long video). |
-| `photo_videos` | `0` / `1` | `1` | Videos are synced too. |
+| `photo_videos` | `on` / `off` | `on` | Videos are synced too. |
 | `photo_children` | `off` / `parents` / `allowed` | `parents` | Whether a child's device can be switched on, and by whom (`parents`: only a parent turns it on; `allowed`: the child may). |
 | `photo_retention_days` | number, `0` = for good | `0` | Pictures older than this are freed **on the server only after** they are confirmed on a second place (a backup job saw them); `0` keeps everything. |
-| `photo_parents_may_view` | `0` / `1` | `0` | Parents may look at a child's pictures (decision of the family, section 8). |
+| `photo_parents_may_view` | `off` / `on` | `off` | Parents may look at a child's pictures (decision of the family, section 8). |
 
 ### Profile (every member for themselves; a parent for a child, when `photo_children` says so)
 
@@ -176,3 +194,19 @@ The server is the backup of the phones; the server itself needs one. The photo f
 Tests with a fake device: an upload of a file, the same file again (not stored twice), an interrupted upload that resumes, a wrong hash that is refused, a
 second device of the same profile, a picture of another owner that is `404`, the disk reserve, the owner chosen by the token and never by the request, and the
 rule that a deleted picture on the device changes nothing on the server.
+
+## 10. Slideshow (requested 2026-11-07, not designed yet)
+
+The owner: "Die App soll auch eine Diashow mit gängigen Übergängen machen, um sie z.B. an einem Familienabend zu zeigen." The app shows the
+backed-up photos and videos as a slideshow with the usual transitions. It follows the same visibility as the pictures: a person sees their
+own, and a child's only when section 2 allows it.
+
+Questions to the owner before it is designed:
+1. Which transitions (crossfade, slide, zoom and pan in the manner of Ken Burns, cube, ...), and is one chosen for the whole show or at random?
+2. Background music from the library of David (a playlist, an album), and is the music the clock of the show (pictures change with the music)?
+3. Showing on the TV: fullscreen on a phone or tablet, Chromecast or AirPlay, the Linux desktop on a TV, or a page of the server opened in the
+   browser of the TV?
+4. Which devices: Android first like the backup, or every app?
+5. Whose pictures: only one's own, or a show of several people's pictures for the family evening? A shared show crosses the rule that pictures
+   never pass between people, so it would need the owner's explicit choice (like the shared albums of 8.5).
+

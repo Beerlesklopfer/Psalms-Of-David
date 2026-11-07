@@ -91,6 +91,7 @@ pub fn router(state: ApiState) -> Router {
         .route("/api/v1/bible/resolve", get(bible_resolve))
         .merge(crate::api_feeds::routes())
         .merge(crate::api_me::routes())
+        .merge(crate::api_photos::routes())
         .merge(crate::api_playlists::routes())
         .merge(crate::api_cd::routes())
         .merge(crate::api_inbox::routes())

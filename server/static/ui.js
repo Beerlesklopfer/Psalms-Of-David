@@ -547,6 +547,23 @@
     document.querySelectorAll('[data-cd-nojs]').forEach((e) => { e.hidden = true; });
     document.querySelectorAll('[data-cd-hint]').forEach((h) => { if (!h.closest('[data-cd-field]').contains(document.activeElement)) h.hidden = true; });
   };
+  // ---- A choice with an explanation of every option (fragments/choice.html) --------------------------------------------------------
+  // Without this script every explanation stays visible under the name of its option. With it only the chosen one shows, and choosing
+  // another option swaps the text at once (before saving).
+  const choiceShow = (box) => {
+    const select = box.querySelector('[data-choice-select]');
+    if (!select) return;
+    box.querySelectorAll('[data-choice-for]').forEach((d) => { d.toggleAttribute('data-chosen', d.dataset.choiceFor === select.value); });
+  };
+  const choicePrepare = () => {
+    document.querySelectorAll('[data-choice]').forEach((box) => { box.classList.add('choice-js'); choiceShow(box); });
+  };
+  document.addEventListener('DOMContentLoaded', choicePrepare);
+  document.addEventListener('htmx:afterSwap', choicePrepare);
+  document.addEventListener('change', (e) => {
+    const box = e.target.closest && e.target.matches('[data-choice-select]') && e.target.closest('[data-choice]');
+    if (box) choiceShow(box);
+  });
   document.addEventListener('DOMContentLoaded', cdPrepare);
   document.addEventListener('htmx:afterSwap', cdPrepare);
   document.addEventListener('click', (e) => {

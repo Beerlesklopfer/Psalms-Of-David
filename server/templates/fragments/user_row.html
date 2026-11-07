@@ -9,6 +9,7 @@
       {#- Two buttons, each opening a window. Without JavaScript the planner is a link to its page and the edit window is shown in place. -#}
       <a class="btn outline" href="/admin/schedule?user={{ user.id }}" data-planner="{{ user.id }}" data-url="/admin/fragments/schedule?user={{ user.id }}">{{ icon("calendar") }}<span>{{ t("users.planner") }}</span></a>
       <button type="button" class="btn outline" data-dialog="dlg-edit-{{ user.id }}">{{ icon("edit") }}<span>{{ t("users.edit") }}</span></button>
+      {% if user.role != "guest" %}<a class="btn outline" href="/admin/users/{{ user.id }}/photos">{{ icon("media") }}<span>{{ t("settings.tab.photos") }}</span></a>{% endif %}
     </div>
 
     <dialog id="dlg-planner-{{ user.id }}" class="window planner-window" aria-labelledby="dlg-planner-title-{{ user.id }}">

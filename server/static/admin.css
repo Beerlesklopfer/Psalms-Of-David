@@ -795,3 +795,15 @@ dialog.book-window[open] { height: min(44rem, calc(100vh - 2rem)); }
 /* The number of open pairing codes at the menu item "Pair a device"; hidden when there are none. */
 .nav-badge { display: inline-block; min-width: 1.2rem; margin-left: .35rem; padding: 0 .4rem; border-radius: 999px; background: var(--accent, #7b2132); color: #fff; font-size: .72rem; font-weight: 600; line-height: 1.2rem; text-align: center; }
 .nav-badge[hidden] { display: none; }
+
+/* A choice with an explanation of every option (fragments/choice.html). Without the script all explanations show, each under the
+   name of its option; with it (.choice-js) only the chosen one, without the name, which the list above shows already. */
+.choice { border-bottom: 1px solid var(--line); }
+.choice .line { border-bottom: 0; }
+.choice-explain { margin: 0 0 .6rem; color: var(--muted, inherit); font-size: .95em; }
+.choice-explain dt { font-weight: 600; margin-top: .35rem; }
+.choice-explain dd { margin: 0 0 .25rem; }
+.choice-explain .choice-why { display: block; font-style: normal; color: var(--warn, inherit); }
+.choice-js .choice-explain dt { display: none; }
+.choice-js .choice-explain > div:not([data-chosen]) { display: none; }
+.line-field select { padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }

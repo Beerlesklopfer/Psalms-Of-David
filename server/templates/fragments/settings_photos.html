@@ -1,0 +1,41 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% from "fragments/ui.html" import icon %}{% from "fragments/choice.html" import choice %}<div id="photo-tab">
+<p class="unit">{{ t("photo.settings.intro") }}</p>
+{% if errors %}<div class="form-error" role="alert">{% for key in errors %}<p>{{ t("photo.set." ~ key) }}: {{ errors[key] }}</p>{% endfor %}</div>{% endif %}
+<form id="photo-form" class="settings-form" method="post" action="/admin/rpc/settings.photos"
+      hx-post="/admin/rpc/settings.photos" hx-target="#photo-tab" hx-swap="outerHTML" hx-disabled-elt="find button">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <fieldset class="line-group">
+    <legend>{{ t("photo.group.server") }}</legend>
+    {% for c in photo.choices %}{{ choice(c, "photo", error=errors[c.key] if c.key in errors else "") }}{% endfor %}
+    {% for n in photo.numbers %}
+    <label class="line">
+      <span class="line-label">{{ t("photo.set." ~ n.key) }}</span>
+      <span class="line-field">
+        <input name="{{ n.key }}" value="{{ n.value }}" required inputmode="numeric" pattern="[0-9]+" size="8">
+        <span class="unit">{{ t(n.unit) }}</span>
+        {% if n.key in errors %}<span class="form-error" role="alert">{{ errors[n.key] }}</span>{% endif %}
+      </span>
+    </label>
+    <p class="unit">{{ t("photo.hint." ~ n.key) }}</p>
+    {% endfor %}
+  </fieldset>
+  <fieldset class="line-group">
+    <legend>{{ t("photo.group.profiles") }}</legend>
+    <p class="unit">{{ t("photo.profiles.hint") }}</p>
+    <ul class="plain photo-profiles">
+      {% for p in photo.profiles %}
+      <li><strong>{{ p.name }}</strong> <small class="badge">{{ t("role." ~ p.role) }}</small>
+        {% if not p.folder %}<small class="badge warn">{{ t("photo.profiles.no_folder") }}</small>{% elif p.enabled %}<small class="badge ok">{{ t("photo.profiles.on") }} &middot; {{ t("photo.opt.mode." ~ p.mode) }}</small>{% else %}<small class="badge">{{ t("photo.profiles.off") }}</small>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    <p class="unit"><a href="/admin/users">{{ t("photo.profiles.folders_link") }}</a></p>
+  </fieldset>
+  <div class="form-error" role="alert"></div>
+  <div class="form-foot">
+    {% if saved %}<span class="saved">{{ icon("check") }}{{ t("ok.saved") }}</span>{% endif %}
+    <a class="btn outline" href="/admin/settings?tab=photos">{{ t("ui.cancel") }}</a>
+    <button type="submit" class="btn">{{ t("ui.save") }}</button>
+  </div>
+</form>
+</div>

@@ -1,0 +1,28 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}
+{#- A choice with an explanation of every option (owner, 2026-11-07: choosing an option swaps the text that explains it).
+    `c` is {key, value, options: [{value, why}]}; `why` is the reason an option cannot be chosen (empty: it can). The texts are
+    `<prefix>.opt.<key>.<option>` and `<prefix>.explain.<key>.<option>`; a locked option adds `<prefix>.why.<why>`.
+    Without the script every explanation is shown, each under the name of its option; ui.js shows only the chosen one and swaps it
+    when another is chosen. -#}
+{% macro choice(c, prefix, name="", error="") -%}
+<div class="choice" data-choice>
+  <label class="line">
+    <span class="line-label">{{ t(prefix ~ ".set." ~ c.key) }}</span>
+    <span class="line-field">
+      <select name="{{ name or c.key }}" data-choice-select aria-describedby="explain-{{ name or c.key }}">
+        {% for o in c.options %}<option value="{{ o.value }}"{% if o.value == c.value %} selected{% endif %}{% if o.why and o.value != c.value %} disabled{% endif %}>{{ t(prefix ~ ".opt." ~ c.key ~ "." ~ o.value) }}</option>{% endfor %}
+      </select>
+      {% if error %}<span class="form-error" role="alert">{{ error }}</span>{% endif %}
+    </span>
+  </label>
+  <dl class="choice-explain" id="explain-{{ name or c.key }}" aria-live="polite">
+    {% for o in c.options %}
+    <div data-choice-for="{{ o.value }}"{% if o.value == c.value %} data-chosen{% endif %}>
+      <dt>{{ t(prefix ~ ".opt." ~ c.key ~ "." ~ o.value) }}</dt>
+      <dd>{{ t(prefix ~ ".explain." ~ c.key ~ "." ~ o.value) }}{% if o.why %} <em class="choice-why">{{ t(prefix ~ ".why." ~ o.why) }}</em>{% endif %}</dd>
+    </div>
+    {% endfor %}
+  </dl>
+</div>
+{%- endmacro %}

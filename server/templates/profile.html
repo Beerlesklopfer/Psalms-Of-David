@@ -56,6 +56,21 @@
   </div>
 </form>
 
+{% if photo %}{% from "fragments/choice.html" import choice %}
+{#- The phone backup of this person: the rules of the server lock what it does not allow, and the reason stands under the option. -#}
+<form class="card settings-form" id="photo-mine" method="post" action="/profile/photos?csrf={{ csrf }}">
+  <fieldset class="line-group">
+    <legend>{{ t("photo.group.mine") }}</legend>
+    <p class="unit">{% if photo.active %}{{ t("photo.mine.active") }}{% elif not photo.folder %}{{ t("photo.why.no_folder") }}{% else %}{{ t("photo.mine.inactive") }}{% endif %}</p>
+    {% for c in photo.choices %}{{ choice(c, "photo") }}{% endfor %}
+  </fieldset>
+  <div class="form-foot">
+    <a class="btn outline" href="/profile">{{ t("ui.cancel") }}</a>
+    <button type="submit" class="btn">{{ t("ui.save") }}</button>
+  </div>
+</form>
+{% endif %}
+
 {% if dash.listening or dash.devices %}
 <div class="profile-grid">
   {% if dash.listening %}
