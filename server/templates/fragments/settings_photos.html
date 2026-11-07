@@ -26,7 +26,8 @@
     <ul class="plain photo-profiles">
       {% for p in photo.profiles %}
       <li><strong>{{ p.name }}</strong> <small class="badge">{{ t("role." ~ p.role) }}</small>
-        {% if not p.folder %}<small class="badge warn">{{ t("photo.profiles.no_folder") }}</small>{% elif p.enabled %}<small class="badge ok">{{ t("photo.profiles.on") }} &middot; {{ t("photo.opt.mode." ~ p.mode) }}</small>{% else %}<small class="badge">{{ t("photo.profiles.off") }}</small>{% endif %}</li>
+        {% if not p.folder %}<small class="badge warn">{{ t("photo.profiles.no_folder") }}</small>{% elif p.enabled %}<small class="badge ok">{{ t("photo.profiles.on") }} &middot; {{ t("photo.opt.mode." ~ p.mode) }}</small>{% else %}<small class="badge">{{ t("photo.profiles.off") }}</small>{% endif %}
+        {% if p.count %}<small class="badge muted">{{ t("photo.profiles.kept")|replace("{n}", p.count|string)|replace("{gb}", p.gb) }}</small>{% endif %}</li>
       {% endfor %}
     </ul>
     <p class="unit"><a href="/admin/users">{{ t("photo.profiles.folders_link") }}</a></p>

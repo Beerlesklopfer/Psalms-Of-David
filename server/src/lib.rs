@@ -52,6 +52,7 @@ pub mod mcp;
 pub mod pairing;
 pub mod photos;
 pub mod photo_settings;
+pub mod photo_store;
 pub mod api_photos;
 pub mod ntacl;
 pub mod platform;

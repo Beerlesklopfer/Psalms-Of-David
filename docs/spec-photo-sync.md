@@ -5,7 +5,10 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 # Photo sync and automatic backup (design)
 
 Status: **being built** (project owner, 2026-11-07). Stage 1 is done: the settings of the server and of the profile, with the page, the
-profile page and the app API. Stage 2 (the storage and the upload) and stage 3 (the Android app) follow. It builds on the **ownership** that
+profile page and the app API. Stage 2 is done: the storage, `have`, the upload in pieces that goes on after a lost connection, the SHA-256
+check, bisync `changes` and the file of a picture (`src/photo_store.rs`, `src/api_photos.rs`; the exact protocol is at the top of
+`src/api_photos.rs`). An upload that is not complete answers `202 {received}`, not `308` as sketched in section 4: a `308` is a redirect to
+many HTTP clients. Stage 3 (the Android app) follows; the trash of bisync deletions and the thumbnails come with it. It builds on the **ownership** that
 books have since schema 0040: now that something in the library belongs to a family member, the pictures on a device can be copied to the
 server of the family and kept there, and that copy is the backup.
 

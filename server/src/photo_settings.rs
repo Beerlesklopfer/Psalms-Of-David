@@ -324,7 +324,10 @@ pub async fn server_view(store: &Store, typed: &HashMap<String, String>) -> Resu
         }
         let e = store.profile_photo_settings(p.id).await?.effective(&server, &p.role);
         let folder = folders.get(&p.id.to_string()).and_then(|k| k.get("photo")).is_some();
-        profiles.push(serde_json::json!({ "name": p.name, "role": p.role, "folder": folder, "enabled": e.enabled, "mode": e.mode }));
+        // How many pictures and how much space: the administration sees numbers, never the pictures.
+        let (count, bytes, _) = store.photo_totals(p.id).await?;
+        let size = format!("{:.1}", bytes as f64 / 1_073_741_824.0);
+        profiles.push(serde_json::json!({ "name": p.name, "role": p.role, "folder": folder, "enabled": e.enabled, "mode": e.mode, "count": count, "gb": size }));
     }
     Ok(serde_json::json!({ "choices": choices, "numbers": numbers, "profiles": profiles }))
 }
