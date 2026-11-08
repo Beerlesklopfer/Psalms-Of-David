@@ -118,6 +118,13 @@ class _DrawnCover extends StatelessWidget {
 }
 
 void openItem(BuildContext context, LibraryItem book) {
+  // Offline, an album that was not downloaded does not open: a short note says why.
+  if (PlayerScope.maybeOf(context)?.offlineBlocked(book) ?? false) {
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(key: const ValueKey('offline-blocked'), content: Text(AppLocalizations.of(context).offlineNotDownloaded)));
+    return;
+  }
   Navigator.of(context).push(
     MaterialPageRoute<void>(builder: (_) => ItemScreen(book: book)),
   );

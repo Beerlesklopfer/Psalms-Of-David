@@ -695,6 +695,7 @@
   "offlineBannerAllUnreachable": "Server nicht erreichbar · alle Titel, nur heruntergeladene spielen",
   "offlineShowAll": "Alle zeigen",
   "offlineShowDownloaded": "Nur heruntergeladene",
+  "offlineNotDownloaded": "Nicht heruntergeladen · offline nicht abspielbar",
   "offlinePending": "{count, plural, =1{1 Änderung wartet auf den Server} other{{count} Änderungen warten auf den Server}}",
   "offlineRetry": "Erneut versuchen",
   "offlineStay": "Offline bleiben",

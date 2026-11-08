@@ -2984,6 +2984,12 @@ abstract class AppLocalizations {
   /// **'Downloaded only'**
   String get offlineShowDownloaded;
 
+  /// No description provided for @offlineNotDownloaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Not downloaded · does not play offline'**
+  String get offlineNotDownloaded;
+
   /// No description provided for @offlinePending.
   ///
   /// In en, this message translates to:

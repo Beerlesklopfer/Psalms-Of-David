@@ -1014,6 +1014,7 @@
   "offlineBannerAllUnreachable": "Server not reachable · all titles, only downloaded ones play",
   "offlineShowAll": "Show all",
   "offlineShowDownloaded": "Downloaded only",
+  "offlineNotDownloaded": "Not downloaded · does not play offline",
   "offlinePending": "{count, plural, =1{1 change waits for the server} other{{count} changes wait for the server}}",
   "@offlinePending": {"placeholders": {"count": {"type": "int"}}},
   "offlineRetry": "Try again",

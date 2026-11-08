@@ -102,8 +102,12 @@ class PlayerController extends ChangeNotifier {
     return name == null || s.isKept(name);
   }
 
+  /// Offline, [b] was not downloaded on purpose: it does not open and does not play (what was only heard before stays on the device,
+  /// but the album is not offered).
+  bool offlineBlocked(LibraryItem b) => source != null && _offline?.active == true && !b.isStream && !isItemKept(b);
+
   /// Offline with everything shown (the tap on the bar): [b] is not downloaded and is dimmed, as it does not play.
-  bool offlineDim(LibraryItem b) => source != null && !_offlineView && _offline?.active == true && !b.isStream && !isItemKept(b);
+  bool offlineDim(LibraryItem b) => !_offlineView && offlineBlocked(b);
 
   /// Changes a book of the library on this device (labels set without the server, a title with new labels): the change shows at once.
   void patchItem(String id, LibraryItem Function(LibraryItem) change) {
@@ -712,6 +716,7 @@ class PlayerController extends ChangeNotifier {
 
   /// Opens a book and plays it; [start] is where in the track it begins (an episode goes on where the account stopped).
   void open(LibraryItem b, {int? track, Duration? start}) {
+    if (offlineBlocked(b)) return;
     _localAt = DateTime.now().millisecondsSinceEpoch;
     _saveResume();
     _touchRecent(b);
@@ -731,7 +736,7 @@ class PlayerController extends ChangeNotifier {
   }
 
   void toggle() {
-    if (book == null) return;
+    if (book == null || (!playing && offlineBlocked(book!))) return;
     _send(const ToggleCommand());
     notifyListeners();
   }
@@ -740,6 +745,7 @@ class PlayerController extends ChangeNotifier {
   void resumeListening() {
     if (playing) return;
     if (book != null) {
+      if (offlineBlocked(book!)) return;
       _send(const PlayCommand());
       notifyListeners();
       return;
@@ -751,7 +757,7 @@ class PlayerController extends ChangeNotifier {
   /// Voice: opens the book that fits [query] best (title, author, labels) and plays it. False if nothing fits.
   bool playByVoice(String query) {
     final found = bestMatch(library, query);
-    if (found == null) return false;
+    if (found == null || offlineBlocked(found)) return false;
     open(found);
     return true;
   }

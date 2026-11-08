@@ -16,8 +16,10 @@ import 'package:psalm/offline/offline_controller.dart';
 import 'package:psalm/offline/offline_view.dart';
 import 'package:psalm/offline/outbox.dart';
 import 'package:psalm/player_controller.dart';
+import 'package:psalm/screens/item_screen.dart';
 import 'package:psalm/server/api_client.dart';
 import 'package:psalm/server/server_source.dart';
+import 'package:psalm/widgets.dart';
 
 import 'labels_test.dart' show FakeLabels;
 
@@ -318,6 +320,12 @@ void main() {
       p.setOfflineView(offline.downloadedOnly);
       expect(p.library.length, 4);
       expect([for (final b in p.library) if (p.offlineDim(b)) b.title], ['Teils', 'Nichts']);
+      // A dimmed one does not play, not by a tap and not by the voice; the downloaded one does.
+      p.open(all[1]);
+      expect(p.book?.id, isNot(all[1].id));
+      expect(p.playByVoice('Teils'), isFalse);
+      p.open(all[0]);
+      expect(p.book?.id, all[0].id);
       offline.toggleShowAll();
       p.setOfflineView(offline.downloadedOnly);
       expect([for (final b in p.library) b.title], ['Ganz']);
@@ -510,6 +518,27 @@ void main() {
       await tester.pump();
       expect(offline.showAll, isFalse);
       expect(find.textContaining('downloaded titles only'), findsOneWidget);
+    });
+
+    testWidgets('offline a tap on a dimmed album does not open it and says why; a downloaded one opens', (tester) async {
+      final items = [
+        _book('1', 'Ganz', [_t(11, 'a')]),
+        _book('2', 'Nichts', [_t(21, 'b')]),
+      ];
+      final offline = OfflineController()..setManual(true)..toggleShowAll();
+      final p = PlayerController(items, source: FakeSource({11}, kept: {'book-1'}))..offline = offline;
+      await tester.pumpWidget(PlayerScope(
+        controller: p,
+        child: _app(Row(children: [for (final b in items) SizedBox(width: 160, height: 260, child: ItemCard(book: b))]), offline: offline),
+      ));
+      expect(find.byKey(const ValueKey('dim-2')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('dim-2')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('offline-blocked')), findsOneWidget);
+      expect(find.byType(ItemScreen), findsNothing);
+      await tester.tap(find.text('Ganz').last);
+      await tester.pumpAndSettle();
+      expect(find.byType(ItemScreen), findsOneWidget);
     });
 
     testWidgets('a page that needs the server says so offline', (tester) async {

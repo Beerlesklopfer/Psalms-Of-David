@@ -1721,6 +1721,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get offlineShowDownloaded => 'Downloaded only';
 
   @override
+  String get offlineNotDownloaded => 'Not downloaded · does not play offline';
+
+  @override
   String offlinePending(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
