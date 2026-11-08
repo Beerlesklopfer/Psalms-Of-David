@@ -98,6 +98,16 @@ void main() {
     expect(p.music, isEmpty);
   });
 
+  test('a picture of a project put together by hand brings its own transition and seconds; an odd one is left to the project', () async {
+    final own = showJson(pictures: [
+      {'image': 'pictures/0001.jpg', 'taken_at': 0, 'transition': 'cut', 'seconds': 3},
+      {'image': 'pictures/0002.jpg', 'taken_at': 0, 'transition': 'random', 'seconds': 4},
+      {'image': 'pictures/0002.jpg', 'taken_at': 0},
+    ], music: []);
+    final p = await projects.import(zipOf(dir, own, files: files));
+    expect(p.pictures.map((e) => (e.transition, e.seconds)), [('cut', 3), (null, null), (null, null)]);
+  });
+
   test('a choice that is not one of the page falls back to its default', () {
     final s = ShowSettings.fromJson({'order': 'x', 'seconds': 4, 'transition': '<b>', 'videos': 'maybe', 'info': 'all'});
     expect((s.order, s.seconds, s.transition, s.videos, s.info), ('date', 8, 'fade', 'on', 'both'));

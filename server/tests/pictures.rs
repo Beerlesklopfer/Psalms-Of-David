@@ -422,3 +422,138 @@ async fn a_video_for_the_television_is_made_in_the_background_downloaded_and_del
     let page = String::from_utf8_lossy(&browser(&router, "GET", "/pictures", &anna_t, "").await.2).into_owned();
     assert!(page.contains("id=\"show-video\"") && page.contains("Videos für den Fernseher"), "{page}");
 }
+
+/// A request of the browser that sends JSON, as the editors of a project do.
+async fn browser_json(router: &Router, uri: &str, token: &str, body: Value) -> (StatusCode, Value) {
+    let req = Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header(header::COOKIE, format!("david_session={token}"))
+        .header("x-csrf-token", david_server::auth::csrf_token(token))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    let status = res.status();
+    let bytes = to_bytes(res.into_body(), 1024 * 1024).await.unwrap();
+    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+}
+
+/// A project put together by hand (docs/spec-pictures.md, 9): picked in the preview, put in order by numbers, each picture with its own
+/// transition and seconds, the properties as the start; it plays, is saved as a file and asked for as a video like a choice, and only
+/// the person who made it reaches it.
+#[tokio::test]
+async fn a_project_is_picked_put_in_order_and_played_only_by_the_person_who_made_it() {
+    let (data, store) = open().await;
+    let anna = store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    let bert = store.create_user(NewProfile::new("Bert", Role::Member)).await.unwrap();
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join("Urlaub")).unwrap();
+    for name in ["a.png", "b.png", "c.png"] {
+        std::fs::write(root.path().join("Urlaub").join(name), png(800, 600)).unwrap();
+    }
+    store.save_settings(&[("photo_library".into(), root.path().to_str().unwrap().into()), ("photo_places".into(), "off".into())]).await.unwrap();
+    store.scan_photo_library().await.unwrap();
+    let router = web_router(&store, data.path());
+    let (anna_t, bert_t) = (store.create_session(anna, Role::Member, None).await.unwrap(), store.create_session(bert, Role::Member, None).await.unwrap());
+    let get_json = |uri: String, token: String| {
+        let router = router.clone();
+        async move {
+            let (status, _, body) = browser(&router, "GET", &uri, &token, "").await;
+            (status, serde_json::from_slice::<Value>(&body).unwrap_or(Value::Null))
+        }
+    };
+    let keys_of = |v: &Value| -> Vec<String> { v["pictures"].as_array().unwrap().iter().map(|p| p["key"].as_str().unwrap().to_owned()).collect() };
+    let all = keys_of(&get_json("/pictures/list?source=f%3AUrlaub".into(), anna_t.clone()).await.1);
+    assert_eq!(all.len(), 3);
+    let (k1, k2, k3) = (all[0].clone(), all[1].clone(), all[2].clone());
+
+    // A new project needs a title; then the preview opens.
+    let (status, headers, _) = browser(&router, "POST", "/pictures/shows", &anna_t, "title=+").await;
+    assert_eq!((status, headers.get(header::LOCATION).unwrap().to_str().unwrap()), (StatusCode::SEE_OTHER, "/pictures?msg=err.show_title"));
+    let (status, headers, _) = browser(&router, "POST", "/pictures/shows", &anna_t, "title=Allg%C3%A4u").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let to = headers.get(header::LOCATION).unwrap().to_str().unwrap().to_owned();
+    let id: i64 = to.trim_start_matches("/pictures/shows/").trim_end_matches("/pick").parse().unwrap();
+    let base = format!("/pictures/shows/{id}");
+    let (status, _, page) = browser(&router, "GET", &to, &anna_t, "").await;
+    let page = String::from_utf8_lossy(&page).into_owned();
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(page.contains(&format!("data-show=\"{id}\"")) && page.contains("value=\"f:Urlaub\"") && page.contains("/admin/static/show-editor.js"), "{page}");
+    assert_eq!(browser(&router, "GET", &to, &bert_t, "").await.0, StatusCode::NOT_FOUND, "another person does not reach it");
+    assert_eq!(browser(&router, "GET", "/admin/static/show-editor.js", &anna_t, "").await.0, StatusCode::OK);
+
+    // Picked: only what the person may see, not one twice, at the end in the order sent.
+    let (status, v) = browser_json(&router, &format!("{base}/add"), &anna_t, json!({ "keys": [k3, k1, "b999", "l99999", k3] })).await;
+    assert_eq!((status, v["count"].as_i64()), (StatusCode::OK, Some(2)));
+    assert_eq!(browser_json(&router, &format!("{base}/add"), &bert_t, json!({ "keys": [k2] })).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(browser_json(&router, &format!("{base}/add"), &anna_t, json!({ "keys": [k2, k1] })).await.1["count"].as_i64(), Some(3));
+    let page = String::from_utf8_lossy(&browser(&router, "GET", &to, &anna_t, "").await.2).into_owned();
+    assert!(page.contains(k3.as_str()) && page.contains(k2.as_str()), "the preview knows what is in the project: {page}");
+
+    // The order by numbers, a picture with its own transition and seconds, the properties.
+    assert_eq!(browser_json(&router, &format!("{base}/order"), &anna_t, json!({ "keys": [k2, k3, "x"] })).await.0, StatusCode::OK);
+    assert_eq!(browser_json(&router, &format!("{base}/picture"), &anna_t, json!({ "key": k3, "transition": "cut", "seconds": "3" })).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(browser_json(&router, &format!("{base}/picture"), &anna_t, json!({ "key": k3, "transition": "random" })).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(browser_json(&router, &format!("{base}/picture"), &anna_t, json!({ "key": k3, "seconds": "4" })).await.0, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(browser_json(&router, &format!("{base}/picture"), &anna_t, json!({ "key": "b999" })).await.0, StatusCode::NOT_FOUND);
+    let foreign = store.create_playlist(bert, "Bert hört").await.unwrap();
+    let props = format!("title=Allg%C3%A4u+2017&ordering=numbers&seconds=5&transition=zoom&videos=on&info=date&music={foreign}");
+    assert_eq!(browser(&router, "POST", &base, &anna_t, &props).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(browser(&router, "POST", &base, &bert_t, &props).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(browser(&router, "POST", &base, &anna_t, "title=x&ordering=date").await.0, StatusCode::UNPROCESSABLE_ENTITY);
+
+    let (status, v) = get_json(format!("/pictures/list?show={id}"), anna_t.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(keys_of(&v), [k2.clone(), k3.clone(), k1.clone()]);
+    assert_eq!((v["pictures"][1]["transition"].as_str(), v["pictures"][1]["seconds"].as_u64()), (Some("cut"), Some(3)));
+    assert_eq!((v["pictures"][0]["transition"].clone(), v["pictures"][0]["seconds"].clone()), (Value::Null, Value::Null));
+    assert_eq!(v["settings"], json!({ "order": "date", "seconds": 5, "transition": "zoom", "videos": "on", "info": "date" }));
+    assert_eq!((v["title"].as_str(), v["music"].clone()), (Some("Allgäu 2017"), Value::Null), "a playlist of another person is no music");
+    assert_eq!(get_json(format!("/pictures/list?show={id}"), bert_t.clone()).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(get_json("/pictures/list?show=x".into(), anna_t.clone()).await.0, StatusCode::NOT_FOUND);
+
+    // The editor: every picture with its number and its own choices; the list of /pictures links it.
+    let (status, _, page) = browser(&router, "GET", &base, &anna_t, "").await;
+    let page = String::from_utf8_lossy(&page).into_owned();
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert_eq!(page.matches("class=\"edit-item\"").count(), 3, "{page}");
+    assert!(page.contains("value=\"3\" inputmode=\"numeric\"") && page.contains("<option value=\"cut\" selected>"), "{page}");
+    assert!(page.contains("id=\"edit-start\"") && page.contains(&format!("/pictures/project?show={id}")), "{page}");
+    let list = String::from_utf8_lossy(&browser(&router, "GET", "/pictures", &anna_t, "").await.2).into_owned();
+    assert!(list.contains(&format!("href=\"{base}\"")) && list.contains("Allgäu 2017"), "{list}");
+    let other = String::from_utf8_lossy(&browser(&router, "GET", "/pictures", &bert_t, "").await.2).into_owned();
+    assert!(!other.contains("Allgäu 2017"), "{other}");
+
+    // The project file holds the order, the title and the transition and seconds of each picture.
+    let (status, headers, body) = browser(&router, "GET", &format!("/pictures/project?show={id}"), &anna_t, "").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(headers.get(header::CONTENT_DISPOSITION).unwrap().to_str().unwrap().contains("2017.zip"), "{headers:?}");
+    let entries = david_server::zipstream::list(&body).expect("a whole archive");
+    let e = entries.iter().find(|e| e.name == "show.json").unwrap();
+    let at = e.offset as usize;
+    let (n, x) = (u16::from_le_bytes([body[at + 26], body[at + 27]]) as usize, u16::from_le_bytes([body[at + 28], body[at + 29]]) as usize);
+    let show: Value = serde_json::from_slice(&body[at + 30 + n + x..at + 30 + n + x + e.size as usize]).unwrap();
+    assert_eq!(show["title"].as_str(), Some("Allgäu 2017"));
+    assert_eq!(show["pictures"].as_array().unwrap().len(), 3);
+    assert_eq!((show["pictures"][1]["transition"].as_str(), show["pictures"][1]["seconds"].as_u64()), (Some("cut"), Some(3)));
+    assert!(show["pictures"][0].get("transition").is_none(), "{show}");
+    assert_eq!(browser(&router, "GET", &format!("/pictures/project?show={id}"), &bert_t, "").await.0, StatusCode::NOT_FOUND);
+
+    // A video of the project is asked for with its title; not by another person.
+    let (status, _, body) = browser(&router, "POST", "/pictures/videos", &anna_t, &format!("show={id}")).await;
+    assert_eq!(status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&body));
+    let videos = get_json("/pictures/videos".into(), anna_t.clone()).await.1;
+    assert_eq!(videos["videos"][0]["title"].as_str(), Some("Allgäu 2017"));
+    assert_eq!(browser(&router, "POST", "/pictures/videos", &bert_t, &format!("show={id}")).await.0, StatusCode::NOT_FOUND);
+
+    // Taken out, the others close up; deleted, it is gone, the pictures stay.
+    assert_eq!(browser_json(&router, &format!("{base}/remove"), &anna_t, json!({ "keys": [k2] })).await.1["count"].as_i64(), Some(2));
+    assert_eq!(keys_of(&get_json(format!("/pictures/list?show={id}"), anna_t.clone()).await.1), [k3.clone(), k1.clone()]);
+    assert_eq!(store.slideshow_pictures(id).await.unwrap().iter().map(|p| p.position).collect::<Vec<_>>(), [1, 2]);
+    assert_eq!(browser(&router, "POST", &format!("{base}/delete"), &bert_t, "").await.0, StatusCode::NOT_FOUND);
+    let (status, headers, _) = browser(&router, "POST", &format!("{base}/delete"), &anna_t, "").await;
+    assert_eq!((status, headers.get(header::LOCATION).unwrap().to_str().unwrap()), (StatusCode::SEE_OTHER, "/pictures?msg=ok.show_deleted"));
+    assert_eq!(get_json(format!("/pictures/list?show={id}"), anna_t.clone()).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(keys_of(&get_json("/pictures/list?source=f%3AUrlaub".into(), anna_t).await.1).len(), 3);
+}

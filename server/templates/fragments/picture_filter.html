@@ -1,0 +1,44 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}
+{#- Which pictures and from when: the sources and the years, on /pictures and in the preview of a project. -#}
+  <fieldset class="line-group">
+    <legend>{{ t("pictures.group.which") }}</legend>
+    <ul class="plain show-sources">
+      {% for s in sources %}
+      <li><label class="show-source">
+        <input type="checkbox" name="source" value="{{ s.id }}" checked>
+        <span class="show-source-name">{% if s.kind == "own" %}{{ t("pictures.source.own") }}{% else %}{{ s.name }}{% endif %}</span>
+        <small class="badge{% if s.kind == "child" %} warn{% endif %}">{{ t("pictures.kind." ~ s.kind) }}</small>
+        <small class="badge muted">{{ s.count }}</small>
+      </label></li>
+      {% endfor %}
+    </ul>
+    <p class="unit">{{ t("pictures.which.hint") }}</p>
+  </fieldset>
+
+  <fieldset class="line-group">
+    <legend>{{ t("pictures.group.when") }}</legend>
+    {#- Years only: the choice of a range that a finger can make on a phone. -#}
+    <div class="choice" data-choice>
+      <label class="line">
+        <span class="line-label">{{ t("pictures.set.from") }}</span>
+        <span class="line-field"><select name="from" data-choice-select>
+          <option value="" selected>{{ t("pictures.opt.from.all") }}</option>
+          {% for y in years_up %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+        </select></span>
+      </label>
+      <dl class="choice-explain"><div data-choice-for="" data-chosen><dt>{{ t("pictures.opt.from.all") }}</dt><dd>{{ t("pictures.explain.from.all") }}</dd></div>
+        {% for y in years %}<div data-choice-for="{{ y }}"><dt>{{ y }}</dt><dd>{{ t("pictures.explain.from.year")|replace("{y}", y|string) }}</dd></div>{% endfor %}</dl>
+    </div>
+    <div class="choice" data-choice>
+      <label class="line">
+        <span class="line-label">{{ t("pictures.set.to") }}</span>
+        <span class="line-field"><select name="to" data-choice-select>
+          <option value="" selected>{{ t("pictures.opt.to.all") }}</option>
+          {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+        </select></span>
+      </label>
+      <dl class="choice-explain"><div data-choice-for="" data-chosen><dt>{{ t("pictures.opt.to.all") }}</dt><dd>{{ t("pictures.explain.to.all") }}</dd></div>
+        {% for y in years %}<div data-choice-for="{{ y }}"><dt>{{ y }}</dt><dd>{{ t("pictures.explain.to.year")|replace("{y}", y|string) }}</dd></div>{% endfor %}</dl>
+    </div>
+  </fieldset>

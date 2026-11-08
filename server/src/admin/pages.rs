@@ -72,6 +72,10 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("fragments/book_filing.html", include_str!("../../templates/fragments/book_filing.html")),
     ("profile.html", include_str!("../../templates/profile.html")),
     ("pictures.html", include_str!("../../templates/pictures.html")),
+    ("fragments/show_stage.html", include_str!("../../templates/fragments/show_stage.html")),
+    ("fragments/picture_filter.html", include_str!("../../templates/fragments/picture_filter.html")),
+    ("slideshow.html", include_str!("../../templates/slideshow.html")),
+    ("slideshow_pick.html", include_str!("../../templates/slideshow_pick.html")),
     ("fragments/ui.html", include_str!("../../templates/fragments/ui.html")),
     ("fragments/avatar.html", include_str!("../../templates/fragments/avatar.html")),
     ("blacklist.html", include_str!("../../templates/blacklist.html")),
@@ -841,19 +845,20 @@ impl AdminUi {
 
     /// The slideshow (docs/spec-pictures.md): the sources the person may choose, the years they cover, the own playlists for the music,
     /// and what the server can do (places, frames of videos).
-    pub async fn pictures<'a>(&self, store: &Store, view: impl Into<View<'a>>, user_id: i64, role: crate::roles::Role) -> Result<String> {
-        let sources = store.picture_sources(user_id, role).await?;
+    /// The years the pictures of a person span, the newest first, and the playlists that may play behind a slideshow.
+    async fn picture_years(&self, store: &Store, sources: &[crate::pictures::Source]) -> Result<Vec<i16>> {
         let tz = store.setting("time_zone").await?.and_then(|z| jiff::tz::TimeZone::get(&z).ok()).unwrap_or_else(jiff::tz::TimeZone::system);
         let year = |ms: i64| jiff::Timestamp::from_millisecond(ms).ok().map(|t| t.to_zoned(tz.clone()).year());
         let first = sources.iter().filter_map(|s| s.first).min().and_then(year);
         let last = sources.iter().filter_map(|s| s.last).max().and_then(year);
-        let years: Vec<i16> = match (first, last) {
+        Ok(match (first, last) {
             (Some(a), Some(b)) if a <= b => (a..=b).rev().collect(),
             _ => Vec::new(),
-        };
-        // "From" lists the oldest year first, "to" the newest (the templates have no filter to turn a list).
-        let years_up: Vec<i16> = years.iter().rev().copied().collect();
-        let playlists: Vec<serde_json::Value> = store
+        })
+    }
+
+    async fn show_playlists(store: &Store, user_id: i64) -> Vec<serde_json::Value> {
+        store
             .playlist_summaries(Some(user_id))
             .await
             // Without the playlists the show still runs, only without music.
@@ -864,12 +869,62 @@ impl AdminUi {
             .into_iter()
             .filter(|p| p.items > 0)
             .map(|p| serde_json::json!({ "id": p.id, "name": p.name, "items": p.items }))
-            .collect();
+            .collect()
+    }
+
+    pub async fn pictures<'a>(&self, store: &Store, view: impl Into<View<'a>>, user_id: i64, role: crate::roles::Role) -> Result<String> {
+        let sources = store.picture_sources(user_id, role).await?;
+        let years = self.picture_years(store, &sources).await?;
+        // "From" lists the oldest year first, "to" the newest (the templates have no filter to turn a list).
+        let years_up: Vec<i16> = years.iter().rev().copied().collect();
+        let playlists = Self::show_playlists(store, user_id).await;
+        let shows = store.slideshows(user_id).await?;
         let (places, videos) = crate::api_pictures::capabilities(store).await?;
         self.render(
             "pictures.html",
-            context! { sources => Serde(sources), years => years, years_up => years_up, playlists => Serde(playlists), places => places, frames => videos, ..view.into().context() },
+            context! { sources => Serde(sources), years => years, years_up => years_up, playlists => Serde(playlists), shows => Serde(shows), places => places, frames => videos, ..view.into().context() },
         )
+    }
+
+    /// The editor of a project of a slideshow (`crate::slideshow`); `None` when the person has no such project.
+    pub async fn slideshow_edit<'a>(&self, store: &Store, view: impl Into<View<'a>>, user_id: i64, role: crate::roles::Role, id: i64) -> Result<Option<String>> {
+        let Some(show) = store.slideshow(user_id, id).await? else { return Ok(None) };
+        let seen = crate::slideshow::visible(store, user_id, role).await?;
+        let tz = store.setting("time_zone").await?.and_then(|z| jiff::tz::TimeZone::get(&z).ok()).unwrap_or_else(jiff::tz::TimeZone::system);
+        let day = |ms: i64| jiff::Timestamp::from_millisecond(ms).ok().map(|t| t.to_zoned(tz.clone()).strftime("%Y-%m-%d").to_string()).unwrap_or_default();
+        let mut pictures = Vec::new();
+        let mut missing = 0;
+        for p in store.slideshow_pictures(id).await? {
+            let Some(item) = seen.get(&p.key) else {
+                missing += 1;
+                continue;
+            };
+            pictures.push(serde_json::json!({
+                "key": p.key, "name": item.name, "video": item.video, "day": day(item.taken_at),
+                "transition": p.transition.unwrap_or_default(), "seconds": p.seconds.map(|s| s.to_string()).unwrap_or_default(),
+            }));
+        }
+        let playlists = Self::show_playlists(store, user_id).await;
+        let (places, videos) = crate::api_pictures::capabilities(store).await?;
+        self.render(
+            "slideshow.html",
+            context! { show => Serde(show), pictures => Serde(pictures), missing => missing, playlists => Serde(playlists), places => places, frames => videos, ..view.into().context() },
+        )
+        .map(Some)
+    }
+
+    /// The preview to pick the pictures of a project; `None` when the person has no such project.
+    pub async fn slideshow_pick<'a>(&self, store: &Store, view: impl Into<View<'a>>, user_id: i64, role: crate::roles::Role, id: i64) -> Result<Option<String>> {
+        let Some(show) = store.slideshow(user_id, id).await? else { return Ok(None) };
+        let sources = store.picture_sources(user_id, role).await?;
+        let years = self.picture_years(store, &sources).await?;
+        let years_up: Vec<i16> = years.iter().rev().copied().collect();
+        let chosen: Vec<String> = store.slideshow_pictures(id).await?.into_iter().map(|p| p.key).collect();
+        self.render(
+            "slideshow_pick.html",
+            context! { show => Serde(show), sources => Serde(sources), years => years, years_up => years_up, chosen => serde_json::to_string(&chosen).unwrap_or_default(), ..view.into().context() },
+        )
+        .map(Some)
     }
 
     /// The photo backup of one person, as an administrator sets it; `None` if there is no such person or it is a guest.

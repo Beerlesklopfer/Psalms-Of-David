@@ -110,11 +110,15 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
 
   // ---- The pictures ------------------------------------------------------------------------------------------------------------------
 
-  String _pick() {
+  /// How a picture comes in: its own transition (a project put together by hand on the server), else the one of the project.
+  String _pick(ShowPicture p) {
     if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return 'cut';
-    final t = _settings.transition;
+    final t = p.transition ?? _settings.transition;
     return t == 'random' ? const ['fade', 'zoom', 'cut'][_random.nextInt(3)] : t;
   }
+
+  /// How long the picture shown stays: its own seconds, else those of the project.
+  int get _seconds => (_order.isEmpty ? null : _order[_at].seconds) ?? _settings.seconds;
 
   void _go(int dir) {
     if (_order.isEmpty) return;
@@ -127,7 +131,7 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
     _timer?.cancel();
     _endVideo();
     final p = _order[i];
-    final transition = _pick();
+    final transition = _pick(p);
     _zoomAt = Alignment(_random.nextDouble() * 1.2 - 0.6, _random.nextDouble() * 1.2 - 0.6);
     if (p.video != null && widget.videos) {
       final c = VideoPlayerController.file(File(widget.project.path(p.video!)));
@@ -164,7 +168,7 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
   void _schedule() {
     _timer?.cancel();
     if (_paused) return;
-    _timer = Timer(Duration(seconds: _settings.seconds), () => _go(1));
+    _timer = Timer(Duration(seconds: _seconds), () => _go(1));
   }
 
   void _precache(int i) {
@@ -323,7 +327,7 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
     if (_transition != 'zoom') return KeyedSubtree(key: ValueKey('slide-$step'), child: image);
     return _SlowZoom(
       key: ValueKey('slide-$step'),
-      duration: Duration(seconds: _settings.seconds) + _fade * 2,
+      duration: Duration(seconds: _seconds) + _fade * 2,
       alignment: _zoomAt,
       child: image,
     );

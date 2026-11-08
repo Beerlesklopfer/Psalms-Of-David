@@ -11,48 +11,34 @@
 {% if not sources %}
 <section class="card"><p>{{ t("pictures.none") }}</p></section>
 {% else %}
-<form id="show-form" class="settings-form show-form" autocomplete="off">
-  <fieldset class="line-group">
-    <legend>{{ t("pictures.group.which") }}</legend>
-    <ul class="plain show-sources">
-      {% for s in sources %}
-      <li><label class="show-source">
-        <input type="checkbox" name="source" value="{{ s.id }}" checked>
-        <span class="show-source-name">{% if s.kind == "own" %}{{ t("pictures.source.own") }}{% else %}{{ s.name }}{% endif %}</span>
-        <small class="badge{% if s.kind == "child" %} warn{% endif %}">{{ t("pictures.kind." ~ s.kind) }}</small>
-        <small class="badge muted">{{ s.count }}</small>
-      </label></li>
-      {% endfor %}
-    </ul>
-    <p class="unit">{{ t("pictures.which.hint") }}</p>
-  </fieldset>
+{#- The projects put together by hand (crate::slideshow): picked in a preview, put in order in their editor. -#}
+<section class="card show-projects" id="show-projects">
+  <h2>{{ t("show.projects") }}</h2>
+  <p class="unit">{{ t("show.projects.explain") }}</p>
+  {% if shows %}
+  <ul class="plain show-project-list">
+    {% for p in shows %}
+    <li class="show-project-item"><a href="/pictures/shows/{{ p.id }}"><strong>{{ p.title }}</strong></a>
+      <small class="badge muted">{{ t("pictures.count")|replace("{n}", p.pictures|string) }}</small></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="unit" id="show-projects-none">{{ t("show.projects.none") }}</p>
+  {% endif %}
+  <form method="post" action="/pictures/shows" class="show-project-new">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="line">
+      <span class="line-label">{{ t("show.set.title") }}</span>
+      <span class="line-field"><input type="text" name="title" required maxlength="120" placeholder="{{ t("show.title.placeholder") }}"></span>
+    </label>
+    <div class="form-foot"><button type="submit" class="btn">{{ t("show.new") }}</button></div>
+  </form>
+</section>
 
-  <fieldset class="line-group">
-    <legend>{{ t("pictures.group.when") }}</legend>
-    {#- Years only: the choice of a range that a finger can make on a phone. -#}
-    <div class="choice" data-choice>
-      <label class="line">
-        <span class="line-label">{{ t("pictures.set.from") }}</span>
-        <span class="line-field"><select name="from" data-choice-select>
-          <option value="" selected>{{ t("pictures.opt.from.all") }}</option>
-          {% for y in years_up %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
-        </select></span>
-      </label>
-      <dl class="choice-explain"><div data-choice-for="" data-chosen><dt>{{ t("pictures.opt.from.all") }}</dt><dd>{{ t("pictures.explain.from.all") }}</dd></div>
-        {% for y in years %}<div data-choice-for="{{ y }}"><dt>{{ y }}</dt><dd>{{ t("pictures.explain.from.year")|replace("{y}", y|string) }}</dd></div>{% endfor %}</dl>
-    </div>
-    <div class="choice" data-choice>
-      <label class="line">
-        <span class="line-label">{{ t("pictures.set.to") }}</span>
-        <span class="line-field"><select name="to" data-choice-select>
-          <option value="" selected>{{ t("pictures.opt.to.all") }}</option>
-          {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
-        </select></span>
-      </label>
-      <dl class="choice-explain"><div data-choice-for="" data-chosen><dt>{{ t("pictures.opt.to.all") }}</dt><dd>{{ t("pictures.explain.to.all") }}</dd></div>
-        {% for y in years %}<div data-choice-for="{{ y }}"><dt>{{ y }}</dt><dd>{{ t("pictures.explain.to.year")|replace("{y}", y|string) }}</dd></div>{% endfor %}</dl>
-    </div>
-  </fieldset>
+<h2>{{ t("show.quick") }}</h2>
+<p class="unit">{{ t("show.quick.explain") }}</p>
+<form id="show-form" class="settings-form show-form" autocomplete="off">
+  {% include "fragments/picture_filter.html" %}
 
   <fieldset class="line-group">
     <legend>{{ t("pictures.group.how") }}</legend>
@@ -100,25 +86,6 @@
   <p class="unit" id="show-video-none">{{ t("pictures.video.none") }}</p>
 </section>
 
-{#- The slideshow itself: two layers that blend, a video, the caption, and the controls that show on a tap. -#}
-<div id="show" class="show" hidden
-     data-lang="{{ lang }}" data-places="{{ places }}"
-     data-t-empty="{{ t("pictures.empty") }}" data-t-failed="{{ t("pictures.failed") }}" data-t-count="{{ t("pictures.count") }}"
-     data-t-paused="{{ t("pictures.paused") }}" data-t-music-failed="{{ t("pictures.music_failed") }}">
-  <div class="show-stage" id="show-stage">
-    <img class="show-layer" alt="" id="show-a">
-    <img class="show-layer" alt="" id="show-b">
-    <video class="show-video" id="show-video" playsinline preload="auto" hidden></video>
-  </div>
-  <div class="show-caption" id="show-caption"><span id="show-date"></span><span id="show-place"></span></div>
-  <div class="show-controls" id="show-controls">
-    <button type="button" class="show-btn" id="show-prev" aria-label="{{ t("pictures.prev") }}">&#x2039;</button>
-    <button type="button" class="show-btn" id="show-pause" aria-label="{{ t("pictures.pause") }}">&#x23EF;</button>
-    <button type="button" class="show-btn" id="show-next" aria-label="{{ t("pictures.next") }}">&#x203A;</button>
-    <button type="button" class="show-btn show-close" id="show-close" aria-label="{{ t("pictures.close") }}">&#x2715;</button>
-  </div>
-  <div class="show-toast" id="show-toast" role="status" hidden></div>
-  <audio id="show-music" preload="auto"></audio>
-</div>
+{% include "fragments/show_stage.html" %}
 {% endif %}
 {% endblock %}

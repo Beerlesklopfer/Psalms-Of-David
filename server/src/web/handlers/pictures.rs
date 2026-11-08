@@ -7,6 +7,16 @@
 //! |---|---|
 //! | `GET /pictures` | the page |
 //! | `GET /pictures/list?source=…&from=…&to=…&videos=on` | like `GET /api/v1/pictures` |
+//! | `GET /pictures/list?show=<id>` | `{pictures: [{key, …, transition, seconds}], settings, music, title}`: a project, in its order |
+//! | `GET /pictures/shows/{id}` | the editor of a project: its properties, the order, the transition and seconds of each picture |
+//! | `GET /pictures/shows/{id}/pick` | the preview to pick the pictures of a project |
+//! | `POST /pictures/shows` (`title`) | a new project; `303` to its editor |
+//! | `POST /pictures/shows/{id}` (the properties) | `204` |
+//! | `POST /pictures/shows/{id}/add`, `/remove`, `/order` (`{keys: […]}`) | `{count}`: the number of pictures of the project now |
+//! | `POST /pictures/shows/{id}/picture` (`{key, transition, seconds}`) | `204` |
+//! | `POST /pictures/shows/{id}/delete` | `303` to `/pictures` |
+//!
+//! Wherever a choice is asked for (`/pictures/project`, `POST /pictures/videos`), `show=<id>` asks for a project instead.
 //! | `GET /pictures/project?…&order=…&seconds=…&transition=…&info=…&music=…` | the project: a ZIP that plays without the server |
 //! | `GET /pictures/videos` | `{videos: […]}`: the videos of the person (`crate::show_video`) |
 //! | `POST /pictures/videos` (the query of a project as the body) | `201 {id}`: a video is made in the background; 404 without pictures |
@@ -35,9 +45,15 @@ pub async fn list(State(state): State<AppState>, s: Session, RawQuery(raw): RawQ
     if let Some(r) = no_guest(&s) {
         return r;
     }
-    let q = crate::api_pictures::parse_query(raw.as_deref());
-    match state.store.pictures(s.user_id, s.role, &q).await {
-        Ok(p) => ([(header::CACHE_CONTROL, "no-store")], axum::Json(serde_json::json!({ "pictures": p }))).into_response(),
+    match crate::slideshow::chosen(&state.store, s.user_id, s.role, raw.as_deref()).await {
+        // A project brings its choices, its music and its title along.
+        Ok(Some(c)) if c.title.is_some() => (
+            [(header::CACHE_CONTROL, "no-store")],
+            axum::Json(serde_json::json!({ "pictures": c.entries, "settings": c.settings, "music": c.music, "title": c.title })),
+        )
+            .into_response(),
+        Ok(Some(c)) => ([(header::CACHE_CONTROL, "no-store")], axum::Json(serde_json::json!({ "pictures": c.entries }))).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
             tracing::error!(error = %e, "the list of pictures failed");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -73,16 +89,15 @@ pub async fn video_create(State(state): State<AppState>, s: Session, body: Strin
     if query.len() > 64 * 1024 {
         return StatusCode::PAYLOAD_TOO_LARGE.into_response();
     }
-    let q = crate::api_pictures::parse_query(Some(&query));
-    let items = match state.store.pictures(s.user_id, s.role, &q).await {
-        Ok(items) if !items.is_empty() => items,
+    let chosen = match crate::slideshow::chosen(&state.store, s.user_id, s.role, Some(&query)).await {
+        Ok(Some(c)) if !c.entries.is_empty() => c,
         Ok(_) => return StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
             tracing::error!(error = %e, "the pictures of a video failed");
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
-    let title = crate::show_video::title(&crate::admin::i18n::Catalog::new(s.lang), &items);
+    let title = crate::show_video::title(&crate::admin::i18n::Catalog::new(s.lang), &chosen);
     match state.store.create_show_video(s.user_id, &title, &query, s.lang).await {
         Ok(id) => {
             crate::show_video::wake();

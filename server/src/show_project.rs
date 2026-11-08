@@ -67,6 +67,12 @@ struct Picture {
     video: Option<String>,
     taken_at: i64,
     place: Option<String>,
+    /// The transition and the seconds of this picture in a project put together by hand (`crate::slideshow`); left out: those of
+    /// `settings`. A player that does not know them plays the picture with those of `settings`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seconds: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -93,10 +99,8 @@ pub async fn response(store: Store, library: Option<PathBuf>, user: i64, role: R
     if role == Role::Guest {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let q = crate::api_pictures::parse_query(raw.as_deref());
-    let (settings, music) = settings(raw.as_deref());
-    let items = match store.pictures(user, role, &q).await {
-        Ok(items) if !items.is_empty() => items,
+    let chosen = match crate::slideshow::chosen(&store, user, role, raw.as_deref()).await {
+        Ok(Some(c)) if !c.entries.is_empty() => c,
         Ok(_) => return StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
             tracing::error!(error = %e, "the pictures of a project failed");
@@ -104,7 +108,8 @@ pub async fn response(store: Store, library: Option<PathBuf>, user: i64, role: R
         }
     };
     let cat = Catalog::new(lang);
-    let title = title_of(&cat, &items);
+    let title = chosen.title.clone().unwrap_or_else(|| title_of(&cat, &chosen.entries));
+    let crate::slideshow::Chosen { entries, settings, music, .. } = chosen;
     let mut res = Response::new(Body::empty());
     let h = res.headers_mut();
     h.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/zip"));
@@ -116,17 +121,17 @@ pub async fn response(store: Store, library: Option<PathBuf>, user: i64, role: R
     *res.body_mut() = body;
     tokio::spawn(crate::actor::run_as(crate::actor::profile(user), async move {
         let job = Job { store, library, user, role, lang, settings, music, title };
-        let (complete, pictures) = job.write(&mut sink, items).await;
+        let (complete, pictures) = job.write(&mut sink, entries).await;
         tracing::info!(user, pictures, bytes = sink.sent, complete, "project of a slideshow");
     }));
     res
 }
 
 /// "Bilder 2017–2019": the name of the page and the years the pictures were taken.
-pub fn title_of(cat: &Catalog, items: &[crate::pictures::Item]) -> String {
+pub fn title_of(cat: &Catalog, entries: &[crate::slideshow::Entry]) -> String {
     let year = |ms: i64| time::OffsetDateTime::from_unix_timestamp(ms.div_euclid(1000)).map(|t| t.year()).ok();
-    let first = items.iter().map(|i| i.taken_at).min().and_then(year);
-    let last = items.iter().map(|i| i.taken_at).max().and_then(year);
+    let first = entries.iter().map(|e| e.item.taken_at).min().and_then(year);
+    let last = entries.iter().map(|e| e.item.taken_at).max().and_then(year);
     let name = cat.t("pictures.title");
     match (first, last) {
         (Some(a), Some(b)) if a == b => format!("{name} {a}"),
@@ -197,11 +202,11 @@ pub async fn music_of(store: &Store, library: Option<&std::path::Path>, user: i6
 
 impl Job {
     /// Writes the archive; true when all of it went out, and how many pictures it holds.
-    async fn write(&self, sink: &mut Sink, items: Vec<crate::pictures::Item>) -> (bool, usize) {
+    async fn write(&self, sink: &mut Sink, entries: Vec<crate::slideshow::Entry>) -> (bool, usize) {
         let mut zip = ZipWriter::new();
-        let mut pictures = Vec::with_capacity(items.len());
-        for item in items {
-            let Some(p) = piece(&self.store, self.user, self.role, self.lang, &self.settings.info, &item).await else { continue };
+        let mut pictures = Vec::with_capacity(entries.len());
+        for entry in entries {
+            let Some(p) = piece(&self.store, self.user, self.role, self.lang, &self.settings.info, &entry.item).await else { continue };
             let n = pictures.len() + 1;
             let image = format!("pictures/{n:04}.jpg");
             if !put_file(sink, &mut zip, &image, &p.image).await {
@@ -215,7 +220,7 @@ impl Job {
                 }
                 video = Some(name);
             }
-            pictures.push(Picture { image, video, taken_at: p.taken_at, place: p.place });
+            pictures.push(Picture { image, video, taken_at: p.taken_at, place: p.place, transition: entry.transition, seconds: entry.seconds });
         }
         let mut music = Vec::new();
         for (path, title, artist) in music_of(&self.store, self.library.as_deref(), self.user, self.music).await {

@@ -1,0 +1,42 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "pictures" %}
+{#- The first editor of a project (crate::slideshow; project owner, 2026-11-08): a preview of the pictures, and a tap puts one into
+    the project or takes it out again. Saved at once; static/show-editor.js builds the preview. -#}
+{% block title %}{{ show.title }} · {{ t("show.pick.title") }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="/admin/static/slideshow.css">
+  <script src="/admin/static/show-editor.js" defer></script>{% endblock %}
+{% block content %}
+<p class="unit"><a href="/pictures/shows/{{ show.id }}">&#x2039; {{ show.title }}</a></p>
+<h1>{{ t("show.pick.title") }}</h1>
+<p class="unit">{{ t("show.pick.explain") }}</p>
+{% if not sources %}
+<section class="card"><p>{{ t("pictures.none") }}</p></section>
+{% else %}
+<form id="pick-form" class="settings-form show-form" autocomplete="off"
+      data-show="{{ show.id }}" data-chosen="{{ chosen }}"
+      data-t-count="{{ t("show.pick.count") }}" data-t-shown="{{ t("show.pick.shown") }}" data-t-failed="{{ t("pictures.failed") }}"
+      data-t-in="{{ t("show.pick.in") }}" data-t-out="{{ t("show.pick.out") }}" data-t-video="{{ t("show.video") }}">
+  {% include "fragments/picture_filter.html" %}
+  <div class="choice" data-choice>
+    <label class="line">
+      <span class="line-label">{{ t("show.set.pick_videos") }}</span>
+      <span class="line-field"><select name="videos" data-choice-select>
+        <option value="on" selected>{{ t("show.opt.pick_videos.on") }}</option>
+        <option value="off">{{ t("show.opt.pick_videos.off") }}</option>
+      </select></span>
+    </label>
+    <dl class="choice-explain"><div data-choice-for="on" data-chosen><dt>{{ t("show.opt.pick_videos.on") }}</dt><dd>{{ t("show.explain.pick_videos.on") }}</dd></div>
+      <div data-choice-for="off"><dt>{{ t("show.opt.pick_videos.off") }}</dt><dd>{{ t("show.explain.pick_videos.off") }}</dd></div></dl>
+  </div>
+  <div class="form-error" role="alert" id="pick-error" hidden></div>
+  <div class="form-foot">
+    <span class="unit" id="pick-count" aria-live="polite"></span>
+    <button type="button" class="btn outline" id="pick-all" title="{{ t("show.pick.all_hint") }}">{{ t("show.pick.all") }}</button>
+    <button type="button" class="btn outline" id="pick-none" title="{{ t("show.pick.none_hint") }}">{{ t("show.pick.none") }}</button>
+    <a class="btn" href="/pictures/shows/{{ show.id }}">{{ t("show.pick.done") }}</a>
+  </div>
+</form>
+<p class="unit" id="pick-shown" aria-live="polite"></p>
+<ul class="plain pick-grid" id="pick-grid"></ul>
+{% endif %}
+{% endblock %}

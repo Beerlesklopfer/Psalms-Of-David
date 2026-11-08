@@ -71,3 +71,48 @@ body.show-project { margin: 0; min-height: 100vh; background: #14110f; color: #f
 .show-video-item progress { width: 100%; height: .5rem; }
 .show-video-actions { display: flex; gap: .5rem; }
 .show-video-actions .btn { min-height: 2.75rem; }
+
+/* The projects put together by hand (templates/pictures.html, slideshow_pick.html, slideshow.html; static/show-editor.js). */
+.show-projects { margin-bottom: 1.5rem; }
+.show-project-list { display: grid; gap: .25rem; margin-bottom: 1rem; }
+.show-project-item { display: flex; align-items: center; gap: .75rem; min-height: 2.75rem; border-top: 1px solid var(--line, rgba(127, 127, 127, .3)); }
+.show-project-item:first-child { border-top: 0; }
+.show-project-item a { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.show-project-new input[type=text], .show-form input[type=text] { width: 100%; min-height: 2.75rem; box-sizing: border-box; }
+.show-project-new label.line { flex-direction: row; align-items: center; gap: .75rem; }
+
+/* The preview: small pictures, a tap marks one as in the project. */
+.pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr)); gap: .35rem; margin-top: .5rem; }
+.pick-month { grid-column: 1 / -1; margin-top: .75rem; font-weight: 600; }
+.pick-cell { aspect-ratio: 1; }
+.pick-tile { position: relative; display: block; width: 100%; height: 100%; padding: 0; border: 3px solid transparent; border-radius: .4rem; overflow: hidden;
+  background: var(--line, rgba(127, 127, 127, .2)); cursor: pointer; }
+.pick-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pick-tile[aria-pressed=true] { border-color: var(--accent, #c9a35b); }
+.pick-tile[aria-pressed=false] img { opacity: .75; }
+.pick-check { position: absolute; top: .25rem; right: .25rem; width: 1.6rem; height: 1.6rem; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(0, 0, 0, .45); color: #fff; font-weight: 700; border: 2px solid #fff; }
+.pick-tile[aria-pressed=false] .pick-check { color: transparent; }
+.pick-tile[aria-pressed=true] .pick-check { background: var(--accent, #c9a35b); }
+.pick-tile:focus-visible { outline: 2px solid var(--accent, #c9a35b); outline-offset: 2px; }
+.pick-video { position: absolute; left: .25rem; bottom: .25rem; padding: 0 .35rem; border-radius: .3rem; background: rgba(0, 0, 0, .6); color: #fff; font-size: .75rem; }
+
+/* The editor: each picture with its number, up and down, and below it its transition and its seconds. */
+.edit-list { display: grid; gap: .5rem; padding: 0; margin: 0; list-style: none; }
+.edit-item { display: flex; flex-direction: column; gap: .5rem; padding: .75rem 0; border-top: 1px solid var(--line, rgba(127, 127, 127, .3)); }
+.edit-item:first-child { border-top: 0; }
+.edit-head { display: flex; gap: .75rem; align-items: flex-start; }
+.edit-thumb { flex: none; width: 5.5rem; height: 5.5rem; object-fit: cover; border-radius: .4rem; background: var(--line, rgba(127, 127, 127, .2)); }
+.edit-main { display: flex; flex-direction: column; gap: .35rem; }
+.edit-order { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.edit-number { display: flex; align-items: center; gap: .4rem; }
+.edit-n { width: 4.25rem; min-height: 2.75rem; box-sizing: border-box; text-align: left; }
+.edit-order .btn { min-width: 2.75rem; min-height: 2.75rem; padding: 0; justify-content: center; }
+.edit-order .edit-what { flex-basis: 100%; }
+.edit-what { overflow-wrap: anywhere; }
+.edit-main .choice label.line { flex-direction: row; align-items: center; }
+.edit-main .line-field select { width: 100%; min-height: 2.5rem; }
+.edit-foot { position: sticky; bottom: 0; padding: .75rem 0; background: var(--bg, inherit); flex-wrap: wrap; }
+.edit-foot .btn { min-height: 2.75rem; }
+.edit-delete { margin-top: 1.5rem; }
+.show-form input[type=text], .show-project-new input[type=text] { text-align: left; }

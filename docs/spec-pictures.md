@@ -65,7 +65,7 @@ network ("auf den Geräten muss die Datei autonom liegen"). The page `/pictures`
 
 | Entry | What |
 |---|---|
-| `show.json` | `{format: "david-slideshow", version: 1, title, lang, made_at, settings: {order, seconds, transition, videos, info}, pictures: [{image, video, taken_at, place}], music: [{file, title, artist}]}`; the apps read it |
+| `show.json` | `{format: "david-slideshow", version: 1, title, lang, made_at, settings: {order, seconds, transition, videos, info}, pictures: [{image, video, taken_at, place, transition?, seconds?}], music: [{file, title, artist}]}`; the apps read it. `transition` and `seconds` only for a picture of a project put together by hand (9) that has its own; a player that does not know them plays it with `settings` |
 | `show.js` | the same as `window.DAVID_SHOW = …`, for a browser that opens `index.html` from the disk |
 | `index.html`, `slideshow.js`, `slideshow.css` | the player: the slideshow of `/pictures` (the same script), reading the project |
 | `pictures/0001.jpg` … | the pictures in the screen size; the frame of a video is its poster |
@@ -101,3 +101,28 @@ behind it all, at 15 % while a video plays, fading out at the end. Shuffled, the
    picture. *(done)*
 4. The project as one file (6), with the player of the browser. *(done)*
 5. The project as a video (MP4) for a television or a USB stick (7). *(done)*
+6. Projects put together by hand in the browser (9): the preview to pick, the editor of the order and the transitions; slideshow,
+   project file and video of a project; the apps play the transition and the seconds of each picture of a project file. *(done)*
+
+## 9. Projects put together by hand
+
+Decided by the project owner on 2026-11-08: in the browser a person picks pictures in a preview and puts them into a project (kept in
+the database); a second editor sets their order by numbers (a field, the buttons up and down) and, below each picture, its transition
+(a combobox); the properties of the project are what every picture starts with. Also decided: a project plays as a slideshow, is saved
+as a project file and made into a video like the quick choice, which stays as it is; each picture has a transition and seconds of its
+own; only the person who made a project sees it and changes it; the properties are the title, the music (an own playlist), the
+choices of the slideshow and the order (by the numbers or shuffled).
+
+- `/pictures` lists the projects of the person and makes a new one (a title), which opens the preview.
+- The preview (`/pictures/shows/{id}/pick`): the sources and years as on `/pictures`, and whether videos show; the pictures as small
+  pictures, month by month; a tap puts one into the project or takes it out, saved at once. New pictures go to the end in the order
+  they were taken; "Add all shown" and "Take out all shown". At most 5000 pictures in a project.
+- The editor (`/pictures/shows/{id}`): the properties (title, order, seconds, transition, videos, date and place, music), saved when a
+  field changes; the pictures in their order, each with its number field, up and down, taking it out, and below it its transition
+  ("as in the properties", cross-fade, cross-fade and zoom, cut) and its seconds ("as in the properties", 3 to 30; not for a video,
+  which plays through). "Videos: show as a picture" plays a video of the project as its still picture. Start, save as a file, save as
+  a video as on `/pictures`.
+- Tables `slideshow` and `slideshow_picture` (schema 0067), `server/src/slideshow.rs`; every request that takes a choice takes
+  `show=<id>` instead (`/pictures/list`, `/pictures/project`, `/api/v1/pictures/project`, `POST /pictures/videos`). A picture the person
+  may no longer see stays in the project and is left out when it plays; the editor says how many.
+- The apps do not make or change projects; a project file of one plays there with the transition and seconds of each picture.

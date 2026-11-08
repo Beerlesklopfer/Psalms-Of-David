@@ -5,13 +5,16 @@
 // computer (arrows, space, Escape). The choices are kept in this browser (localStorage), nothing else is.
 // The same script plays a project of a slideshow (src/show_project.rs): opened from the disk, it reads `window.DAVID_SHOW` (show.js)
 // and its files lie next to it, so it needs neither the server nor a network.
+// On the editor of a project put together by hand (templates/slideshow.html, src/slideshow.rs) it plays that project: its order, its
+// choices, and the transition and the seconds of each picture.
 (() => {
   'use strict';
   const form = document.getElementById('show-form');
   const show = document.getElementById('show');
   const project = window.DAVID_SHOW;
-  const offline = !form && !!project;
-  if (!show || (!form && !offline)) return;
+  const editor = document.getElementById('edit-props');
+  const offline = !form && !editor && !!project;
+  if (!show || (!form && !offline && !editor)) return;
 
   const $ = (id) => document.getElementById(id);
   const stage = $('show-stage');
@@ -245,6 +248,43 @@
     return a;
   }
 
+  // ---- A project of the editor ----------------------------------------------------------------------------------------------------------
+
+  if (editor) {
+    const id = editor.dataset.show;
+    const box = $('edit-pictures').dataset;
+    const errorBox = $('show-error');
+    const fail = (text) => { errorBox.textContent = text; errorBox.hidden = false; };
+    $('edit-start').addEventListener('click', async () => {
+      errorBox.hidden = true;
+      let data = null;
+      try {
+        const r = await fetch('/pictures/list?show=' + encodeURIComponent(id), { credentials: 'same-origin' });
+        data = r.ok ? await r.json() : null;
+      } catch { data = null; }
+      if (!data) { fail(box.tFailed); return; }
+      const list = data.pictures || [];
+      if (!list.length) { fail(box.tEmpty); return; }
+      const c = Object.assign({}, data.settings, { seconds: String(data.settings.seconds), music: data.music ? String(data.music) : '' });
+      if (c.order === 'random') shuffle(list);
+      start(list, c);
+    });
+    $('edit-video').addEventListener('click', async () => {
+      errorBox.hidden = true;
+      let r = null;
+      try {
+        r = await fetch('/pictures/videos', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrf() },
+          body: 'show=' + encodeURIComponent(id),
+        });
+      } catch { r = null; }
+      if (r && r.status === 201) $('show-video-note').textContent = box.tAsked;
+      else fail(r && r.status === 404 ? box.tEmpty : box.tFailed);
+    });
+  }
+
   if (offline) {
     const count = $('project-count');
     const broken = !Array.isArray(project.pictures) || project.format !== 'david-slideshow' || project.version > 1;
@@ -312,8 +352,9 @@
     if (wake) { wake.release().catch(() => {}); wake = null; }
   }
 
-  function transitionOf() {
-    const t = opts.transition;
+  // A picture of a project may have a transition and seconds of its own.
+  function transitionOf(item) {
+    const t = item.transition || opts.transition;
     if (t !== 'random') return t;
     return ['fade', 'zoom', 'cut'][Math.floor(Math.random() * 3)];
   }
@@ -337,7 +378,8 @@
     if (item.video) return playVideo(item, mine);
     endVideo();
     const next = layers[1 - front];
-    const kind = transitionOf();
+    const kind = transitionOf(item);
+    const seconds = Number(item.seconds || opts.seconds);
     next.classList.remove('on', 'kb', 'cut');
     next.src = screenOf(item);
     try {
@@ -352,7 +394,7 @@
     next.classList.toggle('cut', kind === 'cut');
     old.classList.toggle('cut', kind === 'cut');
     if (kind === 'zoom') {
-      next.style.setProperty('--kb-ms', (Number(opts.seconds) * 1000 + FADE_MS * 2) + 'ms');
+      next.style.setProperty('--kb-ms', (seconds * 1000 + FADE_MS * 2) + 'ms');
       next.style.setProperty('--kb-x', (20 + Math.random() * 60).toFixed(0) + '%');
       next.style.setProperty('--kb-y', (20 + Math.random() * 60).toFixed(0) + '%');
       // Start the animation again even when the same layer zoomed before.
@@ -363,7 +405,7 @@
     old.classList.remove('on');
     front = 1 - front;
     preload(i + 1);
-    schedule(Number(opts.seconds) * 1000);
+    schedule(seconds * 1000);
   }
 
   function preload(i) {
@@ -497,7 +539,8 @@
     } else if (!video.hidden) {
       video.play().catch(() => {});
     } else {
-      schedule(Number(opts.seconds) * 1000);
+      const item = items[at];
+      schedule(Number((item && item.seconds) || opts.seconds) * 1000);
     }
     show.classList.toggle('paused', paused);
   }

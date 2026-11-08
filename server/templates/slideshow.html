@@ -1,0 +1,89 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "pictures" %}
+{#- The second editor of a project (crate::slideshow; project owner, 2026-11-08): the properties, which every picture starts with, and
+    the pictures in their order, each with its number (a field and the buttons up and down) and below it its transition and its
+    seconds. Every change is saved at once by static/show-editor.js; static/slideshow.js plays it. -#}
+{% from "fragments/choice.html" import choice %}
+{% block title %}{{ show.title }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="/admin/static/slideshow.css">
+  <script src="/admin/static/slideshow.js" defer></script>
+  <script src="/admin/static/show-editor.js" defer></script>{% endblock %}
+{% block content %}
+<p class="unit"><a href="/pictures">&#x2039; {{ t("pictures.title") }}</a></p>
+<h1 id="edit-title">{{ show.title }}</h1>
+{% set no = "" %}
+<form id="edit-props" class="settings-form show-form" autocomplete="off" data-show="{{ show.id }}"
+      data-t-saved="{{ t("show.saved") }}" data-t-failed="{{ t("show.save_failed") }}">
+  <fieldset class="line-group">
+    <legend>{{ t("show.group.properties") }}</legend>
+    <label class="line">
+      <span class="line-label">{{ t("show.set.title") }}</span>
+      <span class="line-field"><input type="text" name="title" required maxlength="120" value="{{ show.title }}"></span>
+    </label>
+    {{ choice({"key": "ordering", "value": show.ordering, "options": [{"value": "numbers", "why": no}, {"value": "random", "why": no}]}, "show") }}
+    {{ choice({"key": "seconds", "value": show.seconds|string, "options": [{"value": "3", "why": no}, {"value": "5", "why": no}, {"value": "8", "why": no}, {"value": "15", "why": no}, {"value": "30", "why": no}]}, "pictures") }}
+    {{ choice({"key": "transition", "value": show.transition, "options": [{"value": "fade", "why": no}, {"value": "zoom", "why": no}, {"value": "cut", "why": no}, {"value": "random", "why": no}]}, "pictures") }}
+    {{ choice({"key": "videos", "value": show.videos, "options": [{"value": "on", "why": no}, {"value": "off", "why": no}]}, "show") }}
+    {{ choice({"key": "info", "value": show.info, "options": [{"value": "both", "why": no}, {"value": "date", "why": no}, {"value": "none", "why": no}]}, "pictures") }}
+    <div class="choice" data-choice>
+      <label class="line">
+        <span class="line-label">{{ t("pictures.set.music") }}</span>
+        <span class="line-field"><select name="music" data-choice-select>
+          <option value=""{% if not show.music %} selected{% endif %}>{{ t("pictures.opt.music.off") }}</option>
+          {% for p in playlists %}<option value="{{ p.id }}"{% if p.id == show.music %} selected{% endif %}>{{ p.name }}</option>{% endfor %}
+        </select></span>
+      </label>
+      <dl class="choice-explain"><div data-choice-for=""{% if not show.music %} data-chosen{% endif %}><dt>{{ t("pictures.opt.music.off") }}</dt><dd>{{ t("pictures.explain.music.off") }}{% if not playlists %} {{ t("pictures.music.none") }}{% endif %}</dd></div>
+        {% for p in playlists %}<div data-choice-for="{{ p.id }}"{% if p.id == show.music %} data-chosen{% endif %}><dt>{{ p.name }}</dt><dd>{{ t("pictures.explain.music.list")|replace("{n}", p.items|string) }}</dd></div>{% endfor %}</dl>
+    </div>
+  </fieldset>
+  <p class="unit" id="edit-status" role="status" aria-live="polite"></p>
+</form>
+
+<section class="card edit-pictures" id="edit-pictures"
+         data-t-count="{{ t("pictures.count") }}"
+         data-t-empty="{{ t("pictures.empty") }}" data-t-failed="{{ t("pictures.failed") }}" data-t-asked="{{ t("show.video_asked") }}">
+  <h2>{{ t("show.group.pictures") }} <small class="badge muted" id="edit-count">{{ pictures|length }}</small></h2>
+  <p class="unit">{{ t("show.order.explain") }}</p>
+  {% if missing %}<p class="unit">{{ t("show.missing")|replace("{n}", missing|string) }}</p>{% endif %}
+  <p><a class="btn outline" href="/pictures/shows/{{ show.id }}/pick">{{ t("show.pick") }}</a></p>
+  {% if not pictures %}<p class="unit" id="edit-none">{{ t("show.none") }}</p>{% endif %}
+  <ol class="plain edit-list" id="edit-list">
+    {% for p in pictures %}
+    <li class="edit-item" data-key="{{ p.key }}">
+      <div class="edit-head">
+        <img class="edit-thumb" src="/pictures/{{ p.key }}/thumb" alt="" loading="lazy" width="96" height="96">
+        <div class="edit-order">
+          <label class="edit-number"><span>{{ t("show.number") }}</span>
+            <input type="number" class="edit-n" min="1" max="{{ pictures|length }}" value="{{ loop.index }}" inputmode="numeric"></label>
+          <button type="button" class="btn outline edit-up" aria-label="{{ t("show.up") }}" title="{{ t("show.up") }}">&#x25B2;</button>
+          <button type="button" class="btn outline edit-down" aria-label="{{ t("show.down") }}" title="{{ t("show.down") }}">&#x25BC;</button>
+          <button type="button" class="btn outline danger-outline edit-remove" aria-label="{{ t("show.remove") }}" title="{{ t("show.remove") }}">&#x2715;</button>
+          <small class="edit-what">{{ p.day }} · {{ p.name }}{% if p.video %} · <span class="badge">{{ t("show.video") }}</span>{% endif %}</small>
+        </div>
+      </div>
+      <div class="edit-main">
+        {{ choice({"key": "transition", "value": p.transition or "project", "options": [{"value": "project", "why": no}, {"value": "fade", "why": no}, {"value": "zoom", "why": no}, {"value": "cut", "why": no}]}, "show.pic", "transition-" ~ loop.index) }}
+        {% if not p.video %}
+        {{ choice({"key": "seconds", "value": p.seconds or "project", "options": [{"value": "project", "why": no}, {"value": "3", "why": no}, {"value": "5", "why": no}, {"value": "8", "why": no}, {"value": "15", "why": no}, {"value": "30", "why": no}]}, "show.pic", "seconds-" ~ loop.index) }}
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+  <div class="form-error" role="alert" id="show-error" hidden></div>
+  <p class="unit" id="show-video-note" role="status"></p>
+  <div class="form-foot edit-foot">
+    <a class="btn outline" id="edit-save" href="/pictures/project?show={{ show.id }}" title="{{ t("pictures.save_hint") }}">{{ t("pictures.save") }}</a>
+    <button type="button" class="btn outline" id="edit-video" title="{{ t("pictures.video.save_hint") }}">{{ t("pictures.video.save") }}</button>
+    <button type="button" class="btn" id="edit-start">{{ t("pictures.start") }}</button>
+  </div>
+</section>
+
+<form method="post" action="/pictures/shows/{{ show.id }}/delete" class="edit-delete" data-confirm="{{ t("show.delete_ask")|replace("{title}", show.title) }}">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button type="submit" class="btn outline danger-outline">{{ t("show.delete") }}</button>
+</form>
+
+{% include "fragments/show_stage.html" %}
+{% endblock %}

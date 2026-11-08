@@ -2975,6 +2975,7 @@ mod tests {
 
 pub mod blacklist_admin;
 pub mod pictures;
+pub mod slideshows;
 
 // Podcasts and radio stations
 

@@ -558,9 +558,13 @@ async fn make(store: &Store, library: Option<&Path>, id: i64, user: i64, query: 
     if role == Role::Guest {
         return Err(Failed::Gone);
     }
-    let q = crate::api_pictures::parse_query(Some(query));
-    let (settings, playlist) = crate::show_project::settings(Some(query));
-    let mut items = store.pictures(user, role, &q).await.map_err(|_| because("ffmpeg"))?;
+    let chosen = match crate::slideshow::chosen(store, user, role, Some(query)).await {
+        Ok(Some(c)) => c,
+        // The project was deleted meanwhile.
+        Ok(None) => return Err(because("empty")),
+        Err(_) => return Err(because("ffmpeg")),
+    };
+    let crate::slideshow::Chosen { entries: mut items, settings, music: playlist, .. } = chosen;
     if items.is_empty() {
         return Err(because("empty"));
     }
@@ -583,7 +587,7 @@ async fn make(store: &Store, library: Option<&Path>, id: i64, user: i64, query: 
         if i % 10 == 0 && !wanted(store, id).await {
             return Err(Failed::Gone);
         }
-        let Some(p) = piece(store, user, role, lang, &settings.info, item).await else { continue };
+        let Some(p) = piece(store, user, role, lang, &settings.info, &item.item).await else { continue };
         let mut caption = Vec::new();
         if settings.info != "none" {
             caption.push(date_text(lang, p.taken_at, zone.as_deref()));
@@ -591,19 +595,21 @@ async fn make(store: &Store, library: Option<&Path>, id: i64, user: i64, query: 
                 caption.push(place);
             }
         }
-        let transition = match settings.transition.as_str() {
+        // A picture of a project may have a transition and seconds of its own.
+        let transition = match item.transition.as_deref().unwrap_or(&settings.transition) {
             "random" => ["fade", "zoom", "cut"][dice.below(3)].to_owned(),
             t => t.to_owned(),
         };
+        let seconds = item.seconds.unwrap_or(settings.seconds) as f64;
         let length = match &p.video {
             Some(v) => {
                 let v = v.clone();
                 match tokio::task::spawn_blocking(move || probe(&v)).await.ok().flatten() {
                     Some((len, _)) if len > 0.2 => len,
-                    _ => settings.seconds as f64 + FADE,
+                    _ => seconds + FADE,
                 }
             }
-            None => settings.seconds as f64 + FADE,
+            None => seconds + FADE,
         };
         // A video that cannot be read is held as its picture.
         let video = p.video.filter(|_| length > 0.2);
@@ -689,8 +695,8 @@ async fn progress(store: &Store, id: i64, done: usize, total: usize, from: i64, 
 }
 
 /// The title of a video: the title of the project of the same choice.
-pub fn title(cat: &Catalog, items: &[crate::pictures::Item]) -> String {
-    crate::show_project::title_of(cat, items)
+pub fn title(cat: &Catalog, chosen: &crate::slideshow::Chosen) -> String {
+    chosen.title.clone().unwrap_or_else(|| crate::show_project::title_of(cat, &chosen.entries))
 }
 
 #[cfg(test)]

@@ -14,7 +14,7 @@ import 'package:psalm/pictures/show_project.dart';
 import 'package:psalm/pictures/show_ui.dart';
 
 /// An unpacked project of three pictures (the second a video) and one track.
-Future<ShowProject> project(Directory dir, {String order = 'date', String info = 'both', bool music = true}) async {
+Future<ShowProject> project(Directory dir, {String order = 'date', String info = 'both', bool music = true, int? firstSeconds}) async {
   for (final f in ['pictures/0001.jpg', 'pictures/0002.jpg', 'pictures/0003.jpg', 'videos/0002.mp4', 'music/01.mp3']) {
     File('${dir.path}/$f')
       ..createSync(recursive: true)
@@ -27,7 +27,7 @@ Future<ShowProject> project(Directory dir, {String order = 'date', String info =
     'made_at': 1,
     'settings': {'order': order, 'seconds': 5, 'transition': 'cut', 'videos': 'on', 'info': info},
     'pictures': [
-      {'image': 'pictures/0001.jpg', 'taken_at': DateTime(2017, 7, 1, 12).millisecondsSinceEpoch, 'place': 'Oberstdorf, Deutschland'},
+      {'image': 'pictures/0001.jpg', 'taken_at': DateTime(2017, 7, 1, 12).millisecondsSinceEpoch, 'place': 'Oberstdorf, Deutschland', 'seconds': ?firstSeconds},
       {'image': 'pictures/0002.jpg', 'video': 'videos/0002.mp4', 'taken_at': DateTime(2018, 8, 2, 12).millisecondsSinceEpoch},
       {'image': 'pictures/0003.jpg', 'taken_at': DateTime(2019, 9, 3, 12).millisecondsSinceEpoch, 'place': 'Kempten'},
     ],
@@ -124,6 +124,23 @@ void main() {
     await tester.pumpAndSettle(const Duration(milliseconds: 100));
     expect(find.byType(ShowPlayerScreen), findsNothing);
     expect(find.text('go'), findsOneWidget);
+  });
+
+  testWidgets('a picture with seconds of its own stays that long, the next ones as long as the project says', (tester) async {
+    final p = (await tester.runAsync(() => project(dir, info: 'date', music: false, firstSeconds: 15)))!;
+    await tester.pumpWidget(app(ShowPlayerScreen(project: p)));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(date(), '1. Juli 2017', reason: 'the first picture stays fifteen seconds, not five');
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pump();
+    expect(date(), '2. August 2018');
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(date(), '3. September 2019');
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
   });
 
   testWidgets('shuffled, every picture comes once before one comes again', (tester) async {

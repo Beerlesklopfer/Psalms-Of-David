@@ -37,14 +37,17 @@ class ShowSettings {
   final String info;
 }
 
-/// One picture of a project: its file in the screen size, the video that plays instead (or null), when and where it was taken.
+/// One picture of a project: its file in the screen size, the video that plays instead (or null), when and where it was taken, and (in a
+/// project put together by hand on the server) its own transition and seconds; null: those of the project.
 class ShowPicture {
-  const ShowPicture({required this.image, this.video, required this.takenAt, this.place});
+  const ShowPicture({required this.image, this.video, required this.takenAt, this.place, this.transition, this.seconds});
 
   final String image;
   final String? video;
   final DateTime takenAt;
   final String? place;
+  final String? transition;
+  final int? seconds;
 }
 
 /// One track of the music of a project.
@@ -98,6 +101,8 @@ class ShowProject {
         video: _safe(p['video']),
         takenAt: DateTime.fromMillisecondsSinceEpoch(p['taken_at'] is int ? p['taken_at'] as int : 0),
         place: p['place'] is String && (p['place'] as String).isNotEmpty ? p['place'] as String : null,
+        transition: const ['fade', 'zoom', 'cut'].contains(p['transition']) ? p['transition'] as String : null,
+        seconds: p['seconds'] is int && const [3, 5, 8, 15, 30].contains(p['seconds']) ? p['seconds'] as int : null,
       ));
     }
     final music = <ShowTrack>[
