@@ -25,6 +25,8 @@
   const lang = show.dataset.lang || 'en';
   const placesOn = offline || show.dataset.places === 'true';
   const KEY = 'david.slideshow';
+  const videosEl = $('show-videos');
+  let videoPoll = 0;
   const FADE_MS = 1000;
 
   // ---- The choices -------------------------------------------------------------------------------------------------------------------
@@ -92,14 +94,31 @@
     form.addEventListener('change', recount);
     $('show-save').addEventListener('click', () => {
       // The project: the same choice as a file that plays without the server (a download; the page stays).
-      const c = choices();
-      remember(c);
-      if (!c.sources.length) { errorEl.textContent = show.dataset.tEmpty; errorEl.hidden = false; return; }
-      errorEl.hidden = true;
-      const q = query(c);
-      for (const f of ['order', 'seconds', 'transition', 'videos', 'info', 'music']) if (c[f]) q.set(f, c[f]);
-      window.location.href = '/pictures/project?' + q;
+      const c = chosen();
+      if (c) window.location.href = '/pictures/project?' + projectQuery(c);
     });
+    $('show-video').addEventListener('click', async () => {
+      // The video: the server makes it in the background; it appears in the list below.
+      const c = chosen();
+      if (!c) return;
+      let r = null;
+      try {
+        r = await fetch('/pictures/videos', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrf() },
+          body: projectQuery(c).toString(),
+        });
+      } catch { r = null; }
+      if (r && r.status === 201) {
+        $('show-video-note').textContent = videosEl.dataset.tAsked;
+        loadVideos();
+      } else {
+        errorEl.textContent = r && r.status === 404 ? show.dataset.tEmpty : show.dataset.tFailed;
+        errorEl.hidden = false;
+      }
+    });
+    loadVideos();
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -122,6 +141,100 @@
       if (c.order === 'random') shuffle(list);
       start(list, c);
     });
+  }
+
+  // The choice of the form, kept; null (and the error shown) when no source is chosen.
+  function chosen() {
+    const c = choices();
+    remember(c);
+    if (!c.sources.length) { errorEl.textContent = show.dataset.tEmpty; errorEl.hidden = false; return null; }
+    errorEl.hidden = true;
+    return c;
+  }
+
+  // The query of a project or a video: the list and the choices.
+  function projectQuery(c) {
+    const q = query(c);
+    for (const f of ['order', 'seconds', 'transition', 'videos', 'info', 'music']) if (c[f]) q.set(f, c[f]);
+    return q;
+  }
+
+  function csrf() {
+    try { return JSON.parse(document.body.getAttribute('hx-headers') || '{}')['X-CSRF-Token'] || ''; } catch { return ''; }
+  }
+
+  // ---- The videos for a television ---------------------------------------------------------------------------------------------------
+
+  async function loadVideos() {
+    if (!videosEl) return;
+    clearTimeout(videoPoll);
+    let list = [];
+    try {
+      const r = await fetch('/pictures/videos', { credentials: 'same-origin' });
+      list = r.ok ? (await r.json()).videos || [] : [];
+    } catch { list = []; }
+    renderVideos(list);
+    // While one is waiting or being made, the list follows it.
+    if (list.some((v) => v.state === 'queued' || v.state === 'running')) videoPoll = setTimeout(loadVideos, 3000);
+    else $('show-video-note').textContent = '';
+  }
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function length(ms) {
+    const s = Math.round(ms / 1000);
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  function renderVideos(list) {
+    const ul = $('show-video-list');
+    const t = videosEl.dataset;
+    ul.replaceChildren();
+    $('show-video-none').hidden = list.length > 0;
+    for (const v of list) {
+      const li = el('li', 'show-video-item');
+      const text = el('div', 'show-video-text');
+      text.append(el('strong', '', v.title));
+      if (v.state === 'done') {
+        text.append(el('small', '', show.dataset.tCount.replace('{n}', String(v.pictures)) + ' · ' + length(v.duration_ms) + ' · ' + Math.max(1, Math.round(v.size_bytes / 1e6)) + ' MB'));
+      } else if (v.state === 'failed') {
+        // data-t-err-no_ffmpeg is dataset.tErrNo_ffmpeg.
+        const code = v.error || 'ffmpeg';
+        const why = t['tErr' + code.charAt(0).toUpperCase() + code.slice(1)];
+        text.append(el('small', 'form-error', t.tFailed + (why ? ': ' + why : '')));
+      } else {
+        text.append(el('small', '', v.state === 'running' ? t.tRunning.replace('{p}', String(Math.floor(v.progress / 10))) : t.tQueued));
+        const bar = el('progress');
+        bar.max = 1000;
+        bar.value = v.progress;
+        text.append(bar);
+      }
+      li.append(text);
+      const actions = el('div', 'show-video-actions');
+      if (v.state === 'done') {
+        const a = el('a', 'btn', t.tDownload);
+        a.href = '/pictures/videos/' + v.id + '/file';
+        a.setAttribute('download', '');
+        actions.append(a);
+      }
+      const del = el('button', 'btn outline', t.tDelete);
+      del.type = 'button';
+      del.addEventListener('click', async () => {
+        if (!window.confirm(t.tDeleteAsk)) return;
+        try {
+          await fetch('/pictures/videos/' + v.id + '/delete', { method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf() } });
+        } catch { /* the list says what is left */ }
+        loadVideos();
+      });
+      actions.append(del);
+      li.append(actions);
+      ul.append(li);
+    }
   }
 
   function shuffle(a) {

@@ -76,13 +76,29 @@
   </fieldset>
 
   <p class="unit">{{ t("pictures.save_explain") }}</p>
+  <p class="unit">{{ t("pictures.video.explain") }}</p>
   <div class="form-error" role="alert" id="show-error" hidden></div>
   <div class="form-foot">
     <span class="unit" id="show-count" aria-live="polite"></span>
     <button type="button" class="btn outline" id="show-save" title="{{ t("pictures.save_hint") }}">{{ t("pictures.save") }}</button>
+    <button type="button" class="btn outline" id="show-video" title="{{ t("pictures.video.save_hint") }}">{{ t("pictures.video.save") }}</button>
     <button type="submit" class="btn" id="show-start">{{ t("pictures.start") }}</button>
   </div>
 </form>
+
+{#- The videos for a television (crate::show_video): made in the background, listed by slideshow.js from /pictures/videos. -#}
+<section class="card show-videos" id="show-videos"
+         data-t-queued="{{ t("pictures.video.queued") }}" data-t-running="{{ t("pictures.video.running") }}"
+         data-t-failed="{{ t("pictures.video.failed") }}" data-t-download="{{ t("pictures.video.download") }}"
+         data-t-delete="{{ t("pictures.video.delete") }}" data-t-delete-ask="{{ t("pictures.video.delete_ask") }}"
+         data-t-asked="{{ t("pictures.video.asked") }}" data-t-err-empty="{{ t("pictures.empty") }}"
+         data-t-err-no_ffmpeg="{{ t("pictures.video.err.no_ffmpeg") }}" data-t-err-disk_full="{{ t("pictures.video.err.disk_full") }}"
+         data-t-err-ffmpeg="{{ t("pictures.video.err.ffmpeg") }}">
+  <h2>{{ t("pictures.video.title") }}</h2>
+  <p class="unit" id="show-video-note" role="status"></p>
+  <ul class="plain show-video-list" id="show-video-list"></ul>
+  <p class="unit" id="show-video-none">{{ t("pictures.video.none") }}</p>
+</section>
 
 {#- The slideshow itself: two layers that blend, a video, the caption, and the controls that show on a tap. -#}
 <div id="show" class="show" hidden

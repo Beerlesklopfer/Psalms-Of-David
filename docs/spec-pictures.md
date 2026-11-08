@@ -75,7 +75,20 @@ network ("auf den Geräten muss die Datei autonom liegen"). The page `/pictures`
 A picture the server cannot show is left out; `show.json` comes last and names only what is in the archive. On a computer the file is
 unpacked and `index.html` opened; the apps keep it and play it (step 3). As a video for a television: see step 5.
 
-## 7. Steps
+## 7. The video for a television
+
+Decided by the project owner on 2026-11-08: Full HD (1920×1080, 30 frames, H.264/AAC in MP4); asked for on `/pictures` ("Als Video
+speichern", `POST /pictures/videos` with the query of a project), made by the server in the background, one after the other (the page
+may be closed; a video that was being made when the server stopped is made again); listed with its progress, downloaded
+(`GET /pictures/videos/{id}/file`), kept until the person deletes it (`POST /pictures/videos/{id}/delete`). Table `show_video`, files in
+`<data dir>/show-videos/`, `server/src/show_video.rs`.
+
+It looks like the slideshow: every picture its seconds, the transition of the choice (a cut is 0.04 s, a fade 1 s), the slow zoom, the
+date and the place at the bottom on the left (DejaVu Sans: Debian `fonts-dejavu-core`, RPM `dejavu-sans-fonts`; without a font or
+without `drawtext` in ffmpeg the video has no caption), the videos through with their sound, the music of the playlist again and again
+behind it all, at 15 % while a video plays, fading out at the end. Shuffled, the order is drawn once, when it is made.
+
+## 8. Steps
 
 1. Server: the old folders, the previews (with HEIC and video), the places, the rules of access, the interface. *(done)*
 2. Browser: the slideshow on the pages of the server (`/pictures`, menu of the person), for every person who signs in except a guest.
@@ -87,4 +100,4 @@ unpacked and `index.html` opened; the apps keep it and play it (step 3). As a vi
    project, quieter while a video plays). Videos play on iPhone/iPad, Android and macOS; on Linux and Windows a video shows as its
    picture. *(done)*
 4. The project as one file (6), with the player of the browser. *(done)*
-5. The project as a video (MP4) for a television or a USB stick.
+5. The project as a video (MP4) for a television or a USB stick (7). *(done)*

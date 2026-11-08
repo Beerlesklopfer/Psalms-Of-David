@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! The project of a slideshow (docs/spec-pictures.md, 7): one file that holds a whole slideshow, so that it lies on a device by itself and
+//! The project of a slideshow (docs/spec-pictures.md, 6): one file that holds a whole slideshow, so that it lies on a device by itself and
 //! plays without the server and without a network (project owner, 2026-11-08). It is a ZIP archive:
 //!
 //! | Entry | What |
@@ -123,7 +123,7 @@ pub async fn response(store: Store, library: Option<PathBuf>, user: i64, role: R
 }
 
 /// "Bilder 2017–2019": the name of the page and the years the pictures were taken.
-fn title_of(cat: &Catalog, items: &[crate::pictures::Item]) -> String {
+pub fn title_of(cat: &Catalog, items: &[crate::pictures::Item]) -> String {
     let year = |ms: i64| time::OffsetDateTime::from_unix_timestamp(ms.div_euclid(1000)).map(|t| t.year()).ok();
     let first = items.iter().map(|i| i.taken_at).min().and_then(year);
     let last = items.iter().map(|i| i.taken_at).max().and_then(year);
@@ -146,57 +146,84 @@ struct Job {
     title: String,
 }
 
+/// What one picture of a slideshow is made of, on the disk of the server: the screen size (for a video its frame), the MP4 of a video, the
+/// time and the place. Shared by the project and the video of a slideshow (`crate::show_video`).
+pub struct Piece {
+    pub image: PathBuf,
+    pub video: Option<PathBuf>,
+    pub taken_at: i64,
+    pub place: Option<String>,
+}
+
+/// The piece of one picture the person may see; `None` when the server cannot show it (it is left out then). A video without its MP4 (no
+/// ffmpeg, a damaged file) is its picture. The place only with `info` = `both`.
+pub async fn piece(store: &Store, user: i64, role: Role, lang: Lang, info: &str, item: &crate::pictures::Item) -> Option<Piece> {
+    let found = store.picture(user, role, &item.key).await.ok().flatten()?;
+    let image = match crate::picture_render::rendered(&store.data_dir, &item.key, &found.path, &found.mime, Size::Screen).await {
+        Some(p) => p,
+        None => match found.device_thumb.clone() {
+            Some(p) => p,
+            None => {
+                tracing::warn!(key = %item.key, "a picture the server cannot show is left out of the slideshow");
+                return None;
+            }
+        },
+    };
+    let video = if item.video { crate::picture_render::video_mp4(&store.data_dir, &item.key, &found.path).await } else { None };
+    let place = if info == "both" && !item.video {
+        store.picture_info(&found, lang.code()).await.ok().and_then(|v| v.get("place").and_then(|p| p.as_str()).map(str::to_owned))
+    } else {
+        None
+    };
+    Some(Piece { image, video, taken_at: found.taken_at, place })
+}
+
+/// The music of an own playlist the person may hear now, each track as an MP3 file: (path, title, artist).
+pub async fn music_of(store: &Store, library: Option<&std::path::Path>, user: i64, playlist: Option<i64>) -> Vec<(PathBuf, String, String)> {
+    let Some(id) = playlist else { return Vec::new() };
+    let entries = match store.playlist_view(id, user).await {
+        Ok(Some(v)) => v.entries.into_iter().filter(|e| e.available).collect::<Vec<_>>(),
+        _ => Vec::new(),
+    };
+    let mut out = Vec::new();
+    for e in entries {
+        match crate::api::track_file(store, library, user, e.track_id, true).await {
+            Ok((_, path, _, _)) => out.push((path, e.title, e.author)),
+            Err(_) => tracing::warn!(track = e.track_id, "a track is left out of the slideshow"),
+        }
+    }
+    out
+}
+
 impl Job {
     /// Writes the archive; true when all of it went out, and how many pictures it holds.
     async fn write(&self, sink: &mut Sink, items: Vec<crate::pictures::Item>) -> (bool, usize) {
         let mut zip = ZipWriter::new();
         let mut pictures = Vec::with_capacity(items.len());
         for item in items {
-            let Ok(Some(found)) = self.store.picture(self.user, self.role, &item.key).await else { continue };
+            let Some(p) = piece(&self.store, self.user, self.role, self.lang, &self.settings.info, &item).await else { continue };
             let n = pictures.len() + 1;
-            let Some(screen) = self.screen_of(&item.key, &found).await else {
-                tracing::warn!(key = %item.key, "a picture the server cannot show is left out of the project");
-                continue;
-            };
             let image = format!("pictures/{n:04}.jpg");
-            if !put_file(sink, &mut zip, &image, &screen).await {
+            if !put_file(sink, &mut zip, &image, &p.image).await {
                 return (false, pictures.len());
             }
-            // A video without its MP4 (no ffmpeg, a damaged file) stays in the show as its picture.
             let mut video = None;
-            if item.video
-                && let Some(mp4) = crate::picture_render::video_mp4(&self.store.data_dir, &item.key, &found.path).await
-            {
+            if let Some(mp4) = &p.video {
                 let name = format!("videos/{n:04}.mp4");
-                if !put_file(sink, &mut zip, &name, &mp4).await {
+                if !put_file(sink, &mut zip, &name, mp4).await {
                     return (false, pictures.len());
                 }
                 video = Some(name);
             }
-            let place = if self.settings.info == "both" && !item.video {
-                self.store.picture_info(&found, self.lang.code()).await.ok().and_then(|v| v.get("place").and_then(|p| p.as_str()).map(str::to_owned))
-            } else {
-                None
-            };
-            pictures.push(Picture { image, video, taken_at: found.taken_at, place });
+            pictures.push(Picture { image, video, taken_at: p.taken_at, place: p.place });
         }
         let mut music = Vec::new();
-        if let Some(id) = self.music {
-            let entries = match self.store.playlist_view(id, self.user).await {
-                Ok(Some(v)) => v.entries.into_iter().filter(|e| e.available).collect::<Vec<_>>(),
-                _ => Vec::new(),
-            };
-            for e in entries {
-                let Ok((_, path, _, _)) = crate::api::track_file(&self.store, self.library.as_deref(), self.user, e.track_id, true).await else {
-                    tracing::warn!(track = e.track_id, "a track is left out of the project");
-                    continue;
-                };
-                let file = format!("music/{:02}.mp3", music.len() + 1);
-                if !put_file(sink, &mut zip, &file, &path).await {
-                    return (false, pictures.len());
-                }
-                music.push(Track { file, title: e.title, artist: e.author });
+        for (path, title, artist) in music_of(&self.store, self.library.as_deref(), self.user, self.music).await {
+            let file = format!("music/{:02}.mp3", music.len() + 1);
+            if !put_file(sink, &mut zip, &file, &path).await {
+                return (false, pictures.len());
             }
+            music.push(Track { file, title, artist });
         }
         let show = Show {
             format: FORMAT,
@@ -224,14 +251,6 @@ impl Job {
             }
         }
         (sink.put(zip.finish()).await, pictures.len())
-    }
-
-    /// The screen size of a picture, or the preview its device sent when the server cannot make one.
-    async fn screen_of(&self, key: &str, found: &crate::pictures::Found) -> Option<PathBuf> {
-        match crate::picture_render::rendered(&self.store.data_dir, key, &found.path, &found.mime, Size::Screen).await {
-            Some(p) => Some(p),
-            None => found.device_thumb.clone(),
-        }
     }
 }
 

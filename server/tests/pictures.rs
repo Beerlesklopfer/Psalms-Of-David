@@ -190,7 +190,6 @@ async fn everybody_sees_their_own_the_parents_a_child_that_allows_it_and_the_adu
 /// The slideshow of the browser: the page for whoever signs in (not a guest), and the same rules for what it loads.
 #[tokio::test]
 async fn the_browser_shows_the_page_and_loads_the_pictures_with_the_session() {
-    use std::sync::Arc;
     let (data, store) = open().await;
     let admin = store.create_profile("Boss", true).await.unwrap();
     let anna = store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
@@ -211,21 +210,7 @@ async fn the_browser_shows_the_page_and_loads_the_pictures_with_the_session() {
     }
     store.save_settings(&[("photo_library".into(), root.path().to_str().unwrap().into()), ("photo_places".into(), "off".into())]).await.unwrap();
     store.scan_photo_library().await.unwrap();
-    let cd = david_server::cdimport::CdService::new(data.path());
-    let web = david_server::web::AppState {
-        store: store.clone(),
-        mcp: false,
-        listen: "127.0.0.1:8484".parse().unwrap(),
-        fingerprint: None,
-        ca_host: None,
-        ui: Arc::new(david_server::admin::pages::AdminUi::new().unwrap()),
-        secure_cookie: false,
-        library: None,
-        uploads: david_server::upload::Uploads::start(store.clone(), data.path()),
-        cd,
-        features: Default::default(),
-    };
-    let router = david_server::web::router(web);
+    let router = web_router(&store, data.path());
     let get = |uri: String, cookie: String| {
         let router = router.clone();
         async move {
@@ -314,4 +299,126 @@ async fn the_browser_shows_the_page_and_loads_the_pictures_with_the_session() {
     // The page offers it.
     let (_, _, body) = get("/pictures".into(), anna_c).await;
     assert!(String::from_utf8_lossy(&body).contains("id=\"show-save\""));
+}
+
+/// The pages of the server (the session of the browser), on this store.
+fn web_router(store: &Store, data: &std::path::Path) -> Router {
+    let cd = david_server::cdimport::CdService::new(data);
+    david_server::web::router(david_server::web::AppState {
+        store: store.clone(),
+        mcp: false,
+        listen: "127.0.0.1:8484".parse().unwrap(),
+        fingerprint: None,
+        ca_host: None,
+        ui: std::sync::Arc::new(david_server::admin::pages::AdminUi::new().unwrap()),
+        secure_cookie: false,
+        library: None,
+        uploads: david_server::upload::Uploads::start(store.clone(), data),
+        cd,
+        features: Default::default(),
+    })
+}
+
+/// A request of the browser with the session [token]; a POST carries the CSRF token as the page sends it.
+async fn browser(router: &Router, method: &str, uri: &str, token: &str, body: &str) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+    let req = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::COOKIE, format!("david_session={token}"))
+        .header("x-csrf-token", david_server::auth::csrf_token(token))
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(header::ACCEPT_LANGUAGE, "de")
+        .body(Body::from(body.to_owned()))
+        .unwrap();
+    let res = router.clone().oneshot(req).await.unwrap();
+    let (parts, body) = res.into_parts();
+    (parts.status, parts.headers, to_bytes(body, 256 * 1024 * 1024).await.unwrap().to_vec())
+}
+
+#[tokio::test]
+async fn a_video_for_the_television_is_made_in_the_background_downloaded_and_deleted() {
+    if !david_server::picture_render::has_ffmpeg() {
+        eprintln!("skipped: no ffmpeg");
+        return;
+    }
+    let (data, store) = open().await;
+    let anna = store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    let bert = store.create_user(NewProfile::new("Bert", Role::Member)).await.unwrap();
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join("Urlaub")).unwrap();
+    std::fs::write(root.path().join("Urlaub/strand.png"), png(3000, 2000)).unwrap();
+    std::fs::write(root.path().join("Urlaub/turm.png"), png(900, 1600)).unwrap();
+    let ok = std::process::Command::new("ffmpeg")
+        .args(["-v", "error", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=10", "-f", "lavfi", "-i", "sine=frequency=440", "-t", "2", "-c:v", "mpeg4", "-y"])
+        .arg(root.path().join("Urlaub/welle.avi"))
+        .status()
+        .is_ok_and(|s| s.success());
+    assert!(ok);
+    store.save_settings(&[("photo_library".into(), root.path().to_str().unwrap().into()), ("photo_places".into(), "off".into())]).await.unwrap();
+    store.scan_photo_library().await.unwrap();
+    let router = web_router(&store, data.path());
+    let (anna_t, bert_t) = (store.create_session(anna, Role::Member, None).await.unwrap(), store.create_session(bert, Role::Member, None).await.unwrap());
+
+    // Nothing to show: no video.
+    let (status, _, _) = browser(&router, "POST", "/pictures/videos", &anna_t, "source=p999").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    // Without the CSRF token the page cannot ask for one.
+    let req = Request::builder().method("POST").uri("/pictures/videos").header(header::COOKIE, format!("david_session={anna_t}")).body(Body::from("source=f%3AUrlaub")).unwrap();
+    assert_eq!(router.clone().oneshot(req).await.unwrap().status(), StatusCode::FORBIDDEN);
+
+    let (status, _, body) = browser(&router, "POST", "/pictures/videos", &anna_t, "source=f%3AUrlaub&videos=on&seconds=3&transition=random&info=date").await;
+    assert_eq!(status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&body));
+    let id = serde_json::from_slice::<Value>(&body).unwrap()["id"].as_i64().unwrap();
+    let list: Value = serde_json::from_slice(&browser(&router, "GET", "/pictures/videos", &anna_t, "").await.2).unwrap();
+    assert_eq!((list["videos"][0]["id"].as_i64(), list["videos"][0]["state"].as_str()), (Some(id), Some("queued")));
+    assert!(list["videos"][0]["title"].as_str().unwrap().starts_with("Bilder "));
+    // Another person sees none of it.
+    let other: Value = serde_json::from_slice(&browser(&router, "GET", "/pictures/videos", &bert_t, "").await.2).unwrap();
+    assert_eq!(other["videos"], json!([]));
+
+    david_server::show_video::Videos::start(store.clone(), None);
+    david_server::show_video::wake();
+    let mut done = None;
+    for _ in 0..600 {
+        let v = store.show_video(anna, id).await.unwrap().unwrap();
+        if v.state == "done" || v.state == "failed" {
+            done = Some(v);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    let v = done.expect("the video is made within two minutes");
+    assert_eq!((v.state.as_str(), v.error.as_deref(), v.pictures, v.progress), ("done", None, 3, 1000), "{v:?}");
+    // Two pictures of 3 s plus a fade each and a video of about 2 s (its MP4 a little longer), overlapping by their transitions: from
+    // about 8 s (all faded) to about 10 s (all cut).
+    assert!((7_000..=10_500).contains(&v.duration_ms), "{v:?}");
+
+    let (status, headers, file) = browser(&router, "GET", &format!("/pictures/videos/{id}/file"), &anna_t, "").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers.get(header::CONTENT_TYPE).unwrap(), "video/mp4");
+    assert!(headers.get(header::CONTENT_DISPOSITION).unwrap().to_str().unwrap().contains(".mp4"));
+    assert_eq!(file.len() as i64, v.size_bytes);
+    let out = data.path().join("check.mp4");
+    if let Ok(keep) = std::env::var("DAVID_VIDEO_OUT") { std::fs::write(keep, &file).unwrap(); }
+    std::fs::write(&out, &file).unwrap();
+    let probe = std::process::Command::new("ffprobe")
+        .args(["-v", "error", "-show_entries", "stream=codec_name,width,height,duration", "-of", "csv=p=0"])
+        .arg(&out)
+        .output()
+        .unwrap();
+    let probe = String::from_utf8_lossy(&probe.stdout);
+    assert!(probe.contains("h264,1920,1080") && probe.contains("aac"), "Full HD with the sound of the video: {probe}");
+    // The picture lasts as long as the sound: every piece is in it (a transition that drops the next piece would leave it short).
+    let picture = probe.lines().find(|l| l.starts_with("h264")).and_then(|l| l.rsplit(',').next()).and_then(|d| d.parse::<f64>().ok()).unwrap();
+    assert!((picture * 1000.0 - v.duration_ms as f64).abs() < 200.0, "{picture} s of picture for {} ms: {probe}", v.duration_ms);
+    assert_eq!(browser(&router, "GET", &format!("/pictures/videos/{id}/file"), &bert_t, "").await.0, StatusCode::NOT_FOUND);
+    assert_eq!(browser(&router, "POST", &format!("/pictures/videos/{id}/delete"), &bert_t, "").await.0, StatusCode::NOT_FOUND);
+
+    assert!(david_server::show_video::file_of(data.path(), id).is_file());
+    assert_eq!(browser(&router, "POST", &format!("/pictures/videos/{id}/delete"), &anna_t, "").await.0, StatusCode::NO_CONTENT);
+    assert!(!david_server::show_video::file_of(data.path(), id).exists());
+    let list: Value = serde_json::from_slice(&browser(&router, "GET", "/pictures/videos", &anna_t, "").await.2).unwrap();
+    assert_eq!(list["videos"], json!([]));
+    let page = String::from_utf8_lossy(&browser(&router, "GET", "/pictures", &anna_t, "").await.2).into_owned();
+    assert!(page.contains("id=\"show-video\"") && page.contains("Videos für den Fernseher"), "{page}");
 }

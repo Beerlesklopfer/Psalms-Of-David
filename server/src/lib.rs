@@ -59,6 +59,7 @@ pub mod picture_place;
 pub mod picture_render;
 pub mod pictures;
 pub mod show_project;
+pub mod show_video;
 pub mod api_photos;
 pub mod api_pictures;
 pub mod ntacl;
