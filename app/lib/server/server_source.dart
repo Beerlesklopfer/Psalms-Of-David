@@ -59,6 +59,10 @@ abstract class MediaSource {
 
   /// The path of a downloaded part relative to the folder of the playlist file, or null if it is not on the device.
   String? relativePath(Track track) => null;
+
+  /// Whether the person downloaded the book or playlist of the playlist file [name] on purpose: its playlist file lies next to the parts.
+  /// Only a download writes it, never playing (which keeps the parts it fetches as well).
+  bool isKept(String name) => false;
 }
 
 class ServerSource implements MediaSource {
@@ -153,6 +157,9 @@ class ServerSource implements MediaSource {
     await temp.writeAsString(buildM3u8(entries));
     await temp.rename(file.path);
   }
+
+  @override
+  bool isKept(String name) => File('${cache.path}/$name.$kM3uEnding').existsSync();
 
   @override
   Future<void> removeAllDownloads() async {

@@ -179,14 +179,18 @@ class AlbumTile extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => ListTile(
-    leading: SizedBox.square(dimension: 48, child: Cover(book: book)),
-    title: Text(title ?? book.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-    subtitle: Text(subtitle ?? book.author, maxLines: 1, overflow: TextOverflow.ellipsis),
-    trailing: DownloadButton(book: book),
-    onTap: onTap ?? () => openItem(context, book),
-    onLongPress: () => showHideSheet(context, book),
-  );
+  Widget build(BuildContext context) {
+    final tile = ListTile(
+      leading: SizedBox.square(dimension: 48, child: Cover(book: book)),
+      title: Text(title ?? book.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: Text(subtitle ?? book.author, maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: DownloadButton(book: book),
+      onTap: onTap ?? () => openItem(context, book),
+      onLongPress: () => showHideSheet(context, book),
+    );
+    // Offline with everything shown: an album that is not downloaded does not play.
+    return (PlayerScope.maybeOf(context)?.offlineDim(book) ?? false) ? Opacity(key: ValueKey('dim-${book.id}'), opacity: 0.5, child: tile) : tile;
+  }
 }
 
 /// One track: tap plays it (or says that this platform cannot), with its labels, the played mark, its length and "add to playlist".

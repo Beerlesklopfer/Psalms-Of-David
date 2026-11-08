@@ -126,6 +126,28 @@ void main() {
     expect(off.single.tracks.map((t) => t.partId), [1]);
   });
 
+  test('a part that was only played stays on the device but the book is not kept; a download keeps it, removing it does not', () async {
+    HttpOverrides.global = null;
+    final server = await _serve(() => 'ok');
+    final dir = Directory.systemTemp.createTempSync('psalm-kept-');
+    addTearDown(() async {
+      await server.close(force: true);
+      dir.deleteSync(recursive: true);
+    });
+    final b = _book();
+    final s = ServerSource(ApiClient(address: '127.0.0.1:${server.port}', token: 't'), dir);
+    final p = PlayerController([b], source: s);
+    await s.fetchPart(b.tracks[0]); // played: the file stays for the next time
+    expect(s.isDownloaded(b.tracks[0]), isTrue);
+    expect(p.isItemKept(b), isFalse);
+    expect(downloadedOnly([b], s.isDownloaded, kept: p.isItemKept), isEmpty, reason: 'offline it is not listed');
+    await p.downloadItem(b);
+    expect(p.isItemKept(b), isTrue);
+    expect(downloadedOnly([b], s.isDownloaded, kept: p.isItemKept).single.tracks.length, 3);
+    await p.removeDownload(b);
+    expect(p.isItemKept(b), isFalse);
+  });
+
   test('a corrupt file on the device is found against the hash of the server and fetched again', () async {
     HttpOverrides.global = null;
     final server = await _serve(() => 'ok');

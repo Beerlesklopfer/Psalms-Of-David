@@ -1700,12 +1700,25 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get offlineBannerManual =>
-      'Offline mode · only downloaded titles are shown';
+  String get offlineBannerManual => 'Offline mode · downloaded titles only';
 
   @override
   String get offlineBannerUnreachable =>
-      'Server not reachable · only downloaded titles are shown';
+      'Server not reachable · downloaded titles only';
+
+  @override
+  String get offlineBannerAllManual =>
+      'Offline mode · all titles, only downloaded ones play';
+
+  @override
+  String get offlineBannerAllUnreachable =>
+      'Server not reachable · all titles, only downloaded ones play';
+
+  @override
+  String get offlineShowAll => 'Show all';
+
+  @override
+  String get offlineShowDownloaded => 'Downloaded only';
 
   @override
   String offlinePending(int count) {

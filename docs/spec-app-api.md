@@ -115,11 +115,19 @@ synchronised, and the listening progress too."
 at the library every 30 seconds fails). The lists, the search and the start page then show the **downloaded** titles only: an album of which some
 titles are downloaded shows those, one without any is left out, radio stations are left out. The page Radio says that it needs the server;
 the page Podcasts shows the podcasts that have downloaded episodes (see "Podcast downloads"). A bar at the top says "Offline mode" or "Server not reachable", how many changes wait, and (unreachable only) has "Try again". What is
-downloaded plays without the server. With the switch on the app does not ask the server at all (no look at the library, no sending); switching
+downloaded plays without the server.
+
+"Downloaded" is what the person downloaded **on purpose** (project owner, 2026-11-08): a part that was only played (or fetched ahead) stays on
+the device and plays from there, but its album is not listed offline. The mark of a download is the playlist file `book-<id>.m3u8`
+(`playlist-<n>.m3u8`) next to the parts, which only a download writes and which goes with the last part of the album; so the downloads made
+before this rule keep their place. Episodes go by their files, as before. **The bar is a switch** (project owner, 2026-11-08): a tap on it
+shows everything ("all titles, only downloaded ones play"; what is not downloaded is dimmed), another tap the downloaded titles again; back
+online the next offline starts with the downloaded titles. With the switch on the app does not ask the server at all (no look at the library, no sending); switching
 it off sends what waits and loads the library again.
 
 **The cache.** Every library that is loaded is written to `library/library.json` (+ `cover-<id>` files) in the data folder of the app
-(`AppPaths.base`). A start without the server (or with the switch on) opens it, so the offline view works after a restart. The list of what
+(`AppPaths.base`). Each title keeps its format (`format`, `mime`, `transcode`): the name of a downloaded part follows it, so a start without
+the server finds the files. A start without the server (or with the switch on) opens it, so the offline view works after a restart. The list of what
 the profile hid (the page "Hidden") is not cached; the hidden flag of the items is. Forgetting the pairing deletes the cache and the outbox.
 
 **The outbox** (`outbox.json`, `lib/offline/outbox.dart`). Changes made while the server is out of reach, or whose sending fails for want of a

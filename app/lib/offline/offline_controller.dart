@@ -77,8 +77,26 @@ class OfflineController extends ChangeNotifier {
   /// What the server did not take at the last sending; stays until the person has seen it.
   List<RejectedChange> rejected = const [];
 
-  /// The lists show downloaded titles only, and nothing is asked of the server.
+  /// Nothing is asked of the server.
   bool get active => manual || unreachable;
+
+  /// Offline, the lists show everything anyway (a tap on the bar at the top); only what is downloaded plays. Back online it starts again
+  /// with the downloaded titles.
+  bool showAll = false;
+
+  /// The lists show the downloaded titles only.
+  bool get downloadedOnly => active && !showAll;
+
+  /// The tap on the bar: everything, or the downloaded titles again.
+  void toggleShowAll() {
+    if (!active) return;
+    showAll = !showAll;
+    notifyListeners();
+  }
+
+  void _online() {
+    if (!active) showAll = false;
+  }
 
   /// How many changes wait for the server.
   int get pending => outbox.length;
@@ -87,6 +105,7 @@ class OfflineController extends ChangeNotifier {
     if (manual == value && !untilWifi) return;
     manual = value;
     untilWifi = false;
+    _online();
     store?.write(value);
     notifyListeners();
   }
@@ -116,6 +135,7 @@ class OfflineController extends ChangeNotifier {
   void setUnreachable(bool value) {
     if (unreachable == value) return;
     unreachable = value;
+    _online();
     notifyListeners();
   }
 

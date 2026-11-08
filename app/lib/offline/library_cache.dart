@@ -76,6 +76,10 @@ Map<String, Object?> _trackToJson(Track t) => {
   'plays': t.plays,
   'last_played_at': t.lastPlayedAt?.millisecondsSinceEpoch,
   'labels': t.labels,
+  // The name of a downloaded part follows its format: without it a start without the server would not find the files.
+  'format': t.format,
+  'mime': t.mime,
+  'transcode': t.transcode,
 };
 
 Track _trackFromJson(Map<String, dynamic> j) => Track(
@@ -87,6 +91,9 @@ Track _trackFromJson(Map<String, dynamic> j) => Track(
   plays: j['plays'] as int? ?? 0,
   lastPlayedAt: dateFromMs(j['last_played_at']),
   labels: [for (final l in (j['labels'] as List? ?? const [])) l as String],
+  format: j['format'] as String?,
+  mime: j['mime'] as String?,
+  transcode: j['transcode'] as String?,
 );
 
 Map<String, Object?> itemToJson(LibraryItem b) => {

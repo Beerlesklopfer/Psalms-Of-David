@@ -91,7 +91,19 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<LibraryItem> _visible(List<LibraryItem> all) => _offlineView && source != null ? downloadedOnly(all, source!.isDownloaded) : all;
+  List<LibraryItem> _visible(List<LibraryItem> all) => _offlineView && source != null ? downloadedOnly(all, source!.isDownloaded, kept: isItemKept) : all;
+
+  /// Whether [b] was downloaded on purpose (its playlist file next to the parts); what has no playlist file of its own (episodes) goes by
+  /// its files alone.
+  bool isItemKept(LibraryItem b) {
+    final s = source;
+    if (s == null) return false;
+    final name = m3uNameOf(b);
+    return name == null || s.isKept(name);
+  }
+
+  /// Offline with everything shown (the tap on the bar): [b] is not downloaded and is dimmed, as it does not play.
+  bool offlineDim(LibraryItem b) => source != null && !_offlineView && _offline?.active == true && !b.isStream && !isItemKept(b);
 
   /// Changes a book of the library on this device (labels set without the server, a title with new labels): the change shows at once.
   void patchItem(String id, LibraryItem Function(LibraryItem) change) {
@@ -444,6 +456,8 @@ class PlayerController extends ChangeNotifier {
     }
     await _writePlaylistFile(b);
     storageRevision++;
+    // Offline, a book whose download went leaves the list.
+    if (_offlineView) library = _visible(fullLibrary);
     if (!_disposed) notifyListeners();
   }
 

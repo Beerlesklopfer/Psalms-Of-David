@@ -53,9 +53,15 @@ class FakeOutboxApi implements OutboxApi {
 
 /// A source whose downloaded parts are the ones listed.
 class FakeSource implements MediaSource {
-  FakeSource(this.downloaded);
+  FakeSource(this.downloaded, {this.kept});
 
   final Set<int> downloaded;
+
+  /// The playlist files of what was downloaded on purpose (`book-<id>`); null: every book with parts on the device.
+  final Set<String>? kept;
+
+  @override
+  bool isKept(String name) => kept?.contains(name) ?? true;
   final progress = <String>[];
   Object? progressFails;
 
@@ -299,6 +305,30 @@ void main() {
       expect(p.library.length, 4);
     });
 
+    test('offline only what was downloaded on purpose is listed; what was only played stays on the device but not in the list', () {
+      // "Ganz" was downloaded (its playlist file is there); of "Teils" one title was only played and its file stayed behind.
+      final p = PlayerController(all, source: FakeSource({11, 12, 22}, kept: {'book-1'}));
+      final offline = OfflineController()..setManual(true);
+      p.offline = offline;
+      p.setOfflineView(offline.downloadedOnly);
+      expect([for (final b in p.library) b.title], ['Ganz']);
+      expect(p.offlineDim(all[0]), isFalse);
+      // A tap on the bar: everything, the ones not downloaded dimmed (they do not play); a radio is not dimmed, it needs no download.
+      offline.toggleShowAll();
+      p.setOfflineView(offline.downloadedOnly);
+      expect(p.library.length, 4);
+      expect([for (final b in p.library) if (p.offlineDim(b)) b.title], ['Teils', 'Nichts']);
+      offline.toggleShowAll();
+      p.setOfflineView(offline.downloadedOnly);
+      expect([for (final b in p.library) b.title], ['Ganz']);
+      // Online again, nothing is dimmed and the next offline starts with the downloaded titles.
+      offline.toggleShowAll();
+      offline.setManual(false);
+      p.setOfflineView(offline.downloadedOnly);
+      expect(offline.showAll, isFalse);
+      expect([for (final b in p.library) if (p.offlineDim(b)) b], isEmpty);
+    });
+
     test('an open item that is not on the device goes from the player offline when nothing plays', () {
       final p = PlayerController(all, source: FakeSource({11, 12}));
       p.book = all[2]; // "Nichts": no part on the device
@@ -324,7 +354,7 @@ void main() {
       final lib = LoadedLibrary(
         [
           LibraryItem(id: '5', title: 'Fünf', author: 'A', color: const Color(0xFF123456), cover: Uint8List.fromList([1, 2, 3]), labels: const ['x'], trackLabels: const ['y'], canLabel: true, tracks: [_t(51, 'a', labels: const ['y'])]),
-          _book('6', 'Sechs', [_t(61, 'b')]),
+          _book('6', 'Sechs', [Track(disc: 1, number: 1, title: 'b', length: const Duration(minutes: 5), partId: 61, format: 'flac', mime: 'audio/flac', transcode: 'mp3')]),
         ],
         {'5': (track: 0, position: const Duration(seconds: 42))},
         lastItemId: '5',
@@ -342,6 +372,9 @@ void main() {
       expect(back.books[0].labels, ['x']);
       expect(back.books[0].trackLabels, ['y']);
       expect(back.books[0].tracks.single.labels, ['y']);
+      // The format names the file of a downloaded part: kept, so that a start without the server finds the downloads.
+      final six = back.books[1].tracks.single;
+      expect((six.format, six.mime, six.transcode), ('flac', 'audio/flac', 'mp3'));
       expect(back.books[0].canLabel, true);
       expect(back.resume['5']!.position, const Duration(seconds: 42));
       expect((back.lastItemId, back.lastAt, back.userName), ('5', 99, 'Anna'));
@@ -466,6 +499,17 @@ void main() {
       await tester.pump();
       expect(find.textContaining('Offline mode'), findsOneWidget);
       expect(find.byKey(const ValueKey('offline-retry')), findsNothing);
+      // The bar itself switches between the downloaded titles and everything.
+      expect(find.text('Show all'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('offline-toggle')));
+      await tester.pump();
+      expect(offline.showAll, isTrue);
+      expect(find.textContaining('all titles, only downloaded ones play'), findsOneWidget);
+      expect(find.text('Downloaded only'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('offline-toggle')));
+      await tester.pump();
+      expect(offline.showAll, isFalse);
+      expect(find.textContaining('downloaded titles only'), findsOneWidget);
     });
 
     testWidgets('a page that needs the server says so offline', (tester) async {

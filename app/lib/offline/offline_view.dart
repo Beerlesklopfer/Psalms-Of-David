@@ -9,13 +9,16 @@ import 'outbox.dart';
 
 /// What the offline view shows of [books]: the titles that are on the device. A book of which only some titles are downloaded keeps those;
 /// a book of which none is downloaded is left out. Radio stations and the like (no parts of their own) have nothing to download and go.
-List<LibraryItem> downloadedOnly(List<LibraryItem> books, bool Function(Track) isDownloaded) {
+/// [kept] says whether a book was downloaded on purpose (project owner, 2026-11-08: what was only played stays on the device as well, but
+/// the offline view lists what the person downloaded); a book it refuses is left out, whatever lies on the device.
+List<LibraryItem> downloadedOnly(List<LibraryItem> books, bool Function(Track) isDownloaded, {bool Function(LibraryItem)? kept}) {
   final out = <LibraryItem>[];
   for (final b in books) {
     if (b.isStream) continue;
-    final kept = [for (final t in b.tracks) if (t.path != null || isDownloaded(t)) t];
-    if (kept.isEmpty) continue;
-    out.add(kept.length == b.tracks.length ? b : b.copyWith(tracks: kept));
+    if (kept != null && !kept(b)) continue;
+    final here = [for (final t in b.tracks) if (t.path != null || isDownloaded(t)) t];
+    if (here.isEmpty) continue;
+    out.add(here.length == b.tracks.length ? b : b.copyWith(tracks: here));
   }
   return out;
 }
@@ -34,26 +37,51 @@ class OfflineBanner extends StatelessWidget {
     final l = AppLocalizations.of(context);
     final cs = Theme.of(context).colorScheme;
     final pending = offline.pending;
+    final all = offline.showAll;
+    final what = switch ((offline.manual, all)) {
+      (true, false) => l.offlineBannerManual,
+      (false, false) => l.offlineBannerUnreachable,
+      (true, true) => l.offlineBannerAllManual,
+      (false, true) => l.offlineBannerAllUnreachable,
+    };
     return Material(
       key: const ValueKey('offline-banner'),
       color: cs.secondaryContainer,
       child: SafeArea(
         bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Row(
-            children: [
-              Icon(Icons.cloud_off_outlined, size: 18, color: cs.onSecondaryContainer),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  [
-                    offline.manual ? l.offlineBannerManual : l.offlineBannerUnreachable,
-                    if (pending > 0) l.offlinePending(pending),
-                  ].join(' · '),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSecondaryContainer),
+        child: Row(
+          children: [
+            // The bar itself switches the lists between the downloaded titles and everything (project owner, 2026-11-08).
+            Expanded(
+              child: Semantics(
+                button: true,
+                toggled: !all,
+                child: InkWell(
+                  key: const ValueKey('offline-toggle'),
+                  onTap: offline.toggleShowAll,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+                    child: Row(
+                      children: [
+                        Icon(all ? Icons.library_music_outlined : Icons.download_done, size: 18, color: cs.onSecondaryContainer),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            [what, if (pending > 0) l.offlinePending(pending)].join(' · '),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSecondaryContainer),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          all ? l.offlineShowDownloaded : l.offlineShowAll,
+                          style: Theme.of(context).textTheme.labelMedium?.copyWith(color: cs.onSecondaryContainer, fontWeight: FontWeight.w600, decoration: TextDecoration.underline),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
+            ),
               if (!offline.manual)
                 Column(
                   mainAxisSize: MainAxisSize.min,
@@ -73,8 +101,8 @@ class OfflineBanner extends StatelessWidget {
                     ),
                   ],
                 ),
-            ],
-          ),
+            const SizedBox(width: 8),
+          ],
         ),
       ),
     );

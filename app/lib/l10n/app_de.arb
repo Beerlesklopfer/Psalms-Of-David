@@ -689,8 +689,12 @@
       }
     }
   },
-  "offlineBannerManual": "Offline-Modus · nur heruntergeladene Titel werden angezeigt",
-  "offlineBannerUnreachable": "Server nicht erreichbar · nur heruntergeladene Titel werden angezeigt",
+  "offlineBannerManual": "Offline-Modus · nur heruntergeladene Titel",
+  "offlineBannerUnreachable": "Server nicht erreichbar · nur heruntergeladene Titel",
+  "offlineBannerAllManual": "Offline-Modus · alle Titel, nur heruntergeladene spielen",
+  "offlineBannerAllUnreachable": "Server nicht erreichbar · alle Titel, nur heruntergeladene spielen",
+  "offlineShowAll": "Alle zeigen",
+  "offlineShowDownloaded": "Nur heruntergeladene",
   "offlinePending": "{count, plural, =1{1 Änderung wartet auf den Server} other{{count} Änderungen warten auf den Server}}",
   "offlineRetry": "Erneut versuchen",
   "offlineStay": "Offline bleiben",

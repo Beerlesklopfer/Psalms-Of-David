@@ -207,7 +207,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
 
   /// The lists follow the offline mode; switching it off sends what waited and loads the library again.
   void _onOfflineChanged() {
-    _player.setOfflineView(_offline.active);
+    _player.setOfflineView(_offline.downloadedOnly);
     _playlists.offlineChanged();
     if (_wasManual && !_offline.manual) unawaited(_reloadLibrary(force: true));
     _wasManual = _offline.manual;
@@ -270,7 +270,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
     final api = ApiClient(address: creds.address, fingerprint: creds.fingerprint, ca: creds.ca, token: creds.token);
     _player.attachServer(ServerSource(api, partCache()), cached);
     _offline.setUnreachable(unreachable);
-    _player.setOfflineView(_offline.active);
+    _player.setOfflineView(_offline.downloadedOnly);
     _watchLibrary(api);
     return true;
   }
@@ -369,7 +369,7 @@ class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
         final loaded = await loadLibrary(api);
         _player.attachServer(ServerSource(api, partCache()), loaded);
         _offline.setUnreachable(false);
-        _player.setOfflineView(_offline.active);
+        _player.setOfflineView(_offline.downloadedOnly);
         unawaited(_cache.write(loaded));
         _watchLibrary(api);
         // What was changed without the server the last time goes now; the library is loaded again afterwards.

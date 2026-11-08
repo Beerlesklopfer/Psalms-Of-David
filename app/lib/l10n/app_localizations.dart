@@ -2951,14 +2951,38 @@ abstract class AppLocalizations {
   /// No description provided for @offlineBannerManual.
   ///
   /// In en, this message translates to:
-  /// **'Offline mode · only downloaded titles are shown'**
+  /// **'Offline mode · downloaded titles only'**
   String get offlineBannerManual;
 
   /// No description provided for @offlineBannerUnreachable.
   ///
   /// In en, this message translates to:
-  /// **'Server not reachable · only downloaded titles are shown'**
+  /// **'Server not reachable · downloaded titles only'**
   String get offlineBannerUnreachable;
+
+  /// No description provided for @offlineBannerAllManual.
+  ///
+  /// In en, this message translates to:
+  /// **'Offline mode · all titles, only downloaded ones play'**
+  String get offlineBannerAllManual;
+
+  /// No description provided for @offlineBannerAllUnreachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Server not reachable · all titles, only downloaded ones play'**
+  String get offlineBannerAllUnreachable;
+
+  /// No description provided for @offlineShowAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Show all'**
+  String get offlineShowAll;
+
+  /// No description provided for @offlineShowDownloaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloaded only'**
+  String get offlineShowDownloaded;
 
   /// No description provided for @offlinePending.
   ///

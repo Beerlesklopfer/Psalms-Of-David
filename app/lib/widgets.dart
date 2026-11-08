@@ -211,8 +211,10 @@ class ItemCard extends StatelessWidget {
         ),
       ),
     );
-    // A hidden book is listed only when the setting asks for it, and then it is dimmed.
-    return book.hidden ? Opacity(opacity: 0.5, child: card) : card;
+    // A hidden book is listed only when the setting asks for it, and then it is dimmed; so is one that is not downloaded while the app is
+    // offline and shows everything (it does not play).
+    final dim = book.hidden || (PlayerScope.maybeOf(context)?.offlineDim(book) ?? false);
+    return dim ? Opacity(key: ValueKey('dim-${book.id}'), opacity: 0.5, child: card) : card;
   }
 }
 

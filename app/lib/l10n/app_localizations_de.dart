@@ -1721,11 +1721,25 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get offlineBannerManual =>
-      'Offline-Modus · nur heruntergeladene Titel werden angezeigt';
+      'Offline-Modus · nur heruntergeladene Titel';
 
   @override
   String get offlineBannerUnreachable =>
-      'Server nicht erreichbar · nur heruntergeladene Titel werden angezeigt';
+      'Server nicht erreichbar · nur heruntergeladene Titel';
+
+  @override
+  String get offlineBannerAllManual =>
+      'Offline-Modus · alle Titel, nur heruntergeladene spielen';
+
+  @override
+  String get offlineBannerAllUnreachable =>
+      'Server nicht erreichbar · alle Titel, nur heruntergeladene spielen';
+
+  @override
+  String get offlineShowAll => 'Alle zeigen';
+
+  @override
+  String get offlineShowDownloaded => 'Nur heruntergeladene';
 
   @override
   String offlinePending(int count) {

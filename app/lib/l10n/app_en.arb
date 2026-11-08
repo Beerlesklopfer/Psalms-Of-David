@@ -1008,8 +1008,12 @@
       }
     }
   },
-  "offlineBannerManual": "Offline mode · only downloaded titles are shown",
-  "offlineBannerUnreachable": "Server not reachable · only downloaded titles are shown",
+  "offlineBannerManual": "Offline mode · downloaded titles only",
+  "offlineBannerUnreachable": "Server not reachable · downloaded titles only",
+  "offlineBannerAllManual": "Offline mode · all titles, only downloaded ones play",
+  "offlineBannerAllUnreachable": "Server not reachable · all titles, only downloaded ones play",
+  "offlineShowAll": "Show all",
+  "offlineShowDownloaded": "Downloaded only",
   "offlinePending": "{count, plural, =1{1 change waits for the server} other{{count} changes wait for the server}}",
   "@offlinePending": {"placeholders": {"count": {"type": "int"}}},
   "offlineRetry": "Try again",
