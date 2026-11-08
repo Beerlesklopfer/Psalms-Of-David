@@ -7,6 +7,7 @@
 //! |---|---|
 //! | `GET /pictures` | the page |
 //! | `GET /pictures/list?source=…&from=…&to=…&videos=on` | like `GET /api/v1/pictures` |
+//! | `GET /pictures/project?…&order=…&seconds=…&transition=…&info=…&music=…` | the project: a ZIP that plays without the server |
 //! | `GET /pictures/{key}/thumb`, `/screen`, `/file`, `/info` | like the apps |
 //! | `GET /pictures/music/{playlist}` | `{tracks: [{id, title, artist}]}`: the entries of an own playlist the person may hear now |
 //! | `GET /pictures/track/{id}` | a track of such a playlist (with `Range`; `?as=mp3` for a browser that cannot play the format) |
@@ -38,6 +39,11 @@ pub async fn list(State(state): State<AppState>, s: Session, RawQuery(raw): RawQ
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
+}
+
+/// The project of the slideshow: the same choice as one file that plays without the server (`crate::show_project`).
+pub async fn project(State(state): State<AppState>, s: Session, RawQuery(raw): RawQuery) -> Response {
+    crate::show_project::response(state.store.clone(), state.library.clone(), s.user_id, s.role, s.lang, raw).await
 }
 
 pub async fn picture(State(state): State<AppState>, s: Session, axum::extract::Path((key, what)): axum::extract::Path<(String, String)>, req: axum::extract::Request) -> Response {

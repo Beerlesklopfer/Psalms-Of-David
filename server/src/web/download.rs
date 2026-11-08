@@ -149,19 +149,19 @@ impl hyper::body::Body for QueueBody {
 }
 
 /// The filling end: counts what was handed to the connection.
-struct Sink {
+pub(crate) struct Sink {
     tx: mpsc::Sender<io::Result<Bytes>>,
-    sent: u64,
+    pub(crate) sent: u64,
 }
 
 impl Sink {
-    fn new() -> (Sink, Body) {
+    pub(crate) fn new() -> (Sink, Body) {
         let (tx, rx) = mpsc::channel(QUEUE);
         (Sink { tx, sent: 0 }, Body::new(QueueBody { rx }))
     }
 
     /// False when the connection is gone.
-    async fn put(&mut self, data: Vec<u8>) -> bool {
+    pub(crate) async fn put(&mut self, data: Vec<u8>) -> bool {
         let n = data.len() as u64;
         if self.tx.send(Ok(Bytes::from(data))).await.is_err() {
             return false;
@@ -171,7 +171,7 @@ impl Sink {
     }
 
     /// Ends the body with an error, so that the client sees a broken transfer and not a file that looks complete.
-    async fn abort(&mut self, why: &str) {
+    pub(crate) async fn abort(&mut self, why: &str) {
         let _ = self.tx.send(Err(io::Error::other(why.to_owned()))).await;
     }
 }
@@ -343,49 +343,70 @@ pub fn entry_names(tracks: &[track::Model]) -> Vec<String> {
 async fn pump_zip(sink: &mut Sink, plan: Vec<Planned>) -> bool {
     let mut zip = ZipWriter::new();
     for entry in plan {
-        let mut file = match tokio::fs::File::open(&entry.path).await {
-            Ok(f) => f,
-            Err(_) => {
-                sink.abort("a file cannot be opened").await;
-                return false;
-            }
-        };
-        if !sink.put(zip.start_entry(&entry.name, entry.size)).await {
-            return false;
-        }
-        let (mut crc, mut done) = (Crc32::new(), 0u64);
-        loop {
-            let mut buf = vec![0u8; CHUNK];
-            match file.read(&mut buf).await {
-                Err(_) => {
-                    sink.abort("a file cannot be read").await;
-                    return false;
-                }
-                Ok(0) => break,
-                Ok(n) => {
-                    buf.truncate(n);
-                    crc.update(&buf);
-                    done += n as u64;
-                    zip.data_written(n as u64);
-                    // The header promised `size` bytes (and decided on ZIP64 with it): a file that changed while it is read breaks the archive.
-                    if done > entry.size || !sink.put(buf).await {
-                        if done > entry.size {
-                            sink.abort("a file changed while it was read").await;
-                        }
-                        return false;
-                    }
-                }
-            }
-        }
-        if done != entry.size {
-            sink.abort("a file changed while it was read").await;
-            return false;
-        }
-        if !sink.put(zip.finish_entry(crc.finish(), done)).await {
+        if !zip_file(sink, &mut zip, &entry.name, &entry.path, entry.size).await {
             return false;
         }
     }
     sink.put(zip.finish()).await
+}
+
+/// One file of the disk as an entry of a streamed archive; `size` is what the header promises. False when the connection is gone or the
+/// file cannot be read or changed while it was read (the body is broken off then).
+pub(crate) async fn zip_file(sink: &mut Sink, zip: &mut ZipWriter, name: &str, path: &std::path::Path, size: u64) -> bool {
+    let mut file = match tokio::fs::File::open(path).await {
+        Ok(f) => f,
+        Err(_) => {
+            sink.abort("a file cannot be opened").await;
+            return false;
+        }
+    };
+    if !sink.put(zip.start_entry(name, size)).await {
+        return false;
+    }
+    let (mut crc, mut done) = (Crc32::new(), 0u64);
+    loop {
+        let mut buf = vec![0u8; CHUNK];
+        match file.read(&mut buf).await {
+            Err(_) => {
+                sink.abort("a file cannot be read").await;
+                return false;
+            }
+            Ok(0) => break,
+            Ok(n) => {
+                buf.truncate(n);
+                crc.update(&buf);
+                done += n as u64;
+                zip.data_written(n as u64);
+                // The header promised `size` bytes (and decided on ZIP64 with it): a file that changed while it is read breaks the archive.
+                if done > size || !sink.put(buf).await {
+                    if done > size {
+                        sink.abort("a file changed while it was read").await;
+                    }
+                    return false;
+                }
+            }
+        }
+    }
+    if done != size {
+        sink.abort("a file changed while it was read").await;
+        return false;
+    }
+    sink.put(zip.finish_entry(crc.finish(), done)).await
+}
+
+/// Bytes made in memory (a text of the archive) as an entry.
+pub(crate) async fn zip_bytes(sink: &mut Sink, zip: &mut ZipWriter, name: &str, bytes: Vec<u8>) -> bool {
+    let mut crc = Crc32::new();
+    crc.update(&bytes);
+    let n = bytes.len() as u64;
+    if !sink.put(zip.start_entry(name, n)).await {
+        return false;
+    }
+    zip.data_written(n);
+    if !sink.put(bytes).await {
+        return false;
+    }
+    sink.put(zip.finish_entry(crc.finish(), n)).await
 }
 
 async fn download_album(State(state): State<AppState>, s: AdminSession, method: Method, UrlPath(book_id): UrlPath<i64>) -> Response {

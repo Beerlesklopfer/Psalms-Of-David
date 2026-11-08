@@ -9,7 +9,7 @@
 //! state-changing requests, and, for the pages and procedures themselves, the
 //! session check that demands an administrator.
 
-mod download;
+pub(crate) mod download;
 mod handlers;
 
 use std::sync::Arc;
@@ -186,6 +186,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/rpc/policies.save", post(handlers::policies_save))
         .route("/pictures", get(handlers::pictures::page))
         .route("/pictures/list", get(handlers::pictures::list))
+        .route("/pictures/project", get(handlers::pictures::project))
         .route("/pictures/music/{id}", get(handlers::pictures::music))
         .route("/pictures/track/{id}", get(handlers::pictures::track))
         .route("/pictures/{key}/{what}", get(handlers::pictures::picture))

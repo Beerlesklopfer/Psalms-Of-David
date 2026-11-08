@@ -47,3 +47,15 @@ body.show-open { overflow: hidden; }
   .show-layer { transition: none; }
   .show-layer.kb { animation: none; }
 }
+
+/* The player of a project (static/show-project.html): a page of its own, opened from the disk, without the styles of the server. */
+body.show-project { margin: 0; min-height: 100vh; background: #14110f; color: #f3ede4; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.project-start { box-sizing: border-box; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem;
+  padding: max(1.5rem, env(safe-area-inset-top)) 1rem max(1.5rem, env(safe-area-inset-bottom)); text-align: center; }
+.project-start h1 { margin: 0; font-size: clamp(1.5rem, 6vw, 2.5rem); font-weight: 600; overflow-wrap: anywhere; }
+.project-count { margin: 0; opacity: .8; }
+.project-btn { min-height: 3rem; min-width: 10rem; padding: .75rem 1.5rem; border: 0; border-radius: .75rem; background: #c9a35b; color: #14110f; font-size: 1.1rem; font-weight: 600; cursor: pointer; }
+.project-btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.project-btn:disabled { opacity: .5; cursor: default; }
+.project-note { margin: 0; max-width: 32rem; font-size: .9rem; opacity: .7; }
+.project-note[hidden] { display: none; }

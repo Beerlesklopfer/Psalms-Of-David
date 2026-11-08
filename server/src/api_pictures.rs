@@ -7,6 +7,7 @@
 //! |---|---|
 //! | `GET /pictures/sources` | `{sources: [{id, kind, name, count, first, last}], places, videos}`: what the person may choose (`own`, `p<id>` a child, `f:<folder>` an old folder); `places`: the server names the places; `videos`: it can show a frame of a video |
 //! | `GET /pictures?source=<id>&source=…&from=<ms>&to=<ms>&videos=on` | `{pictures: [{key, source, name, mime, video, taken_at}]}`, the oldest first (no `source`: all); at most 50000 |
+//! | `GET /pictures/project?source=…&from=…&to=…&videos=on&order=…&seconds=…&transition=…&info=…&music=<playlist>` | the project of a slideshow: a ZIP with `show.json`, the pictures, videos and music, that plays without the server (`crate::show_project`) |
 //! | `GET /pictures/{key}/thumb` | a preview (JPEG, at most 480 px), `404 no_preview` when the server cannot make one |
 //! | `GET /pictures/{key}/screen` | the picture for the screen (JPEG, at most 2048 px, upright); for a video one frame of it; `404 no_preview` |
 //! | `GET /pictures/{key}/file` | the original (with `Range`, for a video) |
@@ -33,6 +34,7 @@ pub fn routes() -> Router<ApiState> {
     Router::new()
         .route("/api/v1/pictures", get(list))
         .route("/api/v1/pictures/sources", get(sources))
+        .route("/api/v1/pictures/project", get(project))
         .route("/api/v1/pictures/{key}/thumb", get(thumb))
         .route("/api/v1/pictures/{key}/screen", get(screen))
         .route("/api/v1/pictures/{key}/file", get(file))
@@ -111,6 +113,12 @@ pub async fn made(store: &Store, user: i64, role: crate::roles::Role, key: &str,
             _ => ApiError(StatusCode::NOT_FOUND, "no_preview").into_response(),
         },
     }
+}
+
+/// The project of a slideshow (`crate::show_project`): the device keeps it and plays it without the server.
+async fn project(State(s): State<ApiState>, d: Device, headers: HeaderMap, RawQuery(raw): RawQuery) -> Response {
+    let lang = crate::admin::i18n::Lang::from_accept_language(headers.get(header::ACCEPT_LANGUAGE).and_then(|v| v.to_str().ok()).unwrap_or_default());
+    crate::show_project::response(s.store.clone(), s.library.clone(), d.user_id, d.role, lang, raw).await
 }
 
 async fn thumb(State(s): State<ApiState>, d: Device, Path(key): Path<String>, req: Request) -> Response {

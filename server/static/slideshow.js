@@ -3,11 +3,15 @@
 // The slideshow of the browser (docs/spec-pictures.md, step 2; templates/pictures.html). It is the model of the slideshow in the apps
 // (project owner, 2026-11-08): made for the phone first. A tap shows the controls, a swipe goes forward or back, the keys do the same on a
 // computer (arrows, space, Escape). The choices are kept in this browser (localStorage), nothing else is.
+// The same script plays a project of a slideshow (src/show_project.rs): opened from the disk, it reads `window.DAVID_SHOW` (show.js)
+// and its files lie next to it, so it needs neither the server nor a network.
 (() => {
   'use strict';
   const form = document.getElementById('show-form');
   const show = document.getElementById('show');
-  if (!form || !show) return;
+  const project = window.DAVID_SHOW;
+  const offline = !form && !!project;
+  if (!show || (!form && !offline)) return;
 
   const $ = (id) => document.getElementById(id);
   const stage = $('show-stage');
@@ -19,7 +23,7 @@
   const placeEl = $('show-place');
   const toastEl = $('show-toast');
   const lang = show.dataset.lang || 'en';
-  const placesOn = show.dataset.places === 'true';
+  const placesOn = offline || show.dataset.places === 'true';
   const KEY = 'david.slideshow';
   const FADE_MS = 1000;
 
@@ -82,31 +86,43 @@
     }
   }
 
-  restore();
-  recount();
-  form.addEventListener('change', recount);
+  if (form) {
+    restore();
+    recount();
+    form.addEventListener('change', recount);
+    $('show-save').addEventListener('click', () => {
+      // The project: the same choice as a file that plays without the server (a download; the page stays).
+      const c = choices();
+      remember(c);
+      if (!c.sources.length) { errorEl.textContent = show.dataset.tEmpty; errorEl.hidden = false; return; }
+      errorEl.hidden = true;
+      const q = query(c);
+      for (const f of ['order', 'seconds', 'transition', 'videos', 'info', 'music']) if (c[f]) q.set(f, c[f]);
+      window.location.href = '/pictures/project?' + q;
+    });
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    errorEl.hidden = true;
-    const c = choices();
-    remember(c);
-    let list;
-    try {
-      list = await fetchList(c);
-    } catch {
-      errorEl.textContent = show.dataset.tFailed;
-      errorEl.hidden = false;
-      return;
-    }
-    if (!list.length) {
-      errorEl.textContent = show.dataset.tEmpty;
-      errorEl.hidden = false;
-      return;
-    }
-    if (c.order === 'random') shuffle(list);
-    start(list, c);
-  });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorEl.hidden = true;
+      const c = choices();
+      remember(c);
+      let list;
+      try {
+        list = await fetchList(c);
+      } catch {
+        errorEl.textContent = show.dataset.tFailed;
+        errorEl.hidden = false;
+        return;
+      }
+      if (!list.length) {
+        errorEl.textContent = show.dataset.tEmpty;
+        errorEl.hidden = false;
+        return;
+      }
+      if (c.order === 'random') shuffle(list);
+      start(list, c);
+    });
+  }
 
   function shuffle(a) {
     for (let i = a.length - 1; i > 0; i--) {
@@ -114,6 +130,23 @@
       [a[i], a[j]] = [a[j], a[i]];
     }
     return a;
+  }
+
+  if (offline) {
+    const count = $('project-count');
+    const broken = !Array.isArray(project.pictures) || project.format !== 'david-slideshow' || project.version > 1;
+    if (broken) {
+      $('project-error').hidden = false;
+      $('project-start').disabled = true;
+    } else {
+      count.textContent = show.dataset.tCount.replace('{n}', String(project.pictures.length));
+      $('project-start').addEventListener('click', () => {
+        const list = project.pictures.slice();
+        const c = Object.assign({}, project.settings, { seconds: String(project.settings.seconds), music: (project.music || []).length ? 'project' : '' });
+        if (c.order === 'random') shuffle(list);
+        start(list, c);
+      });
+    }
   }
 
   // ---- The show ----------------------------------------------------------------------------------------------------------------------
@@ -130,6 +163,9 @@
   const infos = new Map();
 
   const url = (key, what) => '/pictures/' + encodeURIComponent(key) + '/' + what;
+  // Where a picture and a video come from: the server, or the files of the project next to the page.
+  const screenOf = (item) => (offline ? item.image : url(item.key, 'screen'));
+  const videoOf = (item) => (offline ? item.video : url(item.key, 'file'));
 
   async function start(list, c) {
     items = list;
@@ -190,7 +226,7 @@
     const next = layers[1 - front];
     const kind = transitionOf();
     next.classList.remove('on', 'kb', 'cut');
-    next.src = url(item.key, 'screen');
+    next.src = screenOf(item);
     try {
       await next.decode();
     } catch {
@@ -219,7 +255,7 @@
 
   function preload(i) {
     const item = items[(i + items.length) % items.length];
-    if (item && !item.video) { const im = new Image(); im.src = url(item.key, 'screen'); }
+    if (item && !item.video) { const im = new Image(); im.src = screenOf(item); }
   }
 
   // ---- Videos: they play through, the music is quieter meanwhile -----------------------------------------------------------------------
@@ -227,8 +263,8 @@
   function playVideo(item, mine) {
     layers.forEach((l) => l.classList.remove('on'));
     video.hidden = false;
-    video.poster = url(item.key, 'screen');
-    video.src = url(item.key, 'file');
+    video.poster = screenOf(item);
+    video.src = videoOf(item);
     video.onended = () => { if (mine === step) go(1); };
     video.onerror = () => { if (mine === step) go(1); };
     duck(true);
@@ -270,6 +306,13 @@
   let mp3 = false;
 
   async function startMusic(id) {
+    if (offline) {
+      tracks = (project.music || []).slice();
+      if (opts.order === 'random') shuffle(tracks);
+      track = 0;
+      playTrack();
+      return;
+    }
     try {
       const r = await fetch('/pictures/music/' + encodeURIComponent(id), { credentials: 'same-origin' });
       tracks = r.ok ? (await r.json()).tracks || [] : [];
@@ -283,15 +326,15 @@
   function playTrack() {
     if (!running || !tracks.length) return;
     music.volume = video.hidden ? 1 : 0.15;
-    music.src = '/pictures/track/' + tracks[track].id + (mp3 ? '?as=mp3' : '');
+    music.src = offline ? tracks[track].file : '/pictures/track/' + tracks[track].id + (mp3 ? '?as=mp3' : '');
     music.play().catch(() => toast(show.dataset.tMusicFailed));
   }
 
   music.addEventListener('ended', () => { mp3 = false; track = (track + 1) % tracks.length; playTrack(); });
   music.addEventListener('error', () => {
     if (!music.getAttribute('src')) return;
-    // The browser cannot play this format: once more as an MP3 the server makes, then the next track.
-    if (!mp3) { mp3 = true; playTrack(); return; }
+    // The browser cannot play this format: once more as an MP3 the server makes, then the next track (a project holds MP3s already).
+    if (!mp3 && !offline) { mp3 = true; playTrack(); return; }
     mp3 = false;
     track = (track + 1) % tracks.length;
     if (tracks.length > 1) playTrack();
@@ -304,6 +347,7 @@
     dateEl.textContent = new Intl.DateTimeFormat(lang, { dateStyle: 'long' }).format(new Date(item.taken_at));
     placeEl.textContent = '';
     if (opts.info !== 'both' || !placesOn || item.video) return;
+    if (offline) { placeEl.textContent = item.place || ''; return; }
     const known = infos.get(item.key);
     if (known !== undefined) { placeEl.textContent = known || ''; return; }
     fetch(url(item.key, 'info'), { credentials: 'same-origin' })

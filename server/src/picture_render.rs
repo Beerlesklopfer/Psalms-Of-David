@@ -66,6 +66,55 @@ pub fn forget(data_dir: &Path, key: &str) {
     for size in [Size::Thumb, Size::Screen] {
         let _ = std::fs::remove_file(cache_path(data_dir, key, size));
     }
+    let _ = std::fs::remove_file(video_path(data_dir, key));
+}
+
+/// Where the MP4 of a video for a project of a slideshow is kept.
+pub fn video_path(data_dir: &Path, key: &str) -> PathBuf {
+    cache_dir(data_dir).join(format!("{key}-video.mp4"))
+}
+
+/// A video as an MP4 that every device plays (H.264 and AAC, at most 1920 px, the index in front), for a project of a slideshow that has
+/// to play without the server (docs/spec-pictures.md). Kept in the cache like the pictures; `None` without ffmpeg or for a damaged file.
+pub async fn video_mp4(data_dir: &Path, key: &str, source: &Path) -> Option<PathBuf> {
+    let cached = video_path(data_dir, key);
+    if fresh(&cached, source) {
+        return Some(cached);
+    }
+    if !has_ffmpeg() {
+        return None;
+    }
+    let _permit = semaphore().acquire().await.ok()?;
+    if fresh(&cached, source) {
+        return Some(cached);
+    }
+    let (source, target) = (source.to_path_buf(), cached.clone());
+    let made = tokio::task::spawn_blocking(move || -> Option<()> {
+        let dir = target.parent()?;
+        std::fs::create_dir_all(dir).ok()?;
+        let temp = dir.join(format!(".{}.part.mp4", uuid::Uuid::new_v4().simple()));
+        let scale = "scale='if(gt(iw,ih),min(1920,iw),-2)':'if(gt(iw,ih),-2,min(1920,ih))'";
+        let ok = Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-y", "-i"])
+            .arg(&source)
+            .args(["-map", "0:v:0", "-map", "0:a:0?", "-vf", scale, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p"])
+            .args(["-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"])
+            .arg(&temp)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+        if !ok || std::fs::rename(&temp, &target).is_err() {
+            let _ = std::fs::remove_file(&temp);
+            return None;
+        }
+        Some(())
+    })
+    .await
+    .ok()
+    .flatten();
+    made.map(|()| cached)
 }
 
 fn semaphore() -> &'static tokio::sync::Semaphore {
@@ -288,6 +337,30 @@ mod tests {
         let jpeg = render(&path, "video/mp4", Size::Thumb).expect("a frame");
         let back = image::load_from_memory(&jpeg).unwrap();
         assert_eq!((back.width(), back.height()), (480, 270));
+    }
+
+    #[tokio::test]
+    async fn a_video_becomes_an_mp4_every_device_plays_and_not_larger_than_the_screen() {
+        if !has_ffmpeg() {
+            eprintln!("no ffmpeg here: skipped");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clip.mkv");
+        let ok = Command::new("ffmpeg")
+            .args(["-v", "error", "-f", "lavfi", "-i", "testsrc=size=2400x1000:rate=10", "-f", "lavfi", "-i", "sine=frequency=440", "-t", "2", "-c:v", "mpeg4", "-y"])
+            .arg(&path)
+            .status()
+            .is_ok_and(|s| s.success());
+        assert!(ok);
+        let made = video_mp4(dir.path(), "l7", &path).await.expect("an MP4");
+        assert_eq!(made, video_path(dir.path(), "l7"));
+        let head = std::fs::read(&made).unwrap();
+        assert_eq!(&head[4..8], b"ftyp", "an MP4");
+        let frame = render(&made, "video/mp4", Size::Screen).unwrap();
+        assert_eq!(image::load_from_memory(&frame).unwrap().width(), 1920, "at most the width of a screen");
+        forget(dir.path(), "l7");
+        assert!(!made.exists());
     }
 
     #[tokio::test]

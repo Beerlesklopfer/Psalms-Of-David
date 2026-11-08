@@ -913,35 +913,13 @@ async fn stream(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>,
 /// A track for a person, with the checks of the age, the visibility and the hours; for the apps and for the music behind the slideshow
 /// of the browser. `?as=mp3` asks for an MP3 made from the file.
 pub(crate) async fn serve_track(store: &Store, library: Option<&Path>, user: i64, id: i64, req: Request) -> ApiResult<Response> {
-    let not_found = || ApiError(StatusCode::NOT_FOUND, "not_found");
-    let t = track::Entity::find_by_id(id).one(&store.db.reader).await.map_err(Error::from)?.ok_or_else(not_found)?;
-    let (weekday, minute) = local_time(store).await;
-    match store.access(user, t.book_id, weekday, minute).await? {
-        Access::Allowed => {}
-        Access::NotVisible => return Err(not_found()),
-        Access::OutsideSchedule { .. } => return Err(ApiError(StatusCode::FORBIDDEN, "outside_schedule")),
-    }
-    let b = book::Entity::find_by_id(t.book_id).one(&store.db.reader).await.map_err(Error::from)?.ok_or_else(not_found)?;
-    let path = resolve(store, library, &b.folder, &t.file).await.ok_or_else(not_found)?;
     // `?as=mp3`: a device that cannot play the format asks for an MP3 made from the file (docs/spec-transcoding.md). An MP3 is served as it is.
-    let as_mp3 = match stream_query(&req).as_deref() {
+    let want_mp3 = match stream_query(&req).as_deref() {
         None | Some("") => false,
-        Some("mp3") => crate::audioformat::mime_or_guess(&t.mime_type, &t.file) != "audio/mpeg",
+        Some("mp3") => true,
         Some(_) => return Err(ApiError(StatusCode::BAD_REQUEST, "unsupported_as")),
     };
-    let mut served_mime = crate::audioformat::mime_or_guess(&t.mime_type, &t.file);
-    let path = if as_mp3 {
-        let kbps = store.setting("transcode_kbps").await?.and_then(|v| v.trim().parse::<u32>().ok()).filter(|n| *n > 0).unwrap_or(crate::transcode::DEFAULT_KBPS);
-        let limit_mb = store.setting("transcode_cache_mb").await?.and_then(|v| v.trim().parse::<u64>().ok()).filter(|n| *n > 0).unwrap_or(crate::transcode::DEFAULT_CACHE_MB);
-        let made = store.transcoder().await.mp3_of(t.id, &path, kbps, limit_mb).await.map_err(|e| {
-            tracing::warn!(track = t.id, error = %e, "transcoding failed");
-            ApiError(StatusCode::UNPROCESSABLE_ENTITY, "transcode_failed")
-        })?;
-        served_mime = "audio/mpeg".to_owned();
-        made
-    } else {
-        path
-    };
+    let (t, path, served_mime, as_mp3) = track_file(store, library, user, id, want_mp3).await?;
     // A whole-file request (a download) gets the SHA-256 of what is sent, so the app can check the file; a range request (playing) does not.
     let whole = !req.headers().contains_key(header::RANGE);
     let digest = if whole { file_digest(store, &t, &path, as_mp3).await } else { None };
@@ -958,6 +936,36 @@ pub(crate) async fn serve_track(store: &Store, library: Option<&Path>, user: i64
         }
     }
     Ok(res)
+}
+
+/// The file of a track that a person may hear now (the age, the visibility, the hours), or, with `want_mp3`, an MP3 made from it (an MP3
+/// stays as it is): the row, the path, the mime type of what the path holds, and whether it was made.
+pub(crate) async fn track_file(store: &Store, library: Option<&Path>, user: i64, id: i64, want_mp3: bool) -> ApiResult<(track::Model, PathBuf, String, bool)> {
+    let not_found = || ApiError(StatusCode::NOT_FOUND, "not_found");
+    let t = track::Entity::find_by_id(id).one(&store.db.reader).await.map_err(Error::from)?.ok_or_else(not_found)?;
+    let (weekday, minute) = local_time(store).await;
+    match store.access(user, t.book_id, weekday, minute).await? {
+        Access::Allowed => {}
+        Access::NotVisible => return Err(not_found()),
+        Access::OutsideSchedule { .. } => return Err(ApiError(StatusCode::FORBIDDEN, "outside_schedule")),
+    }
+    let b = book::Entity::find_by_id(t.book_id).one(&store.db.reader).await.map_err(Error::from)?.ok_or_else(not_found)?;
+    let path = resolve(store, library, &b.folder, &t.file).await.ok_or_else(not_found)?;
+    let as_mp3 = want_mp3 && crate::audioformat::mime_or_guess(&t.mime_type, &t.file) != "audio/mpeg";
+    let mut served_mime = crate::audioformat::mime_or_guess(&t.mime_type, &t.file);
+    let path = if as_mp3 {
+        let kbps = store.setting("transcode_kbps").await?.and_then(|v| v.trim().parse::<u32>().ok()).filter(|n| *n > 0).unwrap_or(crate::transcode::DEFAULT_KBPS);
+        let limit_mb = store.setting("transcode_cache_mb").await?.and_then(|v| v.trim().parse::<u64>().ok()).filter(|n| *n > 0).unwrap_or(crate::transcode::DEFAULT_CACHE_MB);
+        let made = store.transcoder().await.mp3_of(t.id, &path, kbps, limit_mb).await.map_err(|e| {
+            tracing::warn!(track = t.id, error = %e, "transcoding failed");
+            ApiError(StatusCode::UNPROCESSABLE_ENTITY, "transcode_failed")
+        })?;
+        served_mime = "audio/mpeg".to_owned();
+        made
+    } else {
+        path
+    };
+    Ok((t, path, served_mime, as_mp3))
 }
 
 /// The header of a whole-file answer that carries the SHA-256 (hex) of the file sent.

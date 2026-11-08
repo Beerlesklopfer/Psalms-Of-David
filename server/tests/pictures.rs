@@ -198,6 +198,17 @@ async fn the_browser_shows_the_page_and_loads_the_pictures_with_the_session() {
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(root.path().join("Hochzeit")).unwrap();
     std::fs::write(root.path().join("Hochzeit/kuss.png"), png(1200, 900)).unwrap();
+    std::fs::create_dir_all(root.path().join("Urlaub")).unwrap();
+    std::fs::write(root.path().join("Urlaub/strand.png"), png(3000, 2000)).unwrap();
+    let ffmpeg = david_server::picture_render::has_ffmpeg();
+    if ffmpeg {
+        let ok = std::process::Command::new("ffmpeg")
+            .args(["-v", "error", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=10", "-t", "2", "-c:v", "mpeg4", "-y"])
+            .arg(root.path().join("Urlaub/welle.avi"))
+            .status()
+            .is_ok_and(|s| s.success());
+        assert!(ok);
+    }
     store.save_settings(&[("photo_library".into(), root.path().to_str().unwrap().into()), ("photo_places".into(), "off".into())]).await.unwrap();
     store.scan_photo_library().await.unwrap();
     let cd = david_server::cdimport::CdService::new(data.path());
@@ -251,11 +262,56 @@ async fn the_browser_shows_the_page_and_loads_the_pictures_with_the_session() {
     let (status, headers, body) = get(format!("/pictures/{key}/screen"), anna_c.clone()).await;
     assert_eq!((status, headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap()), (StatusCode::OK, "image/jpeg"));
     assert_eq!(image::load_from_memory(&body).unwrap().width(), 1200, "a small picture stays as large as it is");
-    assert_eq!(get(format!("/pictures/{key}/screen"), guest_c).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(get(format!("/pictures/{key}/screen"), guest_c.clone()).await.0, StatusCode::NOT_FOUND);
     assert_eq!(get(format!("/pictures/{key}/nonsense"), anna_c.clone()).await.0, StatusCode::NOT_FOUND);
     let (status, _, body) = get(format!("/pictures/{key}/info"), anna_c.clone()).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(serde_json::from_slice::<Value>(&body).unwrap()["place"], Value::Null);
-    let (status, _, _) = get("/admin/static/slideshow.js".into(), anna_c).await;
+    let (status, _, _) = get("/admin/static/slideshow.js".into(), anna_c.clone()).await;
     assert_eq!(status, StatusCode::OK);
+
+    // The project: one ZIP that plays without the server, with the player, the pictures (screen size), the videos as MP4 and show.json.
+    let (status, headers, body) = get("/pictures/project?source=f%3AUrlaub&videos=on&order=random&seconds=5&transition=zoom&info=both".into(), anna_c.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers.get(header::CONTENT_TYPE).unwrap(), "application/zip");
+    assert!(headers.get(header::CONTENT_DISPOSITION).unwrap().to_str().unwrap().contains(".zip"));
+    let entries = david_server::zipstream::list(&body).expect("a whole archive");
+    let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+    for needed in ["show.json", "show.js", "index.html", "slideshow.js", "slideshow.css", "pictures/0001.jpg"] {
+        assert!(names.contains(&needed), "{needed} in {names:?}");
+    }
+    let entry = |name: &str| -> Vec<u8> {
+        let e = entries.iter().find(|e| e.name == name).unwrap();
+        let at = e.offset as usize;
+        let n = u16::from_le_bytes([body[at + 26], body[at + 27]]) as usize;
+        let x = u16::from_le_bytes([body[at + 28], body[at + 29]]) as usize;
+        body[at + 30 + n + x..at + 30 + n + x + e.size as usize].to_vec()
+    };
+    let show: Value = serde_json::from_slice(&entry("show.json")).unwrap();
+    assert_eq!((show["format"].as_str(), show["version"].as_u64(), show["lang"].as_str()), (Some("david-slideshow"), Some(1), Some("de")));
+    assert_eq!(show["settings"], serde_json::json!({ "order": "random", "seconds": 5, "transition": "zoom", "videos": "on", "info": "both" }));
+    let pictures = show["pictures"].as_array().unwrap();
+    assert_eq!(pictures.len(), if ffmpeg { 2 } else { 1 }, "{show}");
+    for p in pictures {
+        assert!(names.contains(&p["image"].as_str().unwrap()), "every picture named is in the archive: {p}");
+        assert!(p["taken_at"].as_i64().is_some() && p["place"].is_null(), "no places when the server names none: {p}");
+    }
+    let still = pictures.iter().find(|p| p["video"].is_null()).unwrap();
+    assert_eq!(image::load_from_memory(&entry(still["image"].as_str().unwrap())).unwrap().width(), 2048, "the screen size");
+    if ffmpeg {
+        let clip = pictures.iter().find(|p| !p["video"].is_null()).unwrap();
+        assert_eq!(&entry(clip["video"].as_str().unwrap())[4..8], b"ftyp", "the video as an MP4");
+    }
+    assert!(show["music"].as_array().unwrap().is_empty());
+    let script = String::from_utf8(entry("show.js")).unwrap();
+    assert!(script.starts_with("window.DAVID_SHOW = {"));
+    let page = String::from_utf8(entry("index.html")).unwrap();
+    assert!(page.contains("<html lang=\"de\">") && page.contains("Diese Diashow läuft ohne Server"), "{page}");
+    assert_eq!(entry("slideshow.js"), std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/static/slideshow.js")).unwrap());
+    // A guest gets none, and neither does a choice of nothing the person may see.
+    assert_eq!(get("/pictures/project?source=f%3AUrlaub".into(), guest_c.clone()).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(get("/pictures/project?source=p999".into(), anna_c.clone()).await.0, StatusCode::NOT_FOUND);
+    // The page offers it.
+    let (_, _, body) = get("/pictures".into(), anna_c).await;
+    assert!(String::from_utf8_lossy(&body).contains("id=\"show-save\""));
 }

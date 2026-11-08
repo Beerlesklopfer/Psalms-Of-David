@@ -75,9 +75,11 @@
     </div>
   </fieldset>
 
+  <p class="unit">{{ t("pictures.save_explain") }}</p>
   <div class="form-error" role="alert" id="show-error" hidden></div>
   <div class="form-foot">
     <span class="unit" id="show-count" aria-live="polite"></span>
+    <button type="button" class="btn outline" id="show-save" title="{{ t("pictures.save_hint") }}">{{ t("pictures.save") }}</button>
     <button type="submit" class="btn" id="show-start">{{ t("pictures.start") }}</button>
   </div>
 </form>

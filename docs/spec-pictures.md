@@ -56,10 +56,31 @@ taken: the coordinates from the EXIF data, rounded to three places (about 100 m)
 
 `/api/v1/pictures`, see `server/src/api_pictures.rs`: `sources`, the list, `thumb`, `screen`, `file`, `info`.
 
-## 6. Steps
+## 6. The project: a slideshow as one file
+
+Decided by the project owner on 2026-11-08: a slideshow has to lie on a device by itself, to be shown without the server and without a
+network ("auf den Geräten muss die Datei autonom liegen"). The page `/pictures` saves the choice as a project ("Als Projekt speichern",
+`GET /pictures/project`, for the apps `GET /api/v1/pictures/project`, with the query of the list and the choices `order`, `seconds`,
+`transition`, `videos`, `info`, `music`). It is one ZIP file, written while it is sent (`server/src/show_project.rs`):
+
+| Entry | What |
+|---|---|
+| `show.json` | `{format: "david-slideshow", version: 1, title, lang, made_at, settings: {order, seconds, transition, videos, info}, pictures: [{image, video, taken_at, place}], music: [{file, title, artist}]}`; the apps read it |
+| `show.js` | the same as `window.DAVID_SHOW = …`, for a browser that opens `index.html` from the disk |
+| `index.html`, `slideshow.js`, `slideshow.css` | the player: the slideshow of `/pictures` (the same script), reading the project |
+| `pictures/0001.jpg` … | the pictures in the screen size; the frame of a video is its poster |
+| `videos/0002.mp4` … | the videos as H.264/AAC (at most 1920 px), which every device plays; made by ffmpeg and kept in the cache |
+| `music/01.mp3` … | the music of the chosen playlist as MP3 |
+
+A picture the server cannot show is left out; `show.json` comes last and names only what is in the archive. On a computer the file is
+unpacked and `index.html` opened; the apps keep it and play it (step 3). As a video for a television: see step 5.
+
+## 7. Steps
 
 1. Server: the old folders, the previews (with HEIC and video), the places, the rules of access, the interface. *(done)*
 2. Browser: the slideshow on the pages of the server (`/pictures`, menu of the person), for every person who signs in except a guest.
    It is the model of the slideshow in the apps (project owner, 2026-11-08): made for the phone first (tap shows the controls, swipe
    left/right goes on/back, swipe down ends it), the same choices in the same order. *(done)*
-3. Apps: the slideshow with the music.
+3. Apps: the slideshow with the music, and the projects kept on the device and played without the server.
+4. The project as one file (6), with the player of the browser. *(done)*
+5. The project as a video (MP4) for a television or a USB stick.

@@ -1,0 +1,42 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+     SPDX-License-Identifier: AGPL-3.0-or-later
+     The player of a project of a slideshow (src/show_project.rs): opened from the disk, without the server and without a network. -->
+<html lang="{lang}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{title}</title>
+  <link rel="stylesheet" href="slideshow.css">
+  <script src="show.js"></script>
+  <script src="slideshow.js" defer></script>
+</head>
+<body class="show-project">
+  <main class="project-start">
+    <h1>{title}</h1>
+    <p id="project-count" class="project-count"></p>
+    <button type="button" class="project-btn" id="project-start">{t:pictures.start}</button>
+    <p class="project-note" id="project-error" role="alert" hidden>{t:pictures.project.broken}</p>
+    <p class="project-note">{t:pictures.project.offline}</p>
+  </main>
+  <div id="show" class="show" hidden
+       data-lang="{lang}" data-places="true"
+       data-t-empty="{t:pictures.empty}" data-t-failed="{t:pictures.failed}" data-t-count="{t:pictures.count}"
+       data-t-paused="{t:pictures.paused}" data-t-music-failed="{t:pictures.music_failed}">
+    <div class="show-stage" id="show-stage">
+      <img class="show-layer" alt="" id="show-a">
+      <img class="show-layer" alt="" id="show-b">
+      <video class="show-video" id="show-video" playsinline preload="auto" hidden></video>
+    </div>
+    <div class="show-caption" id="show-caption"><span id="show-date"></span><span id="show-place"></span></div>
+    <div class="show-controls" id="show-controls">
+      <button type="button" class="show-btn" id="show-prev" aria-label="{t:pictures.prev}">&#x2039;</button>
+      <button type="button" class="show-btn" id="show-pause" aria-label="{t:pictures.pause}">&#x23EF;</button>
+      <button type="button" class="show-btn" id="show-next" aria-label="{t:pictures.next}">&#x203A;</button>
+      <button type="button" class="show-btn show-close" id="show-close" aria-label="{t:pictures.close}">&#x2715;</button>
+    </div>
+    <div class="show-toast" id="show-toast" role="status" hidden></div>
+    <audio id="show-music" preload="auto"></audio>
+  </div>
+</body>
+</html>
