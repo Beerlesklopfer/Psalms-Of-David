@@ -111,7 +111,7 @@ class _Shortcut extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Material(
+    final tile = Material(
       color: cs.surfaceContainerHigh,
       borderRadius: BorderRadius.circular(6),
       clipBehavior: Clip.antiAlias,
@@ -137,6 +137,8 @@ class _Shortcut extends StatelessWidget {
         ),
       ),
     );
+    // Offline with everything shown, as the cards of the library: one that is not downloaded is dimmed and does not open.
+    return (PlayerScope.maybeOf(context)?.offlineDim(book) ?? false) ? Opacity(key: ValueKey('dim-recent-${book.id}'), opacity: 0.5, child: tile) : tile;
   }
 }
 

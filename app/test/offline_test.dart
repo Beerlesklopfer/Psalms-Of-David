@@ -16,6 +16,7 @@ import 'package:psalm/offline/offline_controller.dart';
 import 'package:psalm/offline/offline_view.dart';
 import 'package:psalm/offline/outbox.dart';
 import 'package:psalm/player_controller.dart';
+import 'package:psalm/screens/home_screen.dart';
 import 'package:psalm/screens/item_screen.dart';
 import 'package:psalm/server/api_client.dart';
 import 'package:psalm/server/server_source.dart';
@@ -539,6 +540,30 @@ void main() {
       await tester.tap(find.text('Ganz').last);
       await tester.pumpAndSettle();
       expect(find.byType(ItemScreen), findsOneWidget);
+    });
+
+    testWidgets('offline "recently heard" on the home page follows the bar: only the downloaded ones, or all with the others dimmed', (tester) async {
+      final items = [
+        _book('1', 'Ganz', [_t(11, 'a')]),
+        _book('2', 'Nichts', [_t(21, 'b')]),
+      ];
+      final offline = OfflineController()..setManual(true);
+      final p = PlayerController(items, source: FakeSource({11, 21}, kept: {'book-1'}))..offline = offline;
+      p.recentIds.addAll(['2', '1']);
+      p.setOfflineView(offline.downloadedOnly);
+      await tester.pumpWidget(PlayerScope(controller: p, child: _app(const HomeScreen(), offline: offline)));
+      expect(find.text('Recently listened'), findsOneWidget);
+      expect(find.text('Nichts'), findsNothing);
+      expect(find.text('Ganz'), findsWidgets);
+      offline.toggleShowAll();
+      p.setOfflineView(offline.downloadedOnly);
+      await tester.pump();
+      expect(find.byKey(const ValueKey('dim-recent-2')), findsOneWidget);
+      expect(find.byKey(const ValueKey('dim-recent-1')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('dim-recent-2')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('offline-blocked')), findsOneWidget);
+      expect(find.byType(ItemScreen), findsNothing);
     });
 
     testWidgets('a page that needs the server says so offline', (tester) async {
