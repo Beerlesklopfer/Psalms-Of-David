@@ -1524,6 +1524,18 @@ async fn inbox(e: &Env, token: &str) -> Value {
     r.json()
 }
 
+/// Waits until the inbox of [token] holds an entry with [code]: the server sets the state of a job first and writes the entries of its
+/// event right after, so a test that saw the state may be a moment ahead of them.
+async fn wait_inbox(e: &Env, token: &str, code: &str) {
+    for _ in 0..200 {
+        if codes(&inbox(e, token).await).iter().any(|c| c == code) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("the inbox never got {code}: {}", inbox(e, token).await);
+}
+
 /// The codes in an inbox, newest first.
 fn codes(list: &Value) -> Vec<String> {
     list["items"]
@@ -1578,6 +1590,7 @@ async fn the_inbox_goes_to_the_starter_and_to_the_approvers_by_the_rights_and_to
         .as_i64()
         .unwrap();
     wait_state(&e, id, &["awaiting_approval"]).await;
+    wait_inbox(&e, &bea, "cd_awaiting_approval").await;
 
     // Everybody who may approve gets the task, with the buttons.
     for who in [&bea, &boss] {
@@ -1711,6 +1724,7 @@ async fn a_task_is_decided_once_for_everybody_and_the_others_get_a_notice_in_cod
         .as_i64()
         .unwrap();
     wait_state(&e, id, &["awaiting_approval"]).await;
+    wait_inbox(&e, &bea, "cd_awaiting_approval").await;
     let r = call(&e, "POST", &format!("/api/v1/cd/jobs/{id}/approve"), &bea, None).await;
     assert_eq!(r.status, StatusCode::OK, "{}", String::from_utf8_lossy(&r.bytes));
     // The slower decider is told who was faster.
@@ -1781,6 +1795,7 @@ async fn a_held_cd_that_expires_tells_the_approvers_and_the_starter_and_the_clea
         .as_i64()
         .unwrap();
     let since = wait_state(&e, id, &["awaiting_approval"]).await.held_ms.unwrap();
+    wait_inbox(&e, &bea, "cd_awaiting_approval").await;
     let day = 24 * 3600 * 1000;
     // A cleanup does not take a task nobody decided, however old.
     assert_eq!(e.store.inbox_cleanup(since + 400 * day, 90).await.unwrap(), 0);
