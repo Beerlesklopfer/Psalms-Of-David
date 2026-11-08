@@ -184,6 +184,13 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/rpc/ignore.remove", post(handlers::ignore_remove))
         .route("/admin/rpc/mcp.token_revoke", post(handlers::mcp_token_revoke))
         .route("/admin/rpc/policies.save", post(handlers::policies_save))
+        .route("/pictures", get(handlers::pictures::page))
+        .route("/pictures/list", get(handlers::pictures::list))
+        .route("/pictures/music/{id}", get(handlers::pictures::music))
+        .route("/pictures/track/{id}", get(handlers::pictures::track))
+        .route("/pictures/{key}/{what}", get(handlers::pictures::picture))
+        .route("/admin/static/slideshow.js", get(handlers::pictures::script))
+        .route("/admin/static/slideshow.css", get(handlers::pictures::style))
         .route("/profile", get(handlers::profile_page).post(handlers::profile_save).layer(DefaultBodyLimit::max(AVATAR_BODY)))
         .route("/profile/pin", post(handlers::profile_pin))
         .route("/profile/names", post(handlers::profile_names))
@@ -257,7 +264,7 @@ async fn security_headers(req: Request, next: Next) -> Response {
     h.insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(
-            "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; \
+            "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; \
              connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
         ),
     );

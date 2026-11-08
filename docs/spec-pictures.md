@@ -59,5 +59,7 @@ taken: the coordinates from the EXIF data, rounded to three places (about 100 m)
 ## 6. Steps
 
 1. Server: the old folders, the previews (with HEIC and video), the places, the rules of access, the interface. *(done)*
-2. Browser: the slideshow on the pages of the server, for every person who signs in.
+2. Browser: the slideshow on the pages of the server (`/pictures`, menu of the person), for every person who signs in except a guest.
+   It is the model of the slideshow in the apps (project owner, 2026-11-08): made for the phone first (tap shows the controls, swipe
+   left/right goes on/back, swipe down ends it), the same choices in the same order. *(done)*
 3. Apps: the slideshow with the music.

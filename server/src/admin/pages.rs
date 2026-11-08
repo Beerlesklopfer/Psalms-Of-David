@@ -71,6 +71,7 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("fragments/root_row.html", include_str!("../../templates/fragments/root_row.html")),
     ("fragments/book_filing.html", include_str!("../../templates/fragments/book_filing.html")),
     ("profile.html", include_str!("../../templates/profile.html")),
+    ("pictures.html", include_str!("../../templates/pictures.html")),
     ("fragments/ui.html", include_str!("../../templates/fragments/ui.html")),
     ("fragments/avatar.html", include_str!("../../templates/fragments/avatar.html")),
     ("blacklist.html", include_str!("../../templates/blacklist.html")),
@@ -835,6 +836,37 @@ impl AdminUi {
         self.render(
             "profile.html",
             context! { dash => Serde(dash), photo => Serde(photo), max_kib => crate::profile::MAX_AVATAR_BYTES / 1024, ..view.into().context() },
+        )
+    }
+
+    /// The slideshow (docs/spec-pictures.md): the sources the person may choose, the years they cover, the own playlists for the music,
+    /// and what the server can do (places, frames of videos).
+    pub async fn pictures<'a>(&self, store: &Store, view: impl Into<View<'a>>, user_id: i64, role: crate::roles::Role) -> Result<String> {
+        let sources = store.picture_sources(user_id, role).await?;
+        let tz = store.setting("time_zone").await?.and_then(|z| jiff::tz::TimeZone::get(&z).ok()).unwrap_or_else(jiff::tz::TimeZone::system);
+        let year = |ms: i64| jiff::Timestamp::from_millisecond(ms).ok().map(|t| t.to_zoned(tz.clone()).year());
+        let first = sources.iter().filter_map(|s| s.first).min().and_then(year);
+        let last = sources.iter().filter_map(|s| s.last).max().and_then(year);
+        let years: Vec<i16> = match (first, last) {
+            (Some(a), Some(b)) if a <= b => (a..=b).rev().collect(),
+            _ => Vec::new(),
+        };
+        let playlists: Vec<serde_json::Value> = store
+            .playlist_summaries(Some(user_id))
+            .await
+            // Without the playlists the show still runs, only without music.
+            .unwrap_or_else(|e| {
+                tracing::warn!("the playlists of the slideshow: {e:?}");
+                Vec::new()
+            })
+            .into_iter()
+            .filter(|p| p.items > 0)
+            .map(|p| serde_json::json!({ "id": p.id, "name": p.name, "items": p.items }))
+            .collect();
+        let (places, videos) = crate::api_pictures::capabilities(store).await?;
+        self.render(
+            "pictures.html",
+            context! { sources => Serde(sources), years => years, playlists => Serde(playlists), places => places, frames => videos, ..view.into().context() },
         )
     }
 

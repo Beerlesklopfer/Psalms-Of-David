@@ -907,16 +907,22 @@ async fn continue_listening(State(s): State<ApiState>, d: Device) -> ApiResult<J
 }
 
 async fn stream(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>, req: Request) -> ApiResult<Response> {
+    serve_track(&s.store, s.library.as_deref(), d.user_id, id, req).await
+}
+
+/// A track for a person, with the checks of the age, the visibility and the hours; for the apps and for the music behind the slideshow
+/// of the browser. `?as=mp3` asks for an MP3 made from the file.
+pub(crate) async fn serve_track(store: &Store, library: Option<&Path>, user: i64, id: i64, req: Request) -> ApiResult<Response> {
     let not_found = || ApiError(StatusCode::NOT_FOUND, "not_found");
-    let t = track::Entity::find_by_id(id).one(&s.store.db.reader).await.map_err(Error::from)?.ok_or_else(not_found)?;
-    let (weekday, minute) = local_time(&s.store).await;
-    match s.store.access(d.user_id, t.book_id, weekday, minute).await? {
+    let t = track::Entity::find_by_id(id).one(&store.db.reader).await.map_err(Error::from)?.ok_or_else(not_found)?;
+    let (weekday, minute) = local_time(store).await;
+    match store.access(user, t.book_id, weekday, minute).await? {
         Access::Allowed => {}
         Access::NotVisible => return Err(not_found()),
         Access::OutsideSchedule { .. } => return Err(ApiError(StatusCode::FORBIDDEN, "outside_schedule")),
     }
-    let b = book::Entity::find_by_id(t.book_id).one(&s.store.db.reader).await.map_err(Error::from)?.ok_or_else(not_found)?;
-    let path = resolve(&s.store, s.library.as_deref(), &b.folder, &t.file).await.ok_or_else(not_found)?;
+    let b = book::Entity::find_by_id(t.book_id).one(&store.db.reader).await.map_err(Error::from)?.ok_or_else(not_found)?;
+    let path = resolve(store, library, &b.folder, &t.file).await.ok_or_else(not_found)?;
     // `?as=mp3`: a device that cannot play the format asks for an MP3 made from the file (docs/spec-transcoding.md). An MP3 is served as it is.
     let as_mp3 = match stream_query(&req).as_deref() {
         None | Some("") => false,
@@ -925,9 +931,9 @@ async fn stream(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>,
     };
     let mut served_mime = crate::audioformat::mime_or_guess(&t.mime_type, &t.file);
     let path = if as_mp3 {
-        let kbps = s.store.setting("transcode_kbps").await?.and_then(|v| v.trim().parse::<u32>().ok()).filter(|n| *n > 0).unwrap_or(crate::transcode::DEFAULT_KBPS);
-        let limit_mb = s.store.setting("transcode_cache_mb").await?.and_then(|v| v.trim().parse::<u64>().ok()).filter(|n| *n > 0).unwrap_or(crate::transcode::DEFAULT_CACHE_MB);
-        let made = s.store.transcoder().await.mp3_of(t.id, &path, kbps, limit_mb).await.map_err(|e| {
+        let kbps = store.setting("transcode_kbps").await?.and_then(|v| v.trim().parse::<u32>().ok()).filter(|n| *n > 0).unwrap_or(crate::transcode::DEFAULT_KBPS);
+        let limit_mb = store.setting("transcode_cache_mb").await?.and_then(|v| v.trim().parse::<u64>().ok()).filter(|n| *n > 0).unwrap_or(crate::transcode::DEFAULT_CACHE_MB);
+        let made = store.transcoder().await.mp3_of(t.id, &path, kbps, limit_mb).await.map_err(|e| {
             tracing::warn!(track = t.id, error = %e, "transcoding failed");
             ApiError(StatusCode::UNPROCESSABLE_ENTITY, "transcode_failed")
         })?;
@@ -938,7 +944,7 @@ async fn stream(State(s): State<ApiState>, d: Device, UrlPath(id): UrlPath<i64>,
     };
     // A whole-file request (a download) gets the SHA-256 of what is sent, so the app can check the file; a range request (playing) does not.
     let whole = !req.headers().contains_key(header::RANGE);
-    let digest = if whole { file_digest(&s, &t, &path, as_mp3).await } else { None };
+    let digest = if whole { file_digest(store, &t, &path, as_mp3).await } else { None };
     let res = ServeFile::new(path).oneshot(req).await.map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal"))?;
     let mut res = res.map(axum::body::Body::new).into_response();
     if let Some(hex) = digest.filter(|_| res.status() == StatusCode::OK).and_then(|h| HeaderValue::from_str(&h).ok()) {
@@ -960,7 +966,7 @@ pub const SHA256_HEADER: &str = "x-content-sha256";
 /// The SHA-256 of the file [path] that is sent for [t]. An original is hashed once and the hash kept with the size and time it belongs to
 /// (a file changed since is hashed again); the MP3 made for a device is a cache file and is hashed as it is. None if the file cannot be read:
 /// the answer is then sent without a hash, and the app has only the length to check.
-async fn file_digest(s: &ApiState, t: &track::Model, path: &Path, transcoded: bool) -> Option<String> {
+async fn file_digest(store: &Store, t: &track::Model, path: &Path, transcoded: bool) -> Option<String> {
     use sea_orm::{ConnectionTrait, DbBackend, Statement};
     let meta = tokio::fs::metadata(path).await.ok()?;
     let mtime = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64;
@@ -971,8 +977,7 @@ async fn file_digest(s: &ApiState, t: &track::Model, path: &Path, transcoded: bo
     let owned = path.to_path_buf();
     let hex = tokio::task::spawn_blocking(move || sha256_of_file(&owned)).await.ok()?.ok()?;
     if !transcoded {
-        let _ = s
-            .store
+        let _ = store
             .db
             .writer
             .execute_raw(Statement::from_sql_and_values(

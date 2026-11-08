@@ -186,3 +186,71 @@ async fn everybody_sees_their_own_the_parents_a_child_that_allows_it_and_the_adu
     a.store.save_settings(&[("photo_library".into(), String::new())]).await.unwrap();
     assert_eq!(ids(&get(&a, &anna_t, "/api/v1/pictures/sources").await.json()), vec!["own"]);
 }
+
+/// The slideshow of the browser: the page for whoever signs in (not a guest), and the same rules for what it loads.
+#[tokio::test]
+async fn the_browser_shows_the_page_and_loads_the_pictures_with_the_session() {
+    use std::sync::Arc;
+    let (data, store) = open().await;
+    let admin = store.create_profile("Boss", true).await.unwrap();
+    let anna = store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    let guest = store.create_user(NewProfile::new("Gast", Role::Guest)).await.unwrap();
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join("Hochzeit")).unwrap();
+    std::fs::write(root.path().join("Hochzeit/kuss.png"), png(1200, 900)).unwrap();
+    store.save_settings(&[("photo_library".into(), root.path().to_str().unwrap().into()), ("photo_places".into(), "off".into())]).await.unwrap();
+    store.scan_photo_library().await.unwrap();
+    let cd = david_server::cdimport::CdService::new(data.path());
+    let web = david_server::web::AppState {
+        store: store.clone(),
+        mcp: false,
+        listen: "127.0.0.1:8484".parse().unwrap(),
+        fingerprint: None,
+        ca_host: None,
+        ui: Arc::new(david_server::admin::pages::AdminUi::new().unwrap()),
+        secure_cookie: false,
+        library: None,
+        uploads: david_server::upload::Uploads::start(store.clone(), data.path()),
+        cd,
+        features: Default::default(),
+    };
+    let router = david_server::web::router(web);
+    let get = |uri: String, cookie: String| {
+        let router = router.clone();
+        async move {
+            let req = Request::builder().uri(uri).header(header::COOKIE, cookie).header(header::ACCEPT_LANGUAGE, "de").body(Body::empty()).unwrap();
+            let res = router.oneshot(req).await.unwrap();
+            let (parts, body) = res.into_parts();
+            (parts.status, parts.headers, to_bytes(body, 32 * 1024 * 1024).await.unwrap().to_vec())
+        }
+    };
+    let cookie = |id: i64, role: Role| {
+        let store = store.clone();
+        async move { format!("david_session={}", store.create_session(id, role, None).await.unwrap()) }
+    };
+    let (anna_c, guest_c, boss_c) = (cookie(anna, Role::Member).await, cookie(guest, Role::Guest).await, cookie(admin, Role::Admin).await);
+
+    let (status, headers, body) = get("/pictures".into(), anna_c.clone()).await;
+    let html = String::from_utf8_lossy(&body);
+    assert_eq!(status, StatusCode::OK, "{html}");
+    assert!(html.contains("value=\"f:Hochzeit\"") && html.contains("/admin/static/slideshow.js"), "{html}");
+    assert!(headers.get(header::CONTENT_SECURITY_POLICY).unwrap().to_str().unwrap().contains("media-src 'self'"), "videos and music may play");
+    assert_eq!(get("/pictures".into(), guest_c.clone()).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(get("/pictures/list".into(), guest_c.clone()).await.0, StatusCode::NOT_FOUND);
+    assert!(String::from_utf8_lossy(&get("/pictures".into(), boss_c).await.2).contains("f:Hochzeit"));
+
+    let (status, _, body) = get("/pictures/list?source=f%3AHochzeit".into(), anna_c.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    let list: Value = serde_json::from_slice(&body).unwrap();
+    let key = list["pictures"][0]["key"].as_str().unwrap().to_owned();
+    let (status, headers, body) = get(format!("/pictures/{key}/screen"), anna_c.clone()).await;
+    assert_eq!((status, headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap()), (StatusCode::OK, "image/jpeg"));
+    assert_eq!(image::load_from_memory(&body).unwrap().width(), 1200, "a small picture stays as large as it is");
+    assert_eq!(get(format!("/pictures/{key}/screen"), guest_c).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(get(format!("/pictures/{key}/nonsense"), anna_c.clone()).await.0, StatusCode::NOT_FOUND);
+    let (status, _, body) = get(format!("/pictures/{key}/info"), anna_c.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(serde_json::from_slice::<Value>(&body).unwrap()["place"], Value::Null);
+    let (status, _, _) = get("/admin/static/slideshow.js".into(), anna_c).await;
+    assert_eq!(status, StatusCode::OK);
+}

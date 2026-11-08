@@ -13,6 +13,7 @@
   <script src="/admin/static/crop.js" defer></script>
   <script src="/admin/static/chips.js" defer></script>
   <script src="/admin/static/fields.js" defer></script>
+  {% block head %}{% endblock %}
 </head>
 <body{% if csrf %} hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'{% endif %}>
   <div class="frame">
@@ -45,6 +46,7 @@
         <div class="popup-menu" role="menu" aria-label="{{ me.name }}">
           <div class="menu-head">{{ avatar(me, "big") }}<div><strong>{{ me.name }}</strong><br><small>{{ t("role." ~ me.role) }}</small></div></div>
           <a role="menuitem" href="/profile"{% if page == "profile" %} aria-current="page"{% endif %}>{{ icon("profile") }}<span>{{ t("nav.profile") }}</span></a>
+          {% if me.role != "guest" %}<a role="menuitem" href="/pictures"{% if page == "pictures" %} aria-current="page"{% endif %}>{{ icon("image") }}<span>{{ t("nav.pictures") }}</span></a>{% endif %}
           <form method="post" action="/admin/logout" class="menu-form">
             <input type="hidden" name="csrf" value="{{ csrf }}">
             <button type="submit" role="menuitem" class="menu-item">{{ icon("logout") }}<span>{{ t("nav.logout") }}</span></button>

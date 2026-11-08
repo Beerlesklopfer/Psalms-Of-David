@@ -1,0 +1,106 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set page = "pictures" %}
+{#- The slideshow (docs/spec-pictures.md, step 2). It is also the model of the slideshow in the apps (project owner, 2026-11-08): made for
+    the phone first, with swiping and tapping, and the same choices in the same order. -#}
+{% from "fragments/ui.html" import icon %}{% from "fragments/choice.html" import choice %}
+{% block title %}{{ t("pictures.title") }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="/admin/static/slideshow.css">
+  <script src="/admin/static/slideshow.js" defer></script>{% endblock %}
+{% block content %}
+<h1>{{ t("pictures.title") }}</h1>
+{% if not sources %}
+<section class="card"><p>{{ t("pictures.none") }}</p></section>
+{% else %}
+<form id="show-form" class="settings-form show-form" autocomplete="off">
+  <fieldset class="line-group">
+    <legend>{{ t("pictures.group.which") }}</legend>
+    <ul class="plain show-sources">
+      {% for s in sources %}
+      <li><label class="show-source">
+        <input type="checkbox" name="source" value="{{ s.id }}" checked>
+        <span class="show-source-name">{% if s.kind == "own" %}{{ t("pictures.source.own") }}{% else %}{{ s.name }}{% endif %}</span>
+        <small class="badge{% if s.kind == "child" %} warn{% endif %}">{{ t("pictures.kind." ~ s.kind) }}</small>
+        <small class="badge muted">{{ s.count }}</small>
+      </label></li>
+      {% endfor %}
+    </ul>
+    <p class="unit">{{ t("pictures.which.hint") }}</p>
+  </fieldset>
+
+  <fieldset class="line-group">
+    <legend>{{ t("pictures.group.when") }}</legend>
+    {#- Years only: the choice of a range that a finger can make on a phone. -#}
+    <div class="choice" data-choice>
+      <label class="line">
+        <span class="line-label">{{ t("pictures.set.from") }}</span>
+        <span class="line-field"><select name="from" data-choice-select>
+          <option value="" selected>{{ t("pictures.opt.from.all") }}</option>
+          {% for y in years|reverse %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+        </select></span>
+      </label>
+      <dl class="choice-explain"><div data-choice-for="" data-chosen><dt>{{ t("pictures.opt.from.all") }}</dt><dd>{{ t("pictures.explain.from.all") }}</dd></div>
+        {% for y in years %}<div data-choice-for="{{ y }}"><dt>{{ y }}</dt><dd>{{ t("pictures.explain.from.year")|replace("{y}", y|string) }}</dd></div>{% endfor %}</dl>
+    </div>
+    <div class="choice" data-choice>
+      <label class="line">
+        <span class="line-label">{{ t("pictures.set.to") }}</span>
+        <span class="line-field"><select name="to" data-choice-select>
+          <option value="" selected>{{ t("pictures.opt.to.all") }}</option>
+          {% for y in years %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+        </select></span>
+      </label>
+      <dl class="choice-explain"><div data-choice-for="" data-chosen><dt>{{ t("pictures.opt.to.all") }}</dt><dd>{{ t("pictures.explain.to.all") }}</dd></div>
+        {% for y in years %}<div data-choice-for="{{ y }}"><dt>{{ y }}</dt><dd>{{ t("pictures.explain.to.year")|replace("{y}", y|string) }}</dd></div>{% endfor %}</dl>
+    </div>
+  </fieldset>
+
+  <fieldset class="line-group">
+    <legend>{{ t("pictures.group.how") }}</legend>
+    {% set no = "" %}
+    {{ choice({"key": "order", "value": "date", "options": [{"value": "date", "why": no}, {"value": "random", "why": no}]}, "pictures") }}
+    {{ choice({"key": "seconds", "value": "8", "options": [{"value": "3", "why": no}, {"value": "5", "why": no}, {"value": "8", "why": no}, {"value": "15", "why": no}, {"value": "30", "why": no}]}, "pictures") }}
+    {{ choice({"key": "transition", "value": "fade", "options": [{"value": "fade", "why": no}, {"value": "zoom", "why": no}, {"value": "cut", "why": no}, {"value": "random", "why": no}]}, "pictures") }}
+    {{ choice({"key": "videos", "value": "on", "options": [{"value": "on", "why": no}, {"value": "off", "why": no}]}, "pictures") }}
+    {{ choice({"key": "info", "value": "both", "options": [{"value": "both", "why": no}, {"value": "date", "why": no}, {"value": "none", "why": no}]}, "pictures") }}
+    <div class="choice" data-choice>
+      <label class="line">
+        <span class="line-label">{{ t("pictures.set.music") }}</span>
+        <span class="line-field"><select name="music" data-choice-select>
+          <option value="" selected>{{ t("pictures.opt.music.off") }}</option>
+          {% for p in playlists %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+        </select></span>
+      </label>
+      <dl class="choice-explain"><div data-choice-for="" data-chosen><dt>{{ t("pictures.opt.music.off") }}</dt><dd>{{ t("pictures.explain.music.off") }}{% if not playlists %} {{ t("pictures.music.none") }}{% endif %}</dd></div>
+        {% for p in playlists %}<div data-choice-for="{{ p.id }}"><dt>{{ p.name }}</dt><dd>{{ t("pictures.explain.music.list")|replace("{n}", p.items|string) }}</dd></div>{% endfor %}</dl>
+    </div>
+  </fieldset>
+
+  <div class="form-error" role="alert" id="show-error" hidden></div>
+  <div class="form-foot">
+    <span class="unit" id="show-count" aria-live="polite"></span>
+    <button type="submit" class="btn" id="show-start">{{ t("pictures.start") }}</button>
+  </div>
+</form>
+
+{#- The slideshow itself: two layers that blend, a video, the caption, and the controls that show on a tap. -#}
+<div id="show" class="show" hidden
+     data-lang="{{ lang }}" data-places="{{ places }}"
+     data-t-empty="{{ t("pictures.empty") }}" data-t-failed="{{ t("pictures.failed") }}" data-t-count="{{ t("pictures.count") }}"
+     data-t-paused="{{ t("pictures.paused") }}" data-t-music-failed="{{ t("pictures.music_failed") }}">
+  <div class="show-stage" id="show-stage">
+    <img class="show-layer" alt="" id="show-a">
+    <img class="show-layer" alt="" id="show-b">
+    <video class="show-video" id="show-video" playsinline preload="auto" hidden></video>
+  </div>
+  <div class="show-caption" id="show-caption"><span id="show-date"></span><span id="show-place"></span></div>
+  <div class="show-controls" id="show-controls">
+    <button type="button" class="show-btn" id="show-prev" aria-label="{{ t("pictures.prev") }}">&#x2039;</button>
+    <button type="button" class="show-btn" id="show-pause" aria-label="{{ t("pictures.pause") }}">&#x23EF;</button>
+    <button type="button" class="show-btn" id="show-next" aria-label="{{ t("pictures.next") }}">&#x203A;</button>
+    <button type="button" class="show-btn show-close" id="show-close" aria-label="{{ t("pictures.close") }}">&#x2715;</button>
+  </div>
+  <div class="show-toast" id="show-toast" role="status" hidden></div>
+  <audio id="show-music" preload="auto"></audio>
+</div>
+{% endif %}
+{% endblock %}

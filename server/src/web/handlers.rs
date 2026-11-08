@@ -2948,6 +2948,7 @@ mod tests {
 
 
 pub mod blacklist_admin;
+pub mod pictures;
 
 // Podcasts and radio stations
 

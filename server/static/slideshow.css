@@ -1,0 +1,49 @@
+/* SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later
+   The slideshow (templates/pictures.html, static/slideshow.js): the form fits a phone, the show fills the screen. */
+
+/* The pages turn every label of a form into a column on a phone; these stay rows (a flex-basis would become a height). */
+.show-form label.line, .show-form label.show-source { flex-direction: row; align-items: center; }
+.show-form .line-label { flex: 1 1 auto; }
+.show-form .line-field select { width: 100%; min-height: 2.75rem; }
+.show-sources { display: grid; gap: .4rem; }
+.show-source { display: flex; align-items: center; gap: .6rem; min-height: 2.75rem; padding: .25rem .5rem; border-radius: .5rem; cursor: pointer; }
+.show-source input { width: 1.25rem; height: 1.25rem; flex: none; }
+.show-source-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.show-form .form-foot { position: sticky; bottom: 0; padding: .75rem 0; background: inherit; }
+.show-form .btn { min-height: 2.75rem; min-width: 8rem; }
+
+body.show-open { overflow: hidden; }
+.show { position: fixed; inset: 0; z-index: 1000; background: #000; color: #fff; touch-action: none; user-select: none; -webkit-user-select: none; }
+.show[hidden] { display: none; }
+.show-stage { position: absolute; inset: 0; overflow: hidden; }
+.show-layer, .show-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.show-layer { opacity: 0; transition: opacity 1s ease-in-out; will-change: opacity, transform; }
+.show-layer.on { opacity: 1; }
+.show-layer.cut { transition: none; }
+.show-layer.kb { transform-origin: var(--kb-x, 50%) var(--kb-y, 50%); animation: show-kb var(--kb-ms, 10s) linear forwards; }
+@keyframes show-kb { from { transform: scale(1); } to { transform: scale(1.12); } }
+.show-video { background: #000; }
+.show-video[hidden] { display: none; }
+
+.show-caption { position: absolute; left: max(1rem, env(safe-area-inset-left)); bottom: max(1rem, env(safe-area-inset-bottom)); right: 6rem;
+  display: flex; flex-direction: column; gap: .15rem; font-size: clamp(.9rem, 2.5vw, 1.25rem); text-shadow: 0 1px 3px #000, 0 0 12px rgba(0, 0, 0, .7); pointer-events: none; }
+.show-caption[hidden] { display: none; }
+#show-place { opacity: .85; font-size: .9em; }
+
+/* Above the caption, so the date stays readable while the controls show. */
+.show-controls { position: absolute; left: 0; right: 0; bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 3.75rem); display: flex; justify-content: center; gap: 1rem;
+  opacity: 0; transition: opacity .3s; pointer-events: none; }
+.show.ui .show-controls, .show.paused .show-controls { opacity: 1; pointer-events: auto; }
+.show-btn { width: 3.25rem; height: 3.25rem; border-radius: 50%; border: 0; background: rgba(0, 0, 0, .55); color: #fff; font-size: 1.6rem; line-height: 1; cursor: pointer; }
+.show-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.show-close { position: fixed; top: max(1rem, env(safe-area-inset-top)); right: max(1rem, env(safe-area-inset-right)); font-size: 1.2rem; }
+
+.show-toast { position: absolute; top: max(1rem, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); padding: .5rem 1rem; border-radius: 1rem;
+  background: rgba(0, 0, 0, .7); font-size: .95rem; }
+.show-toast[hidden] { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .show-layer { transition: none; }
+  .show-layer.kb { animation: none; }
+}
