@@ -74,6 +74,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0062_photo_sync.sql"),
     include_str!("../migrations/0063_photos.sql"),
     include_str!("../migrations/0064_photo_trash.sql"),
+    include_str!("../migrations/0065_pictures.sql"),
 ];
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);

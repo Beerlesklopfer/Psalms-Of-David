@@ -7,7 +7,7 @@
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <fieldset class="line-group">
     <legend>{{ t("photo.group.server") }}</legend>
-    {% for c in photo.choices %}{{ choice(c, "photo", error=errors[c.key] if c.key in errors else "") }}{% endfor %}
+    {% for c in photo.choices if c.key != "photo_places" %}{{ choice(c, "photo", error=errors[c.key] if c.key in errors else "") }}{% endfor %}
     {% for n in photo.numbers %}
     <label class="line">
       <span class="line-label">{{ t("photo.set." ~ n.key) }}</span>
@@ -19,6 +19,21 @@
     </label>
     <p class="unit">{{ t("photo.hint." ~ n.key) }}</p>
     {% endfor %}
+  </fieldset>
+  <fieldset class="line-group">
+    <legend>{{ t("photo.group.pictures") }}</legend>
+    <p class="unit">{{ t("photo.pictures.intro") }}</p>
+    {% for p in photo.paths %}
+    <label class="line">
+      <span class="line-label">{{ t("photo.set." ~ p.key) }}</span>
+      <span class="line-field">
+        <input name="{{ p.key }}" value="{{ p.value }}" size="40" placeholder="/srv/Bilder" spellcheck="false" autocomplete="off">
+        {% if p.key in errors %}<span class="form-error" role="alert">{{ errors[p.key] }}</span>{% endif %}
+      </span>
+    </label>
+    <p class="unit">{{ t("photo.hint." ~ p.key) }}</p>
+    {% endfor %}
+    {% for c in photo.choices if c.key == "photo_places" %}{{ choice(c, "photo", error=errors[c.key] if c.key in errors else "") }}{% endfor %}
   </fieldset>
   <fieldset class="line-group">
     <legend>{{ t("photo.group.profiles") }}</legend>

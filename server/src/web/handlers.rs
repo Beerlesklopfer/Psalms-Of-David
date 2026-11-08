@@ -1878,8 +1878,18 @@ pub async fn photo_settings_save(State(state): State<AppState>, s: AdminSession,
             }
         }
         if refused.is_empty() {
+            let library_before = state.store.setting("photo_library").await?;
             state.store.save_settings(&values).await?;
             tracing::info!(by = s.user_id, "photo backup settings saved");
+            // Another folder of the family's pictures: read it now, not only within the hour.
+            if state.store.setting("photo_library").await? != library_before {
+                let store = state.store.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = store.scan_photo_library().await {
+                        tracing::warn!("the old picture folders: {e}");
+                    }
+                });
+            }
         }
         Ok(state.ui.settings_photos_fragment(&state.store, view(&s), refused.is_empty(), &refused).await?)
     }

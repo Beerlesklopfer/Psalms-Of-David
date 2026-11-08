@@ -166,6 +166,10 @@ pub async fn run(
                 if let Err(e) = store.purge_photo_trash().await {
                     tracing::warn!("the trash of the photo backup: {e}");
                 }
+                // The old picture folders: new, changed and removed files (the first round runs at the start).
+                if let Err(e) = store.scan_photo_library().await {
+                    tracing::warn!("the old picture folders: {e}");
+                }
             }
         })
     };

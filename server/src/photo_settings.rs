@@ -46,7 +46,13 @@ pub const SERVER_CHOICES: &[Choice] = &[
     Choice { key: "photo_videos", options: &["on", "off"] },
     Choice { key: "photo_children", options: &["parents", "off", "allowed"] },
     Choice { key: "photo_parents_may_view", options: &["off", "on"] },
+    // The names of the places in the slideshow (docs/spec-pictures.md; migration 0065).
+    Choice { key: "photo_places", options: &["osm", "off"] },
 ];
+
+/// The settings of the server that are a folder: `photo_library`, the folder of the family's pictures (the old folders; migration 0065).
+/// Empty is allowed (none); else an absolute folder the server can read and enter (it never writes there).
+pub const SERVER_PATHS: &[&str] = &["photo_library"];
 
 /// The numbers of the server.
 pub const SERVER_NUMBERS: &[Number] = &[
@@ -68,7 +74,7 @@ pub const PROFILE_CHOICES: &[Choice] = &[
 
 /// All keys of the server, in the order of the page.
 pub fn server_keys() -> impl Iterator<Item = &'static str> {
-    SERVER_CHOICES.iter().map(|c| c.key).chain(SERVER_NUMBERS.iter().map(|n| n.key))
+    SERVER_CHOICES.iter().map(|c| c.key).chain(SERVER_NUMBERS.iter().map(|n| n.key)).chain(SERVER_PATHS.iter().copied())
 }
 
 pub fn is_photo_key(key: &str) -> bool {
@@ -84,6 +90,24 @@ pub fn check(key: &str, raw: &str) -> std::result::Result<String, &'static str> 
     if let Some(n) = SERVER_NUMBERS.iter().find(|n| n.key == key) {
         let v: u32 = raw.parse().map_err(|_| "not_a_number")?;
         return (n.min..=n.max).contains(&v).then(|| v.to_string()).ok_or("out_of_range");
+    }
+    if SERVER_PATHS.contains(&key) {
+        if raw.is_empty() {
+            return Ok(String::new());
+        }
+        let p = std::path::Path::new(raw);
+        if !p.is_absolute() {
+            return Err("not_absolute");
+        }
+        if !p.is_dir() {
+            return Err("no_such_folder");
+        }
+        if !crate::access::may(p, crate::access::READ | crate::access::ENTER) {
+            return Err("not_readable");
+        }
+        // "/srv/Bilder/" is kept as "/srv/Bilder"; "/" stays "/".
+        let trimmed = raw.trim_end_matches(['/', '\\']);
+        return Ok(if trimmed.is_empty() { raw.to_owned() } else { trimmed.to_owned() });
     }
     Err("unknown")
 }
@@ -315,6 +339,11 @@ pub async fn server_view(store: &Store, typed: &HashMap<String, String>) -> Resu
         let stored = store.setting(n.key).await?.unwrap_or_else(|| n.default.to_string());
         numbers.push(serde_json::json!({ "key": n.key, "value": typed.get(n.key).unwrap_or(&stored), "unit": n.unit }));
     }
+    let mut paths = Vec::new();
+    for key in SERVER_PATHS {
+        let stored = store.setting(key).await?.unwrap_or_default();
+        paths.push(serde_json::json!({ "key": key, "value": typed.get(*key).unwrap_or(&stored) }));
+    }
     let server = ServerPhotoSettings::load(store).await?;
     let folders = store.all_profile_folders().await?;
     let mut profiles = Vec::new();
@@ -329,7 +358,7 @@ pub async fn server_view(store: &Store, typed: &HashMap<String, String>) -> Resu
         let size = format!("{:.1}", bytes as f64 / 1_073_741_824.0);
         profiles.push(serde_json::json!({ "name": p.name, "role": p.role, "folder": folder, "enabled": e.enabled, "mode": e.mode, "count": count, "gb": size }));
     }
-    Ok(serde_json::json!({ "choices": choices, "numbers": numbers, "profiles": profiles }))
+    Ok(serde_json::json!({ "choices": choices, "numbers": numbers, "paths": paths, "profiles": profiles }))
 }
 
 /// The choices of one profile as a form shows them, with the options the server does not allow locked and the reason why.

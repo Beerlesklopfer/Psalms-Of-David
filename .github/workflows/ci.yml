@@ -44,7 +44,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # The tests that unpack archives and write tags use these; without them they skip themselves.
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg zip p7zip-full libacl1-dev
+      # libheif: HEIC for the pictures (src/picture_render.rs); the x265 plugin only for the test that makes a HEIC.
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg zip p7zip-full libacl1-dev libheif-dev libheif-plugin-libde265 libheif-plugin-x265
       - uses: dtolnay/rust-toolchain@stable
         with: { components: clippy }
       - uses: Swatinem/rust-cache@v2
@@ -106,7 +107,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y $PIPEWIRE_DEPS libacl1-dev
+      - run: sudo apt-get update && sudo apt-get install -y $PIPEWIRE_DEPS libacl1-dev libheif-dev
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: "server\naudio" }

@@ -53,6 +53,10 @@ ureq = "3"
 roxmltree = "0.21"
 socket2 = { version = "0.6", features = ["all"] }
 toml = "0.9"
+# The pictures to look at (src/picture_render.rs): previews and screen sizes of JPEG, PNG, WebP, GIF, BMP and TIFF, the EXIF data
+# (date, place, orientation). HEIC/HEIF/AVIF through libheif on Linux (below); videos through ffmpeg when it is installed.
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp", "tiff"] }
+kamadak-exif = "0.6.2"
 
 [[bin]]
 name = "david"
@@ -69,9 +73,11 @@ libc = "0.2"
 # systemd exists on Linux only (macOS runs the server as a launchd daemon, see packaging/macos/).
 [target.'cfg(target_os = "linux")'.dependencies]
 sd-notify = "0.5"
+# HEIC from the iPhones (project owner, 2026-11-08): the system's libheif (Debian: libheif1, with libde265 for HEVC); 1.17 is the oldest
+# the builds meet (Ubuntu 24.04).
+libheif-rs = { version = "3.0.0", default-features = false, features = ["v1_17"] }
 
 [dev-dependencies]
-image = { version = "0.25.10", default-features = false }
 rqrr = "0.11.0"
 tempfile = "3"
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
@@ -83,7 +89,7 @@ maintainer = "Joerg Bernau <Joerg@bernau.family>"
 section = "sound"
 priority = "optional"
 depends = "$auto"
-recommends = "7zip | p7zip-full"
+recommends = "7zip | p7zip-full, ffmpeg, libheif-plugin-libde265"
 maintainer-scripts = "packaging/scripts"
 extended-description = "Self-hosted audiobook and music server for the family (David). Runs as a systemd service as the system user david; the data lives in /var/lib/david."
 assets = [
