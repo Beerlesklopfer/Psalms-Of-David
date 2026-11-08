@@ -8,10 +8,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'audio/audio_backend.dart';
-import 'audio/just_audio_backend.dart';
+import 'audio/open_backend.dart';
 import 'audio/mpris.dart';
-import 'audio/pipewire_backend.dart';
 import 'audio/playback_settings.dart';
 import 'audio/psalm_audio_handler.dart';
 import 'cd/cd_kit.dart';
@@ -86,20 +84,6 @@ String? _pairingAddress(List<String> args) {
   return null;
 }
 
-/// The sound engine, where there is one: PipeWire on Linux, ExoPlayer and AVPlayer on Android
-/// and iOS, Media Foundation on Windows. Null elsewhere or if the library or PipeWire is missing; the app then runs silently
-/// on demo data.
-AudioBackend? _openBackend() {
-  if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS || Platform.isWindows) return JustAudioBackend();
-  if (!Platform.isLinux) return null;
-  try {
-    return PipeWireBackend.open();
-  } on AudioException catch (e) {
-    debugPrint('No sound: ${e.message}');
-    return null;
-  }
-}
-
 /// Development aid: with `PSALM_DEMO_FILE=<audio file>` every demo track plays
 /// that file, so the player can be heard before the server delivers books.
 List<LibraryItem> _demoLibrary() {
@@ -141,7 +125,7 @@ enum _Phase { starting, connect, ready }
 class _PsalmAppState extends State<PsalmApp> with WidgetsBindingObserver {
   late final PlayerController _player = PlayerController(
     _demoLibrary(),
-    backend: widget.demo ? null : _openBackend(),
+    backend: widget.demo ? null : openAudioBackend(),
     lastStore: widget.demo ? null : LastPlayedStore.standard(),
     playbackStore: widget.demo ? null : PlaybackSettingsStore.standard(),
   );

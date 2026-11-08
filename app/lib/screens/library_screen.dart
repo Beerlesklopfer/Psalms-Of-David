@@ -12,7 +12,10 @@ import '../library_folds.dart';
 import '../library_groups.dart';
 import '../library_hiding.dart';
 import '../models.dart';
+import '../pictures/show_api.dart';
+import '../pictures/show_ui.dart';
 import '../podcasts.dart';
+import '../server/api_client.dart';
 import 'barcode_scan_screen.dart';
 import 'hidden_list.dart';
 import 'labels_ui.dart';
@@ -87,11 +90,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
   // makes them when the category is first chosen and keeps them.
   PodcastsController? _podcasts;
   RadioController? _radio;
+  ShowController? _shows;
 
   @override
   void dispose() {
     _podcasts?.dispose();
     _radio?.dispose();
+    _shows?.dispose();
     super.dispose();
   }
 
@@ -187,6 +192,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final shown = base == null ? null : filterByLabels(base, _labels);
     if (_category == MediaCategory.podcasts) _podcasts ??= PodcastsController(widget.api);
     if (_category == MediaCategory.radio) _radio ??= RadioController(widget.api);
+    if (_category == MediaCategory.pictures) {
+      final api = widget.api;
+      _shows ??= ShowController(api: api is ApiClient ? ShowApi(api) : null);
+    }
     final playlists = PlaylistScope.maybeOf(context);
     final isMusic = _category == MediaCategory.music && shown != null && shown.isNotEmpty;
     final groups = isMusic ? groupByGenre(shown, p.genres) : const <(String?, List<LibraryItem>)>[];
@@ -261,6 +270,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
           PodcastsBody(controller: _podcasts!)
         else if (_category == MediaCategory.radio)
           RadioBody(controller: _radio!)
+        else if (_category == MediaCategory.pictures)
+          PicturesBody(controller: _shows!)
         else if (_category == MediaCategory.hidden)
           HiddenBody(controller: hiding!)
         else if (_category == MediaCategory.playlists)

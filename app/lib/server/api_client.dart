@@ -109,7 +109,8 @@ class ApiClient implements FeedApi, BarcodeApi, CoverApi, NewsApi {
   /// `https` for a server with a pinned certificate or one from a certificate authority, else `http`.
   String get scheme => (ca || fingerprint != null) ? 'https' : 'http';
 
-  Uri _uri(String path, [Map<String, String>? query]) => Uri(
+  /// A value of [query] is a String, or a list of Strings for a key that is sent several times (`source=a&source=b`).
+  Uri _uri(String path, [Map<String, Object>? query]) => Uri(
         scheme: scheme,
         host: Uri.parse('x://$address').host,
         port: Uri.parse('x://$address').port,
@@ -353,7 +354,7 @@ class ApiClient implements FeedApi, BarcodeApi, CoverApi, NewsApi {
   }
 
   /// Sends a request and returns the response without reading it.
-  Future<HttpClientResponse> sendRaw(String method, String path, {Object? body, Map<String, String>? query, Map<String, String>? headers}) =>
+  Future<HttpClientResponse> sendRaw(String method, String path, {Object? body, Map<String, Object>? query, Map<String, String>? headers}) =>
       _send(method, _uri(path, query), body: body, headers: headers);
 
   /// A WebSocket to [path] (`ws`/`wss` instead of `http`/`https`) over the same HttpClient, so the

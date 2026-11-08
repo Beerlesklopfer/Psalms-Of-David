@@ -2913,4 +2913,314 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get photoIosHint =>
       'On the iPhone and iPad, iOS decides when the backup runs in the background: mostly at night while the device charges, and not after the app was swiped away in the app switcher. \"Back up now\" sends at once.';
+
+  @override
+  String get showProjectOffline =>
+      'This slideshow plays without the server and without a network. Tap to show the controls, swipe to go on or back, swipe down to end it.';
+
+  @override
+  String get showProjectBroken =>
+      'This project cannot be played here: it is damaged or made by a newer David.';
+
+  @override
+  String get showTitle => 'Pictures';
+
+  @override
+  String get showNone =>
+      'There are no pictures for you yet. They come with the photo backup of your phone, and the adults also see the old folders of the family once they are set up on the server.';
+
+  @override
+  String get showGroupWhich => 'Which pictures';
+
+  @override
+  String get showGroupWhen => 'Which years';
+
+  @override
+  String get showGroupHow => 'How';
+
+  @override
+  String get showSourceOwn => 'My pictures';
+
+  @override
+  String get showKindOwn => 'backup';
+
+  @override
+  String get showKindChild => 'child';
+
+  @override
+  String get showKindFolder => 'folder';
+
+  @override
+  String get showWhichHint =>
+      'Your own backup, the pictures of a child that allows it, and the old folders of the family. The number is how many pictures and videos there are.';
+
+  @override
+  String get showSetFrom => 'From';
+
+  @override
+  String get showOptFromAll => 'The beginning';
+
+  @override
+  String get showExplainFromAll => 'From the oldest picture on.';
+
+  @override
+  String get showSetTo => 'To';
+
+  @override
+  String get showOptToAll => 'Today';
+
+  @override
+  String get showExplainToAll => 'Up to the newest picture.';
+
+  @override
+  String get showSetOrder => 'Order';
+
+  @override
+  String get showOptOrderDate => 'By date';
+
+  @override
+  String get showOptOrderRandom => 'Shuffled';
+
+  @override
+  String get showExplainOrderDate =>
+      'The oldest picture first, as they were taken.';
+
+  @override
+  String get showExplainOrderRandom =>
+      'A new order every time, the music shuffled too.';
+
+  @override
+  String get showSetSeconds => 'Each picture';
+
+  @override
+  String get showOptSeconds3 => '3 seconds';
+
+  @override
+  String get showOptSeconds5 => '5 seconds';
+
+  @override
+  String get showOptSeconds8 => '8 seconds';
+
+  @override
+  String get showOptSeconds15 => '15 seconds';
+
+  @override
+  String get showOptSeconds30 => '30 seconds';
+
+  @override
+  String get showExplainSeconds3 => 'Quick, for many pictures.';
+
+  @override
+  String get showExplainSeconds5 => 'Brisk.';
+
+  @override
+  String get showExplainSeconds8 => 'Time to look; the usual.';
+
+  @override
+  String get showExplainSeconds15 => 'Calm, for an evening on the sofa.';
+
+  @override
+  String get showExplainSeconds30 => 'Very calm, like a picture frame.';
+
+  @override
+  String get showSetTransition => 'Transition';
+
+  @override
+  String get showOptTransitionFade => 'Cross-fade';
+
+  @override
+  String get showOptTransitionZoom => 'Cross-fade and zoom';
+
+  @override
+  String get showOptTransitionCut => 'Cut';
+
+  @override
+  String get showOptTransitionRandom => 'Random';
+
+  @override
+  String get showExplainTransitionFade => 'One picture fades into the next.';
+
+  @override
+  String get showExplainTransitionZoom =>
+      'It fades, and the picture slowly comes closer while it is shown.';
+
+  @override
+  String get showExplainTransitionCut =>
+      'The next picture comes at once, without a transition.';
+
+  @override
+  String get showExplainTransitionRandom =>
+      'Every change takes one of the three by chance.';
+
+  @override
+  String get showSetVideos => 'Videos';
+
+  @override
+  String get showOptVideosOn => 'Play them';
+
+  @override
+  String get showOptVideosOff => 'Leave them out';
+
+  @override
+  String get showExplainVideosOn =>
+      'A video plays through with its sound, then the show goes on. The music is quieter meanwhile.';
+
+  @override
+  String get showExplainVideosOff => 'Only photos.';
+
+  @override
+  String get showSetInfo => 'Shown on the picture';
+
+  @override
+  String get showOptInfoBoth => 'Date and place';
+
+  @override
+  String get showOptInfoDate => 'Date only';
+
+  @override
+  String get showOptInfoNone => 'Nothing';
+
+  @override
+  String get showExplainInfoBoth =>
+      'When and where it was taken; the place only if the server names places and the picture knows where it was taken.';
+
+  @override
+  String get showExplainInfoDate => 'When it was taken.';
+
+  @override
+  String get showExplainInfoNone => 'Only the picture.';
+
+  @override
+  String get showSetMusic => 'Music';
+
+  @override
+  String get showOptMusicOff => 'None';
+
+  @override
+  String get showExplainMusicOff => 'The pictures without sound.';
+
+  @override
+  String get showStart => 'Start';
+
+  @override
+  String get showEmpty => 'There are no pictures for this choice.';
+
+  @override
+  String get showFailed =>
+      'The pictures could not be loaded. Please try again.';
+
+  @override
+  String get showPaused => 'Paused';
+
+  @override
+  String get showPrev => 'Back';
+
+  @override
+  String get showPause => 'Pause or go on';
+
+  @override
+  String get showNext => 'Next';
+
+  @override
+  String get showClose => 'End the show';
+
+  @override
+  String showExplainFromYear(String year) {
+    return 'From 1 January $year on.';
+  }
+
+  @override
+  String showExplainToYear(String year) {
+    return 'Up to 31 December $year.';
+  }
+
+  @override
+  String showExplainMusicList(int count) {
+    return 'This playlist plays behind the pictures, $count tracks, again from the start at the end.';
+  }
+
+  @override
+  String showCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count pictures',
+      one: '1 picture',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get showMusicNone =>
+      'You can choose one of your playlists once you have made one.';
+
+  @override
+  String get showProjectsTitle => 'On this device';
+
+  @override
+  String get showProjectsEmpty =>
+      'No slideshow on this device yet. Make one from the pictures of the server, or open a project file that was saved in the browser.';
+
+  @override
+  String get showProjectsHint =>
+      'A slideshow on this device plays without the server and without a network.';
+
+  @override
+  String get showNew => 'New slideshow';
+
+  @override
+  String get showOpenFile => 'Open project file';
+
+  @override
+  String get showSave => 'Save on this device';
+
+  @override
+  String get showSaveExplain =>
+      'The pictures, the videos and the music come onto this device as one slideshow, which then plays without the server.';
+
+  @override
+  String showLoading(String size) {
+    return 'Loading … $size';
+  }
+
+  @override
+  String get showUnpacking => 'Unpacking …';
+
+  @override
+  String get showSaved => 'The slideshow is on this device.';
+
+  @override
+  String get showLoadFailed =>
+      'The slideshow could not be loaded. Please try again.';
+
+  @override
+  String get showSourcesFailed =>
+      'The pictures of the server cannot be reached.';
+
+  @override
+  String get showDelete => 'Delete from this device';
+
+  @override
+  String showDeleteAsk(String title) {
+    return 'Delete \"$title\" from this device? The pictures on the server stay.';
+  }
+
+  @override
+  String showMeta(String pictures, String size) {
+    return '$pictures · $size';
+  }
+
+  @override
+  String get showWithMusic => 'with music';
+
+  @override
+  String get showNoServer =>
+      'Without the server, the slideshows on this device can still be shown.';
+
+  @override
+  String get showNoVideoHere => 'This device shows a video as its picture.';
+
+  @override
+  String get showSpaceLow =>
+      'There is not enough room on this device for the slideshow.';
 }

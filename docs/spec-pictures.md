@@ -81,6 +81,10 @@ unpacked and `index.html` opened; the apps keep it and play it (step 3). As a vi
 2. Browser: the slideshow on the pages of the server (`/pictures`, menu of the person), for every person who signs in except a guest.
    It is the model of the slideshow in the apps (project owner, 2026-11-08): made for the phone first (tap shows the controls, swipe
    left/right goes on/back, swipe down ends it), the same choices in the same order. *(done)*
-3. Apps: the slideshow with the music, and the projects kept on the device and played without the server.
+3. Apps: the projects kept on the device and played without the server (library, rubric "Pictures"; `app/lib/pictures/`): a new
+   slideshow is chosen as on the page `/pictures` and loaded as a project (`GET /api/v1/pictures/project`), a project file saved in the
+   browser can be opened, and the player is the slideshow of the browser (tap, swipe, a swipe down ends it, the keys; the music of the
+   project, quieter while a video plays). Videos play on iPhone/iPad, Android and macOS; on Linux and Windows a video shows as its
+   picture. *(done)*
 4. The project as one file (6), with the player of the browser. *(done)*
 5. The project as a video (MP4) for a television or a USB stick.

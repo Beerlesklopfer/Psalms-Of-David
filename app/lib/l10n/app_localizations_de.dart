@@ -2945,4 +2945,315 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get photoIosHint =>
       'Auf iPhone und iPad entscheidet iOS, wann die Sicherung im Hintergrund läuft: meist nachts, während das Gerät lädt, und nicht mehr, wenn die App im App-Umschalter weggewischt wurde. „Jetzt sichern“ schickt sofort.';
+
+  @override
+  String get showProjectOffline =>
+      'Diese Diashow läuft ohne Server und ohne Netz. Tippen zeigt die Knöpfe, Wischen blättert vor oder zurück, nach unten wischen beendet sie.';
+
+  @override
+  String get showProjectBroken =>
+      'Dieses Projekt lässt sich hier nicht abspielen: Es ist beschädigt oder mit einem neueren David gemacht.';
+
+  @override
+  String get showTitle => 'Bilder';
+
+  @override
+  String get showNone =>
+      'Für dich gibt es noch keine Bilder. Sie kommen mit der Bilder-Sicherung deines Handys; die Erwachsenen sehen außerdem die alten Ordner der Familie, sobald sie auf dem Server eingerichtet sind.';
+
+  @override
+  String get showGroupWhich => 'Welche Bilder';
+
+  @override
+  String get showGroupWhen => 'Welche Jahre';
+
+  @override
+  String get showGroupHow => 'Wie';
+
+  @override
+  String get showSourceOwn => 'Meine Bilder';
+
+  @override
+  String get showKindOwn => 'Sicherung';
+
+  @override
+  String get showKindChild => 'Kind';
+
+  @override
+  String get showKindFolder => 'Ordner';
+
+  @override
+  String get showWhichHint =>
+      'Deine eigene Sicherung, die Bilder eines Kindes, das es erlaubt, und die alten Ordner der Familie. Die Zahl sagt, wie viele Bilder und Videos es sind.';
+
+  @override
+  String get showSetFrom => 'Von';
+
+  @override
+  String get showOptFromAll => 'Anfang';
+
+  @override
+  String get showExplainFromAll => 'Vom ältesten Bild an.';
+
+  @override
+  String get showSetTo => 'Bis';
+
+  @override
+  String get showOptToAll => 'Heute';
+
+  @override
+  String get showExplainToAll => 'Bis zum neuesten Bild.';
+
+  @override
+  String get showSetOrder => 'Reihenfolge';
+
+  @override
+  String get showOptOrderDate => 'Nach Datum';
+
+  @override
+  String get showOptOrderRandom => 'Zufällig';
+
+  @override
+  String get showExplainOrderDate =>
+      'Das älteste Bild zuerst, so wie sie aufgenommen wurden.';
+
+  @override
+  String get showExplainOrderRandom =>
+      'Jedes Mal neu gemischt, die Musik auch.';
+
+  @override
+  String get showSetSeconds => 'Jedes Bild';
+
+  @override
+  String get showOptSeconds3 => '3 Sekunden';
+
+  @override
+  String get showOptSeconds5 => '5 Sekunden';
+
+  @override
+  String get showOptSeconds8 => '8 Sekunden';
+
+  @override
+  String get showOptSeconds15 => '15 Sekunden';
+
+  @override
+  String get showOptSeconds30 => '30 Sekunden';
+
+  @override
+  String get showExplainSeconds3 => 'Schnell, für viele Bilder.';
+
+  @override
+  String get showExplainSeconds5 => 'Zügig.';
+
+  @override
+  String get showExplainSeconds8 => 'Zeit zum Hinsehen; die übliche Wahl.';
+
+  @override
+  String get showExplainSeconds15 => 'Ruhig, für einen Abend auf dem Sofa.';
+
+  @override
+  String get showExplainSeconds30 => 'Sehr ruhig, wie ein Bilderrahmen.';
+
+  @override
+  String get showSetTransition => 'Übergang';
+
+  @override
+  String get showOptTransitionFade => 'Überblenden';
+
+  @override
+  String get showOptTransitionZoom => 'Überblenden und Zoom';
+
+  @override
+  String get showOptTransitionCut => 'Harter Schnitt';
+
+  @override
+  String get showOptTransitionRandom => 'Zufällig';
+
+  @override
+  String get showExplainTransitionFade =>
+      'Ein Bild blendet weich in das nächste über.';
+
+  @override
+  String get showExplainTransitionZoom =>
+      'Es blendet über, und das Bild kommt langsam näher, solange es steht.';
+
+  @override
+  String get showExplainTransitionCut =>
+      'Das nächste Bild kommt sofort, ohne Übergang.';
+
+  @override
+  String get showExplainTransitionRandom =>
+      'Jeder Wechsel nimmt zufällig einen der drei Übergänge.';
+
+  @override
+  String get showSetVideos => 'Videos';
+
+  @override
+  String get showOptVideosOn => 'Abspielen';
+
+  @override
+  String get showOptVideosOff => 'Weglassen';
+
+  @override
+  String get showExplainVideosOn =>
+      'Ein Video läuft mit Ton ganz durch, danach geht die Diashow weiter. Die Musik wird währenddessen leiser.';
+
+  @override
+  String get showExplainVideosOff => 'Nur Fotos.';
+
+  @override
+  String get showSetInfo => 'Auf dem Bild';
+
+  @override
+  String get showOptInfoBoth => 'Datum und Ort';
+
+  @override
+  String get showOptInfoDate => 'Nur Datum';
+
+  @override
+  String get showOptInfoNone => 'Nichts';
+
+  @override
+  String get showExplainInfoBoth =>
+      'Wann und wo es aufgenommen wurde; den Ort nur, wenn der Server Orte benennt und das Bild weiß, wo es aufgenommen wurde.';
+
+  @override
+  String get showExplainInfoDate => 'Wann es aufgenommen wurde.';
+
+  @override
+  String get showExplainInfoNone => 'Nur das Bild.';
+
+  @override
+  String get showSetMusic => 'Musik';
+
+  @override
+  String get showOptMusicOff => 'Keine';
+
+  @override
+  String get showExplainMusicOff => 'Die Bilder ohne Ton.';
+
+  @override
+  String get showStart => 'Starten';
+
+  @override
+  String get showEmpty => 'Für diese Auswahl gibt es keine Bilder.';
+
+  @override
+  String get showFailed =>
+      'Die Bilder konnten nicht geladen werden. Bitte versuche es noch einmal.';
+
+  @override
+  String get showPaused => 'Angehalten';
+
+  @override
+  String get showPrev => 'Zurück';
+
+  @override
+  String get showPause => 'Anhalten oder weiter';
+
+  @override
+  String get showNext => 'Weiter';
+
+  @override
+  String get showClose => 'Diashow beenden';
+
+  @override
+  String showExplainFromYear(String year) {
+    return 'Ab dem 1. Januar $year.';
+  }
+
+  @override
+  String showExplainToYear(String year) {
+    return 'Bis zum 31. Dezember $year.';
+  }
+
+  @override
+  String showExplainMusicList(int count) {
+    return 'Diese Playlist läuft hinter den Bildern, $count Titel, am Ende wieder von vorn.';
+  }
+
+  @override
+  String showCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Bilder',
+      one: '1 Bild',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get showMusicNone =>
+      'Eine deiner Playlists kannst du wählen, sobald du eine angelegt hast.';
+
+  @override
+  String get showProjectsTitle => 'Auf diesem Gerät';
+
+  @override
+  String get showProjectsEmpty =>
+      'Noch keine Diashow auf diesem Gerät. Stelle eine aus den Bildern des Servers zusammen oder öffne eine Projektdatei, die im Browser gespeichert wurde.';
+
+  @override
+  String get showProjectsHint =>
+      'Eine Diashow auf diesem Gerät läuft ohne Server und ohne Netz.';
+
+  @override
+  String get showNew => 'Neue Diashow';
+
+  @override
+  String get showOpenFile => 'Projektdatei öffnen';
+
+  @override
+  String get showSave => 'Auf diesem Gerät speichern';
+
+  @override
+  String get showSaveExplain =>
+      'Die Bilder, die Videos und die Musik kommen als eine Diashow auf dieses Gerät und laufen dann ohne Server.';
+
+  @override
+  String showLoading(String size) {
+    return 'Wird geladen … $size';
+  }
+
+  @override
+  String get showUnpacking => 'Wird entpackt …';
+
+  @override
+  String get showSaved => 'Die Diashow ist auf diesem Gerät.';
+
+  @override
+  String get showLoadFailed =>
+      'Die Diashow konnte nicht geladen werden. Bitte versuche es noch einmal.';
+
+  @override
+  String get showSourcesFailed =>
+      'Die Bilder des Servers sind nicht erreichbar.';
+
+  @override
+  String get showDelete => 'Von diesem Gerät löschen';
+
+  @override
+  String showDeleteAsk(String title) {
+    return '„$title“ von diesem Gerät löschen? Die Bilder auf dem Server bleiben.';
+  }
+
+  @override
+  String showMeta(String pictures, String size) {
+    return '$pictures · $size';
+  }
+
+  @override
+  String get showWithMusic => 'mit Musik';
+
+  @override
+  String get showNoServer =>
+      'Ohne Server lassen sich die Diashows auf diesem Gerät trotzdem zeigen.';
+
+  @override
+  String get showNoVideoHere => 'Dieses Gerät zeigt ein Video als Bild.';
+
+  @override
+  String get showSpaceLow =>
+      'Auf diesem Gerät ist nicht genug Platz für die Diashow.';
 }

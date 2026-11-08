@@ -4855,6 +4855,546 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'On the iPhone and iPad, iOS decides when the backup runs in the background: mostly at night while the device charges, and not after the app was swiped away in the app switcher. \"Back up now\" sends at once.'**
   String get photoIosHint;
+
+  /// No description provided for @showProjectOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'This slideshow plays without the server and without a network. Tap to show the controls, swipe to go on or back, swipe down to end it.'**
+  String get showProjectOffline;
+
+  /// No description provided for @showProjectBroken.
+  ///
+  /// In en, this message translates to:
+  /// **'This project cannot be played here: it is damaged or made by a newer David.'**
+  String get showProjectBroken;
+
+  /// No description provided for @showTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pictures'**
+  String get showTitle;
+
+  /// No description provided for @showNone.
+  ///
+  /// In en, this message translates to:
+  /// **'There are no pictures for you yet. They come with the photo backup of your phone, and the adults also see the old folders of the family once they are set up on the server.'**
+  String get showNone;
+
+  /// No description provided for @showGroupWhich.
+  ///
+  /// In en, this message translates to:
+  /// **'Which pictures'**
+  String get showGroupWhich;
+
+  /// No description provided for @showGroupWhen.
+  ///
+  /// In en, this message translates to:
+  /// **'Which years'**
+  String get showGroupWhen;
+
+  /// No description provided for @showGroupHow.
+  ///
+  /// In en, this message translates to:
+  /// **'How'**
+  String get showGroupHow;
+
+  /// No description provided for @showSourceOwn.
+  ///
+  /// In en, this message translates to:
+  /// **'My pictures'**
+  String get showSourceOwn;
+
+  /// No description provided for @showKindOwn.
+  ///
+  /// In en, this message translates to:
+  /// **'backup'**
+  String get showKindOwn;
+
+  /// No description provided for @showKindChild.
+  ///
+  /// In en, this message translates to:
+  /// **'child'**
+  String get showKindChild;
+
+  /// No description provided for @showKindFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'folder'**
+  String get showKindFolder;
+
+  /// No description provided for @showWhichHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Your own backup, the pictures of a child that allows it, and the old folders of the family. The number is how many pictures and videos there are.'**
+  String get showWhichHint;
+
+  /// No description provided for @showSetFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'From'**
+  String get showSetFrom;
+
+  /// No description provided for @showOptFromAll.
+  ///
+  /// In en, this message translates to:
+  /// **'The beginning'**
+  String get showOptFromAll;
+
+  /// No description provided for @showExplainFromAll.
+  ///
+  /// In en, this message translates to:
+  /// **'From the oldest picture on.'**
+  String get showExplainFromAll;
+
+  /// No description provided for @showSetTo.
+  ///
+  /// In en, this message translates to:
+  /// **'To'**
+  String get showSetTo;
+
+  /// No description provided for @showOptToAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get showOptToAll;
+
+  /// No description provided for @showExplainToAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to the newest picture.'**
+  String get showExplainToAll;
+
+  /// No description provided for @showSetOrder.
+  ///
+  /// In en, this message translates to:
+  /// **'Order'**
+  String get showSetOrder;
+
+  /// No description provided for @showOptOrderDate.
+  ///
+  /// In en, this message translates to:
+  /// **'By date'**
+  String get showOptOrderDate;
+
+  /// No description provided for @showOptOrderRandom.
+  ///
+  /// In en, this message translates to:
+  /// **'Shuffled'**
+  String get showOptOrderRandom;
+
+  /// No description provided for @showExplainOrderDate.
+  ///
+  /// In en, this message translates to:
+  /// **'The oldest picture first, as they were taken.'**
+  String get showExplainOrderDate;
+
+  /// No description provided for @showExplainOrderRandom.
+  ///
+  /// In en, this message translates to:
+  /// **'A new order every time, the music shuffled too.'**
+  String get showExplainOrderRandom;
+
+  /// No description provided for @showSetSeconds.
+  ///
+  /// In en, this message translates to:
+  /// **'Each picture'**
+  String get showSetSeconds;
+
+  /// No description provided for @showOptSeconds3.
+  ///
+  /// In en, this message translates to:
+  /// **'3 seconds'**
+  String get showOptSeconds3;
+
+  /// No description provided for @showOptSeconds5.
+  ///
+  /// In en, this message translates to:
+  /// **'5 seconds'**
+  String get showOptSeconds5;
+
+  /// No description provided for @showOptSeconds8.
+  ///
+  /// In en, this message translates to:
+  /// **'8 seconds'**
+  String get showOptSeconds8;
+
+  /// No description provided for @showOptSeconds15.
+  ///
+  /// In en, this message translates to:
+  /// **'15 seconds'**
+  String get showOptSeconds15;
+
+  /// No description provided for @showOptSeconds30.
+  ///
+  /// In en, this message translates to:
+  /// **'30 seconds'**
+  String get showOptSeconds30;
+
+  /// No description provided for @showExplainSeconds3.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick, for many pictures.'**
+  String get showExplainSeconds3;
+
+  /// No description provided for @showExplainSeconds5.
+  ///
+  /// In en, this message translates to:
+  /// **'Brisk.'**
+  String get showExplainSeconds5;
+
+  /// No description provided for @showExplainSeconds8.
+  ///
+  /// In en, this message translates to:
+  /// **'Time to look; the usual.'**
+  String get showExplainSeconds8;
+
+  /// No description provided for @showExplainSeconds15.
+  ///
+  /// In en, this message translates to:
+  /// **'Calm, for an evening on the sofa.'**
+  String get showExplainSeconds15;
+
+  /// No description provided for @showExplainSeconds30.
+  ///
+  /// In en, this message translates to:
+  /// **'Very calm, like a picture frame.'**
+  String get showExplainSeconds30;
+
+  /// No description provided for @showSetTransition.
+  ///
+  /// In en, this message translates to:
+  /// **'Transition'**
+  String get showSetTransition;
+
+  /// No description provided for @showOptTransitionFade.
+  ///
+  /// In en, this message translates to:
+  /// **'Cross-fade'**
+  String get showOptTransitionFade;
+
+  /// No description provided for @showOptTransitionZoom.
+  ///
+  /// In en, this message translates to:
+  /// **'Cross-fade and zoom'**
+  String get showOptTransitionZoom;
+
+  /// No description provided for @showOptTransitionCut.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut'**
+  String get showOptTransitionCut;
+
+  /// No description provided for @showOptTransitionRandom.
+  ///
+  /// In en, this message translates to:
+  /// **'Random'**
+  String get showOptTransitionRandom;
+
+  /// No description provided for @showExplainTransitionFade.
+  ///
+  /// In en, this message translates to:
+  /// **'One picture fades into the next.'**
+  String get showExplainTransitionFade;
+
+  /// No description provided for @showExplainTransitionZoom.
+  ///
+  /// In en, this message translates to:
+  /// **'It fades, and the picture slowly comes closer while it is shown.'**
+  String get showExplainTransitionZoom;
+
+  /// No description provided for @showExplainTransitionCut.
+  ///
+  /// In en, this message translates to:
+  /// **'The next picture comes at once, without a transition.'**
+  String get showExplainTransitionCut;
+
+  /// No description provided for @showExplainTransitionRandom.
+  ///
+  /// In en, this message translates to:
+  /// **'Every change takes one of the three by chance.'**
+  String get showExplainTransitionRandom;
+
+  /// No description provided for @showSetVideos.
+  ///
+  /// In en, this message translates to:
+  /// **'Videos'**
+  String get showSetVideos;
+
+  /// No description provided for @showOptVideosOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Play them'**
+  String get showOptVideosOn;
+
+  /// No description provided for @showOptVideosOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave them out'**
+  String get showOptVideosOff;
+
+  /// No description provided for @showExplainVideosOn.
+  ///
+  /// In en, this message translates to:
+  /// **'A video plays through with its sound, then the show goes on. The music is quieter meanwhile.'**
+  String get showExplainVideosOn;
+
+  /// No description provided for @showExplainVideosOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Only photos.'**
+  String get showExplainVideosOff;
+
+  /// No description provided for @showSetInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Shown on the picture'**
+  String get showSetInfo;
+
+  /// No description provided for @showOptInfoBoth.
+  ///
+  /// In en, this message translates to:
+  /// **'Date and place'**
+  String get showOptInfoBoth;
+
+  /// No description provided for @showOptInfoDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Date only'**
+  String get showOptInfoDate;
+
+  /// No description provided for @showOptInfoNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing'**
+  String get showOptInfoNone;
+
+  /// No description provided for @showExplainInfoBoth.
+  ///
+  /// In en, this message translates to:
+  /// **'When and where it was taken; the place only if the server names places and the picture knows where it was taken.'**
+  String get showExplainInfoBoth;
+
+  /// No description provided for @showExplainInfoDate.
+  ///
+  /// In en, this message translates to:
+  /// **'When it was taken.'**
+  String get showExplainInfoDate;
+
+  /// No description provided for @showExplainInfoNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the picture.'**
+  String get showExplainInfoNone;
+
+  /// No description provided for @showSetMusic.
+  ///
+  /// In en, this message translates to:
+  /// **'Music'**
+  String get showSetMusic;
+
+  /// No description provided for @showOptMusicOff.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get showOptMusicOff;
+
+  /// No description provided for @showExplainMusicOff.
+  ///
+  /// In en, this message translates to:
+  /// **'The pictures without sound.'**
+  String get showExplainMusicOff;
+
+  /// No description provided for @showStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start'**
+  String get showStart;
+
+  /// No description provided for @showEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'There are no pictures for this choice.'**
+  String get showEmpty;
+
+  /// No description provided for @showFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The pictures could not be loaded. Please try again.'**
+  String get showFailed;
+
+  /// No description provided for @showPaused.
+  ///
+  /// In en, this message translates to:
+  /// **'Paused'**
+  String get showPaused;
+
+  /// No description provided for @showPrev.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get showPrev;
+
+  /// No description provided for @showPause.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause or go on'**
+  String get showPause;
+
+  /// No description provided for @showNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get showNext;
+
+  /// No description provided for @showClose.
+  ///
+  /// In en, this message translates to:
+  /// **'End the show'**
+  String get showClose;
+
+  /// No description provided for @showExplainFromYear.
+  ///
+  /// In en, this message translates to:
+  /// **'From 1 January {year} on.'**
+  String showExplainFromYear(String year);
+
+  /// No description provided for @showExplainToYear.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to 31 December {year}.'**
+  String showExplainToYear(String year);
+
+  /// No description provided for @showExplainMusicList.
+  ///
+  /// In en, this message translates to:
+  /// **'This playlist plays behind the pictures, {count} tracks, again from the start at the end.'**
+  String showExplainMusicList(int count);
+
+  /// No description provided for @showCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 picture} other{{count} pictures}}'**
+  String showCount(int count);
+
+  /// No description provided for @showMusicNone.
+  ///
+  /// In en, this message translates to:
+  /// **'You can choose one of your playlists once you have made one.'**
+  String get showMusicNone;
+
+  /// No description provided for @showProjectsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'On this device'**
+  String get showProjectsTitle;
+
+  /// No description provided for @showProjectsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No slideshow on this device yet. Make one from the pictures of the server, or open a project file that was saved in the browser.'**
+  String get showProjectsEmpty;
+
+  /// No description provided for @showProjectsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'A slideshow on this device plays without the server and without a network.'**
+  String get showProjectsHint;
+
+  /// No description provided for @showNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New slideshow'**
+  String get showNew;
+
+  /// No description provided for @showOpenFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Open project file'**
+  String get showOpenFile;
+
+  /// No description provided for @showSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save on this device'**
+  String get showSave;
+
+  /// No description provided for @showSaveExplain.
+  ///
+  /// In en, this message translates to:
+  /// **'The pictures, the videos and the music come onto this device as one slideshow, which then plays without the server.'**
+  String get showSaveExplain;
+
+  /// No description provided for @showLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading … {size}'**
+  String showLoading(String size);
+
+  /// No description provided for @showUnpacking.
+  ///
+  /// In en, this message translates to:
+  /// **'Unpacking …'**
+  String get showUnpacking;
+
+  /// No description provided for @showSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'The slideshow is on this device.'**
+  String get showSaved;
+
+  /// No description provided for @showLoadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The slideshow could not be loaded. Please try again.'**
+  String get showLoadFailed;
+
+  /// No description provided for @showSourcesFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The pictures of the server cannot be reached.'**
+  String get showSourcesFailed;
+
+  /// No description provided for @showDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete from this device'**
+  String get showDelete;
+
+  /// No description provided for @showDeleteAsk.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete \"{title}\" from this device? The pictures on the server stay.'**
+  String showDeleteAsk(String title);
+
+  /// No description provided for @showMeta.
+  ///
+  /// In en, this message translates to:
+  /// **'{pictures} · {size}'**
+  String showMeta(String pictures, String size);
+
+  /// No description provided for @showWithMusic.
+  ///
+  /// In en, this message translates to:
+  /// **'with music'**
+  String get showWithMusic;
+
+  /// No description provided for @showNoServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Without the server, the slideshows on this device can still be shown.'**
+  String get showNoServer;
+
+  /// No description provided for @showNoVideoHere.
+  ///
+  /// In en, this message translates to:
+  /// **'This device shows a video as its picture.'**
+  String get showNoVideoHere;
+
+  /// No description provided for @showSpaceLow.
+  ///
+  /// In en, this message translates to:
+  /// **'There is not enough room on this device for the slideshow.'**
+  String get showSpaceLow;
 }
 
 class _AppLocalizationsDelegate

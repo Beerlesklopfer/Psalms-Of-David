@@ -7,7 +7,7 @@ import '../models.dart';
 
 /// The kinds of media, as the library and the search offer them. Videos and e-books are shown so
 /// that it is clear they are coming; David does not manage them yet.
-enum MediaCategory { all, music, audiobooks, podcasts, radio, playlists, videos, ebooks, hidden }
+enum MediaCategory { all, music, audiobooks, podcasts, radio, playlists, pictures, videos, ebooks, hidden }
 
 extension MediaCategoryItems on MediaCategory {
   /// The books of this category, or null for a category David does not manage yet.
@@ -18,6 +18,7 @@ extension MediaCategoryItems on MediaCategory {
         MediaCategory.podcasts ||
         MediaCategory.radio ||
         MediaCategory.playlists ||
+        MediaCategory.pictures ||
         MediaCategory.videos ||
         MediaCategory.ebooks ||
         MediaCategory.hidden => null,
@@ -53,6 +54,8 @@ class CategoryChips extends StatelessWidget {
       if (!forSearch) (MediaCategory.podcasts, l.navPodcasts, Icons.podcasts),
       if (!forSearch) (MediaCategory.radio, l.navRadio, Icons.radio),
       if (!forSearch) (MediaCategory.playlists, l.filterPlaylists, Icons.queue_music),
+      // The slideshows: kept on this device, they play without the server (docs/spec-pictures.md).
+      if (!forSearch) (MediaCategory.pictures, l.showTitle, Icons.photo_library_outlined),
       (MediaCategory.videos, l.filterVideos, Icons.movie_outlined),
       (MediaCategory.ebooks, l.filterEbooks, Icons.auto_stories_outlined),
       if (!forSearch && showHidden)

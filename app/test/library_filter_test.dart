@@ -139,6 +139,7 @@ void main() {
         'podcasts',
         'radio',
         'playlists',
+        'pictures',
         'videos',
         'ebooks',
         'hidden',
