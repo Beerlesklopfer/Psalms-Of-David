@@ -88,8 +88,9 @@ name = "david-server"
 maintainer = "Joerg Bernau <Joerg@bernau.family>"
 section = "sound"
 priority = "optional"
-depends = "$auto"
-recommends = "7zip | p7zip-full, ffmpeg, libheif-plugin-libde265"
+# ffmpeg is required (project owner, 2026-11-08): the frames of the videos in the pictures (src/picture_render.rs).
+depends = "$auto, ffmpeg"
+recommends = "7zip | p7zip-full, libheif-plugin-libde265"
 maintainer-scripts = "packaging/scripts"
 extended-description = "Self-hosted audiobook and music server for the family (David). Runs as a systemd service as the system user david; the data lives in /var/lib/david."
 assets = [
@@ -136,3 +137,5 @@ assets = [
 
 [package.metadata.generate-rpm.requires]
 libacl = "*"
+# Fedora has it as ffmpeg-free, RPM Fusion as ffmpeg: the program is what counts.
+"/usr/bin/ffmpeg" = "*"
