@@ -851,6 +851,8 @@ impl AdminUi {
             (Some(a), Some(b)) if a <= b => (a..=b).rev().collect(),
             _ => Vec::new(),
         };
+        // "From" lists the oldest year first, "to" the newest (the templates have no filter to turn a list).
+        let years_up: Vec<i16> = years.iter().rev().copied().collect();
         let playlists: Vec<serde_json::Value> = store
             .playlist_summaries(Some(user_id))
             .await
@@ -866,7 +868,7 @@ impl AdminUi {
         let (places, videos) = crate::api_pictures::capabilities(store).await?;
         self.render(
             "pictures.html",
-            context! { sources => Serde(sources), years => years, playlists => Serde(playlists), places => places, frames => videos, ..view.into().context() },
+            context! { sources => Serde(sources), years => years, years_up => years_up, playlists => Serde(playlists), places => places, frames => videos, ..view.into().context() },
         )
     }
 

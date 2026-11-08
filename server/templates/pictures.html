@@ -1,5 +1,5 @@
 {# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
-   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set page = "pictures" %}
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "pictures" %}
 {#- The slideshow (docs/spec-pictures.md, step 2). It is also the model of the slideshow in the apps (project owner, 2026-11-08): made for
     the phone first, with swiping and tapping, and the same choices in the same order. -#}
 {% from "fragments/ui.html" import icon %}{% from "fragments/choice.html" import choice %}
@@ -35,7 +35,7 @@
         <span class="line-label">{{ t("pictures.set.from") }}</span>
         <span class="line-field"><select name="from" data-choice-select>
           <option value="" selected>{{ t("pictures.opt.from.all") }}</option>
-          {% for y in years|reverse %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+          {% for y in years_up %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
         </select></span>
       </label>
       <dl class="choice-explain"><div data-choice-for="" data-chosen><dt>{{ t("pictures.opt.from.all") }}</dt><dd>{{ t("pictures.explain.from.all") }}</dd></div>

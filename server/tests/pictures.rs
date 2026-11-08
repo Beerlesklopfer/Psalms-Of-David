@@ -237,7 +237,12 @@ async fn the_browser_shows_the_page_and_loads_the_pictures_with_the_session() {
     assert!(headers.get(header::CONTENT_SECURITY_POLICY).unwrap().to_str().unwrap().contains("media-src 'self'"), "videos and music may play");
     assert_eq!(get("/pictures".into(), guest_c.clone()).await.0, StatusCode::NOT_FOUND);
     assert_eq!(get("/pictures/list".into(), guest_c.clone()).await.0, StatusCode::NOT_FOUND);
-    assert!(String::from_utf8_lossy(&get("/pictures".into(), boss_c).await.2).contains("f:Hochzeit"));
+    let boss = String::from_utf8_lossy(&get("/pictures".into(), boss_c).await.2).into_owned();
+    assert!(boss.contains("f:Hochzeit"), "{boss}");
+    // An administrator finds the pictures under "Media", marked as the page they are on; a member in the menu of the person.
+    let media = &boss[boss.find("popup-media").expect("the menu Media")..boss.find("popup-user").unwrap()];
+    assert!(media.contains("href=\"/pictures\" aria-current=\"page\""), "{media}");
+    assert!(html.contains("href=\"/pictures\" aria-current=\"page\""), "{html}");
 
     let (status, _, body) = get("/pictures/list?source=f%3AHochzeit".into(), anna_c.clone()).await;
     assert_eq!(status, StatusCode::OK);
