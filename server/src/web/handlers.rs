@@ -1441,6 +1441,7 @@ pub async fn book_tags(State(state): State<AppState>, s: AdminSession, mut form:
         let tags = crate::tags::AlbumTags { album: clean(&album)?, artist: clean(&artist)?, narrator: clean(&narrator)?, year, genre: clean(&genre)?, cover, ..Default::default() };
         let (_, files) = book_files(&state, id).await?;
         let first = files.first().cloned();
+        let before = state.store.admin_book_row(id).await?.ok_or_else(Failure::not_found)?;
         // A picture goes into every file: that many bytes more on the disk of the album.
         if let Some((bytes, _)) = &tags.cover {
             let need = (bytes.len() as u64).saturating_mul(files.len() as u64 + 1);
@@ -1486,10 +1487,35 @@ pub async fn book_tags(State(state): State<AppState>, s: AdminSession, mut form:
         if let Some(first) = first {
             state.store.follow_album_names(id, first).await?;
         }
+        // The folder follows a new title (and a new author, where the folder above was named after the old one).
+        if let Some(after) = state.store.admin_book_row(id).await? {
+            refile_after_tags(&state, &s, id, (&before.author, &before.title), (&after.author, &after.title)).await?;
+        }
         book_row(&state, &s, id).await
     }
     .await;
     finish(&s, "/admin/books", outcome)
+}
+
+/// Moves the folder of an album after its tags gave it a new name (`relocate::plan_follow_tags`). When it cannot move (the place exists,
+/// the server may not write there), the tags stay written and the form says why the folder stayed.
+async fn refile_after_tags(state: &AppState, s: &Session, id: i64, old: (&str, &str), new: (&str, &str)) -> Result<(), Failure> {
+    let plan = match crate::relocate::plan_follow_tags(&state.store, state.library.as_deref(), id, old, new).await {
+        Ok(Some(plan)) => plan,
+        Ok(None) => return Ok(()),
+        Err(e) => {
+            tracing::warn!(book = id, error = %e, "the folder cannot follow the new tags");
+            return Err(Failure::new(StatusCode::CONFLICT, "err.folder_stays"));
+        }
+    };
+    if let Err(e) = crate::relocate::execute_rename(&state.store, &plan).await {
+        tracing::warn!(book = id, from = %plan.from.display(), to = %plan.to.display(), error = %e, "the folder cannot follow the new tags");
+        return Err(Failure::new(StatusCode::CONFLICT, "err.folder_stays"));
+    }
+    tracing::info!(book = id, from = %plan.from.display(), to = %plan.to.display(), "album folder follows its tags");
+    state.store.log_tag_change(&format!("admin:{}", s.user_id), id, "", "Folder", &plan.from.display().to_string(), &plan.to.display().to_string()).await?;
+    state.store.rescan_soon();
+    Ok(())
 }
 
 fn barcode_failure() -> Failure {

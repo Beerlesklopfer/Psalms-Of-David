@@ -4876,6 +4876,8 @@ async fn the_tags_window_of_an_album_of_two_cds_does_not_send_the_cd_number_and_
     let r = send(&a, tags_request(&csrf, &cookie, &[("id", &row.id.to_string()), ("discs", "2"), ("genre", "Klassik"), ("album", "Best of Classic, Vol. 1")], None)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
     assert_eq!(a.store.admin_book_row(row.id).await.unwrap().unwrap().title, "Best of Classic, Vol. 1", "the title follows the tags at once");
+    // The folder follows the new title.
+    let dir = lib.path().join("Various Artists/Best of Classic, Vol. 1");
     assert_eq!(david_server::tags::read_album(&dir.join("a_CD02_TR01.mp3")).disc, Some(2));
     assert_eq!(david_server::tags::read_album(&dir.join("a_CD01_TR01.mp3")).genre.as_deref(), Some("Klassik"));
 }
@@ -5170,4 +5172,52 @@ async fn only_an_administrator_switches_on_the_photo_backup_of_a_child_and_the_c
     let r = send(&a, post("/admin/rpc/user.set_role", &form(&[("id", &guest.to_string()), ("role", "guest")]), &Opts { htmx: true, ..admin })).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
     assert_eq!(send(&a, get(&format!("/admin/users/{guest}/photos"), &admin)).await.status, StatusCode::NOT_FOUND);
+}
+
+/// A new name in the window Tags files the album anew (project owner, 2026-11-08: the folder kept its old name): the title names the folder
+/// of the album; the author the folder above, only when that one was named after the old author, so a folder like `Schule` stays.
+#[tokio::test]
+async fn new_tags_move_the_folder_of_the_album_and_keep_a_folder_of_the_filing() {
+    if !common::audio::ffmpeg_available() {
+        eprintln!("skipped: ffmpeg is not installed");
+        return;
+    }
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let o = Opts { cookie: Some(&cookie), htmx: true, csrf_header: Some(&csrf), ..Default::default() };
+    let lib = tempfile::TempDir::new().unwrap();
+    let school = lib.path().join("Schule/Lehrmaterial");
+    common::audio::make_mp3(&school.join("01.mp3"), &[("album", "Lehrmaterial"), ("artist", "Anna Lehrerin")]);
+    let novel = lib.path().join("Ken Follett/Sturz der Titanen");
+    common::audio::make_mp3(&novel.join("01.mp3"), &[("album", "Sturz der Titanen"), ("artist", "Ken Follett")]);
+    std::fs::create_dir_all(lib.path().join("Schule/Belegt")).unwrap();
+    let root = std::fs::canonicalize(lib.path()).unwrap().to_string_lossy().into_owned();
+    send(&a, post("/admin/rpc/import.save_criteria", &form(&[("roots", &root), ("rule", "manual")]), &o)).await;
+    send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
+    send(&a, post("/admin/rpc/import.run", "", &o)).await;
+    let rows = a.store.admin_book_rows().await.unwrap();
+    let id_of = |t: &str| rows.iter().find(|r| r.title == t).unwrap_or_else(|| panic!("{t} in {rows:?}")).id;
+    let (school_id, novel_id) = (id_of("Lehrmaterial"), id_of("Sturz der Titanen"));
+
+    // In a folder of the filing: the album folder takes the title, `Schule` stays, though the author changed too.
+    let r = send(&a, tags_request(&csrf, &cookie, &[("id", &school_id.to_string()), ("album", "Musik 3. Klasse"), ("artist", "Jennifer Joschko")], None)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    let moved = lib.path().join("Schule/Musik 3. Klasse/01.mp3");
+    assert!(moved.is_file() && !school.exists(), "the folder follows the title");
+    assert_eq!(a.store.book_folder(school_id).await.unwrap().as_deref(), Some("Schule/Musik 3. Klasse"));
+    assert_eq!(david_server::tags::read(&moved).unwrap().album.as_deref(), Some("Musik 3. Klasse"));
+
+    // Author/Title: both folders follow, the empty old author folder goes.
+    let r = send(&a, tags_request(&csrf, &cookie, &[("id", &novel_id.to_string()), ("album", "Winter der Welt"), ("artist", "K. Follett")], None)).await;
+    assert_eq!(r.status, StatusCode::OK, "{}", r.body);
+    assert!(lib.path().join("K. Follett/Winter der Welt/01.mp3").is_file() && !lib.path().join("Ken Follett").exists());
+    assert_eq!(a.store.book_folder(novel_id).await.unwrap().as_deref(), Some("K. Follett/Winter der Welt"));
+
+    // A folder of the new name exists: the tags are written, the folder stays, and the form says so.
+    let r = send(&a, tags_request(&csrf, &cookie, &[("id", &school_id.to_string()), ("album", "Belegt"), ("artist", "Jennifer Joschko")], None)).await;
+    assert_eq!(r.status, StatusCode::CONFLICT, "{}", r.body);
+    assert!(r.body.contains("kept its old name"), "{}", r.body);
+    assert!(moved.is_file() && lib.path().join("Schule/Belegt").read_dir().unwrap().next().is_none());
+    assert_eq!(david_server::tags::read(&moved).unwrap().album.as_deref(), Some("Belegt"));
+    assert_eq!(a.store.book_folder(school_id).await.unwrap().as_deref(), Some("Schule/Musik 3. Klasse"));
 }

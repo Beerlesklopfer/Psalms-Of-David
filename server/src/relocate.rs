@@ -407,6 +407,23 @@ pub async fn plan_rename(store: &Store, library: Option<&Path>, id: i64, author:
     Ok(plan)
 }
 
+/// The folder follows new tags (the window Tags of the pages): a new title names the folder of the album; a new author names the folder
+/// above it, but only when that folder was named after the old author (`Author/Title`), so that a folder of the filing like `Schule`
+/// stays. `None` when nothing is to move. The plan may carry a problem (the place exists, no right to write); then nothing moves.
+pub async fn plan_follow_tags(store: &Store, library: Option<&Path>, id: i64, old: (&str, &str), new: (&str, &str)) -> Result<Option<Rename>, String> {
+    let ((old_author, old_title), (new_author, new_title)) = (old, new);
+    let title = (new_title != old_title).then_some(new_title);
+    let folder = store.book_folder(id).await.map_err(|e| e.to_string())?.ok_or("no such album")?;
+    let parts: Vec<&str> = folder.split('/').collect();
+    let named_after_author = parts.len() >= 2 && folder_name(old_author).as_deref() == Some(parts[parts.len() - 2]);
+    let author = (new_author != old_author && named_after_author).then_some(new_author);
+    if title.is_none() && author.is_none() {
+        return Ok(None);
+    }
+    let plan = plan_rename(store, library, id, author, title).await?;
+    Ok((plan.problem.as_deref() != Some("nothing to change")).then_some(plan))
+}
+
 /// Fills in `problem` of a plan: nothing to change, outside the import folders, inside itself, a place that exists, or no right to write.
 async fn check_place(store: &Store, plan: &mut Rename, old_folder: &str) -> Result<(), String> {
     if plan.new_folder == old_folder {
