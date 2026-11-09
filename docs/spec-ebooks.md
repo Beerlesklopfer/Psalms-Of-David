@@ -115,6 +115,35 @@ line breaks and hyphenated words in the text; for reading aloud that is fatal (t
 8. **Text proof**: the text of the EPUB must equal the text of the PDF character for character, except whitespace, removed page furniture and joined
    hyphenations. Every other difference fails the conversion and names the page.
 
+#### Built, 2026-11-09: `pdf2epub/` (crate and program)
+
+The rule-based part is built as its own crate with a program, `pdf2epub BOOK.pdf [-o BOOK.epub] [--title] [--author] [--lang] [--font-greek F]
+[--font-hebrew F]`. It reads the PDF with poppler-utils (`pdftohtml -xml` for every piece of text with place, font and emphasis; `pdfinfo`; `pdftoppm`
+for the cover), which the server needs anyway; PyMuPDF is not used. Decided with the project owner: **all scholarly apparatus must survive**, and
+**Unicode is mandatory, Greek and Hebrew fonts are embedded**.
+
+- Running heads and feet go (a head is short and carries a number, a foot is little more than the number); their numbers give the printed pages.
+- Every printed page becomes a page break (`epub:type="pagebreak"`) and an entry of the page list (nav and NCX), with the ISBN of the print as
+  `dc:source` refined `source-of pagination`: one cites the e-book by the page of the print. "S. 123" in the text links to that page.
+- Footnotes: the lines in the footnote size at the foot of a page, numbered, a note running over to the next page joined; each mark (a raised small
+  number) is linked to its note (`noteref`/`footnote`, pop-ups in the readers) and back. The notes stand at the end of the file of their mark.
+- Headings by font and size, ranked; parts ("Teil 1", "Schlusswort") above chapters, front and back matter by their names; multi-line headings joined.
+- The printed table of contents is read with its pages and depths, each entry linked to its heading (or at least its page); the navigation follows
+  the headings (part › chapter › section › subsection).
+- Paragraphs rejoined over lines and pages (indent, short last line, spacing); soft hyphens taken back, hard ones at the end of a line only when the
+  book knows the word whole or the first half is no word ("Ost- und West" keeps it); words torn by letter spacing are joined by the book's own
+  word list. Lists with hanging indent, indented Bible text (a paragraph per verse), boxes in another font are kept as such.
+- Bibliography as a list, abbreviations as a definition list (two columns found by their x position), an index with its page numbers linked.
+- Greek of the BibleWorks fonts (Latin letters drawn as Greek) becomes Unicode; Greek and Hebrew are marked `lang="grc"`/`lang="he" dir="rtl"`
+  and shown in embedded free fonts (fontconfig: Gentium Plus, Noto Serif, Cardo, …; Ezra SIL, Noto Serif Hebrew, …; DejaVu as the last resort).
+- A built-in check: mimetype, manifest, well-formed UTF-8 XHTML, every link and anchor. The server's own EPUB reader reads the result.
+
+First real book: a commentary of 482 pages (CLV, from the family's RAG): 356 of 356 footnotes linked, 88 of 88 entries of the contents linked to their
+headings, 474 printed pages, bibliography 58, abbreviations 23.
+
+Not yet: the text proof (step 8), the labels of a language model, images other than the cover, Hebrew of the BibleWorks fonts (`Bwhebb`, stored in
+visual order), EPUBCheck and Ace (not installed here), the import of the server converting PDFs on its own.
+
 #### The language model labels, it does not rewrite
 
 Steps 3 and 4 are the hard ones for rules ("is this bold line a heading or an emphasised sentence?"). A language model helps there, through Eliezer

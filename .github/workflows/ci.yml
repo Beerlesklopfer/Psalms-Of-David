@@ -68,6 +68,20 @@ jobs:
       # Unit tests only: the scripts/verify*.sh checks need a running PipeWire.
       - run: cargo test --locked
 
+  pdf2epub:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: pdf2epub } }
+    steps:
+      - uses: actions/checkout@v4
+      # poppler-utils for the test that converts a real PDF (it skips itself without).
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: clippy }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: pdf2epub }
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+
   app:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: app } }

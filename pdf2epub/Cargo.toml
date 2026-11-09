@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+[package]
+name = "pdf2epub"
+version = "0.1.0"
+edition = "2024"
+description = "Turns a typeset PDF book into an EPUB 3 with all its scholarly apparatus: contents, footnotes, page list, bibliography, abbreviations, index"
+publish = false
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/Beerlesklopfer/Psalms-Of-David"
+
+[lib]
+name = "pdf2epub"
+
+[[bin]]
+name = "pdf2epub"
+path = "src/main.rs"
+
+[dependencies]
+regex = "1"
+roxmltree = "0.21"
+zip = { version = "2", default-features = false, features = ["deflate"] }
