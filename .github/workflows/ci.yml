@@ -73,8 +73,9 @@ jobs:
     defaults: { run: { working-directory: pdf2epub } }
     steps:
       - uses: actions/checkout@v4
-      # poppler-utils for the test that converts a real PDF (it skips itself without).
-      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      # poppler-utils for the tests that convert real PDFs, pango-view and DejaVu for the one set in Hebrew, Greek and Arabic
+      # (they skip themselves without).
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils pango1.0-tools fonts-dejavu-core
       - uses: dtolnay/rust-toolchain@stable
         with: { components: clippy }
       - uses: Swatinem/rust-cache@v2

@@ -5,7 +5,7 @@
 name = "pdf2epub"
 version = "0.1.0"
 edition = "2024"
-description = "Turns a typeset PDF book into an EPUB 3 with all its scholarly apparatus: contents, footnotes, page list, bibliography, abbreviations, index"
+description = "Turns a typeset PDF book into an EPUB 3 with all its scholarly apparatus and every script in Unicode, right-to-left text in reading order"
 publish = false
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/Beerlesklopfer/Psalms-Of-David"
@@ -21,3 +21,8 @@ path = "src/main.rs"
 regex = "1"
 roxmltree = "0.21"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+ttf-parser = { version = "0.25", default-features = false, features = ["std", "opentype-layout"] }
+unicode-bidi = { version = "0.3", default-features = false, features = ["hardcoded-data"] }
+unicode-bidi-mirroring = "0.4"
+unicode-normalization = "0.1"
+unicode-script = "0.5"

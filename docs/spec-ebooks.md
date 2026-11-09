@@ -117,10 +117,10 @@ line breaks and hyphenated words in the text; for reading aloud that is fatal (t
 
 #### Built, 2026-11-09: `pdf2epub/` (crate and program)
 
-The rule-based part is built as its own crate with a program, `pdf2epub BOOK.pdf [-o BOOK.epub] [--title] [--author] [--lang] [--font-greek F]
-[--font-hebrew F]`. It reads the PDF with poppler-utils (`pdftohtml -xml` for every piece of text with place, font and emphasis; `pdfinfo`; `pdftoppm`
+The rule-based part is built as its own crate with a program, `pdf2epub BOOK.pdf [-o BOOK.epub] [--title] [--author] [--lang]
+[--font SCRIPT=F]… [--script-lang SCRIPT=L]…`. It reads the PDF with poppler-utils (`pdftohtml -xml` for every piece of text with place, font and emphasis; `pdfinfo`; `pdftoppm`
 for the cover), which the server needs anyway; PyMuPDF is not used. Decided with the project owner: **all scholarly apparatus must survive**, and
-**Unicode is mandatory, Greek and Hebrew fonts are embedded**.
+**Unicode is mandatory, the fonts of every foreign script are embedded, right-to-left text must come out right**.
 
 - Running heads and feet go (a head is short and carries a number, a foot is little more than the number); their numbers give the printed pages.
 - Every printed page becomes a page break (`epub:type="pagebreak"`) and an entry of the page list (nav and NCX), with the ISBN of the print as
@@ -134,15 +134,39 @@ for the cover), which the server needs anyway; PyMuPDF is not used. Decided with
   book knows the word whole or the first half is no word ("Ost- und West" keeps it); words torn by letter spacing are joined by the book's own
   word list. Lists with hanging indent, indented Bible text (a paragraph per verse), boxes in another font are kept as such.
 - Bibliography as a list, abbreviations as a definition list (two columns found by their x position), an index with its page numbers linked.
-- Greek of the BibleWorks fonts (Latin letters drawn as Greek) becomes Unicode; Greek and Hebrew are marked `lang="grc"`/`lang="he" dir="rtl"`
-  and shown in embedded free fonts (fontconfig: Gentium Plus, Noto Serif, Cardo, …; Ezra SIL, Noto Serif Hebrew, …; DejaVu as the last resort).
+- Greek of the BibleWorks fonts (Latin letters drawn as Greek) becomes Unicode.
+- **Every script of Unicode**, not only Greek and Hebrew (Syriac, Arabic, Coptic, Ge'ez, Armenian, Cyrillic/Old Church Slavonic, Samaritan,
+  cuneiform …): each run of a foreign script is a span with its language (`Grek`→`grc`, `Hebr`→`he`, `Syrc`→`syc`, `Copt`→`cop`, `Ethi`→`gez`,
+  others `und-Xxxx`; `--script-lang Grek=el` changes one) and, where it runs against the book, its direction (`dir="rtl"`, which also keeps a
+  Hebrew phrase together in German text).
+- **Right-to-left text in reading order.** poppler gives it in the order it was drawn, and every program draws it its own way (measured: pango
+  glyph by glyph from the right with the points as pieces of their own, which poppler may join to the next letter or split by spaces; XeTeX whole
+  words turned round with the points before their letter; LibreOffice and Word letters turned round with the points after). The line is laid out
+  as seen, the points put back to their letter by the order of drawing, then turned into reading order the way the bidirectional algorithm lays
+  it out (runs of the other direction turned round, numbers kept, brackets mirrored). Whether a book's words come turned or in reading order is
+  told once per book from the Hebrew final forms (ך ם ן ף ץ at the end of a word) and Arabic ة/ى and al-. The direction of a line comes from
+  the letters at both its ends, the book's when they disagree. Presentation forms (Arabic shapes, lam-alef, fi) become letters, all is NFC.
+- **Books written from right to left** (more right-to-left letters than others) become right-to-left EPUBs: `dir="rtl"` on every file,
+  `page-progression-direction="rtl"`, the page mirrored for indents and margins, the style sheet's left and right swapped.
+- **Fonts for everything**: one embedded font per foreign script and one for the rare characters of the main text (transliteration such as
+  ʻ ʼ ḥ ā̆, or the letters of a non-Latin main script). Found with fontconfig (known good free fonts first, e.g. Gentium Plus, Ezra SIL, Amiri,
+  Noto Sans Syriac, Antinoou, Abyssinica SIL, then the Noto font of the script, then any font that has the letters); the character map of the font
+  decides, and the characters no font has are a problem of the report. One file for a font that serves several scripts.
+- **Unreadable text is reported, not passed on silently**: characters in the private use area or U+FFFD (the PDF does not say which letters they
+  are), fonts in a legacy encoding (BibleWorks Hebrew, SP Tiberian, Graeca …), ASCII signs inside right-to-left words (a broken Unicode map, as
+  LibreOffice writes it for Hebrew points in a monospace font).
 - A built-in check: mimetype, manifest, well-formed UTF-8 XHTML, every link and anchor. The server's own EPUB reader reads the result.
 
 First real book: a commentary of 482 pages (CLV, from the family's RAG): 356 of 356 footnotes linked, 88 of 88 entries of the contents linked to their
-headings, 474 printed pages, bibliography 58, abbreviations 23.
+headings, 474 printed pages, bibliography 58, abbreviations 23; its Greek in an embedded font, its transliteration (ʻ ʼ) in a second one.
+Right-to-left checked on PDFs made with pango (8 to 15 pt, DejaVu Sans and Serif, FreeSerif), XeTeX and LibreOffice (Hebrew pointed, Arabic with
+a number, Greek polytonic in German text; a Hebrew book with Latin and a verse reference in it).
 
-Not yet: the text proof (step 8), the labels of a language model, images other than the cover, Hebrew of the BibleWorks fonts (`Bwhebb`, stored in
-visual order), EPUBCheck and Ace (not installed here), the import of the server converting PDFs on its own.
+Not yet: the text proof (step 8), the labels of a language model, images other than the cover, the legacy encodings turned into Unicode
+(BibleWorks Hebrew `Bwhebb` and others are only reported), font subsetting (a CJK or a big Noto font is embedded whole; `.ttc` collections are not
+embedded), labels of the generated pages in other languages than German and English, vertical writing, EPUBCheck and Ace (not installed here),
+the import of the server converting PDFs on its own. A ligature drawn as one glyph in a word turned round (lam-alef in LibreOffice's Arabic) keeps
+the order of its characters as the PDF gives it.
 
 #### The language model labels, it does not rewrite
 

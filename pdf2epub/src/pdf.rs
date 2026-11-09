@@ -18,7 +18,7 @@ pub struct Font {
 }
 
 impl Font {
-    fn name(&self) -> &str {
+    pub fn name(&self) -> &str {
         self.family.split_once('+').map_or(self.family.as_str(), |(_, r)| r)
     }
 
@@ -77,11 +77,43 @@ pub struct Page {
 pub struct Pdf {
     pub fonts: HashMap<u32, Font>,
     pub pages: Vec<Page>,
+    /// Per font name: its characters, those of them without a meaning in Unicode (private use area, U+FFFD), and the ASCII
+    /// signs found between the letters of right-to-left words (a broken Unicode map: `בָּ%רָ`).
+    pub chars: HashMap<String, (usize, usize, usize)>,
 }
+
+/// Fonts that put Hebrew or Greek on the codes of Latin letters (legacy encodings): what poppler reads from them is Latin
+/// gibberish. The Greek of BibleWorks is turned into Unicode ([`greek`]); these are not (yet).
+const LEGACY: &[&str] = &["bwhebb", "bwhebl", "sptiberian", "spionic", "spezra", "spatlantis", "graeca", "teknia", "supergreek", "hebraica", "bwsyrc", "bwcopt"];
 
 impl Pdf {
     pub fn font(&self, id: u32) -> Font {
         self.fonts.get(&id).cloned().unwrap_or(Font { size: 10.0, family: String::new() })
+    }
+
+    /// What of the text cannot be read: characters without a meaning in Unicode (the PDF does not say which letters its glyphs
+    /// are), and fonts with a legacy encoding.
+    pub fn unreadable(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut names: Vec<_> = self.chars.iter().collect();
+        names.sort_by(|a, b| a.0.cmp(b.0));
+        for (name, (total, unmapped, stray)) in names {
+            if *unmapped > 0 {
+                out.push(format!(
+                    "font {name}: {unmapped} of {total} characters have no meaning in Unicode (private use area or U+FFFD): the PDF does not say which letters they are"
+                ));
+            }
+            if *stray >= 3 {
+                out.push(format!(
+                    "font {name}: {stray} ASCII signs inside right-to-left words: its Unicode map is broken (the PDF says the wrong characters for vowel points or letters)"
+                ));
+            }
+            let lower = name.to_ascii_lowercase();
+            if LEGACY.iter().any(|l| lower.contains(l)) {
+                out.push(format!("font {name}: {total} characters in a legacy encoding (Latin codes drawn as other letters), not turned into Unicode"));
+            }
+        }
+        out
     }
 }
 
@@ -131,8 +163,22 @@ pub fn parse(xml: &str) -> Result<Pdf, Error> {
                     let greek = pdf.fonts.get(&font).is_some_and(Font::greek);
                     let mut runs = Vec::new();
                     collect(n, false, false, greek, &mut runs);
-                    if runs.iter().all(|r| r.text.trim().is_empty()) {
+                    // A space drawn on its own says where a word ends (right-to-left glyphs drawn one by one have no other sign).
+                    if runs.iter().all(|r| r.text.trim().is_empty()) && (runs.is_empty() || num(n, "width") <= 0.0) {
                         continue;
+                    }
+                    let name = pdf.fonts.get(&font).map(|f| f.name().to_string()).unwrap_or_default();
+                    let e = pdf.chars.entry(name).or_default();
+                    let text: Vec<char> = runs.iter().flat_map(|r| r.text.chars()).collect();
+                    let rtl = |c: Option<&char>| c.is_some_and(|c| matches!(crate::script::dir(*c), crate::script::Dir::R | crate::script::Dir::Mark));
+                    for (i, c) in text.iter().enumerate().filter(|(_, c)| !c.is_whitespace()) {
+                        e.0 += 1;
+                        if matches!(c, '\u{e000}'..='\u{f8ff}' | '\u{f0000}'..='\u{10ffff}' | '\u{fffd}') {
+                            e.1 += 1;
+                        }
+                        if c.is_ascii_punctuation() && !matches!(c, '.' | ',' | ':' | ';' | '-' | '(' | ')') && rtl(i.checked_sub(1).and_then(|j| text.get(j))) && rtl(text.get(i + 1)) {
+                            e.2 += 1;
+                        }
                     }
                     p.items.push(Item { top: num(n, "top"), left: num(n, "left"), width: num(n, "width"), height: num(n, "height"), font, runs });
                 }
@@ -207,12 +253,16 @@ mod tests {
         let pdf = parse(xml).unwrap();
         assert_eq!(pdf.pages.len(), 1);
         let items = &pdf.pages[0].items;
-        assert_eq!(items.len(), 2, "the piece of only a space is left out");
+        assert_eq!(items.len(), 3, "a space drawn on its own is kept: it tells where a word ends");
+        assert_eq!(items[2].runs[0].text, " ");
         assert_eq!(items[0].runs.len(), 4);
         assert!(items[0].runs[1].italic && !items[0].runs[1].bold);
         assert!(items[0].runs[3].italic && items[0].runs[3].bold);
         assert_eq!(items[1].runs[0].text, "λογος");
         assert!(items[1].runs[0].greek);
+        assert!(pdf.unreadable().is_empty());
+        let broken = xml.replace("logoj", "בָּ%רָ!אֵ+שִׁ!ית").replace("Bwgrkl", "LiberationMono");
+        assert!(parse(&broken).unwrap().unreadable()[0].contains("4 ASCII signs inside right-to-left words"));
         let f = pdf.font(0);
         assert_eq!(f.key(), "TimesNewRoman");
         assert!(Font { size: 20.0, family: "MSDLIF+MyriadPro-SemiboldIt".into() }.bold());

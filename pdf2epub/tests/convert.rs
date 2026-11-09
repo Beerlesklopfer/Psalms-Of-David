@@ -7,6 +7,16 @@ use std::io::Read;
 
 use pdf2epub::{Options, convert_xml};
 
+trait Nfc {
+    fn nfc_string(&self) -> String;
+}
+
+impl Nfc for str {
+    fn nfc_string(&self) -> String {
+        pdf2epub::script::normalize(self)
+    }
+}
+
 const W: f32 = 574.0;
 
 struct Doc {
@@ -162,7 +172,7 @@ fn the_book_comes_out_with_its_whole_apparatus() {
     let hebrew = dir.join("hebrew.otf");
     std::fs::write(&greek, b"not really a font").unwrap();
     std::fs::write(&hebrew, b"not really a font either").unwrap();
-    let opts = Options { find_fonts: false, font_greek: Some(greek), font_hebrew: Some(hebrew), ..Options::default() };
+    let opts = Options { find_fonts: false, fonts: vec![("Grek".into(), greek), ("Hebr".into(), hebrew)], ..Options::default() };
     let (epub, r) = convert_xml(&book(), Some(b"JPEG"), "Ein Testbuch", "Anna Autorin", "test.pdf", &opts).unwrap();
     let _ = std::fs::remove_dir_all(&dir);
     assert!(r.problems.is_empty(), "{:?}", r.problems);
@@ -175,9 +185,15 @@ fn the_book_comes_out_with_its_whole_apparatus() {
     assert!(opf.contains("source-of\">pagination"));
     assert!(opf.contains("<dc:publisher>Testverlag</dc:publisher>") && opf.contains("<dc:date>2020</dc:date>"));
     assert!(opf.contains("properties=\"cover-image\""));
-    assert!(f.contains_key("OEBPS/fonts/embeddedgreek.ttf") && f.contains_key("OEBPS/fonts/embeddedhebrew.otf"));
-    assert!(f["OEBPS/style.css"].contains("@font-face { font-family: \"EmbeddedHebrew\"; src: url(\"fonts/embeddedhebrew.otf\"); }"));
-    assert!(r.greek && r.hebrew);
+    assert!(f.contains_key("OEBPS/fonts/embedded-grek.ttf") && f.contains_key("OEBPS/fonts/embedded-hebr.otf"));
+    let css = &f["OEBPS/style.css"];
+    assert!(css.contains("@font-face { font-family: \"Embedded-Hebr\"; src: url(\"fonts/embedded-hebr.otf\"); }"));
+    assert!(css.contains(".sc-Hebr { font-family: \"Embedded-Hebr\", \"Ezra SIL\", \"SBL Hebrew\", serif; font-size: 1.1em; }"), "{css}");
+    let codes: Vec<&str> = r.scripts.iter().map(|u| u.code.as_str()).collect();
+    assert!(codes.contains(&"Grek") && codes.contains(&"Hebr"), "{codes:?}");
+    assert_eq!((r.main_script.as_str(), r.rtl, r.language.as_str()), ("Latn", false, "de"));
+    // The fonts given here are no real fonts: their characters cannot be checked, which is said.
+    assert!(r.warnings.iter().any(|w| w.contains("could not be checked")), "{:?}", r.warnings);
 
     // The navigation: part above chapter, the two-line section heading whole, the page list, the landmarks.
     let nav = &f["OEBPS/text/nav.xhtml"];
@@ -202,8 +218,8 @@ fn the_book_comes_out_with_its_whole_apparatus() {
     // The running heads are gone, the hyphenation is taken back, the Greek is Unicode and marked, so is the Hebrew.
     assert!(!text.contains("Ein Testbuch 6") && !text.contains(">5 <"));
     assert!(text.contains("ein bekannter Pharisäer, was »Abgesonderter«"), "{text}");
-    assert!(text.contains("<span lang=\"grc\" xml:lang=\"grc\">αφωρισμενος</span>"));
-    assert!(text.contains("<span lang=\"he\" xml:lang=\"he\" dir=\"rtl\">שָׁלוֹם</span>"), "{text}");
+    assert!(text.contains("<span class=\"sc-Grek\" lang=\"grc\" xml:lang=\"grc\">αφωρισμενος</span>"), "{text}");
+    assert!(text.contains("das Wort <span class=\"sc-Hebr\" lang=\"he\" xml:lang=\"he\" dir=\"rtl\">שָׁלוֹם</span>, das Friede"), "{text}");
     // "S. 6" leads to the printed page 6.
     assert!(text.contains("<a href=\"s002.xhtml#p6\">S. 6</a>") || text.contains("<a href=\"#p6\">S. 6</a>"), "{text}");
 
@@ -278,4 +294,128 @@ fn a_real_pdf_goes_through_poppler_when_it_is_installed() {
     assert!(text.contains("Das zweite Kapitel."));
     assert!(!text.contains("Ein Testbuch 2"), "the running head is gone: {text}");
     assert!(f["OEBPS/text/nav.xhtml"].contains("Kapitel 2"));
+}
+
+/// One page of `pdftohtml -xml` with the given fonts and pieces (top, left, width, font, text).
+/// A piece of text: top, left, width, font, text.
+type Piece = (f32, f32, f32, u32, String);
+
+fn page_xml(fonts: &[(u32, u32, &str)], pages: &[Vec<Piece>]) -> String {
+    let mut x = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<pdf2xml producer=\"poppler\" version=\"25.03.0\">\n");
+    for (i, items) in pages.iter().enumerate() {
+        x.push_str(&format!("<page number=\"{}\" position=\"absolute\" top=\"0\" left=\"0\" height=\"871\" width=\"{W}\">\n", i + 1));
+        if i == 0 {
+            for (id, size, family) in fonts {
+                x.push_str(&format!("<fontspec id=\"{id}\" size=\"{size}\" family=\"{family}\" color=\"#000000\"/>\n"));
+            }
+        }
+        for (top, left, width, font, text) in items {
+            x.push_str(&format!("<text top=\"{top}\" left=\"{left}\" width=\"{width}\" height=\"16\" font=\"{font}\">{text}</text>\n"));
+        }
+        x.push_str("</page>\n");
+    }
+    x.push_str("</pdf2xml>\n");
+    x
+}
+
+fn seen(s: &str) -> String {
+    s.chars().rev().collect()
+}
+
+#[test]
+fn every_foreign_script_is_marked_with_its_language_and_direction() {
+    // A German page quoting Syriac, Coptic, Arabic, Ge'ez and Old Church Slavonic, drawn as XeTeX draws right-to-left words.
+    let pages = vec![vec![
+        (100.0, 60.0, 400.0, 0, "Das Wort lautet".into()),
+        (120.0, 60.0, 120.0, 0, "syrisch".into()),
+        (120.0, 190.0, 60.0, 1, seen("ܡܠܬܐ")),
+        (120.0, 250.0, 200.0, 0, ", koptisch ⲡⲗⲟⲅⲟⲥ und".into()),
+        (140.0, 60.0, 80.0, 0, "arabisch".into()),
+        (140.0, 150.0, 70.0, 1, seen("الكلمة")),
+        (140.0, 220.0, 250.0, 0, ", ge'ez ቃል, slawisch слово.".into()),
+    ]];
+    let fonts = [(0, 15, "AAAAAA+Serif"), (1, 15, "BBBBBB+NotoSansSyriac")];
+    let opts = Options { find_fonts: false, script_langs: vec![("Cyrl".into(), "cu".into())], ..Options::default() };
+    let (epub, r) = convert_xml(&page_xml(&fonts, &pages), None, "Wörter", "Anna Autorin", "w.pdf", &opts).unwrap();
+    assert!(r.problems.is_empty(), "{:?}", r.problems);
+    let text = all_text(&files(&epub));
+    assert!(text.contains("<span class=\"sc-Syrc\" lang=\"syc\" xml:lang=\"syc\" dir=\"rtl\">ܡܠܬܐ</span>, koptisch"), "{text}");
+    assert!(text.contains("<span class=\"sc-Copt\" lang=\"cop\" xml:lang=\"cop\">ⲡⲗⲟⲅⲟⲥ</span>"), "{text}");
+    assert!(text.contains("arabisch <span class=\"sc-Arab\" lang=\"ar\" xml:lang=\"ar\" dir=\"rtl\">الكلمة</span>,"), "{text}");
+    assert!(text.contains("<span class=\"sc-Ethi\" lang=\"gez\" xml:lang=\"gez\">ቃል</span>"), "{text}");
+    assert!(text.contains("<span class=\"sc-Cyrl\" lang=\"cu\" xml:lang=\"cu\">слово</span>."), "{text}");
+    // Without a font search the scripts have no font; that is said, as a note.
+    let codes: Vec<&str> = r.scripts.iter().map(|u| u.code.as_str()).collect();
+    assert_eq!(codes, ["Arab", "Copt", "Cyrl", "Ethi", "Syrc"]);
+    assert!(r.warnings.iter().any(|w| w.starts_with("Syriac: 4 characters without an embedded font")), "{:?}", r.warnings);
+}
+
+#[test]
+fn a_book_written_from_right_to_left_becomes_a_right_to_left_epub() {
+    // A Hebrew book: the lines start on the right, a heading, two paragraphs, a Latin word and a verse reference in it.
+    let p1 = vec![
+        (60.0, 300.0, 120.0, 2, seen("פרק א")),
+        (120.0, 40.0, 500.0, 0, seen("בְּרֵאשִׁית בָּרָא אֱלֹהִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ וְהָאָרֶץ הָיְתָה תֹהוּ")),
+        (140.0, 100.0, 440.0, 0, seen("וָבֹהוּ וְחֹשֶׁךְ עַל פְּנֵי תְהוֹם.")),
+        (160.0, 40.0, 30.0, 0, "Gen".into()),
+        (160.0, 80.0, 30.0, 0, "1,2".into()),
+        (160.0, 120.0, 380.0, 0, seen("וְרוּחַ אֱלֹהִים מְרַחֶפֶת עַל פְּנֵי הַמָּיִם כמו שכתוב")),
+    ];
+    let fonts = [(0, 15, "AAAAAA+SBLHebrew"), (2, 24, "AAAAAA+SBLHebrew-Bold")];
+    let opts = Options { find_fonts: false, cover: false, ..Options::default() };
+    let (epub, r) = convert_xml(&page_xml(&fonts, &[p1]), None, "ספר", "", "s.pdf", &opts).unwrap();
+    assert!(r.problems.is_empty(), "{:?}", r.problems);
+    assert_eq!((r.main_script.as_str(), r.rtl, r.language.as_str()), ("Hebr", true, "he"));
+    let f = files(&epub);
+    assert!(f["OEBPS/content.opf"].contains("<spine toc=\"ncx\" page-progression-direction=\"rtl\">"));
+    assert!(f["OEBPS/content.opf"].contains("<dc:language>he</dc:language>"));
+    let text = all_text(&f);
+    assert!(text.contains("lang=\"he\" xml:lang=\"he\" dir=\"rtl\">"), "{text}");
+    let first = "בְּרֵאשִׁית בָּרָא אֱלֹהִים".nfc_string();
+    assert!(text.contains(&first), "{text}");
+    // The line that runs on is joined to the one before, the Latin is marked as running from left to right.
+    assert!(text.contains(&"הָיְתָה תֹהוּ וָבֹהוּ".nfc_string()), "{text}");
+    assert!(text.contains(&format!("{} <span class=\"sc-Latn\" lang=\"und-Latn\" xml:lang=\"und-Latn\" dir=\"ltr\">Gen</span> 1,2", "כמו שכתוב")), "{text}");
+    // Indents and lists start on the right.
+    let css = &f["OEBPS/style.css"];
+    assert!(css.contains("div.list p.item { text-indent: -1.5em; padding-right: 1.5em; text-align: right;"), "{css}");
+}
+
+#[test]
+fn hebrew_greek_and_arabic_set_by_pango_come_out_in_reading_order() {
+    // pango draws right-to-left text glyph by glyph from the right, the vowel points as pieces of their own.
+    let tools = ["pdftohtml", "pango-view"];
+    if tools.iter().any(|t| std::process::Command::new(t).arg("--version").output().is_err()) {
+        eprintln!("pdftohtml or pango-view missing, skipped");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("pdf2epub-pango-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let text = dir.join("text.txt");
+    std::fs::write(
+        &text,
+        "Kapitel 1\nIm Anfang (בְּרֵאשִׁית בָּרָא) schuf Gott, griechisch ἐν ἀρχῇ, arabisch في البدء mit 12 Wörtern.\n",
+    )
+    .unwrap();
+    let path = dir.join("Anna Autorin - Drei Schriften.pdf");
+    let out = std::process::Command::new("pango-view")
+        .args(["-q", "--font", "DejaVu Sans 11", "-o"])
+        .arg(&path)
+        .arg(&text)
+        .output()
+        .unwrap();
+    if !out.status.success() {
+        let _ = std::fs::remove_dir_all(&dir);
+        eprintln!("pango-view failed (no display backend?), skipped");
+        return;
+    }
+    let opts = Options { find_fonts: false, cover: false, ..Options::default() };
+    let (epub, r) = pdf2epub::convert_pdf(&path, &opts).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(r.problems.is_empty(), "{:?}", r.problems);
+    let text = all_text(&files(&epub));
+    let n = |s: &str| s.nfc_string();
+    assert!(text.contains(&format!("Im Anfang (<span class=\"sc-Hebr\" lang=\"he\" xml:lang=\"he\" dir=\"rtl\">{}</span>) schuf Gott", n("בְּרֵאשִׁית בָּרָא"))), "{text}");
+    assert!(text.contains(&format!("<span class=\"sc-Grek\" lang=\"grc\" xml:lang=\"grc\">{}</span>", n("ἐν ἀρχῇ"))), "{text}");
+    assert!(text.contains("arabisch <span class=\"sc-Arab\" lang=\"ar\" xml:lang=\"ar\" dir=\"rtl\">في البدء</span> mit 12 Wörtern."), "{text}");
 }

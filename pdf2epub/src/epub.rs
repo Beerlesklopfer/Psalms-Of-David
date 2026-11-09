@@ -3,16 +3,17 @@
 //! Writes the book as EPUB 3 (with an NCX for older readers): one file per part and chapter, the footnotes at the end of the file
 //! of their mark (`epub:type="noteref"`/`"footnote"`, so readers show them as pop-ups, with a link back), the printed pages as
 //! page breaks and page list, the printed table of contents with links, the navigation by the headings, landmarks for contents,
-//! text, bibliography, abbreviations and index. All text is UTF-8; Greek and Hebrew are marked with their language (Hebrew from
-//! right to left) and shown in embedded fonts.
+//! text, bibliography, abbreviations and index. All text is UTF-8; every foreign script is marked with its language and, where it
+//! runs the other way, its direction, and shown in an embedded font. A book written from right to left is a right-to-left EPUB.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
 
 use regex::Regex;
 
 use crate::book::{Block, Book, Heading, Inline, Kind, Placed, Section, plain};
-use crate::fonts::{Font, Script};
+use crate::fonts::{self, Font};
+use crate::script;
 use crate::{Error, Report};
 
 pub struct Meta<'a> {
@@ -21,6 +22,10 @@ pub struct Meta<'a> {
     pub language: &'a str,
     pub source: &'a str,
     pub modified: String,
+    /// The script most of the book is in (ISO 15924).
+    pub main_script: &'a str,
+    /// The language each foreign script is marked with.
+    pub langs: &'a BTreeMap<String, String>,
 }
 
 fn esc(s: &str) -> String {
@@ -76,6 +81,8 @@ struct Ctx<'a> {
     links: &'a Links,
     page_ref: &'a Regex,
     index_num: &'a Regex,
+    main: &'a str,
+    langs: &'a BTreeMap<String, String>,
 }
 
 impl Ctx<'_> {
@@ -83,57 +90,29 @@ impl Ctx<'_> {
         if from == to { format!("#{id}") } else { format!("{}#{id}", self.files[to].name) }
     }
 
-    /// Text with the scripts marked: Greek and Hebrew in spans with their language.
-    fn scripts(&self, text: &str, greek: bool) -> String {
-        if greek {
-            return format!("<span lang=\"grc\" xml:lang=\"grc\">{}</span>", esc(text));
-        }
+    /// Text with the foreign scripts marked: each run in a span with its language, its font and (where it runs the other way
+    /// than the book) its direction, which also keeps a right-to-left phrase together in left-to-right text.
+    fn scripts(&self, text: &str) -> String {
         let mut out = String::new();
-        let mut run = String::new();
-        let mut cur: Option<Script> = None;
-        let flush = |out: &mut String, run: &mut String, cur: Option<Script>| {
-            if run.is_empty() {
-                return;
-            }
-            // Spaces and punctuation after the last letter of the script are no longer part of it.
-            let (core, tail) = match cur {
-                Some(sc) => {
-                    let end = run.char_indices().rfind(|(_, c)| sc.has(*c)).map_or(0, |(i, c)| i + c.len_utf8());
-                    run.split_at(end)
+        for (s, run) in script::runs(text, self.main) {
+            match s {
+                Some(code) => {
+                    let lang = self.langs.get(code).cloned().unwrap_or_else(|| script::default_lang(code));
+                    let dir = match (script::is_rtl(code), self.book.rtl) {
+                        (true, false) => " dir=\"rtl\"",
+                        (false, true) => " dir=\"ltr\"",
+                        _ => "",
+                    };
+                    out.push_str(&format!("<span class=\"sc-{code}\" lang=\"{lang}\" xml:lang=\"{lang}\"{dir}>{}</span>", esc(run)));
                 }
-                None => (run.as_str(), ""),
-            };
-            match cur {
-                Some(Script::Greek) => out.push_str(&format!("<span lang=\"grc\" xml:lang=\"grc\">{}</span>", esc(core))),
-                Some(Script::Hebrew) => out.push_str(&format!("<span lang=\"he\" xml:lang=\"he\" dir=\"rtl\">{}</span>", esc(core))),
-                None => out.push_str(&esc(core)),
+                None => out.push_str(&esc(run)),
             }
-            out.push_str(&esc(tail));
-            run.clear();
-        };
-        for c in text.chars() {
-            let s = if Script::Greek.has(c) {
-                Some(Script::Greek)
-            } else if Script::Hebrew.has(c) {
-                Some(Script::Hebrew)
-            } else if cur.is_some() && (c == ' ' || c.is_ascii_punctuation() || ('\u{0300}'..='\u{036f}').contains(&c)) {
-                // Spaces, punctuation and combining marks inside a Greek or Hebrew phrase stay with it.
-                cur
-            } else {
-                None
-            };
-            if s != cur {
-                flush(&mut out, &mut run, cur);
-                cur = s;
-            }
-            run.push(c);
         }
-        flush(&mut out, &mut run, cur);
         out
     }
 
     /// Text with the references to printed pages ("S. 123") as links.
-    fn text(&self, file: usize, text: &str, greek: bool, section: Section) -> String {
+    fn text(&self, file: usize, text: &str, section: Section) -> String {
         let re = if section == Section::Index { self.index_num } else { self.page_ref };
         let mut out = String::new();
         let mut last = 0;
@@ -144,11 +123,11 @@ impl Ctx<'_> {
                 continue;
             }
             let Some(&to) = self.links.page.get(&n) else { continue };
-            out.push_str(&self.scripts(&text[last..m.start()], greek));
-            out.push_str(&format!("<a href=\"{}\">{}</a>", self.href(file, to, &format!("p{n}")), self.scripts(m.as_str(), greek)));
+            out.push_str(&self.scripts(&text[last..m.start()]));
+            out.push_str(&format!("<a href=\"{}\">{}</a>", self.href(file, to, &format!("p{n}")), self.scripts(m.as_str())));
             last = m.end();
         }
-        out.push_str(&self.scripts(&text[last..], greek));
+        out.push_str(&self.scripts(&text[last..]));
         out
     }
 
@@ -156,8 +135,8 @@ impl Ctx<'_> {
         let mut out = String::new();
         for i in content {
             match i {
-                Inline::Text { text, bold, italic, greek } => {
-                    let mut t = self.text(file, text, *greek, section);
+                Inline::Text { text, bold, italic, .. } => {
+                    let mut t = self.text(file, text, section);
                     if *italic {
                         t = format!("<i>{t}</i>");
                     }
@@ -202,22 +181,38 @@ fn section_type(s: Section) -> (&'static str, &'static str) {
     }
 }
 
-fn xhtml(lang: &str, title: &str, body: &str) -> String {
+fn xhtml(lang: &str, rtl: bool, title: &str, body: &str) -> String {
+    let dir = if rtl { " dir=\"rtl\"" } else { "" };
     format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html>\n<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\" lang=\"{lang}\" xml:lang=\"{lang}\">\n<head>\n<meta charset=\"UTF-8\"/>\n<title>{}</title>\n<link rel=\"stylesheet\" type=\"text/css\" href=\"../style.css\"/>\n</head>\n<body>\n{body}\n</body>\n</html>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html>\n<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\" lang=\"{lang}\" xml:lang=\"{lang}\"{dir}>\n<head>\n<meta charset=\"UTF-8\"/>\n<title>{}</title>\n<link rel=\"stylesheet\" type=\"text/css\" href=\"../style.css\"/>\n</head>\n<body>\n{body}\n</body>\n</html>\n",
         esc(title)
     )
 }
 
-fn css(fonts: &[Font]) -> String {
+fn css(fonts: &[Font], main: &str, rtl: bool) -> String {
     let mut s = String::new();
     for f in fonts {
-        s.push_str(&format!("@font-face {{ font-family: \"{}\"; src: url(\"fonts/{}\"); }}\n", f.script.css_family(), f.file_name));
+        s.push_str(&format!("@font-face {{ font-family: \"{}\"; src: url(\"fonts/{}\"); }}\n", fonts::css_family(&f.group), f.file_name));
     }
-    let greek = if fonts.iter().any(|f| f.script == Script::Greek) { "\"EmbeddedGreek\", " } else { "" };
-    let hebrew = if fonts.iter().any(|f| f.script == Script::Hebrew) { "\"EmbeddedHebrew\", " } else { "" };
+    // The main text: the reader's serif font, the embedded one for what it lacks; first when the main script is not Latin.
+    let body_font = match fonts.iter().find(|f| f.group == fonts::TEXT) {
+        Some(_) if main != "Latn" => format!("\"{}\", serif", fonts::css_family(fonts::TEXT)),
+        Some(_) => format!("serif, \"{}\"", fonts::css_family(fonts::TEXT)),
+        None => "serif".into(),
+    };
+    let mut scripts = String::new();
+    for f in fonts.iter().filter(|f| f.group != fonts::TEXT) {
+        let hint = match f.group.as_str() {
+            "Grek" => "\"Gentium Plus\", \"SBL BibLit\", ",
+            "Hebr" => "\"Ezra SIL\", \"SBL Hebrew\", ",
+            _ => "",
+        };
+        // Hebrew, Arabic and Syriac look smaller than Latin at the same size.
+        let size = if matches!(f.group.as_str(), "Hebr" | "Arab" | "Syrc") { " font-size: 1.1em;" } else { "" };
+        scripts.push_str(&format!(".sc-{} {{ font-family: \"{}\", {hint}serif;{size} }}\n", f.group, fonts::css_family(&f.group)));
+    }
     s.push_str(&format!(
-        r#"body {{ font-family: serif; line-height: 1.45; margin: 0 0.4em; }}
+        r#"body {{ font-family: {body_font}; line-height: 1.45; margin: 0 0.4em; }}
 p {{ margin: 0; text-indent: 1.2em; text-align: justify; hyphens: auto; -webkit-hyphens: auto; }}
 p.noindent, h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p {{ text-indent: 0; }}
 h1, h2, h3, h4, h5, h6 {{ font-family: sans-serif; text-align: center; line-height: 1.25; hyphens: none; page-break-after: avoid; }}
@@ -230,14 +225,14 @@ h5, h6 {{ font-size: 1em; margin: 1em 0 0.4em; text-align: left; }}
 .small {{ font-size: 0.85em; }}
 div.box {{ border: 1px solid #888; padding: 0.4em 0.8em; margin: 1em 0; font-family: sans-serif; font-size: 0.95em; }}
 div.box p {{ text-indent: 0; margin: 0.25em 0; text-align: left; }}
-div.list {{ margin: 0.5em 0 0.5em 1.5em; }}
+div.list {{ margin: 0.5em 0; margin-left: 1.5em; }}
 div.list p.item {{ text-indent: -1.5em; padding-left: 1.5em; text-align: left; margin: 0.15em 0; }}
-blockquote.indented {{ margin: 0.8em 0 0.8em 1.5em; }}
+blockquote.indented {{ margin: 0.8em 0; margin-left: 1.5em; }}
 blockquote.indented p {{ text-indent: 0; text-align: left; }}
 ul.bibliography {{ list-style: none; padding: 0; margin: 0; }}
 ul.bibliography li {{ padding-left: 1.5em; text-indent: -1.5em; margin: 0.4em 0; }}
 dl.glossary dt {{ font-weight: bold; margin-top: 0.5em; }}
-dl.glossary dd {{ margin: 0 0 0 2em; }}
+dl.glossary dd {{ margin: 0; margin-left: 2em; }}
 p.index {{ text-indent: -1.5em; padding-left: 1.5em; text-align: left; }}
 section.footnotes {{ margin-top: 2em; border-top: 1px solid #999; font-size: 0.85em; }}
 section.footnotes h2 {{ font-size: 1em; text-align: left; }}
@@ -251,14 +246,14 @@ ol.printed-toc li.d3 {{ padding-left: 4.5em; }}
 ol.printed-toc .pg {{ white-space: nowrap; }}
 nav ol {{ list-style: none; }}
 img.cover {{ max-width: 100%; max-height: 100%; display: block; margin: 0 auto; }}
-[lang="grc"], [lang="el"] {{ font-family: {greek}"Gentium Plus", "SBL BibLit", serif; }}
-[lang="he"] {{ font-family: {hebrew}"Ezra SIL", "SBL Hebrew", serif; font-size: 1.1em; }}
-@namespace epub "http://www.idpf.org/2007/ops";
+{scripts}@namespace epub "http://www.idpf.org/2007/ops";
 "#
     ));
     // @namespace has to come before the rules that use it.
     let ns = "@namespace epub \"http://www.idpf.org/2007/ops\";\n";
     let s = s.replace(ns, "");
+    // A right-to-left book starts its lines, indents and lists on the right.
+    let s = if rtl { s.replace("left", "\u{0}").replace("right", "left").replace('\u{0}', "right") } else { s };
     format!("{ns}{s}")
 }
 
@@ -530,6 +525,8 @@ pub fn write(book: &Book, cover: Option<&[u8]>, fonts: &[Font], meta: &Meta) -> 
         links: &links,
         page_ref: &page_ref,
         index_num: &index_num,
+        main: meta.main_script,
+        langs: meta.langs,
     };
     let mut report = Report { pages: book.pages, files: files.len(), notes: book.notes.len(), refs: book.refs.len(), ..Report::default() };
     report.refs_linked = book.refs.iter().filter(|r| r.note.is_some()).count();
@@ -565,15 +562,16 @@ pub fn write(book: &Book, cover: Option<&[u8]>, fonts: &[Font], meta: &Meta) -> 
         put(&mut z, "OEBPS/images/cover.jpg", img, stored)?;
         manifest.push_str("<item id=\"cover-image\" href=\"images/cover.jpg\" media-type=\"image/jpeg\" properties=\"cover-image\"/>\n");
         let body = format!("<section epub:type=\"cover\"><img class=\"cover\" src=\"../images/cover.jpg\" alt=\"{}\"/></section>", esc(meta.title));
-        put(&mut z, "OEBPS/text/cover.xhtml", xhtml(&lang, w.cover, &body).as_bytes(), deflated)?;
+        put(&mut z, "OEBPS/text/cover.xhtml", xhtml(&lang, book.rtl, w.cover, &body).as_bytes(), deflated)?;
         manifest.push_str("<item id=\"cover\" href=\"text/cover.xhtml\" media-type=\"application/xhtml+xml\"/>\n");
         spine.push_str("<itemref idref=\"cover\"/>\n");
     }
-    for f in fonts {
+    let mut written = std::collections::HashSet::new();
+    for f in fonts.iter().filter(|f| written.insert(f.file_name.clone())) {
         put(&mut z, &format!("OEBPS/fonts/{}", f.file_name), &f.data, deflated)?;
         manifest.push_str(&format!("<item id=\"font-{0}\" href=\"fonts/{0}\" media-type=\"{1}\"/>\n", f.file_name, f.media_type));
     }
-    put(&mut z, "OEBPS/style.css", css(fonts).as_bytes(), deflated)?;
+    put(&mut z, "OEBPS/style.css", css(fonts, meta.main_script, book.rtl).as_bytes(), deflated)?;
     manifest.push_str("<item id=\"css\" href=\"style.css\" media-type=\"text/css\"/>\n");
     // The front matter, a page of the print per section; the copyright page marked as such.
     if !book.front.is_empty() {
@@ -595,7 +593,7 @@ pub fn write(book: &Book, cover: Option<&[u8]>, fonts: &[Font], meta: &Meta) -> 
             }
         }
         body.push_str("</section>\n</section>");
-        put(&mut z, "OEBPS/text/front.xhtml", xhtml(&lang, w.front, &body).as_bytes(), deflated)?;
+        put(&mut z, "OEBPS/text/front.xhtml", xhtml(&lang, book.rtl, w.front, &body).as_bytes(), deflated)?;
         manifest.push_str("<item id=\"front\" href=\"text/front.xhtml\" media-type=\"application/xhtml+xml\"/>\n");
         spine.push_str("<itemref idref=\"front\"/>\n");
         nav_items.push(NavItem { label: w.front.to_string(), href: "front.xhtml".into(), level: 1 });
@@ -625,7 +623,7 @@ pub fn write(book: &Book, cover: Option<&[u8]>, fonts: &[Font], meta: &Meta) -> 
                 .collect()
         };
         for (title, page, depth, target) in entries {
-            let t = ctx.scripts(&title, false);
+            let t = ctx.scripts(&title);
             let t = match target {
                 Some(href) => format!("<a href=\"{}\">{t}</a>", esc(&href)),
                 None => t,
@@ -634,7 +632,7 @@ pub fn write(book: &Book, cover: Option<&[u8]>, fonts: &[Font], meta: &Meta) -> 
             body.push_str(&format!("<li class=\"d{}\">{t}{pg}</li>\n", depth.min(3)));
         }
         body.push_str("</ol>\n</section>");
-        put(&mut z, "OEBPS/text/contents.xhtml", xhtml(&lang, &toc_title, &body).as_bytes(), deflated)?;
+        put(&mut z, "OEBPS/text/contents.xhtml", xhtml(&lang, book.rtl, &toc_title, &body).as_bytes(), deflated)?;
         manifest.push_str("<item id=\"contents\" href=\"text/contents.xhtml\" media-type=\"application/xhtml+xml\"/>\n");
         spine.push_str("<itemref idref=\"contents\"/>\n");
         nav_items.push(NavItem { label: toc_title.clone(), href: "contents.xhtml".into(), level: 1 });
@@ -649,7 +647,7 @@ pub fn write(book: &Book, cover: Option<&[u8]>, fonts: &[Font], meta: &Meta) -> 
         report.bibliography += bib;
         report.glossary += gloss;
         report.index_entries += index;
-        put(&mut z, &format!("OEBPS/text/{}", f.name), xhtml(&lang, &f.title, &body).as_bytes(), deflated)?;
+        put(&mut z, &format!("OEBPS/text/{}", f.name), xhtml(&lang, book.rtl, &f.title, &body).as_bytes(), deflated)?;
         let id = f.name.trim_end_matches(".xhtml");
         manifest.push_str(&format!("<item id=\"{id}\" href=\"text/{}\" media-type=\"application/xhtml+xml\"/>\n", f.name));
         spine.push_str(&format!("<itemref idref=\"{id}\"/>\n"));
@@ -706,7 +704,7 @@ pub fn write(book: &Book, cover: Option<&[u8]>, fonts: &[Font], meta: &Meta) -> 
         w.pages,
         w.landmarks
     );
-    put(&mut z, "OEBPS/text/nav.xhtml", xhtml(&lang, &toc_title, &nav).as_bytes(), deflated)?;
+    put(&mut z, "OEBPS/text/nav.xhtml", xhtml(&lang, book.rtl, &toc_title, &nav).as_bytes(), deflated)?;
     manifest.push_str("<item id=\"nav\" href=\"text/nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/>\n");
     // NCX for readers of EPUB 2.
     let identifier = match &book.isbn {
@@ -751,8 +749,9 @@ pub fn write(book: &Book, cover: Option<&[u8]>, fonts: &[Font], meta: &Meta) -> 
     if cover.is_some() {
         extra.push_str("<meta name=\"cover\" content=\"cover-image\"/>\n");
     }
+    let progression = if book.rtl { " page-progression-direction=\"rtl\"" } else { "" };
     let opf = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"bookid\" xml:lang=\"{lang}\">\n<metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n<dc:identifier id=\"bookid\">{}</dc:identifier>\n<dc:title>{}</dc:title>\n<dc:creator id=\"author\">{}</dc:creator>\n<meta refines=\"#author\" property=\"role\" scheme=\"marc:relators\">aut</meta>\n<dc:language>{lang}</dc:language>\n{extra}<meta property=\"dcterms:modified\">{}</meta>\n<meta property=\"schema:accessMode\">textual</meta>\n<meta property=\"schema:accessibilityFeature\">tableOfContents</meta>\n<meta property=\"schema:accessibilityFeature\">printPageNumbers</meta>\n<meta property=\"schema:accessibilityFeature\">structuralNavigation</meta>\n</metadata>\n<manifest>\n{manifest}</manifest>\n<spine toc=\"ncx\">\n{spine}</spine>\n</package>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"bookid\" xml:lang=\"{lang}\">\n<metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n<dc:identifier id=\"bookid\">{}</dc:identifier>\n<dc:title>{}</dc:title>\n<dc:creator id=\"author\">{}</dc:creator>\n<meta refines=\"#author\" property=\"role\" scheme=\"marc:relators\">aut</meta>\n<dc:language>{lang}</dc:language>\n{extra}<meta property=\"dcterms:modified\">{}</meta>\n<meta property=\"schema:accessMode\">textual</meta>\n<meta property=\"schema:accessibilityFeature\">tableOfContents</meta>\n<meta property=\"schema:accessibilityFeature\">printPageNumbers</meta>\n<meta property=\"schema:accessibilityFeature\">structuralNavigation</meta>\n</metadata>\n<manifest>\n{manifest}</manifest>\n<spine toc=\"ncx\"{progression}>\n{spine}</spine>\n</package>\n",
         esc(&identifier),
         esc(meta.title),
         esc(meta.author),

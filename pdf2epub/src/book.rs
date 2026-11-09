@@ -126,6 +126,8 @@ pub struct Book {
     pub publisher: Option<String>,
     pub year: Option<String>,
     pub pages: usize,
+    /// The book is written from right to left.
+    pub rtl: bool,
 }
 
 /// The plain text of some inline content.
@@ -852,10 +854,11 @@ fn parse_toc(lines: &[Line], dict: &Dict, re: &Res, last_page: u32) -> Vec<TocEn
 /// Builds the book from the PDF.
 pub fn build(pdf: &Pdf) -> Book {
     let re = Res::new();
+    let order = layout::order(pdf);
     let mut pages: Vec<Vec<Line>> = pdf
         .pages
         .iter()
-        .map(|p| layout::lines(pdf, p).into_iter().filter(|l| !l.text().trim().is_empty()).collect())
+        .map(|p| layout::lines(pdf, p, order).into_iter().filter(|l| !l.text().trim().is_empty()).collect())
         .collect();
     let n = pages.len();
     // Running heads and feet: the line at the same height at the top (bottom) of many pages; their number is the printed page.
@@ -1053,7 +1056,7 @@ pub fn build(pdf: &Pdf) -> Book {
     }
     let isbn = re.isbn.captures(&front_text).map(|c| c[1].chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>());
     let (year, publisher) = re.copy.captures(&front_text).map_or((None, None), |c| (Some(c[1].to_string()), Some(c[2].trim().to_string())));
-    Book { front, toc_title, toc, blocks, notes, refs, isbn, publisher, year, pages: n }
+    Book { front, toc_title, toc, blocks, notes, refs, isbn, publisher, year, pages: n, rtl: order.rtl }
 }
 
 #[cfg(test)]

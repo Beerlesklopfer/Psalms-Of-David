@@ -124,7 +124,7 @@ Als Rückfallebene bleiben fertige Server: Audiobookshelf für Hörbücher, Navi
 |---|---|
 | `app/` | Psalms, die Flutter-App (Linux, Android, iOS, macOS, Windows) |
 | `audio/` | Ton-Engine in Rust: PipeWire (Laden, Abspielen, Pause, Springen, Lautstärke, Position), C-Schnittstelle für Flutter, Prüfskripte gegen eine virtuelle Senke |
-| `pdf2epub/` | PDF-Buch zu EPUB 3 (Crate und Programm `pdf2epub`): Inhaltsverzeichnis, Fußnoten mit Rückverweis, gedruckte Seitenzahlen, Bibliografie, Abkürzungen, Register; Griechisch und Hebräisch in Unicode mit eingebetteten freien Schriften |
+| `pdf2epub/` | PDF-Buch zu EPUB 3 (Crate und Programm `pdf2epub`): Inhaltsverzeichnis, Fußnoten mit Rückverweis, gedruckte Seitenzahlen, Bibliografie, Abkürzungen, Register; jede Schrift in Unicode (Griechisch, Hebräisch, Syrisch, Arabisch, Koptisch, Ge'ez …) mit Sprache, Laufrichtung und eingebetteter freier Schrift, Rechts-nach-links-Text in Lesereihenfolge, RTL-Bücher als RTL-EPUB |
 | `server/` | David, der Server (Programm `david`): SQLite mit SeaORM, Profile, Fortschritt, Bibliotheksscan, CD-Rippen (`server/cdrip/`), Dienstbetrieb (systemd, launchd, Windows-Dienst), Tests |
 | `docs/` | Specs auf Englisch (Datenmodell, Nebenläufigkeit, Audio, Profile und Rollen, Verwaltung, App-Schnittstelle, Tags, CD, Wiedergabelisten, Sprachsteuerung …), `releasing.md`, `backlog.md` |
 | `site/` | Website von Psalms und David auf GitHub Pages (Datenschutz, Support, Download, Impressum) |
