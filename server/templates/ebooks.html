@@ -1,0 +1,57 @@
+{# SPDX-FileCopyrightText: 2026 Joerg Bernau <Joerg@bernau.family>
+   SPDX-License-Identifier: AGPL-3.0-or-later -#}{% extends "base.html" %}{% set active = "ebooks" %}
+{#- The e-books of the e-book folders (crate::ebooks; project owner, 2026-11-09): an administrator releases them and sets the age they
+    are for, as for the audiobooks. The ones not yet released come first. -#}
+{% block title %}{{ t("ebooks.title") }}{% endblock %}
+
+{% block content %}
+{% from "fragments/ui.html" import icon %}
+<div class="page-head">
+  <h1>{{ t("ebooks.title") }}</h1>
+</div>
+
+<p class="lead">{{ t("ebooks.intro") }}</p>
+
+{% if not ebooks %}
+<section class="card"><p>{{ t("ebooks.none") }}</p><p><a class="btn outline" href="/admin/import">{{ icon("import") }}<span>{{ t("nav.import") }}</span></a></p></section>
+{% else %}
+{% if pending %}
+<form class="inline-form" method="post" action="/admin/rpc/ebook.release_all">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button type="submit" class="btn">{{ icon("check") }}<span>{{ t("ebooks.release_all")|replace("{n}", pending|string) }}</span></button>
+</form>
+{% endif %}
+<table class="stack">
+  <thead>
+    <tr>
+      <th>{{ t("ebooks.book") }}</th>
+      <th>{{ t("ebooks.format") }}</th>
+      <th>{{ t("ebooks.state") }}</th>
+      <th><span class="sr-only">{{ t("users.actions") }}</span></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for e in ebooks %}
+    <tr>
+      <td><strong>{{ e.title }}</strong>{% if e.author %}<br><small>{{ e.author }}</small>{% endif %}</td>
+      <td data-label="{{ t('ebooks.format') }}">{% if e.format == "pdf" %}PDF{% else %}EPUB{% endif %}</td>
+      <td data-label="{{ t('ebooks.state') }}">{% if e.released %}<span class="badge">{{ t("ebooks.released") }}{% if e.min_age %} · {{ t("ebooks.from_age")|replace("{n}", e.min_age|string) }}{% endif %}</span>{% else %}<span class="badge muted">{{ t("ebooks.pending") }}</span>{% endif %}</td>
+      <td class="actions">
+        <form class="inline-form" method="post" action="/admin/rpc/ebook.release">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ e.id }}">
+          <label class="field"><select name="min_age">
+            {% for a in [0, 6, 10, 12, 14, 16, 18] %}<option value="{{ a }}"{% if a == e.min_age %} selected{% endif %}>{% if a == 0 %}{{ t("ebooks.all_ages") }}{% else %}{{ t("ebooks.from_age")|replace("{n}", a|string) }}{% endif %}</option>{% endfor %}
+          </select><span>{{ t("ebooks.age") }}</span></label>
+          <input type="hidden" name="released" value="1">
+          <button type="submit" class="btn outline">{% if e.released %}{{ t("ui.save") }}{% else %}{{ t("ebooks.release") }}{% endif %}</button>
+        </form>
+        {% if e.released %}
+        <form method="post" action="/admin/rpc/ebook.release"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ e.id }}"><input type="hidden" name="min_age" value="{{ e.min_age }}"><input type="hidden" name="released" value="0"><button type="submit" class="btn outline danger-outline">{{ t("ebooks.withdraw") }}</button></form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

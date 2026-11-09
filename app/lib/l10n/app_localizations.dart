@@ -1070,6 +1070,168 @@ abstract class AppLocalizations {
   /// **'E-Books'**
   String get filterEbooks;
 
+  /// No description provided for @ebookNotDownloaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Not downloaded · cannot be read offline'**
+  String get ebookNotDownloaded;
+
+  /// No description provided for @ebookFilter.
+  ///
+  /// In en, this message translates to:
+  /// **'Title or author'**
+  String get ebookFilter;
+
+  /// No description provided for @ebookStale.
+  ///
+  /// In en, this message translates to:
+  /// **'The server cannot be reached right now; this is the list loaded last.'**
+  String get ebookStale;
+
+  /// No description provided for @ebookNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No e-books yet. An administrator names the e-book folders on the web under Import and releases the books under Media › E-books.'**
+  String get ebookNone;
+
+  /// No description provided for @ebookContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue reading'**
+  String get ebookContinue;
+
+  /// No description provided for @ebookAll.
+  ///
+  /// In en, this message translates to:
+  /// **'All e-books'**
+  String get ebookAll;
+
+  /// No description provided for @ebookRead.
+  ///
+  /// In en, this message translates to:
+  /// **'{percent} % read'**
+  String ebookRead(int percent);
+
+  /// No description provided for @ebookRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete from this device'**
+  String get ebookRemove;
+
+  /// No description provided for @ebookRemoveAsk.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete “{title}” from this device? It stays on the server, and so does the place you read.'**
+  String ebookRemoveAsk(String title);
+
+  /// No description provided for @ebookDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Download to this device'**
+  String get ebookDownload;
+
+  /// No description provided for @ebookDownloaded.
+  ///
+  /// In en, this message translates to:
+  /// **'On this device: it can be read offline now.'**
+  String get ebookDownloaded;
+
+  /// No description provided for @ebookFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The e-book could not be loaded.'**
+  String get ebookFailed;
+
+  /// No description provided for @ebookChapter.
+  ///
+  /// In en, this message translates to:
+  /// **'Chapter {n}'**
+  String ebookChapter(int n);
+
+  /// No description provided for @ebookContents.
+  ///
+  /// In en, this message translates to:
+  /// **'Contents'**
+  String get ebookContents;
+
+  /// No description provided for @ebookLook.
+  ///
+  /// In en, this message translates to:
+  /// **'Type and colours'**
+  String get ebookLook;
+
+  /// No description provided for @ebookSmaller.
+  ///
+  /// In en, this message translates to:
+  /// **'Smaller'**
+  String get ebookSmaller;
+
+  /// No description provided for @ebookLarger.
+  ///
+  /// In en, this message translates to:
+  /// **'Larger'**
+  String get ebookLarger;
+
+  /// No description provided for @ebookLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get ebookLight;
+
+  /// No description provided for @ebookSepia.
+  ///
+  /// In en, this message translates to:
+  /// **'Sepia'**
+  String get ebookSepia;
+
+  /// No description provided for @ebookDark.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get ebookDark;
+
+  /// No description provided for @ebookSerif.
+  ///
+  /// In en, this message translates to:
+  /// **'Type with serifs'**
+  String get ebookSerif;
+
+  /// No description provided for @ebookOpenFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The e-book cannot be opened right now. Can the server be reached?'**
+  String get ebookOpenFailed;
+
+  /// No description provided for @ebookEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'This e-book holds no text.'**
+  String get ebookEmpty;
+
+  /// No description provided for @ebookPrevChapter.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous chapter'**
+  String get ebookPrevChapter;
+
+  /// No description provided for @ebookNextChapter.
+  ///
+  /// In en, this message translates to:
+  /// **'Next chapter'**
+  String get ebookNextChapter;
+
+  /// No description provided for @ebookTheEnd.
+  ///
+  /// In en, this message translates to:
+  /// **'The end'**
+  String get ebookTheEnd;
+
+  /// No description provided for @ebookPageOf.
+  ///
+  /// In en, this message translates to:
+  /// **'Page {page} of {pages}'**
+  String ebookPageOf(int page, int pages);
+
   /// No description provided for @comingSoonTitle.
   ///
   /// In en, this message translates to:

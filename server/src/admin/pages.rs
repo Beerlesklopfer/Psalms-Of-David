@@ -30,6 +30,7 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("schedule.html", include_str!("../../templates/schedule.html")),
     ("pairing.html", include_str!("../../templates/pairing.html")),
     ("genres.html", include_str!("../../templates/genres.html")),
+    ("ebooks.html", include_str!("../../templates/ebooks.html")),
     ("releases.html", include_str!("../../templates/releases.html")),
     ("podcasts.html", include_str!("../../templates/podcasts.html")),
     ("fragments/podcast_actions.html", include_str!("../../templates/fragments/podcast_actions.html")),
@@ -1270,6 +1271,13 @@ impl AdminUi {
     /// What children asked for (podcasts, stations) and what waits for a release.
     pub async fn releases<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
         self.render("releases.html", context! { pending => Serde(store.pending_releases().await?), ..view.into().context() })
+    }
+
+    /// The e-books, for the administrator to release them.
+    pub async fn ebooks<'a>(&self, store: &Store, view: impl Into<View<'a>>) -> Result<String> {
+        let ebooks = store.all_ebooks().await?;
+        let pending = ebooks.iter().filter(|e| !e.released).count();
+        self.render("ebooks.html", context! { ebooks => Serde(ebooks), pending => pending, ..view.into().context() })
     }
 
     /// The genres: the list that the apps show, and the tag texts that have no genre yet.

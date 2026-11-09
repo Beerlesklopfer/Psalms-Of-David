@@ -82,6 +82,8 @@ pub mod system;
 pub mod tags;
 pub mod diskspace;
 pub mod dupes;
+pub mod ebooks;
+pub mod api_ebooks;
 pub mod upload;
 pub mod tls;
 pub mod tree;

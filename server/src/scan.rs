@@ -90,6 +90,9 @@ pub struct ScanReport {
     pub albums: usize,
     pub artists: usize,
     pub tracks_total: usize,
+    /// The e-books of the e-book folders after the run, and how many of them came in now (`crate::ebooks`).
+    pub ebooks: usize,
+    pub ebooks_new: usize,
 }
 
 impl ScanReport {

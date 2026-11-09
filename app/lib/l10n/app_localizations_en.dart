@@ -578,6 +578,98 @@ class AppLocalizationsEn extends AppLocalizations {
   String get filterEbooks => 'E-Books';
 
   @override
+  String get ebookNotDownloaded => 'Not downloaded · cannot be read offline';
+
+  @override
+  String get ebookFilter => 'Title or author';
+
+  @override
+  String get ebookStale =>
+      'The server cannot be reached right now; this is the list loaded last.';
+
+  @override
+  String get ebookNone =>
+      'No e-books yet. An administrator names the e-book folders on the web under Import and releases the books under Media › E-books.';
+
+  @override
+  String get ebookContinue => 'Continue reading';
+
+  @override
+  String get ebookAll => 'All e-books';
+
+  @override
+  String ebookRead(int percent) {
+    return '$percent % read';
+  }
+
+  @override
+  String get ebookRemove => 'Delete from this device';
+
+  @override
+  String ebookRemoveAsk(String title) {
+    return 'Delete “$title” from this device? It stays on the server, and so does the place you read.';
+  }
+
+  @override
+  String get ebookDownload => 'Download to this device';
+
+  @override
+  String get ebookDownloaded => 'On this device: it can be read offline now.';
+
+  @override
+  String get ebookFailed => 'The e-book could not be loaded.';
+
+  @override
+  String ebookChapter(int n) {
+    return 'Chapter $n';
+  }
+
+  @override
+  String get ebookContents => 'Contents';
+
+  @override
+  String get ebookLook => 'Type and colours';
+
+  @override
+  String get ebookSmaller => 'Smaller';
+
+  @override
+  String get ebookLarger => 'Larger';
+
+  @override
+  String get ebookLight => 'Light';
+
+  @override
+  String get ebookSepia => 'Sepia';
+
+  @override
+  String get ebookDark => 'Dark';
+
+  @override
+  String get ebookSerif => 'Type with serifs';
+
+  @override
+  String get ebookOpenFailed =>
+      'The e-book cannot be opened right now. Can the server be reached?';
+
+  @override
+  String get ebookEmpty => 'This e-book holds no text.';
+
+  @override
+  String get ebookPrevChapter => 'Previous chapter';
+
+  @override
+  String get ebookNextChapter => 'Next chapter';
+
+  @override
+  String get ebookTheEnd => 'The end';
+
+  @override
+  String ebookPageOf(int page, int pages) {
+    return 'Page $page of $pages';
+  }
+
+  @override
   String get comingSoonTitle => 'Not available yet';
 
   @override

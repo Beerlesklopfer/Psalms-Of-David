@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:psalm/ebooks/ebook_ui.dart';
 import 'package:psalm/l10n/app_localizations.dart';
 import 'package:psalm/models.dart';
 import 'package:psalm/player_controller.dart';
@@ -30,7 +31,7 @@ Widget _app(PlayerController p, Widget home) => PlayerScope(
 );
 
 void main() {
-  testWidgets('the library has music, audiobooks, videos and e-books; videos and e-books are a stub', (tester) async {
+  testWidgets('the library has music, audiobooks, videos and e-books; videos are a stub, e-books are read', (tester) async {
     final p = PlayerController([_book('1', 'Winter der Welt'), _book('2', 'Versprochen', kind: 'music')]);
     await tester.pumpWidget(_app(p, const LibraryScreen()));
 
@@ -52,9 +53,9 @@ void main() {
     expect(find.textContaining('Videos are planned'), findsOneWidget);
 
     await tester.tap(find.text('E-Books'));
-    await tester.pumpAndSettle();
-    expect(find.text('Not available yet'), findsOneWidget);
-    expect(find.textContaining('E-books and PDF files are planned'), findsOneWidget);
+    await tester.pump();
+    expect(find.byType(EbooksBody), findsOneWidget);
+    expect(find.text('Not available yet'), findsNothing);
     p.dispose();
   });
 

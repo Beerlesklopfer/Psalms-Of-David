@@ -2,9 +2,40 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # E-books: hosting, reading and reading aloud
 
+Status 2026-11-09: **step 1 of the reader built** (see "Built, 2026-11-09" below); the rest is a draft.
+
 Status 2026-10-31: **draft, nothing built.** Project owner: "The next step is the EPUB reader: to have books read aloud, and to host the e-books
 centrally." Written from a conversation with the owner; statements about outside programs, shops and publishers **have to be checked** before anything is
 built on them (marked *check*).
+
+## Built, 2026-11-09
+
+Decided by the project owner on 2026-11-09: "an e-book reader that lists the e-books on the server; the aim is biblical exegesis and
+leisure", part of the app Psalms. Also decided: reading in the app and on the web, with the place shared between them; EPUB and PDF; for
+exegesis the references to the Bible can be tapped, a search by a reference ("what do my books say on Rom 8:28"), marks and notes, and
+reading side by side; who sees what as with the audiobooks.
+
+The work goes in steps; **step 1 is built**:
+
+1. **Done.** The server reads the e-book folders (`ebook_roots`, `ebook_excludes`) with every import (`Store::scan_ebooks`,
+   `server/src/ebooks.rs`, schema 0068: `ebook`, `ebook_release`, `ebook_progress`). Title, author and language from the EPUB package or
+   `pdfinfo`, else from the file name (`Author - Title.epub`). A protected EPUB (`META-INF/encryption.xml` with more than obfuscated fonts)
+   is refused and logged. A file that is gone is marked `missing` and not listed; it comes back with its place. New e-books are not
+   released; an administrator releases them with the age they are for on `/admin/ebooks` (Media › E-books), one by one or all at once.
+   The rule of `EBOOK_VISIBLE` is the rule of `VISIBLE` for the books. The weekly schedule does not limit reading (still an open question).
+   - An EPUB is made into a text for the reader (`GET /api/v1/ebooks/{id}/text`, kept per version in `<data>/ebooks/`): chapters in the
+     order of the spine, blocks (`h1`–`h3`, `p`, `quote`, `li`, `pre`, `img`, `hr`) with spans that are bold, italic or raised; the table
+     of contents from the navigation document or the NCX. A place in it is `epub:<chapter>:<block>`; in a PDF `pdf:<page>`.
+   - API: `server/src/api_ebooks.rs` (list with the place, text, file, cover, pictures of the text, place).
+   - App: the rubric "E-books" of the library (`app/lib/ebooks/`): what is begun first, then all; download to read offline (text and
+     pictures, or the PDF), a newer version on the server is marked; offline as the library (only what is on the device, or all with the
+     others dimmed, which do not open). The EPUB reader draws the blocks itself (size, light/sepia/dark, serifs; contents; the next
+     chapter at the end; text can be selected); the PDF reader shows the pages (`pdfrx`). The place is kept on the device at once and
+     sent to the server when it answers; the newer place wins.
+2. **Next:** references to the Bible in the text (found by the server with `bible::parse`, tapped to open the passage), and the search by a
+   reference over all books (an index table per block and per PDF page, `pdftotext`).
+3. Marks and notes, per person, kept on the server.
+4. Reading side by side; the reader on the web.
 
 ## Goal
 

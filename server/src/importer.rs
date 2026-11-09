@@ -383,6 +383,28 @@ impl Store {
                 }
             }
         }
+        // The e-books: their own folders, without the folders left out and the folders of the other kinds inside them.
+        let ebook_roots: Vec<PathBuf> = state.ebook_roots.iter().map(PathBuf::from).filter(|p| p.is_dir()).map(|p| p.canonicalize().unwrap_or(p)).collect();
+        if !ebook_roots.is_empty() {
+            let skip: Vec<PathBuf> = state
+                .ebook_excludes
+                .iter()
+                .chain(state.roots.iter())
+                .chain(state.music_roots.iter())
+                .chain(state.photo_roots.iter())
+                .map(PathBuf::from)
+                .map(|p| p.canonicalize().unwrap_or(p))
+                // Only folders inside an e-book folder; one around it would leave out everything.
+                .filter(|p| ebook_roots.iter().any(|r| p != r && p.starts_with(r)))
+                .collect();
+            match self.scan_ebooks(&ebook_roots, &skip).await {
+                Ok(e) => {
+                    total.ebooks = e.found;
+                    total.ebooks_new = e.new;
+                }
+                Err(e) => total.problems.push(format!("e-books: {e}")),
+            }
+        }
         if state.rule == RatingRule::Recommendation {
             // Only books that arrived in this run: a book an administrator withdrew
             // must not come back by itself.

@@ -12,6 +12,9 @@ import '../library_folds.dart';
 import '../library_groups.dart';
 import '../library_hiding.dart';
 import '../models.dart';
+import '../ebooks/ebook_api.dart';
+import '../ebooks/ebook_controller.dart';
+import '../ebooks/ebook_ui.dart';
 import '../pictures/show_api.dart';
 import '../pictures/show_ui.dart';
 import '../podcasts.dart';
@@ -91,9 +94,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
   PodcastsController? _podcasts;
   RadioController? _radio;
   ShowController? _shows;
+  EbookController? _ebooks;
 
   @override
   void dispose() {
+    _ebooks?.dispose();
     _podcasts?.dispose();
     _radio?.dispose();
     _shows?.dispose();
@@ -196,6 +201,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
       final api = widget.api;
       _shows ??= ShowController(api: api is ApiClient ? ShowApi(api) : null);
     }
+    if (_category == MediaCategory.ebooks) {
+      final api = widget.api;
+      _ebooks ??= EbookController(api: api is ApiClient ? EbookApi(api) : null)..tidy();
+    }
     final playlists = PlaylistScope.maybeOf(context);
     final isMusic = _category == MediaCategory.music && shown != null && shown.isNotEmpty;
     final groups = isMusic ? groupByGenre(shown, p.genres) : const <(String?, List<LibraryItem>)>[];
@@ -272,6 +281,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
           RadioBody(controller: _radio!)
         else if (_category == MediaCategory.pictures)
           PicturesBody(controller: _shows!)
+        else if (_category == MediaCategory.ebooks)
+          EbooksBody(controller: _ebooks!)
         else if (_category == MediaCategory.hidden)
           HiddenBody(controller: hiding!)
         else if (_category == MediaCategory.playlists)

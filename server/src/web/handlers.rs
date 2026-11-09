@@ -453,6 +453,42 @@ pub async fn music_page(State(state): State<AppState>, s: AdminSession, headers:
     media_page(&state, &s, &q, &headers, "music").await
 }
 
+pub async fn ebooks_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
+    render(state.ui.ebooks(&state.store, view_for(&s, &q)).await)
+}
+
+#[derive(Deserialize)]
+pub struct EbookForm {
+    #[serde(default)]
+    id: i64,
+    #[serde(default)]
+    released: String,
+    #[serde(default)]
+    min_age: i64,
+}
+
+/// Releases an e-book with the age it is for, or takes the release back.
+pub async fn ebook_release(State(state): State<AppState>, s: AdminSession, Form(f): Form<EbookForm>) -> Response {
+    let outcome = match state.store.release_ebook(f.id, f.released == "1", f.min_age).await {
+        Ok(true) => Ok(String::new()),
+        Ok(false) => Err(Failure::input()),
+        Err(e) => Err(e.into()),
+    };
+    finish(&s, "/admin/ebooks", outcome)
+}
+
+/// Releases every e-book that is not released yet, for all ages.
+pub async fn ebook_release_all(State(state): State<AppState>, s: AdminSession) -> Response {
+    let outcome = async {
+        for e in state.store.all_ebooks().await?.into_iter().filter(|e| !e.released) {
+            state.store.release_ebook(e.id, true, e.min_age).await?;
+        }
+        Ok::<_, crate::Error>(String::new())
+    }
+    .await;
+    finish(&s, "/admin/ebooks", outcome.map_err(Into::into))
+}
+
 pub async fn genres_page(State(state): State<AppState>, s: AdminSession, Query(q): Query<PageQuery>) -> Response {
     render(state.ui.genres(&state.store, view_for(&s, &q), q.q.as_deref()).await)
 }

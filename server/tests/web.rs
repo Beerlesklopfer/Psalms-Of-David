@@ -5221,3 +5221,32 @@ async fn new_tags_move_the_folder_of_the_album_and_keep_a_folder_of_the_filing()
     assert_eq!(david_server::tags::read(&moved).unwrap().album.as_deref(), Some("Belegt"));
     assert_eq!(a.store.book_folder(school_id).await.unwrap().as_deref(), Some("Schule/Musik 3. Klasse"));
 }
+
+#[tokio::test]
+async fn the_page_of_the_e_books_releases_one_with_its_age_or_all_at_once() {
+    let a = app().await;
+    let (cookie, csrf) = sign_in(&a).await;
+    let plain = Opts { cookie: Some(&cookie), ..Default::default() };
+    let o = Opts { cookie: Some(&cookie), csrf_header: Some(&csrf), ..Default::default() };
+    let page = send(&a, get("/admin/ebooks", &plain)).await.body;
+    assert!(page.contains("No e-books yet"), "{page}");
+
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["Spurgeon - Kleinode.pdf", "Bunyan - Pilgerreise.pdf"] {
+        std::fs::write(dir.path().join(name), b"%PDF-1.4").unwrap();
+    }
+    a.store.scan_ebooks(&[dir.path().to_path_buf()], &[]).await.unwrap();
+    let page = send(&a, get("/admin/ebooks", &plain)).await.body;
+    assert!(page.contains("Kleinode") && page.contains("Pilgerreise") && page.contains("Release all 2 for every age"), "{page}");
+    let first = a.store.all_ebooks().await.unwrap()[0].id.to_string();
+    let r = send(&a, post("/admin/rpc/ebook.release", &form(&[("id", &first), ("released", "1"), ("min_age", "12")]), &o)).await;
+    assert!(r.status.is_redirection(), "{}", r.body);
+    let all = a.store.all_ebooks().await.unwrap();
+    let one = all.iter().find(|e| e.id.to_string() == first).unwrap();
+    assert_eq!((one.released, one.min_age), (true, 12));
+    let r = send(&a, post("/admin/rpc/ebook.release_all", "", &o)).await;
+    assert!(r.status.is_redirection(), "{}", r.body);
+    assert!(a.store.all_ebooks().await.unwrap().iter().all(|e| e.released));
+    let page = send(&a, get("/admin/ebooks", &plain)).await.body;
+    assert!(page.contains("from 12") && page.contains("Take back") && !page.contains("Release all"), "{page}");
+}
