@@ -36,6 +36,16 @@
   <p class="hint">{{ t("import.no_music_folders") }} <a href="/admin/settings?tab=import">{{ t("import.to_settings") }}</a></p>
   {% endif %}
 
+  <h2>{{ t("import.ebook_folders") }}</h2>
+  {% if state.ebook_roots %}
+  <ul class="folders">
+    {% for root in state.ebook_roots %}<li>{{ icon("books") }}<code>{{ root }}</code></li>{% endfor %}
+    {% for e in state.ebook_excludes %}<li class="left-out">{{ icon("close") }}<code>{{ e }}</code><small>{{ t("import.left_out") }}</small></li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="hint">{{ t("import.no_ebook_folders") }} <a href="/admin/settings?tab=import">{{ t("import.to_settings") }}</a></p>
+  {% endif %}
+
   {% if shown %}
   <h2>{{ t("import.report") }}{% if not report and last_at %} <small class="when">{{ last_at }}</small>{% endif %}</h2>
   <dl class="stats">
@@ -50,6 +60,8 @@
     <div class="stat"><dt>{{ t("import.report.removed") }}</dt><dd>{{ shown.tracks_removed }}</dd></div>
     <div class="stat"><dt>{{ t("import.report.albums_removed") }}</dt><dd>{{ shown.books_removed }}</dd></div>
     <div class="stat"><dt>{{ t("import.report.released") }}</dt><dd>{{ shown.books_released }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.ebooks") }}</dt><dd>{{ shown.ebooks }}</dd></div>
+    <div class="stat"><dt>{{ t("import.report.ebooks_new") }}</dt><dd>{{ shown.ebooks_new }}</dd></div>
   </dl>
   {% if shown.problems %}<div class="message error"><strong>{{ t("import.report.problems") }}</strong><ul>{% for problem in shown.problems %}<li><code>{{ problem }}</code></li>{% endfor %}</ul></div>{% endif %}
   {% if shown.books_failed %}<p class="message error">{{ t("import.report.failed") }}: {{ shown.books_failed }}</p>{% endif %}

@@ -14,7 +14,7 @@ Commands:
   init        Create the first administrator (reads the PIN; use before the first start)
   reset-pin   Set a new PIN or password for a user who forgot it (--name NAME is required);
               the user is signed out everywhere and any lock is lifted
-  reindex     Read the import folders again, like the switch 'Import now' of the administration pages: new and
+  reindex     Read the import folders again, like the switch 'Sync now' of the administration pages: new and
               changed files are read, albums whose files are gone are taken out (also: david --reindex). Run
               by the timer david-reindex.timer. The import has to be unlocked.
   prune       Only the tidying of reindex: take the albums out of the library whose files are gone from the disk;
@@ -86,7 +86,7 @@ pub enum Command {
     Init { data_dir: PathBuf, name: String },
     /// Sets a new PIN or password for an existing user (a forgotten one).
     ResetPin { data_dir: PathBuf, name: String },
-    /// The import, as the switch "Import now" of the administration pages does it: new and changed files are read, albums whose files are gone are
+    /// The import, as the switch "Sync now" of the administration pages does it: new and changed files are read, albums whose files are gone are
     /// taken out. What `david-reindex.timer` runs. The import has to be unlocked, as it has to be for the switch.
     Reindex { data_dir: PathBuf },
     /// Removes the albums whose files are gone from the disk, only that (`--dry-run` lists them first). `dry_run` only lists them; `force` lifts the stop for many.

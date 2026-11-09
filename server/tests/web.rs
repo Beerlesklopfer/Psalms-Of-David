@@ -615,7 +615,7 @@ async fn the_import_page_walks_from_locked_to_unlocked_and_back() {
     assert_eq!(page.status, StatusCode::OK);
     assert!(page.body.contains("Locked. Nothing is read from any folder."));
     assert!(page.body.contains("class=\"btn\" disabled>"), "unlocking is not offered before the criteria exist");
-    assert!(page.body.contains("Save the import folders and the rating rule first."));
+    assert!(page.body.contains("Save the folders and the rating rule first."));
 
     // Unlocking without criteria is refused by the server, whatever the page offers.
     let r = send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
@@ -644,16 +644,16 @@ async fn the_import_page_walks_from_locked_to_unlocked_and_back() {
     let r = send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
     assert_eq!(r.status, StatusCode::OK);
     assert!(r.body.contains(">Unlocked<") && r.body.contains("unlocked by Boss"), "{}", r.body);
-    assert!(r.body.contains("Lock import"));
+    assert!(r.body.contains("Lock sync"));
     let page = send(&a, get("/admin/import", &Opts { cookie: Some(&cookie), ..Default::default() })).await;
-    assert!(page.body.contains("Import now"), "the import page offers the run once unlocked");
+    assert!(page.body.contains("Sync now") && page.body.contains("E-book folders"), "the sync page offers the run once unlocked and names the e-book folders");
 
     let r = send(&a, post("/admin/rpc/import.lock", "", &o)).await;
     assert!(r.body.contains("Locked. Nothing is read"));
     assert!(r.body.contains("class=\"state shut\""));
     let r = send(&a, post("/admin/rpc/import.run", "", &o)).await;
     assert_eq!(r.status, StatusCode::CONFLICT);
-    assert!(r.body.contains("import is locked"));
+    assert!(r.body.contains("sync is locked"));
 }
 
 #[tokio::test]
@@ -673,7 +673,7 @@ async fn an_import_from_the_page_shows_its_result_and_the_books_wait_for_release
     send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
     let r = send(&a, post("/admin/rpc/import.run", "", &o)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
-    assert!(r.body.contains("Result of the last import") && r.body.contains("<dt>Audiobooks</dt><dd>1</dd>") && r.body.contains("<dt>Authors</dt><dd>1</dd>") && r.body.contains("<dt>Albums</dt><dd>0</dd>") && r.body.contains("<dt>Tracks added</dt><dd>1</dd>"));
+    assert!(r.body.contains("Result of the last sync") && r.body.contains("<dt>Audiobooks</dt><dd>1</dd>") && r.body.contains("<dt>Authors</dt><dd>1</dd>") && r.body.contains("<dt>Albums</dt><dd>0</dd>") && r.body.contains("<dt>Tracks added</dt><dd>1</dd>") && r.body.contains("<dt>E-books</dt><dd>0</dd>"));
 
     // The book is there, unreleased, with the recommendation of the medium as the starting value.
     let books = send(&a, get("/admin/books", &o)).await;
@@ -1735,7 +1735,7 @@ async fn the_tab_filing_shows_the_place_and_the_metadata_of_the_database() {
     let r = send(&a, get(&format!("/admin/rpc/book.filing?id={id}"), &hx)).await;
     assert_eq!(r.status, StatusCode::OK, "{}", r.body);
     // The place in the library, the facts of the row, and the audit fields the triggers fill in (made, last changed, by whom).
-    for needle in ["Follett&#x2f;Winter der Welt", "Complete place on the disk", "not found", "Made in the database", "Last changed in the database", "Seen by the import", ">audiobook<", &format!("<dd>{id}</dd>")] {
+    for needle in ["Follett&#x2f;Winter der Welt", "Complete place on the disk", "not found", "Made in the database", "Last changed in the database", "Seen by the sync", ">audiobook<", &format!("<dd>{id}</dd>")] {
         assert!(r.body.contains(needle), "{needle}: {}", r.body);
     }
     // A date has the form of the other pages: year, month, day, hour, minute.
@@ -2722,12 +2722,12 @@ async fn the_last_import_stays_on_the_import_page_with_its_problems() {
     send(&a, post("/admin/rpc/import.unlock", "", &o)).await;
 
     // Before any run there is nothing to show.
-    assert!(!send(&a, get("/admin/import", &ob)).await.body.contains("Result of the last import"));
+    assert!(!send(&a, get("/admin/import", &ob)).await.body.contains("Result of the last sync"));
     send(&a, post("/admin/rpc/import.run", "", &o)).await;
 
     // The page, opened later, still tells the last result and what was skipped, with the time.
     let page = send(&a, get("/admin/import", &ob)).await.body;
-    assert!(page.contains("Result of the last import") && page.contains("class=\"when\""), "{page}");
+    assert!(page.contains("Result of the last sync") && page.contains("class=\"when\""), "{page}");
     assert!(page.contains("Empty Folder") && page.contains("nothing to import here"), "the problems are kept too");
     assert!(page.contains("<dt>Audiobooks</dt><dd>1</dd>"));
 }
@@ -3163,7 +3163,7 @@ async fn the_tab_cd_import_holds_the_format_the_names_and_the_log_and_says_why_a
     assert!(!page.contains("contact address is missing") && !page.contains("No CD has been imported yet") && !page.contains("id=\"cd-drive\""), "the import is not on the tab: {page}");
     // The state at the top of the page "CD import": no contact address, no folder, locked; and no job yet.
     let import = send(&a, get("/admin/cd", &plain)).await.body;
-    assert!(import.contains("contact address is missing") && import.contains("The import is locked") && import.contains("No CD has been imported yet"), "{import}");
+    assert!(import.contains("contact address is missing") && import.contains("The sync is locked") && import.contains("No CD has been imported yet"), "{import}");
     assert!(import.contains("<a href=\"/admin/cd\" aria-current=\"page\">") && import.contains("href=\"/admin/settings?tab=cdimport\""), "the menu item is marked, the page leads to the settings: {import}");
     let de = send(&a, get("/admin/settings?tab=cdimport", &Opts { lang: Some("de"), ..plain })).await.body;
     assert!(de.contains("CD-Import") && de.contains("CD-Laufwerke über udev erkennen"), "{de}");

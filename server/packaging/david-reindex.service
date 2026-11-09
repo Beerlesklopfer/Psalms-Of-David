@@ -1,4 +1,4 @@
-# The import, as the switch "Import now" of the administration pages does it: reads the import folders again and
+# The import, as the switch "Sync now" of the administration pages does it: reads the import folders again and
 # takes the albums whose files are gone out of the library (the scan alone only adds). Started by
 # david-reindex.timer; by hand: systemctl start david-reindex, or `david reindex`.
 # The import has to be unlocked (administration pages, Import). The tidying stops by itself when an import folder
