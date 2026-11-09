@@ -14,6 +14,9 @@ const kShowFormat = 'david-slideshow';
 /// The newest version of the format this app plays.
 const kShowVersion = 1;
 
+/// The file next to `show.json` that says which project of the server a copy is, and of which version.
+const kShowServerFile = 'server.json';
+
 /// The choices a project was made with.
 class ShowSettings {
   const ShowSettings({this.order = 'date', this.seconds = 8, this.transition = 'fade', this.videos = 'on', this.info = 'both'});
@@ -70,6 +73,25 @@ class ShowProjectException implements Exception {
   String toString() => 'ShowProjectException: $reason';
 }
 
+/// Where the files of a project played from the server come from (`GET /api/v1/pictures/shows/{id}`): each file is fetched into [cache]
+/// just before it is shown, nothing is kept after the show. Names: `screen/<key>` a picture, `video/<key>` the MP4 of a video,
+/// `part/<id>` a track of the music.
+abstract class ShowRemote {
+  Directory get cache;
+
+  /// The file of [name] on this device, fetched once; throws when the server cannot give it.
+  Future<String> fetch(String name);
+
+  /// The place of a picture (`info` of the server), or null.
+  Future<String?> place(String key);
+
+  /// Throws away what was fetched.
+  Future<void> dispose();
+}
+
+/// The key of a picture in a name of [ShowRemote] (`screen/b12` → `b12`).
+String showKeyOf(String name) => name.substring(name.indexOf('/') + 1);
+
 /// A slideshow kept on this device: the unpacked project in its own folder, which plays without the server and without a network.
 class ShowProject {
   ShowProject({
@@ -79,7 +101,40 @@ class ShowProject {
     required this.settings,
     required this.pictures,
     required this.music,
+    this.remote,
+    this.serverId,
+    this.serverRev,
   });
+
+  /// A project of the server to play from there (`GET /api/v1/pictures/shows/{id}`): the keys of the pictures and the tracks of the music,
+  /// fetched by [remote] while it plays.
+  factory ShowProject.remote(Map<String, dynamic> j, ShowRemote remote) {
+    final pictures = <ShowPicture>[
+      for (final p in (j['pictures'] is List ? j['pictures'] as List : const []).whereType<Map<String, dynamic>>())
+        if (p['key'] is String && RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(p['key'] as String))
+          ShowPicture(
+            image: 'screen/${p['key']}',
+            video: p['video'] == true ? 'video/${p['key']}' : null,
+            takenAt: DateTime.fromMillisecondsSinceEpoch(p['taken_at'] is int ? p['taken_at'] as int : 0),
+            transition: const ['fade', 'zoom', 'cut'].contains(p['transition']) ? p['transition'] as String : null,
+            seconds: p['seconds'] is int && const [3, 5, 8, 15, 30].contains(p['seconds']) ? p['seconds'] as int : null,
+          ),
+    ];
+    return ShowProject(
+      dir: remote.cache,
+      title: j['title'] is String ? j['title'] as String : '',
+      madeAt: DateTime.now(),
+      settings: ShowSettings.fromJson(j['settings'] is Map<String, dynamic> ? j['settings'] as Map<String, dynamic> : const {}),
+      pictures: pictures,
+      music: [
+        for (final t in (j['music'] is List ? j['music'] as List : const []).whereType<Map<String, dynamic>>())
+          if (t['part_id'] is int) ShowTrack(file: 'part/${t['part_id']}', title: '${t['title'] ?? ''}', artist: '${t['artist'] ?? ''}'),
+      ],
+      remote: remote,
+      serverId: j['id'] is int ? j['id'] as int : null,
+      serverRev: j['rev'] is String ? j['rev'] as String : null,
+    );
+  }
 
   /// Reads `show.json` of an unpacked project and checks that every file it names lies in the folder.
   static Future<ShowProject> open(Directory dir) async {
@@ -109,7 +164,24 @@ class ShowProject {
       for (final t in (j['music'] is List ? j['music'] as List : const []).whereType<Map<String, dynamic>>())
         if (_safe(t['file']) case final f?) ShowTrack(file: f, title: '${t['title'] ?? ''}', artist: '${t['artist'] ?? ''}'),
     ];
+    // A project of the server loaded onto this device: which one and in which version (`server.json`, written by the app).
+    int? serverId;
+    String? serverRev;
+    final mark = File('${dir.path}/$kShowServerFile');
+    if (mark.existsSync()) {
+      try {
+        final m = jsonDecode(await mark.readAsString());
+        if (m is Map<String, dynamic>) {
+          serverId = m['id'] is int ? m['id'] as int : null;
+          serverRev = m['rev'] is String ? m['rev'] as String : null;
+        }
+      } on Object {
+        // No mark: an ordinary project of this device.
+      }
+    }
     final project = ShowProject(
+      serverId: serverId,
+      serverRev: serverRev,
       dir: dir,
       title: j['title'] is String ? j['title'] as String : '',
       madeAt: DateTime.fromMillisecondsSinceEpoch(j['made_at'] is int ? j['made_at'] as int : 0),
@@ -135,6 +207,13 @@ class ShowProject {
   final ShowSettings settings;
   final List<ShowPicture> pictures;
   final List<ShowTrack> music;
+
+  /// Played from the server ([ShowProject.remote]); null for a project on this device.
+  final ShowRemote? remote;
+
+  /// For a project put together on the server: its id and the mark of the version this copy is of (`rev`); null otherwise.
+  final int? serverId;
+  final String? serverRev;
 
   /// The id of the project on this device: the name of its folder.
   String get id => dir.uri.pathSegments.where((s) => s.isNotEmpty).last;
@@ -199,6 +278,12 @@ class ShowProjects {
     }
   }
 
+  /// Notes in [project] which project of the server it is a copy of, and of which version.
+  Future<ShowProject> markServer(ShowProject project, int id, String rev) async {
+    await File('${project.dir.path}/$kShowServerFile').writeAsString(jsonEncode({'id': id, 'rev': rev}));
+    return ShowProject.open(project.dir);
+  }
+
   Future<void> delete(ShowProject project) async {
     // Only a folder of this place is deleted.
     if (project.dir.parent.path != root.path) return;
@@ -209,7 +294,9 @@ class ShowProjects {
   Future<void> tidy() async {
     if (!root.existsSync()) return;
     for (final d in root.listSync().whereType<Directory>()) {
-      if (d.uri.pathSegments.where((s) => s.isNotEmpty).last.startsWith('.show-')) await d.delete(recursive: true);
+      final name = d.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      // Also what a show played from the server fetched, when the app was closed meanwhile.
+      if (name.startsWith('.show-') || name.startsWith('.stream-')) await d.delete(recursive: true);
     }
   }
 }

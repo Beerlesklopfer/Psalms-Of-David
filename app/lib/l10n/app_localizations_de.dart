@@ -2973,6 +2973,35 @@ class AppLocalizationsDe extends AppLocalizations {
       'Dieses Projekt lässt sich hier nicht abspielen: Es ist beschädigt oder mit einem neueren David gemacht.';
 
   @override
+  String get showServerTitle => 'Projekte auf dem Server';
+
+  @override
+  String get showServerHint =>
+      'Im Web unter Bilder zusammengestellt. Abspielen holt die Bilder beim Zeigen vom Server; herunterladen bringt das Projekt aufs Gerät, dann läuft es auch offline.';
+
+  @override
+  String get showServerEmpty =>
+      'Noch keine Projekte. Im Web unter Bilder › Projekte legst du eins an.';
+
+  @override
+  String get showServerUnreachable => 'Der Server ist gerade nicht erreichbar.';
+
+  @override
+  String get showStream => 'Vom Server abspielen';
+
+  @override
+  String get showDownload => 'Aufs Gerät laden';
+
+  @override
+  String get showOnDevice => 'auf dem Gerät';
+
+  @override
+  String get showOutdated => 'neuere Fassung auf dem Server';
+
+  @override
+  String get showUpdate => 'Aktualisieren';
+
+  @override
   String get showTitle => 'Bilder';
 
   @override

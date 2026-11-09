@@ -2939,6 +2939,35 @@ class AppLocalizationsEn extends AppLocalizations {
       'This project cannot be played here: it is damaged or made by a newer David.';
 
   @override
+  String get showServerTitle => 'Projects on the server';
+
+  @override
+  String get showServerHint =>
+      'Put together on the web under Pictures. Play fetches the pictures from the server as they are shown; download brings the project onto this device, then it plays offline too.';
+
+  @override
+  String get showServerEmpty =>
+      'No projects yet. Make one on the web under Pictures › Projects.';
+
+  @override
+  String get showServerUnreachable => 'The server cannot be reached right now.';
+
+  @override
+  String get showStream => 'Play from the server';
+
+  @override
+  String get showDownload => 'Download to this device';
+
+  @override
+  String get showOnDevice => 'on this device';
+
+  @override
+  String get showOutdated => 'newer version on the server';
+
+  @override
+  String get showUpdate => 'Update';
+
+  @override
   String get showTitle => 'Pictures';
 
   @override

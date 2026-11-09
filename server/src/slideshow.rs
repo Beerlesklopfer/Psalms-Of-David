@@ -120,8 +120,13 @@ pub async fn chosen(store: &Store, user: i64, role: Role, raw: Option<&str>) -> 
         return Ok(Some(Chosen { entries, settings, music, title: None }));
     };
     let Some(id) = id else { return Ok(None) };
-    let Some(show) = store.slideshow(user, id).await? else { return Ok(None) };
     let seen: HashMap<String, Item> = visible(store, user, role).await?;
+    project(store, user, id, &seen).await
+}
+
+/// A project of the person with the pictures of [`visible`] (asked once for several projects); `None` when the person has no such project.
+pub async fn project(store: &Store, user: i64, id: i64, seen: &HashMap<String, Item>) -> Result<Option<Chosen>> {
+    let Some(show) = store.slideshow(user, id).await? else { return Ok(None) };
     let mut entries = Vec::new();
     for p in store.slideshow_pictures(id).await? {
         let Some(mut item) = seen.get(&p.key).cloned() else { continue };
@@ -140,6 +145,17 @@ pub async fn chosen(store: &Store, user: i64, role: Role, raw: Option<&str>) -> 
         info: show.info.clone(),
     };
     Ok(Some(Chosen { entries, settings, music: show.music, title: Some(show.title) }))
+}
+
+/// A short mark of what a project plays now (its title, its choices, its music, its pictures in order with their transitions and seconds):
+/// it changes with every change of the project and when a picture can no longer be seen. A device keeps it with its copy of the project
+/// and knows by it that the server has a newer one.
+pub fn revision(c: &Chosen) -> String {
+    use sha2::{Digest, Sha256};
+    let pictures: Vec<(&str, bool, &Option<String>, &Option<u32>)> = c.entries.iter().map(|e| (e.item.key.as_str(), e.item.video, &e.transition, &e.seconds)).collect();
+    let text = serde_json::to_string(&(&c.title, &c.settings, c.music, pictures)).unwrap_or_default();
+    let digest = Sha256::digest(text.as_bytes());
+    digest.iter().take(8).map(|b| format!("{b:02x}")).collect()
 }
 
 /// Every picture and video the person may see now, by key.

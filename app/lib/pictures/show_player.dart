@@ -67,6 +67,16 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
   VideoPlayerController? _video;
   bool _videoDone = false;
 
+  /// The file of the picture shown (fetched first when the project plays from the server).
+  String? _image;
+
+  /// The places of the pictures of a project played from the server, asked for while they are shown.
+  final Map<String, String?> _places = {};
+
+  /// Pictures in a row that the server did not give: when none comes, the show waits instead of going round.
+  int _missing = 0;
+  bool _unreachable = false;
+
   AudioBackend? _music;
   List<ShowTrack> _tracks = const [];
   int _track = 0;
@@ -75,7 +85,14 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
   Timer? _duckTimer;
   double _volume = 1;
 
+  /// While a track comes from the server: the engine still says "ended" meanwhile.
+  bool _fetchingTrack = false;
+
   ShowSettings get _settings => widget.project.settings;
+  ShowRemote? get _remote => widget.project.remote;
+
+  /// The file of [name] on this device: of the project, or fetched from the server.
+  Future<String> _file(String name) async => _remote == null ? widget.project.path(name) : await _remote!.fetch(name);
 
   @override
   void initState() {
@@ -134,7 +151,15 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
     final transition = _pick(p);
     _zoomAt = Alignment(_random.nextDouble() * 1.2 - 0.6, _random.nextDouble() * 1.2 - 0.6);
     if (p.video != null && widget.videos) {
-      final c = VideoPlayerController.file(File(widget.project.path(p.video!)));
+      final String path;
+      try {
+        path = _remote == null ? widget.project.path(p.video!) : await _remote!.fetch(p.video!);
+      } on Object {
+        if (mounted && mine == _step) _notThere(dir);
+        return;
+      }
+      if (!mounted || mine != _step) return;
+      final c = VideoPlayerController.file(File(path));
       try {
         await c.initialize();
       } on Object {
@@ -147,6 +172,7 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
         return;
       }
       _videoDone = false;
+      _arrived();
       c.addListener(() => _videoTick(c, mine));
       setState(() {
         _video = c;
@@ -157,12 +183,51 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
       if (!_paused) await c.play();
       return;
     }
+    final String image;
+    if (_remote == null) {
+      image = widget.project.path(p.image);
+    } else {
+      try {
+        image = await _remote!.fetch(p.image);
+      } on Object {
+        if (mounted && mine == _step) _notThere(dir);
+        return;
+      }
+      if (!mounted || mine != _step) return;
+      _arrived();
+      _askPlace(p);
+    }
     setState(() {
       _at = i;
+      _image = image;
       _transition = transition;
     });
     _precache((i + 1) % _order.length);
     _schedule();
+  }
+
+  /// A picture the server did not give: on to the next one; when none of them comes, the show stops and says so.
+  void _notThere(int dir) {
+    if (++_missing >= _order.length) {
+      setState(() => _unreachable = true);
+      return;
+    }
+    _go(dir);
+  }
+
+  void _arrived() {
+    _missing = 0;
+    if (_unreachable) setState(() => _unreachable = false);
+  }
+
+  /// The place of a picture from the server, when the caption shows places.
+  void _askPlace(ShowPicture p) {
+    final r = _remote;
+    if (r == null || _settings.info != 'both' || p.video != null || _places.containsKey(p.image)) return;
+    _places[p.image] = null;
+    r.place(showKeyOf(p.image)).then((place) {
+      if (mounted && place != null) setState(() => _places[p.image] = place);
+    });
   }
 
   void _schedule() {
@@ -173,7 +238,10 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
 
   void _precache(int i) {
     final p = _order[i];
-    precacheImage(FileImage(File(widget.project.path(p.image))), context).catchError((Object _) {});
+    // From the server the next picture is fetched meanwhile (a video when it comes).
+    _file(p.video != null && widget.videos ? p.video! : p.image).then((path) {
+      if (mounted && (p.video == null || !widget.videos)) precacheImage(FileImage(File(path)), context).catchError((Object _) {});
+    }, onError: (Object _) {});
   }
 
   /// A picture that cannot be read: on to the next one.
@@ -216,16 +284,33 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
     _playTrack();
     _musicPoll = Timer.periodic(const Duration(milliseconds: 500), (_) {
       final m = _music;
-      if (m == null) return;
+      if (m == null || _fetchingTrack) return;
       if (m.state == BackendState.ended || m.state == BackendState.failed) _nextTrack();
     });
   }
 
-  void _playTrack() {
+  Future<void> _playTrack() async {
     final m = _music;
     if (m == null || _tracks.isEmpty) return;
+    final t = _tracks[_track];
+    final String path;
+    if (_remote == null) {
+      path = widget.project.path(t.file);
+    } else {
+      try {
+        _fetchingTrack = true;
+        path = await _remote!.fetch(t.file);
+      } on Object {
+        _fetchingTrack = false;
+        // Not from the server now: the next track, but not round and round.
+        if (mounted && ++_musicFailures < _tracks.length) _nextTrack();
+        return;
+      }
+      _fetchingTrack = false;
+      if (!mounted || _music != m) return;
+    }
     try {
-      m.load(widget.project.path(_tracks[_track].file), play: !_paused, title: _tracks[_track].title);
+      m.load(path, play: !_paused, title: t.title);
       m.setVolume(_volume);
       _musicFailures = 0;
     } on AudioException {
@@ -304,7 +389,6 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
 
   Widget _slide() {
     if (_order.isEmpty) return const SizedBox.expand(key: ValueKey('empty'));
-    final p = _order[_at];
     final step = _step;
     final c = _video;
     if (c != null && c.value.isInitialized) {
@@ -313,8 +397,10 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
         child: AspectRatio(aspectRatio: c.value.aspectRatio, child: VideoPlayer(c)),
       );
     }
+    final file = _image;
+    if (file == null) return const SizedBox.expand(key: ValueKey('empty'));
     final image = Image.file(
-      File(widget.project.path(p.image)),
+      File(file),
       fit: BoxFit.contain,
       width: double.infinity,
       height: double.infinity,
@@ -344,7 +430,7 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
         ? null
         : [
             DateFormat.yMMMMd(locale).format(p.takenAt),
-            if (_settings.info == 'both' && p.video == null && p.place != null) p.place!,
+            if (_settings.info == 'both' && p.video == null && (p.place ?? _places[p.image]) != null) (p.place ?? _places[p.image])!,
           ];
     return Focus(
       focusNode: _focus,
@@ -449,6 +535,16 @@ class _ShowPlayerScreenState extends State<ShowPlayerScreen> {
                   ),
                 ),
               ),
+              if (_unreachable)
+                Center(
+                  child: Container(
+                    key: const ValueKey('show-unreachable'),
+                    margin: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(16)),
+                    child: Text(l.showServerUnreachable, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
+                  ),
+                ),
               if (_paused)
                 Positioned(
                   top: 0,

@@ -4898,6 +4898,60 @@ abstract class AppLocalizations {
   /// **'This project cannot be played here: it is damaged or made by a newer David.'**
   String get showProjectBroken;
 
+  /// No description provided for @showServerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Projects on the server'**
+  String get showServerTitle;
+
+  /// No description provided for @showServerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Put together on the web under Pictures. Play fetches the pictures from the server as they are shown; download brings the project onto this device, then it plays offline too.'**
+  String get showServerHint;
+
+  /// No description provided for @showServerEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No projects yet. Make one on the web under Pictures › Projects.'**
+  String get showServerEmpty;
+
+  /// No description provided for @showServerUnreachable.
+  ///
+  /// In en, this message translates to:
+  /// **'The server cannot be reached right now.'**
+  String get showServerUnreachable;
+
+  /// No description provided for @showStream.
+  ///
+  /// In en, this message translates to:
+  /// **'Play from the server'**
+  String get showStream;
+
+  /// No description provided for @showDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Download to this device'**
+  String get showDownload;
+
+  /// No description provided for @showOnDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'on this device'**
+  String get showOnDevice;
+
+  /// No description provided for @showOutdated.
+  ///
+  /// In en, this message translates to:
+  /// **'newer version on the server'**
+  String get showOutdated;
+
+  /// No description provided for @showUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Update'**
+  String get showUpdate;
+
   /// No description provided for @showTitle.
   ///
   /// In en, this message translates to:

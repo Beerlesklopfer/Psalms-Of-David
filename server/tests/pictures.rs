@@ -557,3 +557,57 @@ async fn a_project_is_picked_put_in_order_and_played_only_by_the_person_who_made
     assert_eq!(get_json(format!("/pictures/list?show={id}"), anna_t.clone()).await.0, StatusCode::NOT_FOUND);
     assert_eq!(keys_of(&get_json("/pictures/list?source=f%3AUrlaub".into(), anna_t).await.1).len(), 3);
 }
+
+#[tokio::test]
+async fn the_app_lists_the_projects_plays_one_from_the_server_and_sees_by_the_mark_that_it_changed() {
+    let a = api().await;
+    let anna = a.store.create_user(NewProfile::new("Anna", Role::Member)).await.unwrap();
+    let bert = a.store.create_user(NewProfile::new("Bert", Role::Member)).await.unwrap();
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join("Urlaub")).unwrap();
+    for name in ["a.png", "b.png"] {
+        std::fs::write(root.path().join("Urlaub").join(name), png(800, 600)).unwrap();
+    }
+    a.store.save_settings(&[("photo_library".into(), root.path().to_str().unwrap().into()), ("photo_places".into(), "off".into())]).await.unwrap();
+    a.store.scan_photo_library().await.unwrap();
+    let (anna_t, bert_t) = (pair(&a, anna, 1).await, pair(&a, bert, 2).await);
+    let keys = |v: &Value| -> Vec<String> { v["pictures"].as_array().unwrap().iter().map(|p| p["key"].as_str().unwrap().to_owned()).collect() };
+    let all = keys(&get(&a, &anna_t, "/api/v1/pictures?source=f%3AUrlaub").await.json());
+    assert_eq!(all.len(), 2);
+
+    let id = a.store.create_slideshow(anna, "Allgäu").await.unwrap();
+    a.store.add_slideshow_pictures(anna, Role::Member, id, &[all[1].clone(), all[0].clone()]).await.unwrap();
+    a.store.set_slideshow_picture(anna, id, &all[0], Some("cut"), Some(3)).await.unwrap();
+
+    let r = get(&a, &anna_t, "/api/v1/pictures/shows").await;
+    assert_eq!(r.status, StatusCode::OK);
+    let shows = r.json();
+    assert_eq!((shows["shows"][0]["id"].as_i64(), shows["shows"][0]["title"].as_str(), shows["shows"][0]["pictures"].as_u64()), (Some(id), Some("Allgäu"), Some(2)));
+    let rev = shows["shows"][0]["rev"].as_str().unwrap().to_owned();
+    assert_eq!(rev.len(), 16);
+    assert_eq!(get(&a, &bert_t, "/api/v1/pictures/shows").await.json()["shows"], json!([]), "only the person who made it");
+
+    // To play from the server: the keys in their order, each with its own choices, and the mark.
+    let show = get(&a, &anna_t, &format!("/api/v1/pictures/shows/{id}")).await.json();
+    assert_eq!(keys(&show), [all[1].clone(), all[0].clone()]);
+    assert_eq!((show["pictures"][1]["transition"].as_str(), show["pictures"][1]["seconds"].as_u64()), (Some("cut"), Some(3)));
+    assert!(show["pictures"][0].get("transition").is_none(), "{show}");
+    assert_eq!((show["title"].as_str(), show["rev"].as_str(), show["music"].clone()), (Some("Allgäu"), Some(rev.as_str()), json!([])));
+    assert_eq!(show["settings"]["order"].as_str(), Some("date"));
+    assert_eq!(get(&a, &bert_t, &format!("/api/v1/pictures/shows/{id}")).await.status, StatusCode::NOT_FOUND);
+    assert_eq!(get(&a, &anna_t, "/api/v1/pictures/shows/999").await.status, StatusCode::NOT_FOUND);
+    assert_eq!(get(&a, &anna_t, &format!("/api/v1/pictures/{}/screen", all[0])).await.status, StatusCode::OK);
+    assert_eq!(get(&a, &anna_t, &format!("/api/v1/pictures/{}/video", all[0])).await.status, StatusCode::NOT_FOUND, "a picture is no video");
+
+    // A change of the order or of one picture changes the mark; the same project again keeps it.
+    assert_eq!(get(&a, &anna_t, "/api/v1/pictures/shows").await.json()["shows"][0]["rev"].as_str(), Some(rev.as_str()));
+    a.store.order_slideshow(anna, id, &[all[0].clone(), all[1].clone()]).await.unwrap();
+    let moved = get(&a, &anna_t, "/api/v1/pictures/shows").await.json()["shows"][0]["rev"].as_str().unwrap().to_owned();
+    assert_ne!(moved, rev);
+    a.store.set_slideshow_picture(anna, id, &all[0], None, None).await.unwrap();
+    assert_ne!(get(&a, &anna_t, "/api/v1/pictures/shows").await.json()["shows"][0]["rev"].as_str(), Some(moved.as_str()));
+
+    // The project file of the app is the same request as for the browser.
+    let zip = get(&a, &anna_t, &format!("/api/v1/pictures/project?show={id}")).await;
+    assert_eq!((zip.status, zip.mime.as_str()), (StatusCode::OK, "application/zip"));
+}

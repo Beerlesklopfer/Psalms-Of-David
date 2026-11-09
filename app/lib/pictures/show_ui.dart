@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../format.dart';
 import '../l10n/app_localizations.dart';
+import '../offline/offline_controller.dart';
 import '../photos/photo_backup_ui.dart' show PhotoChoiceField;
 import '../playlists.dart';
 import '../screens/confirm_dialog.dart';
@@ -63,7 +64,64 @@ class ShowController extends ChangeNotifier {
   }
 
   /// Loads the project of [choice] from the server onto this device.
-  Future<ShowProject?> save(ShowChoice choice) async {
+  Future<ShowProject?> save(ShowChoice choice) => _fetch((api, zip, progress) => api.download(choice, zip, progress: progress));
+
+  /// The projects put together on the server (the web editor); empty without a server or while it cannot be reached.
+  List<ServerShow> server = const [];
+  bool serverLoaded = false;
+
+  /// The server did not answer the last time it was asked for its projects.
+  bool serverFailed = false;
+
+  Future<void> loadServer() async {
+    final api = this.api;
+    if (api == null) return;
+    try {
+      server = await api.shows();
+      serverFailed = false;
+    } on Object {
+      serverFailed = true;
+    }
+    serverLoaded = true;
+    notifyListeners();
+  }
+
+  /// The copy of [show] on this device, or null.
+  ShowProject? copyOf(ServerShow show) => list.where((p) => p.serverId == show.id).firstOrNull;
+
+  /// Whether the server has a newer version of [show] than the copy on this device.
+  bool outdated(ServerShow show) {
+    final copy = copyOf(show);
+    return copy != null && copy.serverRev != show.rev;
+  }
+
+  /// Loads a project of the server onto this device, with its pictures, videos and music; an older copy of it goes.
+  Future<ShowProject?> saveShow(ServerShow show) async {
+    final older = [for (final p in list) if (p.serverId == show.id) p];
+    var p = await _fetch((api, zip, progress) => api.downloadShow(show.id, zip, progress: progress));
+    if (p == null) return null;
+    p = await projects.markServer(p, show.id, show.rev);
+    for (final o in older) {
+      await projects.delete(o);
+    }
+    list = await projects.list();
+    notifyListeners();
+    return p;
+  }
+
+  /// A project of the server to play from there, without loading it onto this device; null when the server does not answer. The one who
+  /// plays it calls `remote.dispose()` afterwards.
+  Future<ShowProject?> stream(ServerShow show) async {
+    final api = this.api;
+    if (api == null) return null;
+    try {
+      return await api.stream(show.id, Directory('${projects.root.path}/.stream-${DateTime.now().microsecondsSinceEpoch}'));
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<ShowProject?> _fetch(Future<void> Function(ShowApi api, File zip, void Function(int bytes) progress) load) async {
     final api = this.api;
     if (api == null || busy) return null;
     error = null;
@@ -71,7 +129,8 @@ class ShowController extends ChangeNotifier {
     notifyListeners();
     final zip = File('${projects.root.path}/.download-${DateTime.now().microsecondsSinceEpoch}.zip');
     try {
-      await api.download(choice, zip, progress: (n) {
+      await projects.root.create(recursive: true);
+      await load(api, zip, (n) {
         loadingBytes = n;
         notifyListeners();
       });
@@ -129,6 +188,33 @@ class _PicturesBodyState extends State<PicturesBody> {
   void initState() {
     super.initState();
     if (!widget.controller.loaded) widget.controller.load();
+    widget.controller.loadServer();
+  }
+
+  void _say(BuildContext context, String text) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+
+  /// Plays a project of the server from there; what was fetched for it is thrown away afterwards.
+  Future<void> _stream(BuildContext context, ServerShow show) async {
+    final l = AppLocalizations.of(context);
+    final p = await widget.controller.stream(show);
+    if (!context.mounted) {
+      await p?.remote?.dispose();
+      return;
+    }
+    if (p == null || p.pictures.isEmpty) {
+      await p?.remote?.dispose();
+      if (context.mounted) _say(context, p == null ? l.showServerUnreachable : l.showEmpty);
+      return;
+    }
+    await ShowPlayerScreen.open(context, p);
+    await p.remote?.dispose();
+  }
+
+  Future<void> _download(BuildContext context, ServerShow show) async {
+    final l = AppLocalizations.of(context);
+    final p = await widget.controller.saveShow(show);
+    if (!context.mounted) return;
+    _say(context, p != null ? l.showSaved : showErrorText(l, widget.controller.error ?? 'failed'));
   }
 
   Future<void> _openFile(BuildContext context) async {
@@ -150,6 +236,8 @@ class _PicturesBodyState extends State<PicturesBody> {
           final l = AppLocalizations.of(context);
           final text = Theme.of(context).textTheme;
           final cs = Theme.of(context).colorScheme;
+          // Offline the projects of the server are not asked for; those loaded onto this device still play.
+          final offline = OfflineScope.maybeOf(context)?.active ?? false;
           return SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             sliver: SliverList.list(children: [
@@ -186,6 +274,28 @@ class _PicturesBodyState extends State<PicturesBody> {
                 Padding(padding: const EdgeInsets.symmetric(vertical: 24), child: Text(l.showProjectsEmpty, key: const ValueKey('show-none')))
               else
                 for (final p in c.list) _ProjectCard(controller: c, project: p),
+              if (c.api != null) ...[
+                const SizedBox(height: 16),
+                Text(l.showServerTitle, style: text.titleMedium),
+                const SizedBox(height: 4),
+                Text(l.showServerHint, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                const SizedBox(height: 8),
+                if (offline || c.serverFailed)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Text(l.showServerUnreachable, key: const ValueKey('show-server-unreachable')),
+                  )
+                else if (c.serverLoaded && c.server.isEmpty)
+                  Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Text(l.showServerEmpty, key: const ValueKey('show-server-none')))
+                else
+                  for (final s in c.server)
+                    _ServerShowCard(
+                      controller: c,
+                      show: s,
+                      onStream: () => _stream(context, s),
+                      onDownload: () => _download(context, s),
+                    ),
+              ],
             ]),
           );
         },
@@ -210,6 +320,59 @@ class _Progress extends StatelessWidget {
         const SizedBox(height: 6),
         Text(bytes != null ? l.showLoading(formatBytes(locale, bytes)) : l.showUnpacking),
       ],
+    );
+  }
+}
+
+/// A project of the server: a tap plays it (the copy on this device when it is the newest, else from the server), and it is loaded onto
+/// this device or brought up to date there.
+class _ServerShowCard extends StatelessWidget {
+  const _ServerShowCard({required this.controller, required this.show, required this.onStream, required this.onDownload});
+
+  final ShowController controller;
+  final ServerShow show;
+  final VoidCallback onStream;
+  final VoidCallback onDownload;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final cs = Theme.of(context).colorScheme;
+    final copy = controller.copyOf(show);
+    final outdated = controller.outdated(show);
+    final busy = controller.busy;
+    final meta = [
+      l.showCount(show.pictures),
+      if (copy != null) outdated ? l.showOutdated : l.showOnDevice,
+    ].join(' · ');
+    return Card(
+      key: ValueKey('show-server-${show.id}'),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        contentPadding: const EdgeInsets.fromLTRB(16, 4, 4, 4),
+        leading: Icon(outdated ? Icons.sync_problem_outlined : (copy != null ? Icons.offline_pin_outlined : Icons.cloud_outlined), color: outdated ? cs.tertiary : cs.primary),
+        title: Text(show.title.isEmpty ? l.showTitle : show.title),
+        subtitle: Text(meta, key: ValueKey('show-server-meta-${show.id}')),
+        onTap: copy != null && !outdated ? () => ShowPlayerScreen.open(context, copy) : onStream,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              key: ValueKey('show-stream-${show.id}'),
+              tooltip: l.showStream,
+              icon: Icon(Icons.play_circle_outline, color: cs.primary),
+              onPressed: onStream,
+            ),
+            if (copy == null || outdated)
+              IconButton(
+                key: ValueKey('show-download-${show.id}'),
+                tooltip: outdated ? l.showUpdate : l.showDownload,
+                icon: Icon(outdated ? Icons.sync : Icons.download_outlined),
+                onPressed: busy || show.pictures == 0 ? null : onDownload,
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

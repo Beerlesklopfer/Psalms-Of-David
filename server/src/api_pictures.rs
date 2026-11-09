@@ -8,9 +8,12 @@
 //! | `GET /pictures/sources` | `{sources: [{id, kind, name, count, first, last}], places, videos}`: what the person may choose (`own`, `p<id>` a child, `f:<folder>` an old folder); `places`: the server names the places; `videos`: it can show a frame of a video |
 //! | `GET /pictures?source=<id>&source=…&from=<ms>&to=<ms>&videos=on` | `{pictures: [{key, source, name, mime, video, taken_at}]}`, the oldest first (no `source`: all); at most 50000 |
 //! | `GET /pictures/project?source=…&from=…&to=…&videos=on&order=…&seconds=…&transition=…&info=…&music=<playlist>` | the project of a slideshow: a ZIP with `show.json`, the pictures, videos and music, that plays without the server (`crate::show_project`) |
+//! | `GET /pictures/shows` | `{shows: [{id, title, pictures, rev}]}`: the projects the person put together by hand (`crate::slideshow`), the one changed last first; `rev` changes with every change of what a project plays |
+//! | `GET /pictures/shows/{id}` | a project to play from the server without loading it first: `{id, title, rev, settings, pictures: [{key, video, taken_at, transition?, seconds?}], music: [{part_id, title, artist}]}`; the device fetches `screen`, `video`, `info` of each picture and `/parts/{part_id}/stream` of each track |
 //! | `GET /pictures/{key}/thumb` | a preview (JPEG, at most 480 px), `404 no_preview` when the server cannot make one |
 //! | `GET /pictures/{key}/screen` | the picture for the screen (JPEG, at most 2048 px, upright); for a video one frame of it; `404 no_preview` |
 //! | `GET /pictures/{key}/file` | the original (with `Range`, for a video) |
+//! | `GET /pictures/{key}/video` | a video as an MP4 that every device plays (as in the project file), `404 no_video` when the server cannot make one |
 //! | `GET /pictures/{key}/info` | `{taken_at, place}`: `place` is the name of the place (in the language of `Accept-Language`) or null |
 //!
 //! A key the person may not see is `404 not_found`, the same as one that does not exist.
@@ -35,6 +38,9 @@ pub fn routes() -> Router<ApiState> {
         .route("/api/v1/pictures", get(list))
         .route("/api/v1/pictures/sources", get(sources))
         .route("/api/v1/pictures/project", get(project))
+        .route("/api/v1/pictures/shows", get(shows))
+        .route("/api/v1/pictures/shows/{id}", get(show))
+        .route("/api/v1/pictures/{key}/video", get(video))
         .route("/api/v1/pictures/{key}/thumb", get(thumb))
         .route("/api/v1/pictures/{key}/screen", get(screen))
         .route("/api/v1/pictures/{key}/file", get(file))
@@ -139,6 +145,71 @@ pub async fn original(store: &Store, user: i64, role: crate::roles::Role, key: &
 
 async fn file(State(s): State<ApiState>, d: Device, Path(key): Path<String>, req: Request) -> Response {
     original(&s.store, d.user_id, d.role, &key, req).await
+}
+
+fn no_guest(d: &Device) -> ApiResult<()> {
+    if d.role == crate::roles::Role::Guest { Err(ApiError(StatusCode::NOT_FOUND, "not_found")) } else { Ok(()) }
+}
+
+/// The projects of the person, each with the mark of what it plays now.
+async fn shows(State(s): State<ApiState>, d: Device) -> ApiResult<Json<Value>> {
+    no_guest(&d)?;
+    let seen = crate::slideshow::visible(&s.store, d.user_id, d.role).await?;
+    let mut out = Vec::new();
+    for summary in s.store.slideshows(d.user_id).await? {
+        let Some(c) = crate::slideshow::project(&s.store, d.user_id, summary.id, &seen).await? else { continue };
+        out.push(json!({ "id": summary.id, "title": summary.title, "pictures": c.entries.len(), "rev": crate::slideshow::revision(&c) }));
+    }
+    Ok(Json(json!({ "shows": out })))
+}
+
+/// A project to play from the server: the keys of its pictures and the tracks of its music, not the files.
+async fn show(State(s): State<ApiState>, d: Device, Path(id): Path<i64>) -> ApiResult<Json<Value>> {
+    no_guest(&d)?;
+    let seen = crate::slideshow::visible(&s.store, d.user_id, d.role).await?;
+    let c = crate::slideshow::project(&s.store, d.user_id, id, &seen).await?.ok_or(ApiError(StatusCode::NOT_FOUND, "not_found"))?;
+    let pictures: Vec<Value> = c
+        .entries
+        .iter()
+        .map(|e| {
+            let mut p = json!({ "key": e.item.key, "video": e.item.video, "taken_at": e.item.taken_at });
+            if let Some(t) = &e.transition {
+                p["transition"] = json!(t);
+            }
+            if let Some(n) = e.seconds {
+                p["seconds"] = json!(n);
+            }
+            p
+        })
+        .collect();
+    let mut music = Vec::new();
+    if let Some(list) = c.music
+        && let Some(v) = s.store.playlist_view(list, d.user_id).await?
+    {
+        for e in v.entries.into_iter().filter(|e| e.available) {
+            music.push(json!({ "part_id": e.track_id, "title": e.title, "artist": e.author }));
+        }
+    }
+    Ok(Json(json!({
+        "id": id, "title": c.title.clone().unwrap_or_default(), "rev": crate::slideshow::revision(&c),
+        "settings": c.settings, "pictures": pictures, "music": music,
+    })))
+}
+
+/// A video as an MP4 (made once and kept, as for the project file).
+async fn video(State(s): State<ApiState>, d: Device, Path(key): Path<String>, req: Request) -> Response {
+    let found = match s.store.picture(d.user_id, d.role, &key).await {
+        Ok(Some(f)) => f,
+        Ok(None) => return ApiError(StatusCode::NOT_FOUND, "not_found").into_response(),
+        Err(e) => return ApiError::from(e).into_response(),
+    };
+    if !found.mime.starts_with("video/") {
+        return ApiError(StatusCode::NOT_FOUND, "no_video").into_response();
+    }
+    match crate::picture_render::video_mp4(&s.store.data_dir, &key, &found.path).await {
+        Some(mp4) => serve(&mp4, "video/mp4", true, req).await,
+        None => ApiError(StatusCode::NOT_FOUND, "no_video").into_response(),
+    }
 }
 
 /// The language of a request: the first of `Accept-Language`.

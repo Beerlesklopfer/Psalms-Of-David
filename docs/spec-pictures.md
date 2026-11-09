@@ -126,3 +126,17 @@ choices of the slideshow and the order (by the numbers or shuffled).
   `show=<id>` instead (`/pictures/list`, `/pictures/project`, `/api/v1/pictures/project`, `POST /pictures/videos`). A picture the person
   may no longer see stays in the project and is left out when it plays; the editor says how many.
 - The apps do not make or change projects; a project file of one plays there with the transition and seconds of each picture.
+
+Decided by the project owner on 2026-11-09: the projects reach the apps. The rubric "Pictures" of the app lists them under "Projects on
+the server", and each one plays from the server or is loaded onto the device; when it changes on the server, the copy on the device says
+"newer version on the server" and one tap brings it up to date (nothing is loaded by itself).
+
+- `GET /api/v1/pictures/shows`: the projects of the person with `rev`, a mark of what a project plays now (title, choices, music list,
+  the pictures in order with their transitions and seconds, and which of them the person may see); it changes with every change.
+- Played from the server: `GET /api/v1/pictures/shows/{id}` gives the keys and the tracks; the app fetches each picture
+  (`/pictures/{key}/screen`), video (`/pictures/{key}/video`, the MP4 of the project file) and track (`/parts/{id}/stream?as=mp3`) just
+  before it is shown, the next one meanwhile, into a folder that goes when the show ends; the place comes from `/pictures/{key}/info`.
+  When the server gives no picture at all, the show stops and says that the server cannot be reached.
+- Loaded onto the device: the project file (`/api/v1/pictures/project?show=<id>`), and next to `show.json` a `server.json`
+  (`{id, rev}`) that says which project it is a copy of and in which version. An update replaces the older copy. A copy plays offline.
+- A change of the tracks inside the playlist of the music does not change `rev`.
