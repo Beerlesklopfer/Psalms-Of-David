@@ -110,6 +110,8 @@ jobs:
           fi
 
   # The packages for Linux on both processors: amd64 and arm64 (Raspberry Pi 4 and 5, ARM servers); the arm64 runner is free for a public repository.
+  # The Linux packages are built on Ubuntu 24.04, not ubuntu-latest: a binary needs the glibc it was built against or a newer one, and
+  # 24.04 (glibc 2.39) is older than Debian 13 (2.41), where David runs; ubuntu-latest (26.04, glibc 2.43) made packages that do not start there.
   package-server:
     needs: [server, audio]
     if: github.event_name == 'push'
@@ -117,7 +119,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { arch: amd64, runner: ubuntu-latest }
+          - { arch: amd64, runner: ubuntu-24.04 }
           - { arch: arm64, runner: ubuntu-24.04-arm }
     runs-on: ${{ matrix.runner }}
     steps:
@@ -224,7 +226,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { arch: amd64, runner: ubuntu-latest, nfpm: x86_64 }
+          - { arch: amd64, runner: ubuntu-24.04, nfpm: x86_64 }
           - { arch: arm64, runner: ubuntu-24.04-arm, nfpm: arm64 }
     runs-on: ${{ matrix.runner }}
     # The arm64 build is new: it must not turn the whole run red until it works.
